@@ -81,3 +81,17 @@ jobs:
           sudo insmod arch/x86/kvm/kvm.ko && sudo insmod arch/x86/kvm/kvm-intel.ko && echo "loaded ours"
           ls -l /dev/kvm; lsmod | grep -E '^kvm'
           sudo dmesg | grep -i kvm | tail -10
+      - uses: actions/cache@v4
+        with:
+          path: ~/opt
+          key: tools-${{ hashFiles('platform/infra/host/tools.sh') }}
+      - name: determinismo, built
+        run: |
+          cd platform
+          infra/host/tools.sh --build > /dev/null
+          ~/opt/zig/zig build determinismo -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
+          ls -la zig-out/bin/determinismo
+      - name: determinismo doctor, on our KVM
+        run: |
+          sudo chmod 666 /dev/kvm
+          platform/zig-out/bin/determinismo doctor 2>&1 | tail -40 || true

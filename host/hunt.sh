@@ -62,9 +62,10 @@ if [ -n "$busy" ]; then
   exit 0
 fi
 
-build=$(git -C "$tree" rev-parse --short HEAD 2>/dev/null || echo unknown)
-program=$tree/zig-out/bin/datalevin-test
-[ -x "$program" ] || { echo "no datalevin-test in the deployed build"; exit 1; }
+# The deployed build as serve reports it (a deployed tree has no git of its own): its commit and
+# its explorer's hash, so a deploy that changes either is a new build.
+build=$(curl -s -m 20 "$serve/build" | python3 -c "import json,sys; b=json.load(sys.stdin); print(b.get('commit','') + '/' + b.get('explorer',''))" 2>/dev/null || true)
+[ -n "$build" ] && [ "$build" != / ] || { echo "serve did not say its build"; exit 1; }
 
 case $ours in
   running)
@@ -75,7 +76,11 @@ case $ours in
     fi ;;
 esac
 
-# A new run: none yet, the last one finished, or the deployed build changed.
+# A new run: none yet, the last one finished, or the deployed build changed. Its program built in
+# the deployed tree first, as the hunt queue builds a workload before each start (no run on a
+# stale binary).
+(cd "$tree" && ~/opt/zig/zig build -Drelease datalevin-test > "$state_dir/build.log" 2>&1) || { echo "datalevin-test did not build"; exit 1; }
+program=zig-out/bin/datalevin-test
 seed=$(( $(field seed || echo 0) + 1 ))
 body=$(python3 -c "
 import json, sys

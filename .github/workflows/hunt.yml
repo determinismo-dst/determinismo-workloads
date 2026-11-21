@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-# Datalevin's continuous hunt on a determinismo host: each tick asks the host (host/hunt.sh, the
+# Datalevin's continuous hunt on a determinismo host: each tick (every 15 minutes: a run of ours
+# overlaps at most that long anything the host starts after it) asks the host (host/hunt.sh, the
 # only command its key may run) to keep the hunt going if it has room: its run resumed, a new run
 # when the last finished or the deployed build changed, or, when the host is busy, the hunt
 # stopped to resume later. Never on pull requests (it holds the host's key); off until the
@@ -8,7 +9,7 @@ name: hunt
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       action:

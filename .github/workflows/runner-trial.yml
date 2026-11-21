@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: MIT
+# Datalevin's hunt on GitHub's free hosted runners (run by hand), a trial: does a workload of its
+# size run there? A runner is a VM (4 vCPUs, 15 GiB, Ubuntu's AWS 7.0 kernel, nested VT-x and
+# the core PMU on AWS hardware), so determinismo's VMs run nested: our KVM built for its kernel
+# and loaded (the platform's build-kvm.sh, load-kvm.sh: kernel/patches-7.0), determinismo built,
+# the guest (guest/kernel/build.sh: Debian's 6.12 source), serve started as on a host, and
+# host/metal-hunt.sh's run (one VM at a time: 10 GiB of 15), its report as on an AWS machine.
+# About half the jobs land on Azure hardware without a core PMU: two jobs start, one there stops
+# in seconds.
+name: runner-trial
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: The hunt's time budget in minutes
+        default: "20"
+      platform_ref:
+        description: The platform's ref
+        default: next
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    strategy:
+      fail-fast: false
+      matrix:
+        try: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: The machine
+        run: |
+          echo "kernel $(uname -r), cpu $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2), $(nproc) vCPUs, $(free -g | awk '/Mem:/{print $2}') GiB"
+          grep -q arch_perfmon /proc/cpuinfo || { echo "no core PMU here (an Azure runner): stop"; exit 1; }
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: determinismo-dst/determinismo
+          ref: ${{ inputs.platform_ref }}
+          path: platform
+      - name: Our KVM (build-kvm.sh, load-kvm.sh)
+        run: |
+          platform/infra/host/build-kvm.sh > kvm.log 2>&1 || { tail -30 kvm.log; exit 1; }
+          sudo platform/infra/host/load-kvm.sh
+          sudo chmod 666 /dev/kvm
+      - uses: actions/cache@v4
+        with:
+          path: ~/opt
+          key: tools-nojank-${{ hashFiles('platform/infra/host/tools.sh') }}
+      - name: determinismo and the guest
+        run: |
+          sudo apt-get install -y -q busybox-static e2fsck-static erofs-utils cpio > /dev/null
+          cd platform
+          infra/host/tools.sh --no-jank > /dev/null
+          ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
+          guest/kernel/build.sh ~/guest > guest.log 2>&1 || { tail -30 guest.log; exit 1; }
+          zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
+            --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out ~/guest/base.cpio
+          zig-out/bin/determinismo doctor 2>&1 | grep -E "FAIL|warn|ready" || true
+      - name: serve, as infra/host/serve.sh starts it
+        run: |
+          # The layout an AWS machine has (host/metal-hunt.sh's): the platform's tree and this repository.
+          ln -sfn "$PWD/platform" ~/determinismo
+          ln -sfn "$PWD" ~/determinismo-workloads
+          mkdir -p ~/cache
+          cd platform
+          nohup zig-out/bin/determinismo serve --listen 127.0.0.1:7878 --ui src/ui/index.html --bb ~/opt/bb/bb \
+            --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --append quiet --cache ~/cache --memory-mib 4096 > ~/serve.log 2>&1 &
+          for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
+          curl -fsS -m 10 localhost:7878/build; echo
+      - name: Hunt (host/metal-hunt.sh, as on an AWS machine)
+        run: bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}"
+      - name: The run's report on this page (the job summary)
+        if: always()
+        run: cat summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report"
+      - name: The run's report as a page of its own (read only)
+        if: always()
+        run: |
+          [ -s run-id ] || { echo "no run"; exit 0; }
+          mkdir -p report
+          platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html
+          free -g | head -2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trial-${{ github.run_number }}-${{ matrix.try }}
+          path: |
+            report/index.html
+            kvm.log
+            ~/serve.log
+          if-no-files-found: ignore
+          retention-days: 30

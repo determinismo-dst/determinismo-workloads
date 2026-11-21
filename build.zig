@@ -5,12 +5,6 @@
 //! tools/program_pack.zig).
 const std = @import("std");
 
-/// The workloads in Clojure (the platform's sdk/clojure, determinismo.workload): each its program's
-/// name, its main namespace and its sources under workloads/.
-const clojure_programs = [_]struct { name: []const u8, main: []const u8, sources: []const u8 }{
-    .{ .name = "datalevin-test", .main = "datalevin-workload", .sources = "workloads/datalevin/workload" },
-};
-
 pub fn build(b: *std.Build) void {
     // Test programs run inside the guest: x86-64 Linux, as the platform's.
     const target = b.standardTargetOptions(.{
@@ -27,7 +21,29 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const all = b.step("workloads", "Every workload");
-    for (clojure_programs) |program| {
+    // Each workload found by its layout, nothing to list: workloads/<name>/workload/ holds a
+    // Clojure program (the platform's sdk/clojure, determinismo.workload), built as <name>-test,
+    // its main namespace <name>-workload. Moving a workload here is moving its directory.
+    var workloads_dir = b.root.openDir(b.graph.io, "workloads", .{ .iterate = true }) catch @panic("no workloads/");
+    defer workloads_dir.close(b.graph.io);
+    var names: std.ArrayList([]const u8) = .empty;
+    var listing = workloads_dir.iterate();
+    while (listing.next(b.graph.io) catch @panic("workloads/")) |entry| {
+        if (entry.kind != .directory) continue;
+        workloads_dir.access(b.graph.io, b.pathJoin(&.{ entry.name, "workload" }), .{}) catch continue;
+        names.append(b.allocator, b.dupe(entry.name)) catch @panic("out of memory");
+    }
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn less(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.lessThan(u8, x, y);
+        }
+    }.less);
+    for (names.items) |name| {
+        const program = .{
+            .name = b.fmt("{s}-test", .{name}),
+            .main = b.fmt("{s}-workload", .{name}),
+            .sources = b.fmt("workloads/{s}/workload", .{name}),
+        };
         const pack = b.addRunArtifact(program_pack);
         const packed_program = pack.addOutputFileArg(program.name);
         pack.addArg("clojure");

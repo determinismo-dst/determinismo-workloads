@@ -271,11 +271,37 @@ jobs:
             for snapshot in $snapshots; do aws ec2 delete-snapshot --snapshot-id "$snapshot"; done
             echo "an older hunt image removed"
           done
-      - name: Hunt
+      - name: Hunt (its report re-recorded every 10 minutes while it goes, on this repository's Pages)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \
-            --exclude user-data --exclude launch.err ./ "admin@$IP:determinismo-workloads/"
-          ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }}"
+            --exclude user-data --exclude launch.err --exclude report ./ "admin@$IP:determinismo-workloads/"
+          ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }}" > hunt.log 2>&1 &
+          hunt=$!
+          # serve on the machine, here at 7878 (the reports' recordings).
+          ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
+          shown=0
+          next=$(( $(date +%s) + 600 ))
+          while kill -0 "$hunt" 2>/dev/null; do
+            sleep 20
+            lines=$(wc -l < hunt.log)
+            if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
+            [ "$(date +%s)" -ge "$next" ] || continue
+            next=$(( $(date +%s) + 600 ))
+            run=$(ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/run-id 2>/dev/null' || true)
+            [ -n "$run" ] && [ -x platform/infra/host/report-static.sh ] || continue
+            mkdir -p report
+            if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html > report.log 2>&1 \
+               && host/publish-report.sh report ${{ github.run_number }} "$MINUTES" >> report.log 2>&1; then
+              echo "$(date -u +%H:%M) the report re-recorded and published"
+            else
+              echo "$(date -u +%H:%M) the report not published this time: $(tail -1 report.log)"
+            fi
+          done
+          wait "$hunt" && status=0 || status=$?
+          sed -n "$((shown + 1)),\$p" hunt.log
+          exit "$status"
       - name: The run's report on this page (the job summary)
         if: always() && env.IP != ''
         run: ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/summary.md' >> "$GITHUB_STEP_SUMMARY" || echo "no report"
@@ -285,7 +311,8 @@ jobs:
           run=$(ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/run-id 2>/dev/null' || true)
           [ -n "$run" ] || { echo "no run to report"; exit 0; }
           [ -x platform/infra/host/report-static.sh ] || { echo "this platform has no static report (before 2469d0b)"; exit 0; }
-          ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
+          # The hunt's tunnel to serve, or a new one.
+          curl -fs -m 10 -o /dev/null http://127.0.0.1:7878/runs || ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
           mkdir -p report
           platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html
           echo "REPORT_RUN=$run" >> "$GITHUB_ENV"
@@ -293,47 +320,17 @@ jobs:
         if: always() && env.REPORT_RUN != ''
         with:
           name: report-${{ github.run_number }}
-          path: report/index.html
+          path: |
+            report/index.html
+            report/stamp.json
           retention-days: 90
       - name: The report published (GitHub Pages)
         if: always() && env.REPORT_RUN != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          number=${{ github.run_number }}
-          git clone -q --depth 1 --branch gh-pages "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY" pages
-          mkdir -p "pages/runs/$number"
-          cp report/index.html "pages/runs/$number/index.html"
-          # The index: every report, newest first, each with its run's state and counts.
-          python3 - pages "$number" "$REPORT_RUN" "$MINUTES" <<'EOF'
-          import html, json, re, sys, datetime
-          pages, number, run, minutes = sys.argv[1:5]
-          page = open(f"{pages}/runs/{number}/index.html", encoding="utf-8").read()
-          recording = json.loads(re.search(r'id="determinismo-report">(.*?)</script>', page, re.S).group(1))
-          info = json.loads(recording["answers"][f"/runs/{run}"])
-          properties = json.loads(recording["answers"].get(f"/runs/{run}/properties", "[]"))
-          stats = info.get("stats") or {}
-          entry = {"number": int(number), "run": int(run), "date": recording["recorded"][:16].replace("T", " ") + " UTC",
-                   "state": info.get("state", ""), "minutes": int(minutes), "timelines": stats.get("timelines", 0),
-                   "failing": sum(1 for p in properties if p.get("status") == "failing"), "properties": len(properties)}
-          runs = [r for r in json.load(open(f"{pages}/runs.json")) if r["number"] != entry["number"]] + [entry]
-          runs.sort(key=lambda r: -r["number"])
-          json.dump(runs, open(f"{pages}/runs.json", "w"), indent=1)
-          items = "\n".join(
-              f'<li><a href="runs/{r["number"]}/">Run {r["number"]}</a>: Datalevin <code>append</code>, {html.escape(r["date"])}, '
-              f'{r["minutes"]} minutes, {r["timelines"]:,} timelines, {html.escape(r["state"])}, '
-              f'{r["failing"]} of {r["properties"]} properties failing</li>' for r in runs)
-          index = open(f"{pages}/index.html", encoding="utf-8").read()
-          index = re.sub(r'<ul id="runs">.*?</ul>', f'<ul id="runs">\n{items}\n</ul>', index, flags=re.S)
-          open(f"{pages}/index.html", "w", encoding="utf-8").write(index)
-          EOF
-          cd pages
-          git add -A
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Report of run $number"
-          git push -q origin gh-pages
-          owner=${GITHUB_REPOSITORY%%/*}
-          echo "report: https://$owner.github.io/${GITHUB_REPOSITORY#*/}/runs/$number/" | tee -a "$GITHUB_STEP_SUMMARY"
+          url=$(host/publish-report.sh report ${{ github.run_number }} "$MINUTES" | tail -1)
+          echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
       # Fresh credentials: the first ones last an hour.
       - uses: aws-actions/configure-aws-credentials@v4
         if: always()

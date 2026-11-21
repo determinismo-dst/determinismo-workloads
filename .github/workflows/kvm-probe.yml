@@ -32,11 +32,16 @@ jobs:
           sudo apt-get update -q > /dev/null
           sudo apt-get install -y -q dpkg-dev flex bison libelf-dev libssl-dev bc > /dev/null
           mkdir -p ~/k && cd ~/k
-          apt-get source -q "linux-image-unsigned-$(uname -r)" > source.log 2>&1 || { tail -5 source.log; exit 1; }
-          ls ~/k
+          # The running kernel's own source version (apt would fetch the newest otherwise).
+          pkg="linux-image-unsigned-$(uname -r)"
+          src=$(dpkg-query -W -f='${source:Package}' "$pkg")
+          ver=$(dpkg-query -W -f='${source:Version}' "$pkg")
+          echo "source $src $ver"
+          apt-get source -q "$src=$ver" > source.log 2>&1 || { tail -5 source.log; exit 1; }
+          ls -d ~/k/linux-*/
       - name: The patch
         run: |
-          cd ~/k/$(ls ~/k | grep -E '^linux' | grep -v '\.' | head -1)
+          cd "$(ls -d ~/k/linux-*/ | head -1)"
           git init -q && git add -A arch/x86/kvm arch/x86/include virt/kvm include && git -c user.email=b@l -c user.name=b commit -qm base
           if git apply --check "$GITHUB_WORKSPACE/platform/kernel/patches/0001-kvm-determinismo.patch" 2> check.txt; then
             echo "applies cleanly"
@@ -47,7 +52,7 @@ jobs:
           fi
       - name: Build kvm and kvm-intel
         run: |
-          cd ~/k/$(ls ~/k | grep -E '^linux' | grep -v '\.' | head -1)
+          cd "$(ls -d ~/k/linux-*/ | head -1)"
           git apply "$GITHUB_WORKSPACE/platform/kernel/patches/0001-kvm-determinismo.patch" || { echo "not built: the patch does not apply"; exit 0; }
           cp "/boot/config-$(uname -r)" .config
           cp "/usr/src/linux-headers-$(uname -r)/Module.symvers" . 2>/dev/null || echo "no Module.symvers"

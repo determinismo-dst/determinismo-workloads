@@ -16,6 +16,12 @@ permissions:
 
 jobs:
   kvm:
+    # Three at once: the hosted pool is AWS (Intel, with a PMU) or Azure (none, or AMD), and a
+    # job on Azure stops in seconds.
+    strategy:
+      fail-fast: false
+      matrix:
+        try: [1, 2, 3]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

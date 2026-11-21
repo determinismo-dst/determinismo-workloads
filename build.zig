@@ -23,14 +23,15 @@ pub fn build(b: *std.Build) void {
     const all = b.step("workloads", "Every workload");
     // Each workload found by its layout, nothing to list: workloads/<name>/workload/ holds a
     // Clojure program (the platform's sdk/clojure, determinismo.workload), built as <name>-test,
-    // its main namespace <name>-workload. Moving a workload here is moving its directory.
+    // its main namespace <name>-workload; workloads/<name>/<name>_test.zig a Zig one, <name>-test
+    // too, with the platform's modules (determinismo, tcp, resp, nrepl, pg). Moving a workload here
+    // is moving its directory.
     var workloads_dir = b.root.openDir(b.graph.io, "workloads", .{ .iterate = true }) catch @panic("no workloads/");
     defer workloads_dir.close(b.graph.io);
     var names: std.ArrayList([]const u8) = .empty;
     var listing = workloads_dir.iterate();
     while (listing.next(b.graph.io) catch @panic("workloads/")) |entry| {
         if (entry.kind != .directory) continue;
-        workloads_dir.access(b.graph.io, b.pathJoin(&.{ entry.name, "workload" }), .{}) catch continue;
         names.append(b.allocator, b.dupe(entry.name)) catch @panic("out of memory");
     }
     std.mem.sort([]const u8, names.items, {}, struct {
@@ -39,6 +40,31 @@ pub fn build(b: *std.Build) void {
         }
     }.less);
     for (names.items) |name| {
+        const zig_path = b.fmt("workloads/{s}/{s}_test.zig", .{ name, name });
+        if (b.root.access(b.graph.io, zig_path, .{})) {
+            const exe = b.addExecutable(.{
+                .name = b.fmt("{s}-test", .{name}),
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path(zig_path),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{
+                        .{ .name = "determinismo", .module = determinismo.module("determinismo") },
+                        .{ .name = "tcp", .module = determinismo.module("tcp") },
+                        .{ .name = "resp", .module = determinismo.module("resp") },
+                        .{ .name = "nrepl", .module = determinismo.module("nrepl") },
+                        .{ .name = "pg", .module = determinismo.module("pg") },
+                    },
+                }),
+            });
+            const installed = b.addInstallArtifact(exe, .{});
+            const step = b.step(exe.name, b.fmt("The {s} workload: its test program (Zig)", .{exe.name}));
+            step.dependOn(&installed.step);
+            all.dependOn(step);
+            b.getInstallStep().dependOn(&installed.step);
+            continue;
+        } else |_| {}
+        workloads_dir.access(b.graph.io, b.pathJoin(&.{ name, "workload" }), .{}) catch continue;
         const program = .{
             .name = b.fmt("{s}-test", .{name}),
             .main = b.fmt("{s}-workload", .{name}),

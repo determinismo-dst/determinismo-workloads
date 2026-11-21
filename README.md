@@ -16,7 +16,10 @@ With Zig 0.17.0, the platform a pinned dependency (`build.zig.zon`):
 zig build datalevin-test
 ```
 
-The program lands in `zig-out/bin/`.
+The program lands in `zig-out/bin/`. Workloads are found by their layout, nothing to list:
+`workloads/<name>/workload/` is a Clojure program (the platform's `determinismo.workload`), and
+`workloads/<name>/<name>_test.zig` a Zig one (the platform's modules: `determinismo`, `tcp`,
+`resp`, `nrepl`, `pg`); either builds as `<name>-test`.
 
 ## Run
 

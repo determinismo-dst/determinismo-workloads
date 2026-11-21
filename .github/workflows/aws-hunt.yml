@@ -13,8 +13,9 @@
 # - a security group named determinismo-ci, tagged project=determinismo-ci, with no rules (each
 #   run opens SSH to its runner's address alone, then closes it);
 # - GitHub's OIDC provider in IAM (token.actions.githubusercontent.com) and a role trusting this
-#   repository's main only (token.actions.githubusercontent.com:sub =
-#   repo:<owner>/<repository>:ref:refs/heads/main), allowed to launch m5zn.metal machines tagged
+#   repository's main only (token.actions.githubusercontent.com:sub = the repository's own prefix,
+#   `gh api repos/<owner>/<repository>/actions/oidc/customization/sub`, then :ref:refs/heads/main;
+#   with immutable subjects, repo:<owner>@<id>/<repository>@<id>), allowed to launch m5zn.metal machines tagged
 #   project=determinismo-ci and to end only those; its ARN the secret AWS_ROLE_ARN. No access keys.
 # - a spot vCPU quota of 48 at least (Service Quotas, L-34B43A08), or purchase: on-demand.
 # Values of your account (its id, the machine's address and ids) are masked in this log.

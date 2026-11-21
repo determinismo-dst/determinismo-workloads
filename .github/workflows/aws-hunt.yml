@@ -274,6 +274,9 @@ jobs:
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \
             --exclude user-data --exclude launch.err ./ "admin@$IP:determinismo-workloads/"
           ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }}"
+      - name: The run's report on this page (the job summary)
+        if: always() && env.IP != ''
+        run: ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/summary.md' >> "$GITHUB_STEP_SUMMARY" || echo "no report"
       # Fresh credentials: the first ones last an hour.
       - uses: aws-actions/configure-aws-credentials@v4
         if: always()

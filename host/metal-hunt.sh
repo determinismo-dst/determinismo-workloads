@@ -63,3 +63,29 @@ while :; do
   sleep 600
 done
 echo "run $run $state: $(properties)"
+
+# The run's report in Markdown (summary.md), for the workflow's run page (its job summary).
+python3 - "$serve" "$run" "$seed" "$minutes" > "$here/summary.md" <<'EOF'
+import json, sys, urllib.request
+serve, run, seed, minutes = sys.argv[1:5]
+def get(path):
+    with urllib.request.urlopen(f"{serve}{path}", timeout=120) as response:
+        return json.load(response)
+r = get(f"/runs/{run}")
+s = r.get("stats") or {}
+properties = get(f"/runs/{run}/properties")
+failing = [p for p in properties if p.get("status") == "failing"]
+print(f"## Datalevin `append`, seed {seed}: {r.get('state', '')}")
+print()
+print(f"- {s.get('timelines', 0)} timelines in {minutes} minutes, {s.get('failing_timelines', 0)} failing; "
+      f"{s.get('behaviors', 0)} behaviors; {s.get('vtime_ns', 0) / 3.6e12:.1f} hours of virtual time")
+print(f"- {len(properties)} properties, {len(failing)} failing")
+print()
+print("| Property | Kind | Status | Timelines failing | Timelines judged | First failing timeline |")
+print("|---|---|---|---:|---:|---:|")
+order = {"failing": 0, "passing": 1}
+for p in sorted(properties, key=lambda p: (order.get(p.get("status"), 2), p.get("message", ""))):
+    first = p.get("first_failing_timeline")
+    print(f"| {p.get('message', '')} | {p.get('type', '')} | {p.get('status', '')} | {p.get('timelines_failing', 0)} | "
+          f"{p.get('timelines_hit', 0)} | {'' if first is None else first} |")
+EOF

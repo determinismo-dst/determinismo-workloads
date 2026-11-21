@@ -1,0 +1,181 @@
+# SPDX-License-Identifier: MIT
+# Datalevin's hunt on an AWS bare-metal machine, from GitHub's hosted runner. determinismo's
+# deterministic VMs run on its own KVM on the hardware, so the runner rents a bare-metal machine
+# for the hunt and gives it back: a spot m5zn.metal (48 vCPUs, 192 GB) from your determinismo
+# base AMI, set up by the platform's own infra/host/setup.sh over SSH, the hunt run through serve
+# for the asked minutes (host/metal-hunt.sh), its counts in this log, the machine terminated. A
+# timer written at launch also powers the machine off (which terminates it) shortly after the
+# hunt should have ended, should this job die first.
+#
+# Yours to set up once:
+# - an AMI named determinismo-base-* in the region (the platform's infra/aws/inspect-ami.sh
+#   --type m5zn.metal --spot);
+# - a security group named determinismo-ci, tagged project=determinismo-ci, with no rules (each
+#   run opens SSH to its runner's address alone, then closes it);
+# - GitHub's OIDC provider in IAM (token.actions.githubusercontent.com) and a role trusting this
+#   repository's main only (token.actions.githubusercontent.com:sub =
+#   repo:<owner>/<repository>:ref:refs/heads/main), allowed to launch m5zn.metal machines tagged
+#   project=determinismo-ci and to end only those; its ARN the secret AWS_ROLE_ARN. No access keys.
+# - a spot vCPU quota of 48 at least (Service Quotas, L-34B43A08), or purchase: on-demand.
+# Values of your account (its id, the machine's address and ids) are masked in this log.
+name: aws-hunt
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: The hunt's length in minutes (10 to 240; the machine's setup, about half an hour, comes first)
+        default: "60"
+      purchase:
+        description: spot (about a quarter of the price; AWS may take the machine back) or on-demand
+        type: choice
+        options: [spot, on-demand]
+        default: spot
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-hunt
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TYPE: m5zn.metal
+  MINUTES: ${{ inputs.minutes }}
+  PURCHASE: ${{ inputs.purchase }}
+  SSH_OPTS: -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60 -o ServerAliveCountMax=10
+
+jobs:
+  hunt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    steps:
+      - name: Limits
+        run: |
+          [[ "$MINUTES" =~ ^[0-9]+$ ]] && [ "$MINUTES" -ge 10 ] && [ "$MINUTES" -le 240 ] || { echo "minutes: 10 to 240"; exit 1; }
+      - uses: actions/checkout@v4
+      - name: The platform, at the commit build.zig.zon pins
+        run: |
+          commit=$(grep -oE 'determinismo/archive/[0-9a-f]{40}' build.zig.zon | cut -d/ -f3)
+          git clone -q https://github.com/determinismo-dst/determinismo platform
+          git -C platform checkout -q "$commit"
+          echo "platform $commit"
+      # jank's package as tools-ship.sh keeps it: the same name is republished upstream.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/determinismo-tools
+          key: determinismo-tools-${{ hashFiles('platform/infra/host/tools.sh') }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Launch
+        run: |
+          set -euo pipefail
+          ami=$(aws ec2 describe-images --owners self --filters 'Name=name,Values=determinismo-base-*' \
+            --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
+          [ "$ami" != None ] || { echo "no determinismo-base-* image in $AWS_REGION"; exit 1; }
+          echo "::add-mask::$ami"
+          sg=$(aws ec2 describe-security-groups --filters Name=group-name,Values=determinismo-ci \
+            --query 'SecurityGroups[0].GroupId' --output text)
+          [ "$sg" != None ] || { echo "no determinismo-ci security group"; exit 1; }
+          echo "::add-mask::$sg"
+          echo "SG=$sg" >> "$GITHUB_ENV"
+          me=$(curl -fsS https://checkip.amazonaws.com)
+          echo "::add-mask::$me"
+          # Rules a job that died left, then this runner's alone.
+          old=$(aws ec2 describe-security-groups --group-ids "$sg" --query 'SecurityGroups[0].IpPermissions' --output json)
+          [ "$(echo "$old" | tr -d ' \n')" = "[]" ] || aws ec2 revoke-security-group-ingress --group-id "$sg" --ip-permissions "$old" > /dev/null
+          aws ec2 authorize-security-group-ingress --group-id "$sg" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$me/32}]" > /dev/null
+
+          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
+          # The machine's own deadline: setup's longest (an hour), the hunt, its wind-down.
+          deadline=$(date -u -d "+$((MINUTES + 120)) minutes" '+%Y-%m-%d %H:%M:%S UTC')
+          cat > user-data <<EOF
+          #cloud-config
+          ssh_authorized_keys:
+            - $(cat ~/.ssh/id_ed25519.pub)
+          write_files:
+            - path: /etc/systemd/system/ci-deadline.timer
+              content: |
+                [Timer]
+                OnCalendar=$deadline
+                Persistent=true
+                [Install]
+                WantedBy=timers.target
+            - path: /etc/systemd/system/ci-deadline.service
+              content: |
+                [Service]
+                Type=oneshot
+                ExecStart=/usr/bin/systemctl poweroff
+          runcmd:
+            - [systemctl, daemon-reload]
+            - [systemctl, enable, --now, ci-deadline.timer]
+          EOF
+
+          market=()
+          [ "$PURCHASE" = spot ] && market=(--instance-market-options 'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
+          # The zones that have the type, cheapest spot price first; the next one when a zone has none to give.
+          zones=$(aws ec2 describe-instance-type-offerings --location-type availability-zone \
+            --filters "Name=instance-type,Values=$TYPE" --query 'InstanceTypeOfferings[].Location' --output text)
+          ranked=$(for z in $zones; do
+            p=$(aws ec2 describe-spot-price-history --instance-types "$TYPE" --availability-zone "$z" \
+              --product-descriptions Linux/UNIX --start-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+              --query 'SpotPriceHistory[0].SpotPrice' --output text)
+            echo "$p $z"; done | sort -n)
+          echo "$ranked" | sed 's/^/spot price: /'
+          id=
+          while read -r price zone; do
+            subnet=$(aws ec2 describe-subnets --filters "Name=availability-zone,Values=$zone" Name=default-for-az,Values=true \
+              --query 'Subnets[0].SubnetId' --output text < /dev/null)
+            [ "$subnet" != None ] || continue
+            if id=$(aws ec2 run-instances --image-id "$ami" --instance-type "$TYPE" --subnet-id "$subnet" \
+                 --security-group-ids "$sg" "${market[@]}" --instance-initiated-shutdown-behavior terminate \
+                 --user-data file://user-data \
+                 --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=200,VolumeType=gp3,DeleteOnTermination=true}' \
+                 --tag-specifications "ResourceType=instance,Tags=[{Key=project,Value=determinismo-ci},{Key=Name,Value=determinismo-ci-$GITHUB_RUN_ID}]" \
+                   'ResourceType=volume,Tags=[{Key=project,Value=determinismo-ci}]' \
+                 --query 'Instances[0].InstanceId' --output text 2> launch.err < /dev/null); then
+              break
+            fi
+            echo "$zone: none ($(grep -oE '\([A-Za-z]+\)' launch.err | head -1))"
+            id=
+          done <<< "$ranked"
+          [ -n "$id" ] || { echo "no zone had a $TYPE to give"; exit 1; }
+          echo "::add-mask::$id"
+          echo "INSTANCE=$id" >> "$GITHUB_ENV"
+          echo "launched: $TYPE, $PURCHASE, $zone (spot price $price/h), powers itself off at $deadline"
+          aws ec2 wait instance-running --instance-ids "$id"
+          ip=$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "::add-mask::$ip"
+          echo "IP=$ip" >> "$GITHUB_ENV"
+          echo "running at $(date -u +%H:%M)"
+      - name: Set up the machine (the platform's infra/host/setup.sh)
+        run: platform/infra/host/setup.sh "$IP" --user admin
+      - name: Hunt
+        run: |
+          rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \
+            --exclude user-data --exclude launch.err ./ "admin@$IP:determinismo-workloads/"
+          ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }}"
+      # Fresh credentials: the first ones last an hour.
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: always()
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Give the machine back
+        if: always()
+        run: |
+          if [ -n "${INSTANCE:-}" ]; then
+            aws ec2 terminate-instances --instance-ids "$INSTANCE" > /dev/null && echo "machine terminated"
+          fi
+          if [ -n "${SG:-}" ]; then
+            old=$(aws ec2 describe-security-groups --group-ids "$SG" --query 'SecurityGroups[0].IpPermissions' --output json)
+            [ "$(echo "$old" | tr -d ' \n')" = "[]" ] || aws ec2 revoke-security-group-ingress --group-id "$SG" --ip-permissions "$old" > /dev/null
+            echo "SSH closed"
+          fi

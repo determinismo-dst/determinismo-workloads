@@ -41,22 +41,35 @@ jobs:
           ls -d ~/k/linux-*/
       - name: The patch
         run: |
+          series=$(uname -r | cut -d. -f1,2)
+          patch=$GITHUB_WORKSPACE/platform/kernel/patches-$series/0001-kvm-determinismo.patch
+          [ -f "$patch" ] || patch=$GITHUB_WORKSPACE/platform/kernel/patches/0001-kvm-determinismo.patch
+          echo "PATCH=$patch" >> "$GITHUB_ENV"
+          echo "patch: ${patch#$GITHUB_WORKSPACE/platform/}"
           cd "$(ls -d ~/k/linux-*/ | head -1)"
           git init -q && git add -A arch/x86/kvm arch/x86/include virt/kvm include && git -c user.email=b@l -c user.name=b commit -qm base
-          if git apply --check "$GITHUB_WORKSPACE/platform/kernel/patches/0001-kvm-determinismo.patch" 2> check.txt; then
+          if git apply --check "$PATCH" 2> check.txt; then
             echo "applies cleanly"
           else
             echo "does not apply cleanly:"; head -30 check.txt
-            git apply --3way "$GITHUB_WORKSPACE/platform/kernel/patches/0001-kvm-determinismo.patch" 2>&1 | tail -15 || true
+            git apply --3way "$PATCH" 2>&1 | tail -15 || true
             git diff --name-only --diff-filter=U | sed 's/^/conflict: /'
           fi
       - name: Build kvm and kvm-intel
         run: |
           cd "$(ls -d ~/k/linux-*/ | head -1)"
-          git apply "$GITHUB_WORKSPACE/platform/kernel/patches/0001-kvm-determinismo.patch" || { echo "not built: the patch does not apply"; exit 0; }
+          git apply "$PATCH" || { echo "not built: the patch does not apply"; exit 0; }
           cp "/boot/config-$(uname -r)" .config
           cp "/usr/src/linux-headers-$(uname -r)/Module.symvers" . 2>/dev/null || echo "no Module.symvers"
           scripts/config --set-str SYSTEM_TRUSTED_KEYS "" --set-str SYSTEM_REVOCATION_KEYS "" --set-str MODULE_SIG_KEY ""
           make -s olddefconfig && make -s -j"$(nproc)" KERNELRELEASE="$(uname -r)" modules_prepare
           make -s -j"$(nproc)" KERNELRELEASE="$(uname -r)" M=arch/x86/kvm modules 2>&1 | tail -20
           ls -la arch/x86/kvm/*.ko
+      - name: Load them
+        run: |
+          cd "$(ls -d ~/k/linux-*/ | head -1)"
+          [ -f arch/x86/kvm/kvm-intel.ko ] || { echo "nothing built"; exit 0; }
+          sudo rmmod kvm_intel kvm
+          sudo insmod arch/x86/kvm/kvm.ko && sudo insmod arch/x86/kvm/kvm-intel.ko && echo "loaded ours"
+          ls -l /dev/kvm; lsmod | grep -E '^kvm'
+          sudo dmesg | grep -i kvm | tail -10

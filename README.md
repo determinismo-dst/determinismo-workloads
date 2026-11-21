@@ -46,8 +46,9 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
   bare-metal machine rented for it (a spot m5zn.metal, about a dollar an hour), from GitHub's
   hosted runner: launched from your determinismo base AMI through an OIDC role (no keys stored),
   set up by the platform's `infra/host/setup.sh`, the hunt run for the asked minutes, its counts
-  in the log. The machine then waits 15 minutes (`keep_minutes`) for the next run, which takes it
-  already set up; untaken, it powers itself off, as it does past its deadline should a job die.
+  in the log. A machine set up for a platform commit is saved as that commit's image, so later
+  launches skip the setup; and it waits 15 minutes (`keep_minutes`) for the next run, which takes
+  it as it is; untaken, it powers itself off, as it does past its deadline should a job die.
   What to set up once is at the top of the workflow. Run by hand.
 - `.github/workflows/hunt.yml` with `host/hunt.sh`: an example of a continuous hunt on your own
   determinismo host. Each tick (every 15 minutes) asks the host, over SSH with a key limited to

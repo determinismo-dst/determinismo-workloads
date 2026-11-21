@@ -5,7 +5,9 @@
 # the platform's own infra/host/setup.sh over SSH, the hunt run through serve for the asked
 # minutes (host/metal-hunt.sh), its counts in this log.
 #
-# The machine is kept warm after a run (keep_minutes, 15 by default): marked idle, it powers
+# A machine set up for a platform commit is saved as that commit's hunt image
+# (determinismo-hunt-<commit>; one kept, older ones removed): later launches for the commit start
+# from it, set up already. The machine is kept warm after a run (keep_minutes, 15 by default): marked idle, it powers
 # itself off (which terminates it) that long after the run ends, unless a run starting meanwhile
 # takes it, already set up (setup.sh again only when the platform's commit changed). So runs in a
 # row neither pay the setup again nor wait for a bare-metal machine to finish terminating (its
@@ -96,6 +98,16 @@ jobs:
             --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
           [ "$ami" != None ] || { echo "no determinismo-base-* image in $AWS_REGION"; exit 1; }
           echo "::add-mask::$ami"
+          # This platform commit's hunt image when there is one: a machine from it is set up already.
+          commit=$(git -C platform rev-parse HEAD)
+          hunt=$(aws ec2 describe-images --owners self --filters "Name=name,Values=determinismo-hunt-${commit::12}" Name=state,Values=available \
+            --query 'Images[0].ImageId' --output text)
+          from="the base image (set up next)"
+          if [ "$hunt" != None ]; then
+            echo "::add-mask::$hunt"
+            ami=$hunt
+            from="the hunt image of ${commit::12} (no setup)"
+          fi
           sg=$(aws ec2 describe-security-groups --filters Name=group-name,Values=determinismo-ci \
             --query 'SecurityGroups[0].GroupId' --output text)
           [ "$sg" != None ] || { echo "no determinismo-ci security group"; exit 1; }
@@ -205,7 +217,7 @@ jobs:
           [ -n "$id" ] || { echo "no zone had a $TYPE to give"; exit 1; }
           echo "::add-mask::$id"
           echo "INSTANCE=$id" >> "$GITHUB_ENV"
-          echo "launched: $TYPE, $PURCHASE, $zone (spot price $price/h), powers itself off at $deadline"
+          echo "launched: $TYPE, $PURCHASE, $zone (spot price $price/h), from $from, powers itself off at $deadline"
           aws ec2 wait instance-running --instance-ids "$id"
           ip=$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
           echo "::add-mask::$ip"
@@ -221,6 +233,42 @@ jobs:
           fi
           platform/infra/host/setup.sh "$IP" --user admin --no-jank
           ssh $SSH_OPTS "admin@$IP" "echo $commit > .ci-platform"
+          echo "SET_UP=1" >> "$GITHUB_ENV"
+      # Fresh credentials: a setup can outlast the first ones (an hour).
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: env.SET_UP == '1'
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: The machine saved as this platform commit's hunt image (later launches skip the setup)
+        if: env.SET_UP == '1'
+        run: |
+          set -euo pipefail
+          commit=$(git -C platform rev-parse HEAD)
+          name=determinismo-hunt-${commit::12}
+          existing=$(aws ec2 describe-images --owners self --filters "Name=name,Values=$name" --query 'Images[0].ImageId' --output text)
+          [ "$existing" = None ] || { echo "$name is there already"; exit 0; }
+          # A machine from it gets its own deadline at launch: this one's timer is off in the image.
+          ssh $SSH_OPTS "admin@$IP" 'sudo systemctl disable --quiet ci-deadline.timer && sync'
+          image=$(aws ec2 create-image --instance-id "$INSTANCE" --name "$name" --no-reboot \
+            --description "determinismo hunt machine: the platform at $commit, set up by setup.sh --no-jank" \
+            --tag-specifications "ResourceType=image,Tags=[{Key=project,Value=determinismo-ci},{Key=ci-platform,Value=$commit}]" \
+              'ResourceType=snapshot,Tags=[{Key=project,Value=determinismo-ci}]' --query ImageId --output text)
+          echo "::add-mask::$image"
+          ssh $SSH_OPTS "admin@$IP" 'sudo systemctl enable --quiet ci-deadline.timer'
+          echo "saving $name: available in some minutes, for the next launches"
+          # Older commits' hunt images and their snapshots removed: one kept.
+          aws ec2 describe-images --owners self --filters 'Name=name,Values=determinismo-hunt-*' Name=tag:project,Values=determinismo-ci \
+            --query "Images[?Name!='$name'].[ImageId, join(' ', BlockDeviceMappings[].Ebs.SnapshotId)]" --output text |
+          while read -r old snapshots; do
+            [ -n "$old" ] || continue
+            echo "::add-mask::$old"
+            for snapshot in $snapshots; do echo "::add-mask::$snapshot"; done
+            aws ec2 deregister-image --image-id "$old"
+            for snapshot in $snapshots; do aws ec2 delete-snapshot --snapshot-id "$snapshot"; done
+            echo "an older hunt image removed"
+          done
       - name: Hunt
         run: |
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \

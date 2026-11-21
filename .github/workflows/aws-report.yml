@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: MIT
+# The running aws-hunt's report published now (by hand): the busy determinismo-ci machine's serve
+# recorded through an SSH tunnel (the platform's infra/host/report-static.sh) and published on
+# this repository's Pages at the hunt's page (host/publish-report.sh). SSH opened for this runner
+# alone, its rule removed after; the hunt's own runner keeps its own.
+name: aws-report
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: The hunt's length in minutes, for the index (a dispatched run's inputs are not readable)
+        default: "60"
+      platform_ref:
+        description: The platform's ref for report-static.sh
+        default: next
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: aws-report
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  MINUTES: ${{ inputs.minutes }}
+  SSH_OPTS: -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: determinismo-dst/determinismo
+          ref: ${{ inputs.platform_ref }}
+          path: platform
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: The hunt's machine, SSH open for this runner
+        env:
+          CI_SSH_KEY: ${{ secrets.CI_SSH_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && printf '%s\n' "$CI_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          id=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=tag:ci-state,Values=busy \
+            Name=instance-state-name,Values=running --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          [ "$id" != None ] || { echo "no hunt running"; exit 1; }
+          echo "::add-mask::$id"
+          ip=$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "::add-mask::$ip"
+          sg=$(aws ec2 describe-security-groups --filters Name=group-name,Values=determinismo-ci --query 'SecurityGroups[0].GroupId' --output text)
+          echo "::add-mask::$sg"
+          me=$(curl -fsS https://checkip.amazonaws.com)
+          echo "::add-mask::$me"
+          aws ec2 authorize-security-group-ingress --group-id "$sg" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$me/32}]" > /dev/null
+          number=$(gh run list -R "$GITHUB_REPOSITORY" --workflow aws-hunt.yml --status in_progress --limit 1 --json number --jq '.[0].number')
+          { echo "IP=$ip"; echo "SG=$sg"; echo "ME=$me"; echo "NUMBER=$number"; } >> "$GITHUB_ENV"
+          echo "the hunt: run $number"
+      - name: Recorded and published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 12); do ssh $SSH_OPTS -o ConnectTimeout=10 "admin@$IP" true && break; sleep 5; done
+          run=$(ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/run-id')
+          ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
+          mkdir -p report
+          platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html
+          url=$(host/publish-report.sh report "$NUMBER" "$MINUTES" | tail -1)
+          echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: SSH closed for this runner
+        if: always() && env.SG != ''
+        run: |
+          aws ec2 revoke-security-group-ingress --group-id "$SG" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$ME/32}]" > /dev/null && echo "closed"

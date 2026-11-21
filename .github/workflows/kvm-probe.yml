@@ -23,7 +23,7 @@ jobs:
       matrix:
         try: [1, 2, 3]
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,9 +48,26 @@ jobs:
         run: |
           cd platform
           infra/host/tools.sh --build > /dev/null
-          ~/opt/zig/zig build determinismo -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
+          ~/opt/zig/zig build determinismo guest selftest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
           ls -la zig-out/bin/determinismo
       - name: determinismo doctor, on our KVM
         run: |
           sudo chmod 666 /dev/kvm
           platform/zig-out/bin/determinismo doctor 2>&1 | tail -40 || true
+      - name: The guest (Debian's 6.12 source, built by guest/kernel/build.sh as on a host)
+        run: |
+          sudo apt-get install -y -q busybox-static e2fsck-static erofs-utils cpio > /dev/null
+          curl -fsSL -o ~/linux-source.deb https://deb.debian.org/debian/pool/main/l/linux/linux-source-6.12_6.12.117-1_all.deb
+          sudo dpkg -x ~/linux-source.deb /
+          ls -la /usr/src/linux-source-6.12.tar.xz
+          cd platform
+          guest/kernel/build.sh ~/guest 2>&1 | tail -5
+          zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
+            --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out ~/guest/base.cpio
+          ls -la ~/guest/
+      - name: determinismo doctor, with the guest
+        run: platform/zig-out/bin/determinismo doctor 2>&1 | tail -25 || true
+      - name: The end-to-end check setup.sh runs (bank)
+        run: |
+          cd platform
+          ~/opt/zig/zig build e2e -Drelease -Donly=bank -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25" 2>&1 | tail -40

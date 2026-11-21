@@ -117,6 +117,15 @@ jobs:
             - [systemctl, enable, --now, ci-deadline.timer]
           EOF
 
+          # An earlier run's machine still terminating holds its vCPUs of the quota (bare metal
+          # takes minutes to shut down): its end awaited, at most 20 minutes.
+          for wait in $(seq 40); do
+            ending=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=instance-state-name,Values=shutting-down,stopping \
+              --query 'length(Reservations[].Instances[])' --output text)
+            [ "$ending" = 0 ] && break
+            echo "$ending earlier machine(s) still shutting down"
+            sleep 30
+          done
           market=()
           [ "$PURCHASE" = spot ] && market=(--instance-market-options 'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
           # The zones that have the type, cheapest spot price first; the next one when a zone has none to give.

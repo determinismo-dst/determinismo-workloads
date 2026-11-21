@@ -67,11 +67,6 @@ jobs:
           git clone -q https://github.com/determinismo-dst/determinismo platform
           git -C platform checkout -q "$ref"
           echo "platform $ref: $(git -C platform rev-parse --short=12 HEAD)"
-      # jank's package as tools-ship.sh keeps it: the same name is republished upstream.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/determinismo-tools
-          key: determinismo-tools-${{ hashFiles('platform/infra/host/tools.sh') }}
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -160,7 +155,8 @@ jobs:
           echo "IP=$ip" >> "$GITHUB_ENV"
           echo "running at $(date -u +%H:%M)"
       - name: Set up the machine (the platform's infra/host/setup.sh)
-        run: platform/infra/host/setup.sh "$IP" --user admin
+        # No jank: Datalevin's program is Clojure (jank's rolling package needs a kept copy).
+        run: platform/infra/host/setup.sh "$IP" --user admin --no-jank
       - name: Hunt
         run: |
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \

@@ -54,12 +54,9 @@ jobs:
         run: |
           sudo chmod 666 /dev/kvm
           platform/zig-out/bin/determinismo doctor 2>&1 | tail -40 || true
-      - name: The guest (Debian's 6.12 source, built by guest/kernel/build.sh as on a host)
+      - name: The guest (guest/kernel/build.sh as on a host, Debian's 6.12 source pinned where apt has none)
         run: |
           sudo apt-get install -y -q busybox-static e2fsck-static erofs-utils cpio > /dev/null
-          curl -fsSL -o ~/linux-source.deb https://deb.debian.org/debian/pool/main/l/linux/linux-source-6.12_6.12.117-1_all.deb
-          sudo dpkg -x ~/linux-source.deb /
-          ls -la /usr/src/linux-source-6.12.tar.xz
           cd platform
           guest/kernel/build.sh ~/guest 2>&1 | tail -5
           zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \

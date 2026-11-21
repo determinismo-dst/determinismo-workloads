@@ -40,10 +40,15 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
 ## CI
 
 - `.github/workflows/build.yml`: builds every workload on each push and pull request.
-- `.github/workflows/hunt.yml`: Datalevin's hunt on a determinismo host, started or resumed on a
-  schedule; the host decides whether it has room (a host busy with other runs skips it), and the
-  job's log holds counts only. It needs the repository's secrets (the host, a key limited to the
-  hunt's one command), so it never runs for pull requests.
+- `.github/workflows/probe.yml`: what GitHub's hosted runners offer determinismo's hypervisor (run
+  by hand).
+- `.github/workflows/hunt.yml` with `host/hunt.sh`: an example of a continuous hunt on your own
+  determinismo host. Each tick (every 15 minutes) asks the host, over SSH with a key limited to
+  that one command (`restrict,command="…/hunt.sh"` in its `authorized_keys`), to keep Datalevin's
+  hunt going: its run resumed, a new run when the last finished or the deployed build changed, or
+  stopped when the host is busy with other runs. Off unless the repository variable `HUNT` is
+  `on` and the secrets `HUNT_HOST`, `HUNT_USER`, `HUNT_SSH_KEY` and `HUNT_KNOWN_HOSTS` are set;
+  never on pull requests; its log holds counts only.
 
 ## License
 

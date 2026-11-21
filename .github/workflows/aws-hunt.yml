@@ -27,6 +27,9 @@ on:
       minutes:
         description: The hunt's length in minutes (10 to 240; the machine's setup, about half an hour, comes first)
         default: "60"
+      platform_ref:
+        description: The platform's ref to set the machine up with (empty, the commit build.zig.zon pins)
+        default: ""
       purchase:
         description: spot (about a quarter of the price; AWS may take the machine back) or on-demand
         type: choice
@@ -46,6 +49,7 @@ env:
   TYPE: m5zn.metal
   MINUTES: ${{ inputs.minutes }}
   PURCHASE: ${{ inputs.purchase }}
+  PLATFORM_REF: ${{ inputs.platform_ref }}
   SSH_OPTS: -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60 -o ServerAliveCountMax=10
 
 jobs:
@@ -57,12 +61,12 @@ jobs:
         run: |
           [[ "$MINUTES" =~ ^[0-9]+$ ]] && [ "$MINUTES" -ge 10 ] && [ "$MINUTES" -le 240 ] || { echo "minutes: 10 to 240"; exit 1; }
       - uses: actions/checkout@v4
-      - name: The platform, at the commit build.zig.zon pins
+      - name: The platform, at the commit build.zig.zon pins (or the asked ref)
         run: |
-          commit=$(grep -oE 'determinismo/archive/[0-9a-f]{40}' build.zig.zon | cut -d/ -f3)
+          ref=${PLATFORM_REF:-$(grep -oE 'determinismo/archive/[0-9a-f]{40}' build.zig.zon | cut -d/ -f3)}
           git clone -q https://github.com/determinismo-dst/determinismo platform
-          git -C platform checkout -q "$commit"
-          echo "platform $commit"
+          git -C platform checkout -q "$ref"
+          echo "platform $ref: $(git -C platform rev-parse --short=12 HEAD)""
       # jank's package as tools-ship.sh keeps it: the same name is republished upstream.
       - uses: actions/cache@v4
         with:

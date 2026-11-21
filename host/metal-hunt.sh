@@ -4,10 +4,11 @@
 # infra/host/setup.sh has just set up (serve on 127.0.0.1:7878, its tree ~/determinismo), with
 # this repository copied to ~/determinismo-workloads (.github/workflows/aws-hunt.yml does both).
 #
-# The program is built here against the pinned platform and put where serve's tree keeps
-# programs, the workloads beside it (a workload names its Dockerfiles from the tree's root, as in
-# an assembled tree); then one tree run of the asked length, its counts every ten minutes and at
-# its end. Counts only: the workflow's log is a public repository's. Exit 0 when the run ended
+# The program is built here against the very platform this machine was set up with (zig's
+# --fork: serve's tree, whatever ref the workflow asked; its SDK then always matches the explorer
+# that runs it) and put where serve's tree keeps programs, the workloads beside it (a workload
+# names its Dockerfiles from the tree's root, as in an assembled tree); then one tree run of the
+# asked length, its counts every ten minutes and at its end. Counts only: the workflow's log is a public repository's. Exit 0 when the run ended
 # (failing properties are findings, not errors), 1 when it could not start or did not end.
 set -euo pipefail
 minutes=${1:?usage: metal-hunt.sh <minutes> [seed]}
@@ -17,7 +18,7 @@ tree=$HOME/determinismo
 here=$HOME/determinismo-workloads
 
 cd "$here"
-~/opt/zig/zig build -Drelease datalevin-test
+~/opt/zig/zig build -Drelease --fork="$tree" datalevin-test
 install -m 755 zig-out/bin/datalevin-test "$tree/zig-out/bin/datalevin-test"
 mkdir -p "$tree/workloads"
 rsync -a --delete "$here/workloads/" "$tree/workloads/"

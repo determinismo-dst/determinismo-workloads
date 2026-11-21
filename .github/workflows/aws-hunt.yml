@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: MIT
 # Datalevin's hunt on an AWS bare-metal machine, from GitHub's hosted runner. determinismo's
 # deterministic VMs run on its own KVM on the hardware, so the runner rents a bare-metal machine
-# for the hunt and gives it back: a spot m5zn.metal (48 vCPUs, 192 GB) from your determinismo
-# base AMI, set up by the platform's own infra/host/setup.sh over SSH, the hunt run through serve
-# for the asked minutes (host/metal-hunt.sh), its counts in this log, the machine terminated. A
-# timer written at launch also powers the machine off (which terminates it) shortly after the
-# hunt should have ended, should this job die first.
+# for the hunt: a spot m5zn.metal (48 vCPUs, 192 GB) from your determinismo base AMI, set up by
+# the platform's own infra/host/setup.sh over SSH, the hunt run through serve for the asked
+# minutes (host/metal-hunt.sh), its counts in this log.
+#
+# The machine is kept warm after a run (keep_minutes, 15 by default): marked idle, it powers
+# itself off (which terminates it) that long after the run ends, unless a run starting meanwhile
+# takes it, already set up (setup.sh again only when the platform's commit changed). So runs in a
+# row neither pay the setup again nor wait for a bare-metal machine to finish terminating (its
+# 48 vCPUs count against the spot quota for minutes). The machine's own timer also ends it should
+# a job die: the run's length and two hours past the time it was last taken.
 #
 # Yours to set up once:
 # - an AMI named determinismo-base-* in the region (the platform's infra/aws/inspect-ami.sh
@@ -16,7 +21,10 @@
 #   repository's main only (token.actions.githubusercontent.com:sub = the repository's own prefix,
 #   `gh api repos/<owner>/<repository>/actions/oidc/customization/sub`, then :ref:refs/heads/main;
 #   with immutable subjects, repo:<owner>@<id>/<repository>@<id>), allowed to launch m5zn.metal machines tagged
-#   project=determinismo-ci and to end only those; its ARN the secret AWS_ROLE_ARN. No access keys.
+#   project=determinismo-ci, to end only those and to mark them (the tags ci-state and
+#   ci-platform); its ARN the secret AWS_ROLE_ARN. No access keys.
+# - an SSH key of its own (ssh-keygen -t ed25519), the private half the secret CI_SSH_KEY: the
+#   machine trusts it from its launch, so the next run can take it.
 # - a spot vCPU quota of 48 at least (Service Quotas, L-34B43A08), or purchase: on-demand.
 # Values of your account (its id, the machine's address and ids) are masked in this log.
 name: aws-hunt
@@ -30,6 +38,9 @@ on:
       platform_ref:
         description: The platform's ref to set the machine up with (empty, the commit build.zig.zon pins)
         default: ""
+      keep_minutes:
+        description: How long the machine waits for the next run after this one (0 to 60; 0 ends it at once)
+        default: "15"
       purchase:
         description: spot (about a quarter of the price; AWS may take the machine back) or on-demand
         type: choice
@@ -50,6 +61,7 @@ env:
   MINUTES: ${{ inputs.minutes }}
   PURCHASE: ${{ inputs.purchase }}
   PLATFORM_REF: ${{ inputs.platform_ref }}
+  KEEP: ${{ inputs.keep_minutes }}
   SSH_OPTS: -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60 -o ServerAliveCountMax=10
 
 jobs:
@@ -60,6 +72,7 @@ jobs:
       - name: Limits
         run: |
           [[ "$MINUTES" =~ ^[0-9]+$ ]] && [ "$MINUTES" -ge 10 ] && [ "$MINUTES" -le 240 ] || { echo "minutes: 10 to 240"; exit 1; }
+          [[ "$KEEP" =~ ^[0-9]+$ ]] && [ "$KEEP" -le 60 ] || { echo "keep_minutes: 0 to 60"; exit 1; }
       - uses: actions/checkout@v4
       - name: The platform, at the commit build.zig.zon pins (or the asked ref)
         run: |
@@ -72,9 +85,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
-      - name: Launch
+      - name: A machine (the idle one kept from a run before, or a new one)
+        env:
+          CI_SSH_KEY: ${{ secrets.CI_SSH_KEY }}
         run: |
           set -euo pipefail
+          mkdir -p ~/.ssh && printf '%s\n' "$CI_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub
           ami=$(aws ec2 describe-images --owners self --filters 'Name=name,Values=determinismo-base-*' \
             --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
           [ "$ami" != None ] || { echo "no determinismo-base-* image in $AWS_REGION"; exit 1; }
@@ -92,9 +109,29 @@ jobs:
           aws ec2 authorize-security-group-ingress --group-id "$sg" \
             --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$me/32}]" > /dev/null
 
-          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
           # The machine's own deadline: setup's longest (an hour), the hunt, its wind-down.
-          deadline=$(date -u -d "+$((MINUTES + 120)) minutes" '+%Y-%m-%d %H:%M:%S UTC')
+          life=$((MINUTES + 120))
+          echo "LIFE=$life" >> "$GITHUB_ENV"
+
+          # An idle machine kept from a run before: taken, its deadline moved first (it was at
+          # most keep_minutes away).
+          id=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=tag:ci-state,Values=idle \
+            Name=instance-state-name,Values=running --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ "$id" != None ]; then
+            echo "::add-mask::$id"
+            aws ec2 create-tags --resources "$id" --tags Key=ci-state,Value=busy
+            ip=$(aws ec2 describe-instances --instance-ids "$id" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+            echo "::add-mask::$ip"
+            if ssh $SSH_OPTS -o ConnectTimeout=30 "admin@$ip" "sudo /usr/local/sbin/ci-deadline $life"; then
+              echo "INSTANCE=$id" >> "$GITHUB_ENV"
+              echo "IP=$ip" >> "$GITHUB_ENV"
+              echo "taken: the machine kept from a run before, at $(date -u +%H:%M)"
+              exit 0
+            fi
+            echo "the idle machine did not answer (its deadline came first?): a new one"
+          fi
+
+          deadline=$(date -u -d "+$life minutes" '+%Y-%m-%d %H:%M:%S UTC')
           cat > user-data <<EOF
           #cloud-config
           ssh_authorized_keys:
@@ -112,6 +149,17 @@ jobs:
                 [Service]
                 Type=oneshot
                 ExecStart=/usr/bin/systemctl poweroff
+            - path: /usr/local/sbin/ci-deadline
+              permissions: '0755'
+              content: |
+                #!/bin/sh
+                # ci-deadline <minutes>: this machine powers itself off (terminating it) that long from now.
+                set -e
+                when=\$(date -u -d "+\$1 minutes" '+%Y-%m-%d %H:%M:%S UTC')
+                printf '[Timer]\\nOnCalendar=%s\\nPersistent=true\\n[Install]\\nWantedBy=timers.target\\n' "\$when" > /etc/systemd/system/ci-deadline.timer
+                systemctl daemon-reload
+                systemctl restart ci-deadline.timer
+                echo "powers itself off at \$when"
           runcmd:
             - [systemctl, daemon-reload]
             - [systemctl, enable, --now, ci-deadline.timer]
@@ -146,7 +194,7 @@ jobs:
                  --security-group-ids "$sg" "${market[@]}" --instance-initiated-shutdown-behavior terminate \
                  --user-data file://user-data \
                  --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=200,VolumeType=gp3,DeleteOnTermination=true}' \
-                 --tag-specifications "ResourceType=instance,Tags=[{Key=project,Value=determinismo-ci},{Key=Name,Value=determinismo-ci-$GITHUB_RUN_ID}]" \
+                 --tag-specifications "ResourceType=instance,Tags=[{Key=project,Value=determinismo-ci},{Key=Name,Value=determinismo-ci},{Key=ci-state,Value=busy}]" \
                    'ResourceType=volume,Tags=[{Key=project,Value=determinismo-ci}]' \
                  --query 'Instances[0].InstanceId' --output text 2> launch.err < /dev/null); then
               break
@@ -163,9 +211,16 @@ jobs:
           echo "::add-mask::$ip"
           echo "IP=$ip" >> "$GITHUB_ENV"
           echo "running at $(date -u +%H:%M)"
-      - name: Set up the machine (the platform's infra/host/setup.sh)
+      - name: Set up the machine (the platform's infra/host/setup.sh; a kept machine only when the platform changed)
         # No jank: Datalevin's program is Clojure (jank's rolling package needs a kept copy).
-        run: platform/infra/host/setup.sh "$IP" --user admin --no-jank
+        run: |
+          commit=$(git -C platform rev-parse HEAD)
+          if [ "$(ssh $SSH_OPTS "admin@$IP" 'cat .ci-platform 2>/dev/null' || true)" = "$commit" ]; then
+            echo "set up already with the platform at ${commit::12}"
+            exit 0
+          fi
+          platform/infra/host/setup.sh "$IP" --user admin --no-jank
+          ssh $SSH_OPTS "admin@$IP" "echo $commit > .ci-platform"
       - name: Hunt
         run: |
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \
@@ -178,11 +233,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
-      - name: Give the machine back
+      - name: The machine kept for the next run (keep_minutes), or ended
         if: always()
         run: |
           if [ -n "${INSTANCE:-}" ]; then
-            aws ec2 terminate-instances --instance-ids "$INSTANCE" > /dev/null && echo "machine terminated"
+            if [ "$KEEP" -gt 0 ] && [ -n "${IP:-}" ] && ssh $SSH_OPTS -o ConnectTimeout=30 "admin@$IP" "sudo /usr/local/sbin/ci-deadline $KEEP"; then
+              aws ec2 create-tags --resources "$INSTANCE" --tags Key=ci-state,Value=idle
+              echo "kept for the next run: idle, powering itself off in $KEEP minutes unless taken"
+            else
+              aws ec2 terminate-instances --instance-ids "$INSTANCE" > /dev/null && echo "machine terminated"
+            fi
           fi
           if [ -n "${SG:-}" ]; then
             old=$(aws ec2 describe-security-groups --group-ids "$SG" --query 'SecurityGroups[0].IpPermissions' --output json)

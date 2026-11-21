@@ -32,6 +32,7 @@ curl -s -m 900 -X POST -d "$body" "$serve/runs" > started.json
 run=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id',''))" started.json 2>/dev/null || true)
 [ -n "$run" ] || { echo "the run was refused: $(head -c 300 started.json)"; exit 1; }
 echo "run $run started: Datalevin append, seed $seed, ${minutes} minutes"
+echo "$run" > "$here/run-id" # The workflow's report reads it.
 
 status() {
   curl -s -m 60 "$serve/runs/$run" | python3 -c "

@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MIT
+# Datalevin's continuous hunt on a determinismo host: each tick asks the host (host/hunt.sh, the
+# only command its key may run) to keep the hunt going if it has room: its run resumed, a new run
+# when the last finished or the deployed build changed, or, when the host is busy, the hunt
+# stopped to resume later. Never on pull requests (it holds the host's key); off until the
+# repository variable HUNT is "on". Its log holds counts only (host/hunt.sh prints nothing else).
+name: hunt
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: tick or status
+        default: tick
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hunt
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    if: vars.HUNT == 'on'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Ask the host
+        env:
+          HOST: ${{ secrets.HUNT_HOST }}
+          USER_AT: ${{ secrets.HUNT_USER }}
+          KEY: ${{ secrets.HUNT_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.HUNT_KNOWN_HOSTS }}
+          ACTION: ${{ inputs.action || 'tick' }}
+        run: |
+          case "$ACTION" in tick|status) ;; *) echo "action: tick or status"; exit 2 ;; esac
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/hunt && chmod 600 ~/.ssh/hunt
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/hunt -o BatchMode=yes -o ConnectTimeout=30 "${USER_AT:-det}@$HOST" "$ACTION"

@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: MIT
+# Every workload built on GitHub's hosted runners (Zig 0.17.0, the platform the pinned
+# dependency of build.zig.zon), each program kept as an artifact. No secrets.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/opt/zig
+            ~/.cache/zig
+            zig-pkg
+          key: zig-${{ hashFiles('build.zig.zon') }}
+      - name: Zig 0.17.0
+        run: |
+          if [ ! -x ~/opt/zig/zig ]; then
+            mkdir -p ~/opt
+            curl -fsSL -o /tmp/zig.tar.xz https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz
+            echo "1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026  /tmp/zig.tar.xz" | sha256sum -c
+            tar -xJf /tmp/zig.tar.xz -C ~/opt && mv ~/opt/zig-x86_64-linux-0.17.0 ~/opt/zig
+          fi
+      - name: Build
+        run: ~/opt/zig/zig build workloads
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workloads-${{ github.sha }}
+          path: zig-out/bin/
+          retention-days: 30

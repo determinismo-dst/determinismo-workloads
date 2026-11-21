@@ -48,13 +48,21 @@ jobs:
           echo "patch: ${patch#$GITHUB_WORKSPACE/platform/}"
           cd "$(ls -d ~/k/linux-*/ | head -1)"
           git init -q && git add -A arch/x86/kvm arch/x86/include virt/kvm include && git -c user.email=b@l -c user.name=b commit -qm base
-          if git apply --check "$PATCH" 2> check.txt; then
+          if git apply --check "$patch" 2> check.txt; then
             echo "applies cleanly"
           else
             echo "does not apply cleanly:"; head -30 check.txt
-            git apply --3way "$PATCH" 2>&1 | tail -15 || true
-            git diff --name-only --diff-filter=U | sed 's/^/conflict: /'
+            patch -p1 --dry-run --fuzz=3 < "$patch" | grep -E "FAILED|fuzz|offset" | head -20 || true
           fi
+      - name: Ubuntu's own files the patch touches (an artifact, to port onto)
+        run: |
+          cd "$(ls -d ~/k/linux-*/ | head -1)"
+          mkdir -p ~/files && for f in arch/x86/include/asm/kvm-x86-ops.h arch/x86/include/asm/kvm_host.h arch/x86/kvm/vmx/main.c arch/x86/kvm/vmx/vmx.c arch/x86/kvm/vmx/vmx.h arch/x86/kvm/vmx/x86_ops.h arch/x86/kvm/x86.c include/uapi/linux/kvm.h; do mkdir -p ~/files/$(dirname $f) && cp $f ~/files/$f; done
+          echo "$(uname -r)" > ~/files/KERNEL
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-kvm-files
+          path: ~/files/
       - name: Build kvm and kvm-intel
         run: |
           cd "$(ls -d ~/k/linux-*/ | head -1)"

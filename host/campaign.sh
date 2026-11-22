@@ -63,14 +63,19 @@ end=$(( $(date +%s) + minutes * 60 ))
 while :; do
   line=$(status)
   state_now=${line%% *}
-  echo "$(date -u +%H:%M) ${line#* }"
+  # The runner's memory and serve's share of it (its cgroup's current use): a stretch that runs
+  # out says so here before the runner goes silent.
+  memory=$(free -m | awk '/^Mem:/ {printf "%d MiB free of %d", $7, $2}')
+  served=$(awk '{printf "%d MiB", $1 / 1048576}' /sys/fs/cgroup/system.slice/determinismo-serve.service/memory.current 2>/dev/null || echo "?")
+  echo "$(date -u +%H:%M) ${line#* } | $memory, serve $served"
   # Where it is (building an image, booting, a timeline's end): the explorer's latest line.
   latest=$(curl -s -m 30 "$serve/runs/$run/output?lines=1&explorer=1" | tail -1 | cut -c1-160 || true)
   [ -z "$latest" ] || echo "      $latest"
   case $state_now in running|unread) ;; *) echo "the run ended on its own: $state_now"; break ;; esac
   left=$(( end - $(date +%s) ))
   [ "$left" -gt 0 ] || break
-  sleep $(( left < 600 ? left : 600 ))
+  every=${COUNT_EVERY:-600}
+  sleep $(( left < every ? left : every ))
 done
 if [ "$state_now" = running ] || [ "$state_now" = unread ]; then
   curl -s -m 120 -X POST "$serve/runs/$run/stop" > /dev/null || true

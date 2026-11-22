@@ -27,6 +27,9 @@ on:
       try:
         description: Which try (a job on a runner without a PMU asks for the next)
         default: "1"
+      count_every:
+        description: Seconds between the stretch's counts (each with the runner's memory)
+        default: "600"
 
 permissions:
   contents: write # The report's page: the gh-pages branch.
@@ -67,6 +70,7 @@ jobs:
       MEMORY_MIB: ${{ matrix.campaign.memory_mib }}
       TIMELINE: ${{ matrix.campaign.timeline }}
       MINUTES: ${{ inputs.minutes || '60' }}
+      COUNT_EVERY: ${{ inputs.count_every || '600' }}
       GH_TOKEN: ${{ github.token }}
       # A workload in jank runs its --describe on the host's jank: tools.sh's pinned build, kept
       # on this repository's release (jank's own repository republishes it under one name).
@@ -83,7 +87,7 @@ jobs:
           echo "no core PMU here (an Azure runner)"
           if [ "$TRY" -lt 4 ]; then
             gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
-              -f workload="$WORKLOAD" -f minutes="$MINUTES" -f try=$((TRY + 1))
+              -f workload="$WORKLOAD" -f minutes="$MINUTES" -f try=$((TRY + 1)) -f count_every="${COUNT_EVERY:-600}"
             echo "asked for try $((TRY + 1))"
           else
             echo "try $TRY: no more tries for this stretch"
@@ -213,6 +217,13 @@ jobs:
           # the runs leave free. Two stretches whose runs took the whole runner lost it ("The hosted
           # runner lost communication with the server", campaign runs 44985849043, 44987024097).
           sudo platform/infra/host/serve.sh "$(id -un)" start --reserved-cores 1 --siblings on
+          # Its memory bounded (the platform admits VMs and keeps holders within its cgroup's limit,
+          # holders moving to disk when memory is short), swap off: the stretches that ran
+          # unbounded swapped the runner until GitHub lost it (45 minutes in, all three, even
+          # Flecs's 1 GiB VMs: the tree's holders pile up). Over the limit, serve's runs are the
+          # ones the kernel reclaims or kills, never the runner's agent.
+          sudo swapoff -a
+          sudo systemctl set-property determinismo-serve.service MemoryHigh=8G MemoryMax=9G MemorySwapMax=0
           for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
           curl -fsS -m 10 localhost:7878/build; echo
           systemctl show determinismo-serve -p AllowedCPUs -p Environment --no-pager | cut -c1-200

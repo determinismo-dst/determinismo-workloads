@@ -179,15 +179,6 @@ jobs:
             - [systemctl, enable, --now, ci-deadline.timer]
           EOF
 
-          # An earlier run's machine still terminating holds its vCPUs of the quota (bare metal
-          # takes minutes to shut down): its end awaited, at most 20 minutes.
-          for wait in $(seq 40); do
-            ending=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=instance-state-name,Values=shutting-down,stopping \
-              --query 'length(Reservations[].Instances[])' --output text)
-            [ "$ending" = 0 ] && break
-            echo "$ending earlier machine(s) still shutting down"
-            sleep 30
-          done
           market=()
           [ "$PURCHASE" = spot ] && market=(--instance-market-options 'MarketType=spot,SpotOptions={SpotInstanceType=one-time,InstanceInterruptionBehavior=terminate}')
           # The zones that have the type, cheapest spot price first; the next one when a zone has none to give.
@@ -200,6 +191,9 @@ jobs:
             echo "$p $z"; done | sort -n)
           echo "$ranked" | sed 's/^/spot price: /'
           id=
+          # The spot quota taken (a machine still shutting down holds its 48 vCPUs for minutes):
+          # the zones tried again each minute, 20 minutes at most.
+          for attempt in $(seq 20); do
           while read -r price zone; do
             subnet=$(aws ec2 describe-subnets --filters "Name=availability-zone,Values=$zone" Name=default-for-az,Values=true \
               --query 'Subnets[0].SubnetId' --output text < /dev/null)
@@ -216,6 +210,10 @@ jobs:
             echo "$zone: none ($(grep -oE '\([A-Za-z]+\)' launch.err | head -1))"
             id=
           done <<< "$ranked"
+          [ -z "$id" ] && grep -q MaxSpotInstanceCountExceeded launch.err || break
+          echo "the spot quota is taken: again in a minute"
+          sleep 60
+          done
           [ -n "$id" ] || { echo "no zone had a $TYPE to give"; exit 1; }
           echo "::add-mask::$id"
           echo "INSTANCE=$id" >> "$GITHUB_ENV"

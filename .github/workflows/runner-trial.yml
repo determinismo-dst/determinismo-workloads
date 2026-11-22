@@ -120,6 +120,12 @@ jobs:
             sleep 15
             lines=$(wc -l < hunt.log)
             if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
+            # The live link checked from here each minute; when it does not answer, the tunnel's log.
+            if [ "$(( $(date +%s) / 60 ))" != "${checked:-}" ]; then
+              checked=$(( $(date +%s) / 60 ))
+              code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$url/" || true)
+              [ "$code" = 200 ] || { echo "$(date -u +%H:%M) the live link answers $code; the tunnel says:"; tail -5 ~/live-tunnel.log; }
+            fi
             [ -s run-id ] || continue
             if [ -z "$live" ]; then
               live="$url/#$(cat run-id)"

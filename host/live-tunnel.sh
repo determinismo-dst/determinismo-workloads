@@ -17,7 +17,9 @@ if ! echo "$cloudflared_sha256  $binary" | sha256sum -c --status 2>/dev/null; th
 fi
 chmod +x "$binary"
 : > "$log"
-nohup "$binary" tunnel --no-autoupdate --url "http://127.0.0.1:$port" > "$log" 2>&1 &
+# HTTP/2 over TCP 443: its default (QUIC, over UDP) dropped within a minute or two on GitHub's
+# runners, both tunnels of a trial answering Cloudflare's 1033 after (2026-11-22).
+nohup "$binary" tunnel --no-autoupdate --protocol http2 --url "http://127.0.0.1:$port" > "$log" 2>&1 &
 for _ in $(seq 90); do
   url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" | head -1 || true)
   [ -n "$url" ] && { echo "$url"; exit 0; }

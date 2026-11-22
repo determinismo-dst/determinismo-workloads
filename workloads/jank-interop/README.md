@@ -71,7 +71,7 @@ assertions to jank's own source (assertions only): `sometimes` an array map grow
 (persistent and transient), one at its size becomes a hash map on an existing key's update, and
 an interop argument converted through a trait reaches an overload. `jank-coverage/build.sh
 <platform tree>` builds it (hours: LLVM); the result is kept on this repository's release
-[jank-coverage-44eea86f7](https://github.com/determinismo-dst/determinismo-workloads/releases/tag/jank-coverage-44eea86f7),
+[jank-coverage-774d02f6](https://github.com/determinismo-dst/determinismo-workloads/releases/tag/jank-coverage-774d02f6-86114b5),
 which the Dockerfile fetches by its checksum.
 
 ## Debugging a failure

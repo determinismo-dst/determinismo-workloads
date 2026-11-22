@@ -29,8 +29,8 @@ RUN apt-get update -q \
  && rm -rf /var/lib/apt/lists/*
 # jank-coverage/build.sh's tarball (jank's LLVM and jank at its pinned commit, with coverage and the
 # SDK's assertions), kept on this repository's release: hours of building, so fetched, checksummed.
-ARG JANK_COVERAGE_URL=https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-coverage-44eea86f7-a9df0e7/jank-install.tar
-ARG JANK_COVERAGE_SHA256=5bde97d4f04901ce6c622ef95fe616a7a44654cf03503c02a690314fbd4e62b8
+ARG JANK_COVERAGE_URL=https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-coverage-774d02f6-86114b5/jank-install.tar
+ARG JANK_COVERAGE_SHA256=c98c03f8553719b777f5b71314e9df6758f1e7f36e4cccd0b065603179d09c18
 RUN curl -fsSL -o /tmp/jank-install.tar "$JANK_COVERAGE_URL" \
  && echo "${JANK_COVERAGE_SHA256}  /tmp/jank-install.tar" | sha256sum -c -
 # A program run, not --help (which exits 1): the libraries load, and jank compiles and runs.

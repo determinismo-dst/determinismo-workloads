@@ -1,3 +1,5 @@
+diff --git a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
+index dfee951..2785f3d 100644
 --- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
 +++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
 @@ -15,6 +15,10 @@
@@ -11,15 +13,17 @@
  namespace jank::runtime
  {
    i64 to_i64(object_ref const o);
-@@ -1190,6 +1194,8 @@
-             return err("No matching overload was found. When considering automatic trait "
-                        "conversions, this call is ambiguous.");
+@@ -1247,6 +1251,8 @@ namespace jank::analyze::cpp_util
+ 
+           if(apply)
+           {
++            DET_SOMETIMES(true, "jank interop: an argument converted through a trait reaches an overload",
++                          NULL);
+             needed_conversion = fn_idx;
            }
-+          DET_SOMETIMES(true, "jank interop: an argument converted through a trait reaches an overload",
-+                        NULL);
-           needed_conversion = fn_idx;
            converted_args[arg_idx + member_offset] = param_type;
-         }
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
+index 5ca52d7..cb64546 100644
 --- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
 +++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
 @@ -9,6 +9,10 @@
@@ -33,7 +37,7 @@
  namespace jank::runtime::obj
  {
    persistent_array_map::persistent_array_map(value_type &&d)
-@@ -78,6 +82,10 @@
+@@ -78,6 +82,10 @@ namespace jank::runtime::obj
       * TODO: Benchmark if it's faster to have this behavior or to check first. */
      if(data.size() == runtime::detail::native_array_map::max_size)
      {
@@ -44,6 +48,8 @@
        return make_box<persistent_hash_map>(meta, data, key, val);
      }
      else
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
+index d9c0329..5500487 100644
 --- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
 +++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
 @@ -8,6 +8,10 @@
@@ -57,7 +63,7 @@
  namespace jank::runtime::obj
  {
    transient_array_map::transient_array_map()
-@@ -77,6 +81,7 @@
+@@ -77,6 +81,7 @@ namespace jank::runtime::obj
      /* TODO: Benchmark how much does the promotion cost, from transient array map to transient hash map? */
      if(data.size() == runtime::detail::native_array_map::max_size)
      {

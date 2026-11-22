@@ -20,11 +20,12 @@ work=${2:-$HOME/build}
 voidstar=$platform/zig-out/bin/libvoidstar.so
 header=$platform/sdk/c/determinismo.h
 test -f "$header" || { echo "error: $header missing" >&2; exit 1; }
-jank_commit=44eea86f7   # jank main, 2026-11-11
+jank_commit=774d02f6    # jank main, 2026-11-19
 test -f "$voidstar" || { echo "error: $voidstar missing: the platform's zig build guest first" >&2; exit 1; }
 mkdir -p "$work" && cd "$work"
 [ -d jank ] || git clone -q --recurse-submodules --jobs 8 https://github.com/jank-lang/jank.git
-cd jank && git fetch -q && git checkout -q "$jank_commit" && git submodule update -q --init --recursive --jobs 8
+# The last build's assertions undone first: a checkout of another commit refuses edited files.
+cd jank && git fetch -q && git checkout -q -- compiler+runtime/src && git checkout -q "$jank_commit" && git submodule update -q --init --recursive --jobs 8
 # The assertions, on the commit's own files (a rerun's earlier application undone first).
 git checkout -q -- compiler+runtime/src && git apply "$here/assertions.patch"
 cd compiler+runtime

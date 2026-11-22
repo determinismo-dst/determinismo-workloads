@@ -1,0 +1,153 @@
+# SPDX-License-Identifier: MIT
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  determinismo's hunts from GitHub Actions (.github/workflows/aws-hunt.yml), once per AWS account
+  and repository: GitHub's OIDC provider, a role only the repository's main branch may take (no
+  access keys), and the security group determinismo-ci (no rules: each run lets its own runner in
+  on SSH, then out). The role launches bare-metal machines tagged project=determinismo-ci and
+  touches nothing else. The stack itself costs nothing.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: The repository's owner (a user or an organization)
+  GitHubRepository:
+    Type: String
+    Description: The repository's name (a fork or copy of determinismo-workloads)
+  Subject:
+    Type: String
+    Default: ""
+    Description: >
+      Leave empty unless the owner customized its OIDC subjects (gh api
+      repos/OWNER/REPO/actions/oidc/customization/sub); then the subject the main branch's runs
+      carry, such as repo:OWNER@ID/REPO@ID:ref:refs/heads/main.
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: false when the account has GitHub's provider already (one an account)
+
+Conditions:
+  NewProvider: !Equals [!Ref CreateOidcProvider, "true"]
+  DefaultSubject: !Equals [!Ref Subject, ""]
+
+Resources:
+  GitHubProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: NewProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  Group:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: determinismo-ci
+      GroupDescription: determinismo hunts (each run opens SSH to its own runner, then closes it)
+      Tags: [{ Key: project, Value: determinismo-ci }]
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: determinismo's aws-hunt workflow (GitHub Actions, the repository's main branch only)
+      MaxSessionDuration: 21600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - NewProvider
+                - !Ref GitHubProvider
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !If
+                  - DefaultSubject
+                  - !Sub repo:${GitHubOwner}/${GitHubRepository}:ref:refs/heads/main
+                  - !Ref Subject
+      Policies:
+        - PolicyName: determinismo-hunts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Read
+                Effect: Allow
+                Action:
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceTypeOfferings
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSpotPriceHistory
+                  - ec2:DescribeSubnets
+                Resource: "*"
+              - Sid: LaunchBareMetalOnly
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    ec2:InstanceType: [m5zn.metal, c5.metal, r5.metal]
+                    aws:RequestTag/project: determinismo-ci
+              - Sid: LaunchVolumes
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:volume/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/project: determinismo-ci
+              - Sid: LaunchFrom
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:*::image/*
+                  - !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:image/*
+                  - !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:subnet/*
+                  - !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:network-interface/*
+                  - !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:security-group/${Group.GroupId}
+              - Sid: TagOnCreate
+                Effect: Allow
+                Action: ec2:CreateTags
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: [RunInstances, CreateImage]
+              - Sid: OwnMachines
+                Effect: Allow
+                Action: [ec2:CreateTags, ec2:TerminateInstances, ec2:CreateImage]
+                Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    ec2:ResourceTag/project: determinismo-ci
+              - Sid: OwnImages
+                Effect: Allow
+                Action: ec2:CreateImage
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:*::image/*
+                  - !Sub arn:${AWS::Partition}:ec2:*::snapshot/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/project: determinismo-ci
+              - Sid: RetireOwnImages
+                Effect: Allow
+                Action: [ec2:DeregisterImage, ec2:DeleteSnapshot]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:*::image/*
+                  - !Sub arn:${AWS::Partition}:ec2:*::snapshot/*
+                Condition:
+                  StringEquals:
+                    ec2:ResourceTag/project: determinismo-ci
+              - Sid: OwnGroup
+                Effect: Allow
+                Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress]
+                Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:security-group/${Group.GroupId}
+
+Outputs:
+  RoleArn:
+    Description: The repository's secret AWS_ROLE_ARN
+    Value: !GetAtt Role.Arn

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # A workload's hunt (DuckDB's by default) on an AWS bare-metal machine, from GitHub's hosted runner. determinismo's
 # deterministic VMs run on its own KVM on the hardware, so the runner rents a bare-metal machine
-# for the hunt: a spot m5zn.metal (48 vCPUs, 192 GB) from your determinismo base AMI, set up by
+# for the hunt: a spot bare-metal machine (`machine`: m5zn.metal by default, 24 cores; c5.metal, 48
+# cores; r5.metal, 48 cores and 768 GB for memory-heavy workloads) from determinismo's base AMI, set up by
 # the platform's own infra/host/setup.sh over SSH, the hunt run through serve for the asked
 # minutes (host/metal-hunt.sh), its counts in this log and its report on this run's page (the job
 # summary) and as a page of its own, read only (the platform's infra/host/report-static.sh), on
@@ -16,8 +17,9 @@
 # 48 vCPUs count against the spot quota for minutes). The machine's own timer also ends it should
 # a job die: the run's length and two hours past the time it was last taken.
 #
-# Yours to set up once:
-# - an AMI named determinismo-base-* in the region (the platform's infra/aws/inspect-ami.sh
+# Yours to set up once (the setup section of this repository's README: one CloudFormation stack):
+# - the base AMI: the public one (the repository variable BASE_AMI, its id, README), or one of your
+#   own named determinismo-base-* in the region (the platform's infra/aws/inspect-ami.sh
 #   --type m5zn.metal --spot);
 # - a security group named determinismo-ci, tagged project=determinismo-ci, with no rules (each
 #   run opens SSH to its runner's address alone, then closes it);
@@ -29,7 +31,9 @@
 #   ci-platform); its ARN the secret AWS_ROLE_ARN. No access keys.
 # - an SSH key of its own (ssh-keygen -t ed25519), the private half the secret CI_SSH_KEY: the
 #   machine trusts it from its launch, so the next run can take it.
-# - a spot vCPU quota of 48 at least (Service Quotas, L-34B43A08), or purchase: on-demand.
+# - a spot vCPU quota of the machine's vCPUs at least (Service Quotas, L-34B43A08: m5zn.metal 48,
+#   c5.metal and r5.metal 96), or purchase: on-demand.
+# A machine is one workload's: a run takes an idle machine only of its own workload and type.
 # Values of your account (its id, the machine's address and ids) are masked in this log.
 name: aws-hunt
 
@@ -57,6 +61,11 @@ on:
       keep_minutes:
         description: How long the machine waits for the next run after this one (0 to 60; 0 ends it at once)
         default: "15"
+      machine:
+        description: The bare-metal machine (vCPUs count against the spot quota)
+        type: choice
+        options: [m5zn.metal, c5.metal, r5.metal]
+        default: m5zn.metal
       purchase:
         description: spot (about a quarter of the price; AWS may take the machine back) or on-demand
         type: choice
@@ -73,7 +82,7 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  TYPE: m5zn.metal
+  TYPE: ${{ inputs.machine }}
   MINUTES: ${{ inputs.minutes }}
   PURCHASE: ${{ inputs.purchase }}
   PLATFORM_REF: ${{ inputs.platform_ref }}
@@ -111,13 +120,19 @@ jobs:
           # The operator's public key too (a repository variable): to debug a machine from one's
           # own, once one's address is let in on SSH.
           OPERATOR_SSH_KEYS: ${{ vars.OPERATOR_SSH_KEYS }}
+          # determinismo's public base image (README), or empty: the account's own determinismo-base-*.
+          BASE_AMI: ${{ vars.BASE_AMI }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && printf '%s\n' "$CI_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub
-          ami=$(aws ec2 describe-images --owners self --filters 'Name=name,Values=determinismo-base-*' \
-            --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
-          [ "$ami" != None ] || { echo "no determinismo-base-* image in $AWS_REGION"; exit 1; }
+          if [ -n "$BASE_AMI" ]; then
+            ami=$BASE_AMI
+          else
+            ami=$(aws ec2 describe-images --owners self --filters 'Name=name,Values=determinismo-base-*' \
+              --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
+            [ "$ami" != None ] || { echo "no determinismo-base-* image in $AWS_REGION (or the variable BASE_AMI)"; exit 1; }
+          fi
           echo "::add-mask::$ami"
           # This platform commit's hunt image when there is one: a machine from it is set up already.
           commit=$(git -C platform rev-parse HEAD)
@@ -149,6 +164,7 @@ jobs:
           # An idle machine kept from a run before: taken, its deadline moved first (it was at
           # most keep_minutes away).
           id=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=tag:ci-state,Values=idle \
+            "Name=tag:ci-workload,Values=$WORKLOAD" "Name=instance-type,Values=$TYPE" \
             Name=instance-state-name,Values=running --query 'Reservations[0].Instances[0].InstanceId' --output text)
           if [ "$id" != None ]; then
             echo "::add-mask::$id"
@@ -211,7 +227,7 @@ jobs:
             echo "$p $z"; done | sort -n)
           echo "$ranked" | sed 's/^/spot price: /'
           id=
-          # The spot quota taken (a machine still shutting down holds its 48 vCPUs for minutes):
+          # The spot quota taken (a machine still shutting down holds its vCPUs for minutes):
           # the zones tried again each minute, 20 minutes at most.
           for attempt in $(seq 20); do
           while read -r price zone; do
@@ -222,7 +238,7 @@ jobs:
                  --security-group-ids "$sg" "${market[@]}" --instance-initiated-shutdown-behavior terminate \
                  --user-data file://user-data \
                  --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=1000,VolumeType=gp3,DeleteOnTermination=true}' \
-                 --tag-specifications "ResourceType=instance,Tags=[{Key=project,Value=determinismo-ci},{Key=Name,Value=determinismo-ci},{Key=ci-state,Value=busy}]" \
+                 --tag-specifications "ResourceType=instance,Tags=[{Key=project,Value=determinismo-ci},{Key=Name,Value=determinismo-ci},{Key=ci-state,Value=busy},{Key=ci-workload,Value=$WORKLOAD}]" \
                    'ResourceType=volume,Tags=[{Key=project,Value=determinismo-ci}]' \
                  --query 'Instances[0].InstanceId' --output text 2> launch.err < /dev/null); then
               break
@@ -244,7 +260,7 @@ jobs:
           echo "IP=$ip" >> "$GITHUB_ENV"
           echo "running at $(date -u +%H:%M)"
       - name: Set up the machine (the platform's infra/host/setup.sh; a kept machine only when the platform changed)
-        # No jank: no public workload is in jank yet (jank's rolling package needs a kept copy).
+        # Without jank here: a workload in jank gets it next.
         run: |
           commit=$(git -C platform rev-parse HEAD)
           if [ "$(ssh $SSH_OPTS "admin@$IP" 'cat .ci-platform 2>/dev/null' || true)" = "$commit" ]; then
@@ -254,6 +270,15 @@ jobs:
           platform/infra/host/setup.sh "$IP" --user admin --no-jank
           ssh $SSH_OPTS "admin@$IP" "echo $commit > .ci-platform"
           echo "SET_UP=1" >> "$GITHUB_ENV"
+      - name: jank on the machine (a workload in jank runs its --describe on the host's jank)
+        env:
+          # tools.sh's pinned build, kept on this repository's release (jank's own repository
+          # republishes its rolling package under one name): tools.sh's fetch takes a file already
+          # there with its checksum.
+          JANK_DEB: https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-0.1-noble-68f6d0d8/jank_0.1-noble_amd64.deb
+        run: |
+          [ -f "workloads/$WORKLOAD/src/${WORKLOAD//-/_}/workload.jank" ] || { echo "not a workload in jank"; exit 0; }
+          ssh $SSH_OPTS "admin@$IP" "mkdir -p ~/opt && { [ -f ~/opt/jank/.sha256 ] || curl -fsSL -o ~/opt/jank_0.1-noble_amd64.deb $JANK_DEB; } && cd determinismo && infra/host/tools.sh | tail -1"
       # Fresh credentials: a setup can outlast the first ones (an hour).
       - uses: aws-actions/configure-aws-credentials@v4
         if: env.SET_UP == '1'
@@ -274,6 +299,7 @@ jobs:
           image=$(aws ec2 create-image --instance-id "$INSTANCE" --name "$name" --no-reboot \
             --description "determinismo hunt machine: the platform at $commit, set up by setup.sh --no-jank" \
             --tag-specifications "ResourceType=image,Tags=[{Key=project,Value=determinismo-ci},{Key=ci-platform,Value=$commit}]" \
+              "ResourceType=snapshot,Tags=[{Key=project,Value=determinismo-ci}]" \
               'ResourceType=snapshot,Tags=[{Key=project,Value=determinismo-ci}]' --query ImageId --output text)
           echo "::add-mask::$image"
           ssh $SSH_OPTS "admin@$IP" 'sudo systemctl enable --quiet ci-deadline.timer'

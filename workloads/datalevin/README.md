@@ -193,6 +193,19 @@ partitions, clock skew. The client has none of its own.
   Reproduce: `determinismo bundle <run 1145's directory> 6 <out>`, then in it `determinismo
   explore --run . --branch 6`; its threads: `infra/host/moment.sh 1145 6 1630000 'det:threads dl1'`.
 
+### In 1.2.11
+
+Read in 1.2.11's source (2026-11-20; master c992272 has the same `src/`), 2026-11-22, not hunted:
+
+| Finding | 1.2.11 |
+|---|---|
+| A leader's power loss loses acknowledged writes | there: LMDB `:writemap :nosync`, the applied LSN committed inside it, `txlog-recovery-context` unchanged |
+| The last server takes the database for a key-value one | there: `effective-db-type` takes the recorded type, the peers still open with `open-kv` |
+| A graceful stop crashes a busy server | probably there: the shutdown hook and `close-store-resources!` are the same (`close-kv`'s own changes not read) |
+| An empty VERSION after a power loss | there: `write-version-file` is a plain `spit` |
+| A follower holds the copied database in its heap | fixed: `copy-to-file` writes each chunk to a file as it arrives (client/copy.clj) |
+| An unreadable control snapshot after a power loss | there: `save-fsm-snapshot!` syncs nothing |
+
 ## Status
 
 Open, from hunt run 1145 (59 timelines), each to explain before it is a finding or ours:

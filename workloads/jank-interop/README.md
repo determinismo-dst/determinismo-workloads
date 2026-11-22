@@ -168,6 +168,17 @@ image for a closer look there.
   literal as its bare digits; its boxed path casts `INT32_MIN` explicitly ("The literal min value
   of an integer is treated as a long"), the unboxed one does not (main 44eea86). No issue in jank's
   tracker. Repro: `repro/int32-min-literal-is-a-long.jank`.
+- **`INT64_MIN` as an unboxed literal turns a signed operation unsigned.** With `a` an `int64_t`
+  -2048 and `b` an `int64_t` `INT64_MIN` given as a literal, `(cpp// a b)` answers 1, C++ 0, with no
+  error; `INT64_MIN + 1`, or the same value computed, answers 0. Found by the native operator
+  construct in a hunt on a c5.metal
+  ([aws-hunt run 17](https://determinismo-dst.github.io/determinismo-workloads/runs/17-aws/),
+  2026-11-22: 1 of its first 873 timelines, one the tree branched by returning to an earlier
+  timeline for a rare coverage edge). The same root as the `INT32_MIN` finding above, here a silent
+  wrong value: `cpp_processor.cpp` writes an unboxed integer literal as its bare digits, and
+  `-9223372036854775808` is unsigned in C++. The same natively on x86-64 Linux with jank's PPA
+  build, 44eea86 and main 774d02f (2026-11-19); a macOS arm64 build of 2026-11-09 answers 0. No
+  issue found in jank's tracker. Repro: `repro/int64-min-literal-is-unsigned.jank`.
 - **A NaN made by arithmetic crashes jank when used.** `(NaN? (/ 0.0 0.0))`, `(str (- ##Inf
   ##Inf))`, `(= 1.0 (/ 0.0 0.0))`, `(type (/ 0.0 0.0))`: a segmentation fault each, natively too;
   the literal `##NaN` (and its negation) is fine. Found by the float arithmetic construct under

@@ -1,0 +1,16 @@
+; SPDX-License-Identifier: MIT
+; INT64_MIN as an unboxed literal turns a signed operation unsigned: int64_t -2048 divided by it
+; answers 1, C++ 0, with no error. Any other literal (INT64_MIN + 1), or the same value computed,
+; answers 0. jank's cpp_processor writes an unboxed integer literal as its bare digits, and in C++
+; -9223372036854775808 is unary minus on 9223372036854775808, which no signed type holds: clang
+; takes it as unsigned ("integer literal is too large to be represented in a signed integer type,
+; interpreting as unsigned"), and the division with it. The same root as
+; int32-min-literal-is-a-long.jank, here a silent wrong value.
+; The form is built and evaluated so that the value is a literal in it: written in this file,
+; -9223372036854775808 is read as a big_integer (the README's finding).
+; Seen on x86-64 Linux; a macOS arm64 build of 2026-11-09 answers 0.
+(defn divide [b]
+  (eval (list 'let ['a (list 'cpp/cast 'cpp/int64_t -2048) 'b (list 'cpp/cast 'cpp/int64_t b)]
+              '(cpp/cast cpp/int64_t (cpp// a b)))))
+(println "passing, the value computed:" (divide '(dec -9223372036854775807)) "and another literal:" (divide -9223372036854775807))
+(println "expected 0, answers:" (divide cpp/INT64_MIN))

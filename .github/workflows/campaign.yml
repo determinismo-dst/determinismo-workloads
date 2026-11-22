@@ -147,8 +147,20 @@ jobs:
         with:
           path: ~/opt
           key: tools-${{ matrix.campaign.jank && 'jank' || 'nojank' }}-${{ hashFiles('platform/infra/host/tools.sh') }}
+      # The platform's binaries and the guest's initramfs, built once per platform commit: a stretch
+      # on a commit already built skips its ten-minute build.
+      - uses: actions/cache@v4
+        if: steps.machine.outputs.ok
+        id: built
+        with:
+          path: |
+            platform/zig-out
+            ~/guest/base.cpio
+          key: built-${{ steps.keys.outputs.platform }}-${{ matrix.campaign.jank && 'jank' || 'nojank' }}-${{ hashFiles('platform/infra/host/tools.sh') }}
       - name: determinismo and the guest
         if: steps.machine.outputs.ok
+        env:
+          BUILT: ${{ steps.built.outputs.cache-hit }}
         run: |
           sudo apt-get install -y -q busybox-static e2fsck-static erofs-utils cpio zstd > /dev/null
           cd platform
@@ -160,14 +172,18 @@ jobs:
           else
             infra/host/tools.sh --no-jank > /dev/null
           fi
-          ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
+          if [ "$BUILT" = true ] && [ -x zig-out/bin/determinismo ] && [ -f ~/guest/base.cpio ]; then
+            echo "determinismo and the initramfs kept for this platform commit"
+          else
+            ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
+          fi
           if [ -f ~/kept/guest/vmlinuz ] && [ -f ~/kept/guest/det_guest.ko ]; then
             mkdir -p ~/guest && cp ~/kept/guest/vmlinuz ~/kept/guest/det_guest.ko ~/guest/ && echo "the guest kernel kept"
           else
             guest/kernel/build.sh ~/guest > guest.log 2>&1 || { tail -30 guest.log; exit 1; }
             mkdir -p ~/kept/guest && cp ~/guest/vmlinuz ~/guest/det_guest.ko ~/kept/guest/
           fi
-          zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
+          [ "$BUILT" = true ] && [ -f ~/guest/base.cpio ] || zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
             --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out ~/guest/base.cpio
           zig-out/bin/determinismo doctor 2>&1 | grep -E "FAIL|warn|ready" || true
       - name: The campaign's state (the newest stretch's artifact; none, a new run)

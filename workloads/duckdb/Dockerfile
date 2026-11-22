@@ -29,14 +29,19 @@ RUN cd /opt/duckdb/src && git apply /sdk/assertions.patch
 # test program's profile: DuckDB's sources and its build directory's unity files, all under
 # /opt/duckdb). The callbacks are the SDK's, linked whole into the module and the executables
 # (CMake's compiler checks), not a sanitizer runtime of clang's. Line tables only: source lines
-# for coverage, at a fraction of full debug information's size. Unstripped: nanobind links a
+# for coverage, at a fraction of full debug information's size. One compile job per 4 GB of free
+# memory, at most one a CPU: DuckDB's unity files take gigabytes each, and a free runner's 16 GB
+# with ninja's default 6 jobs left it silent for 40 minutes (campaign run 44980447823). Unstripped: nanobind links a
 # Release module with -Wl,-s unless given NOSTRIP (added to the module's nanobind_add_module, the
 # build file's only change), and scikit-build-core strips on install unless install.strip=false.
 ARG DETERMINISMO_COVERAGE
 RUN cd /opt/duckdb/src && sed -i 's/^  NB_STATIC$/  NB_STATIC\n  NOSTRIP/' CMakeLists.txt \
  && grep -q '^  NOSTRIP$' CMakeLists.txt \
  && flags="$(sh /sdk/coverage-flags.sh /sdk/lists) -fno-sanitize-link-runtime -gline-tables-only -I/sdk" \
- && CC=clang CXX=clang++ CFLAGS="$flags" CXXFLAGS="$flags" \
+ && jobs=$(awk '/MemAvailable/ {j = int($2 / 4194304); print j < 1 ? 1 : j}' /proc/meminfo) \
+ && if [ "$jobs" -gt "$(nproc)" ]; then jobs=$(nproc); fi \
+ && echo "DuckDB built with $jobs jobs" \
+ && CMAKE_BUILD_PARALLEL_LEVEL=$jobs CC=clang CXX=clang++ CFLAGS="$flags" CXXFLAGS="$flags" \
     LDFLAGS="-Wl,--build-id -Wl,--whole-archive /sdk/libdeterminismo-coverage.a -Wl,--no-whole-archive" \
     pip wheel -v --no-cache-dir --no-deps -w /wheels . \
       --config-settings=cmake.build-type=Release --config-settings=install.strip=false \

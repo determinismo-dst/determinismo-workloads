@@ -64,6 +64,9 @@ while :; do
   line=$(status)
   state_now=${line%% *}
   echo "$(date -u +%H:%M) ${line#* }"
+  # Where it is (building an image, booting, a timeline's end): the explorer's latest line.
+  latest=$(curl -s -m 30 "$serve/runs/$run/output?lines=1&explorer=1" | tail -1 | cut -c1-160 || true)
+  [ -z "$latest" ] || echo "      $latest"
   case $state_now in running|unread) ;; *) echo "the run ended on its own: $state_now"; break ;; esac
   left=$(( end - $(date +%s) ))
   [ "$left" -gt 0 ] || break

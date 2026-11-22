@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && printf '%s\n' "$CI_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          id=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=tag:ci-state,Values=busy \
+          id=$(aws ec2 describe-instances --filters Name=tag:project,Values=determinismo-ci Name=tag:ci-state,Values=busy,idle \
             Name=instance-state-name,Values=running --query 'Reservations[0].Instances[0].InstanceId' --output text)
           [ "$id" != None ] || { echo "no hunt running"; exit 1; }
           echo "::add-mask::$id"

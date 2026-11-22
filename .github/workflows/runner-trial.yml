@@ -71,6 +71,15 @@ jobs:
           done
           echo "$HOME/opt/jdk-25/bin" >> "$GITHUB_PATH"
           "$HOME/opt/jdk-25/bin/java" -version 2>&1 | head -1
+      - name: The program's description, as serve asks for it
+        run: |
+          ~/opt/zig/zig build -Drelease --fork="$PWD/platform" datalevin-test
+          ls -la platform/zig-out/bin/libdeterminismo.so platform/zig-out/lib/ 2>&1 | head -5
+          set +e
+          DETERMINISMO_LIBRARY="$PWD/platform/zig-out/bin/libdeterminismo.so" zig-out/bin/datalevin-test --describe > describe.out 2> describe.err
+          echo "exit $?"
+          head -c 600 describe.out; echo; tail -30 describe.err
+          set -e
       - name: serve, as infra/host/serve.sh starts it
         run: |
           # The layout an AWS machine has (host/metal-hunt.sh's): the platform's tree and this repository.

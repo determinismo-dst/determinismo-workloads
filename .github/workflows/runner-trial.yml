@@ -60,6 +60,17 @@ jobs:
           zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
             --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out ~/guest/base.cpio
           zig-out/bin/determinismo doctor 2>&1 | grep -E "FAIL|warn|ready" || true
+      - name: What a Clojure program needs on the host, as a Debian host has it
+        run: |
+          # Debian's clojure package (1.12.0, provision.sh) at its paths, from Maven Central;
+          # and a JDK 25 (tools.sh's) first on PATH: the runner's own java is older.
+          sudo mkdir -p /usr/share/java
+          for jar in clojure/1.12.0/clojure-1.12.0.jar:clojure.jar spec.alpha/0.5.238/spec.alpha-0.5.238.jar:spec.alpha.jar \
+                     core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar:core.specs.alpha.jar; do
+            sudo curl -fsSL -o "/usr/share/java/${jar#*:}" "https://repo1.maven.org/maven2/org/clojure/${jar%%:*}"
+          done
+          echo "$HOME/opt/jdk-25/bin" >> "$GITHUB_PATH"
+          "$HOME/opt/jdk-25/bin/java" -version 2>&1 | head -1
       - name: serve, as infra/host/serve.sh starts it
         run: |
           # The layout an AWS machine has (host/metal-hunt.sh's): the platform's tree and this repository.

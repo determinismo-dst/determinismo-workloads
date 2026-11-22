@@ -4,9 +4,8 @@
 # workload's campaign, its one long tree run: started the first time (with a budget it never
 # reaches), resumed by every later stretch (serve's resume: the same run, the timelines its
 # record has skipped, its tree continued from their summaries), and stopped after <minutes> so
-# that the next stretch continues it. Serve's data and the run's pinned system live in <state>
-# (the workflow carries it from one job to the next), the run's id in <state>/run-id, the
-# stretches so far in <state>/stretches. Counts every ten minutes, summary.md at the end.
+# that the next stretch continues it. The run's id in <state>/run-id, the stretches so far in
+# <state>/stretches, the stretch's summary in <state>/summary.md. Counts every ten minutes.
 # Exit 0 when the stretch ran and the run stopped to be continued (failing properties are
 # findings, not errors), 1 otherwise. SERVE, PLATFORM and WORKLOADS: serve's address and the trees
 # (default 127.0.0.1:7878, ~/determinismo, ~/determinismo-workloads; host/campaigns-here.sh gives a
@@ -29,11 +28,16 @@ if [ -s "$state/run-id" ]; then
   echo "run $run resumed: $answer"
   grep -q '"state":"running"' <<< "$answer" || { echo "the run did not resume"; exit 1; }
 else
-  # The program, built against the platform serve runs (as host/metal-hunt.sh does).
-  ~/opt/zig/zig build -Drelease --fork="$tree" "$workload-test"
-  install -m 755 "zig-out/bin/$workload-test" "$tree/zig-out/bin/$workload-test"
-  mkdir -p "$tree/workloads"
-  rsync -a --delete "$here/workloads/" "$tree/workloads/"
+  # The program, built against the platform serve runs (as host/metal-hunt.sh does), and the
+  # workloads' files beside it: one campaign at a time (they start together; two rsyncs into one
+  # tree delete each other's temporary files).
+  (
+    flock 9
+    ~/opt/zig/zig build -Drelease --fork="$tree" "$workload-test"
+    install -m 755 "zig-out/bin/$workload-test" "$tree/zig-out/bin/$workload-test"
+    mkdir -p "$tree/workloads"
+    rsync -a --delete "$here/workloads/" "$tree/workloads/"
+  ) 9> "$tree/.campaign-build.lock"
   # A budget no campaign reaches: each stretch stops it, the next resumes it.
   body=$(python3 -c "
 import json, sys
@@ -41,18 +45,13 @@ workload, scenario, memory_mib, timeline = sys.argv[1:5]
 request = {'program': f'zig-out/bin/{workload}-test', 'scenario': scenario, 'seed': 1,
            'time_budget': '100000h', 'timeline': timeline, 'memory_mib': int(memory_mib),
            'branching': 'tree'}
-# CPU_MODULATION=false: every branch at one speed (the speeds vary by counter interrupts, which a
-# runner's nested virtualization could not keep up with).
-if sys.argv[5] == 'false':
-    request['cpu_modulation'] = False
-print(json.dumps(request))" "$workload" "$scenario" "$memory_mib" "$timeline" "${CPU_MODULATION:-true}")
-  curl -s -m 900 -X POST -d "$body" "$serve/runs" > started.json
-  run=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id',''))" started.json 2>/dev/null || true)
-  [ -n "$run" ] || { echo "the run was refused: $(head -c 300 started.json)"; exit 1; }
+print(json.dumps(request))" "$workload" "$scenario" "$memory_mib" "$timeline")
+  curl -s -m 900 -X POST -d "$body" "$serve/runs" > "$state/started.json"
+  run=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id',''))" "$state/started.json" 2>/dev/null || true)
+  [ -n "$run" ] || { echo "the run was refused: $(head -c 300 "$state/started.json")"; exit 1; }
   echo "$run" > "$state/run-id"
   echo "run $run started: the $workload campaign, $scenario"
 fi
-echo "$run" > "$here/run-id" # The workflow's report reads it.
 stretch=$(( $(cat "$state/stretches" 2>/dev/null || echo 0) + 1 ))
 echo "$stretch" > "$state/stretches"
 
@@ -70,8 +69,7 @@ end=$(( $(date +%s) + minutes * 60 ))
 while :; do
   line=$(status)
   state_now=${line%% *}
-  # The runner's memory and serve's share of it (its cgroup's current use): a stretch that runs
-  # out says so here before the runner goes silent.
+  # The host's memory and serve's share of it (its cgroup's current use).
   memory=$(free -m | awk '/^Mem:/ {printf "%d MiB free of %d", $7, $2}')
   served=$(awk '{printf "%d MiB", $1 / 1048576}' "/sys/fs/cgroup/system.slice/${SERVE_UNIT:-determinismo-serve}.service/memory.current" 2>/dev/null || echo "?")
   echo "$(date -u +%H:%M) ${line#* } | $memory, serve $served"
@@ -95,5 +93,5 @@ if [ "$state_now" = running ] || [ "$state_now" = unread ]; then
 fi
 
 python3 "$here/host/run-summary.py" "$serve" "$run" "campaign run $run, stretch $stretch" \
-  "$stretch stretches of $minutes minutes" "$workload" "$scenario" > "$here/summary.md"
+  "$stretch stretches of $minutes minutes" "$workload" "$scenario" > "$state/summary.md"
 [ "$state_now" = stopped ] || { echo "the run is $state_now, not stopped: the next stretch cannot resume it"; exit 1; }

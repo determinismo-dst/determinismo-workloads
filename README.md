@@ -43,13 +43,13 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
 ## CI
 
 - `.github/workflows/build.yml`: builds every workload on each push and pull request.
-- `.github/workflows/campaign.yml` with `host/campaign.sh` and `campaigns.json`: each listed
-  workload's campaign on GitHub's free hosted runners, an hour every two hours: one long run per
-  campaign (a workload's scenario at a platform commit), each stretch resuming it where the last
-  stopped, its state kept between stretches as the workflow's artifact. Each stretch's report on
-  its run page and at the reports' site (`runs/campaign-<workload>/`).
-- `.github/workflows/probe.yml`: what GitHub's hosted runners offer determinismo's hypervisor (run
-  by hand).
+- Campaigns, `host/campaigns-here.sh` with `host/campaign.sh` and `campaigns.json`: each listed
+  workload's campaign on a host of ours, against a serve of its own (its cores, memory limit and
+  data), an hour every two hours (a systemd timer): one long run per campaign (a workload's
+  scenario at a platform commit and a version of its files), each stretch resuming it where the
+  last stopped. Each stretch's report at the reports' site (`runs/campaign-<workload>/`).
+  GitHub's hosted runners cannot run them: within minutes of our VMs starting, the counters'
+  interrupts, virtualized twice, took every runner down (Azure's and AWS-hosted alike).
 - `.github/workflows/aws-hunt.yml` with `host/metal-hunt.sh`: a workload's hunt (DuckDB's by default) on an AWS
   bare-metal machine rented for it (a spot m5zn.metal, about a dollar an hour), from GitHub's
   hosted runner: launched from your determinismo base AMI through an OIDC role (no keys stored),

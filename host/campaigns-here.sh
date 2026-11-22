@@ -10,8 +10,8 @@
 # Layout under CAMPAIGNS (default ~/campaigns): workloads/ (this repository, pulled each stretch),
 # platform/ (the platform's tree at campaigns.json's commit, built; rebuilt and the serve restarted
 # when the commit changes), guest/base.cpio (its initramfs), state/<campaign>/ (each campaign's
-# run: a campaign is a workload's scenario at a platform commit and a version of its files, as
-# campaign.yml has it; a new one starts a new run). PAGES_KEY: a deploy key that may push to this
+# run: a campaign is a workload's scenario at a platform commit and a version of its files; a new
+# one starts a new run). PAGES_KEY: a deploy key that may push to this
 # repository (its gh-pages branch).
 set -euo pipefail
 minutes=${1:-60}

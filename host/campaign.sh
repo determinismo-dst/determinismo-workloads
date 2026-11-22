@@ -73,7 +73,7 @@ while :; do
   # The runner's memory and serve's share of it (its cgroup's current use): a stretch that runs
   # out says so here before the runner goes silent.
   memory=$(free -m | awk '/^Mem:/ {printf "%d MiB free of %d", $7, $2}')
-  served=$(awk '{printf "%d MiB", $1 / 1048576}' /sys/fs/cgroup/system.slice/determinismo-serve.service/memory.current 2>/dev/null || echo "?")
+  served=$(awk '{printf "%d MiB", $1 / 1048576}' "/sys/fs/cgroup/system.slice/${SERVE_UNIT:-determinismo-serve}.service/memory.current" 2>/dev/null || echo "?")
   echo "$(date -u +%H:%M) ${line#* } | $memory, serve $served"
   # Where it is (building an image, booting, a timeline's end): the explorer's latest line.
   latest=$(curl -s -m 30 "$serve/runs/$run/output?lines=1&explorer=1" | tail -1 | cut -c1-160 || true)

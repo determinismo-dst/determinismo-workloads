@@ -31,7 +31,7 @@ if [ "$have" != "$want" ]; then
   (cd "$platform" && ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25")
   mkdir -p "$root/guest"
   "$platform/zig-out/bin/det-initramfs" --bin "$platform/zig-out/bin" --module "$HOME/guest/det_guest.ko" \
-    --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out "$root/guest/base.cpio"
+    --busybox /usr/bin/busybox --e2fsck /sbin/e2fsck.static --out "$root/guest/base.cpio"
   sudo systemctl restart determinismo-campaigns
   for _ in $(seq 60); do curl -fs -m 5 "$serve/runs" > /dev/null && break; sleep 2; done
 fi
@@ -43,7 +43,7 @@ while read -r workload scenario memory timeline commit; do
   campaign=campaign-$workload-$scenario-$commit-$files
   mkdir -p "$root/state/$campaign" "$root/logs"
   (
-    SERVE=$serve PLATFORM=$platform WORKLOADS=$workloads \
+    SERVE=$serve SERVE_UNIT=determinismo-campaigns PLATFORM=$platform WORKLOADS=$workloads \
       bash "$workloads/host/campaign.sh" "$root/state/$campaign" "$minutes" "$workload" "$scenario" "$memory" "$timeline" \
       > "$root/logs/$workload.log" 2>&1 || true
     run=$(cat "$root/state/$campaign/run-id" 2>/dev/null || true)

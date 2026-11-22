@@ -7,6 +7,7 @@ properties), with what it found in its README.
 | Workload | System | Scenarios |
 |---|---|---|
 | [datalevin](workloads/datalevin/README.md) | Datalevin 1.2.10, high availability (three servers) | `append` |
+| [duckdb](workloads/duckdb/README.md) | DuckDB 2.0.0, embedded (Jepsen's local node) and over Quack, its client-server protocol | `append`, `fkey_register`, `trigger`, `variant` |
 
 ## Build
 

@@ -15,7 +15,7 @@ on:
         description: The platform's ref for report-static.sh
         default: next
       logs:
-        description: Also show the run's host checks' lines and podman's images and containers
+        description: Also show the run's host checks' lines, podman's images and containers, and serve's journal
         type: boolean
         default: false
 
@@ -87,7 +87,8 @@ jobs:
         run: |
           ssh $SSH_OPTS "admin@$IP" 'run=$(cat determinismo-workloads/run-id); f=~/.determinismo/runs/$run/output.log;
             ls -la ~/.determinismo/runs/$run/ | head -30; grep -n -i -B2 -A12 "elle\|check " "$f" | tail -120;
-            podman images --format "{{.Repository}}:{{.Tag}} {{.Created}}"; podman ps -a --format "{{.Names}} {{.Status}}"; podman logs --tail 40 determinismo-elle 2>&1 | tail -40' || true
+            podman images --format "{{.Repository}}:{{.Tag}} {{.Created}}"; podman ps -a --format "{{.Names}} {{.Status}}"; podman logs --tail 40 determinismo-elle 2>&1 | tail -40;
+            echo "== serve (its unit journal)"; sudo journalctl -u determinismo-serve --no-pager -n 80 | cut -c1-300' || true
       - name: SSH closed for this runner
         if: always() && env.SG != ''
         run: |

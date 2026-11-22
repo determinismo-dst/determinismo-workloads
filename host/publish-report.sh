@@ -7,6 +7,7 @@
 # while it runs; its history would grow by the report each time), and only over the commit it
 # was made from: another job's publish meanwhile (the AWS and the runner hunts of one workflow
 # run) and it starts again from theirs. Needs GH_TOKEN and GITHUB_REPOSITORY (a workflow's).
+# LIVE_URL, while the run goes: its live page's address (host/live-mirror.sh), in the index.
 set -euo pipefail
 dir=${1:?usage: publish-report.sh <report-dir> <name> <minutes>}
 name=${2:?usage: publish-report.sh <report-dir> <name> <minutes>}
@@ -23,9 +24,9 @@ for attempt in 1 2 3 4 5 6; do
   cp "$dir/index.html" "$dir/stamp.json" "$work/pages/runs/$name/"
 
   # The index: every report, newest first, each with its run's workload, state and counts.
-  python3 - "$work/pages" "$name" "$minutes" <<'EOF'
+  python3 - "$work/pages" "$name" "$minutes" "${LIVE_URL:-}" <<'EOF'
 import html, json, re, sys
-pages, name, minutes = sys.argv[1:4]
+pages, name, minutes, live = sys.argv[1:5]
 stamp = json.load(open(f"{pages}/runs/{name}/stamp.json"))
 run = stamp["run"]
 page = open(f"{pages}/runs/{name}/index.html", encoding="utf-8").read()
@@ -40,16 +41,21 @@ workload = re.sub(r"^[0-9a-f]{16}-", "", program.rsplit("/", 1)[-1]).removesuffi
 entry = {"name": name, "run": int(run), "date": recording["recorded"][:16].replace("T", " ") + " UTC",
          "workload": workload, "scenario": request.get("scenario", ""),
          "state": info.get("state", ""), "minutes": int(minutes), "timelines": stats.get("timelines", 0),
-         "failing": sum(1 for p in properties if p.get("status") == "failing"), "properties": len(properties)}
+         "failing": sum(1 for p in properties if p.get("status") == "failing"), "properties": len(properties),
+         "live": live if info.get("state") == "running" else ""}
 runs = [r for r in json.load(open(f"{pages}/runs.json")) if str(r.get("name", r.get("number"))) != name] + [entry]
 runs.sort(key=lambda r: r["date"], reverse=True)
 json.dump(runs, open(f"{pages}/runs.json", "w"), indent=1)
 def item(r):
     key = str(r.get("name", r.get("number")))
-    state = "running (updating)" if r["state"] == "running" else r["state"]
+    state = "running" if r["state"] == "running" else html.escape(r["state"])
+    if r["state"] == "running" and r.get("live"):
+        state += f' (<a href="{html.escape(r["live"])}">live</a>)'
+    elif r["state"] == "running":
+        state += " (updating)"
     return (f'<li><a href="runs/{html.escape(key)}/">Run {html.escape(key)}</a>: '
             f'{html.escape(r.get("workload") or "datalevin")} <code>{html.escape(r.get("scenario") or "append")}</code>, '
-            f'{html.escape(r["date"])}, {r["minutes"]} minutes, {r["timelines"]:,} timelines, {html.escape(state)}, '
+            f'{html.escape(r["date"])}, {r["minutes"]} minutes, {r["timelines"]:,} timelines, {state}, '
             f'{r["failing"]} of {r["properties"]} properties failing</li>')
 items = "\n".join(item(r) for r in runs)
 index = open(f"{pages}/index.html", encoding="utf-8").read()

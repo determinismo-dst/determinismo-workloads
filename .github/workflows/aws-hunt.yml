@@ -285,33 +285,37 @@ jobs:
             for snapshot in $snapshots; do aws ec2 delete-snapshot --snapshot-id "$snapshot"; done
             echo "an older hunt image removed"
           done
-      - name: Hunt (its report re-recorded every 10 minutes while it goes, on this repository's Pages)
+      - name: Hunt (its page live from the first minute, re-recorded as it goes; Pages' copy every 10 minutes)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \
-            --exclude user-data --exclude launch.err --exclude report ./ "admin@$IP:determinismo-workloads/"
+            --exclude user-data --exclude launch.err --exclude report --exclude live --exclude live.next ./ "admin@$IP:determinismo-workloads/"
+          # The live page, for anyone, from the first minute (host/live-mirror.sh).
+          url=$(host/live-mirror.sh start live)
+          echo "live: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+          export LIVE_URL=$url
           ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }} $WORKLOAD $SCENARIO $MEMORY_MIB $TIMELINE" > hunt.log 2>&1 &
           hunt=$!
-          # serve on the machine, here at 7878 (the reports' recordings).
+          # serve on the machine, here at 7878 (the recordings').
           ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
           shown=0
-          # The first as soon as the run exists, then every 10 minutes.
           next=0
+          run=
           while kill -0 "$hunt" 2>/dev/null; do
-            sleep 20
+            sleep 15
             lines=$(wc -l < hunt.log)
             if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
+            [ -n "$run" ] || run=$(ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/run-id 2>/dev/null' || true)
+            [ -n "$run" ] || continue
+            # The live page re-recorded; Pages' copy every 10 minutes from it (the first at once).
+            host/live-mirror.sh record http://127.0.0.1:7878 "$run" live 2>> live.log || { echo "$(date -u +%H:%M) live page not recorded: $(tail -1 live.log)"; continue; }
             [ "$(date +%s)" -ge "$next" ] || continue
-            run=$(ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/run-id 2>/dev/null' || true)
-            [ -n "$run" ] && [ -x platform/infra/host/report-static.sh ] || continue
             next=$(( $(date +%s) + 600 ))
-            mkdir -p report
-            if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html > report.log 2>&1 \
-               && host/publish-report.sh report "${{ github.run_number }}-aws" "$MINUTES" >> report.log 2>&1; then
-              echo "$(date -u +%H:%M) the report re-recorded and published"
+            if host/publish-report.sh live "${{ github.run_number }}-aws" "$MINUTES" >> report.log 2>&1; then
+              echo "$(date -u +%H:%M) Pages' copy published: $(tail -1 report.log)"
             else
-              echo "$(date -u +%H:%M) the report not published this time: $(tail -1 report.log)"
+              echo "$(date -u +%H:%M) Pages' copy not published this time: $(tail -1 report.log)"
             fi
           done
           wait "$hunt" && status=0 || status=$?
@@ -330,6 +334,8 @@ jobs:
           curl -fs -m 10 -o /dev/null http://127.0.0.1:7878/runs || ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
           mkdir -p report
           platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html
+          # The live page shows the end too, while the job lasts.
+          cp report/index.html report/stamp.json live/ 2>/dev/null || true
           echo "REPORT_RUN=$run" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         if: always() && env.REPORT_RUN != ''

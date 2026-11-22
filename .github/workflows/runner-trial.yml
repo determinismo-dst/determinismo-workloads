@@ -103,27 +103,31 @@ jobs:
             --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --append quiet --cache ~/cache --memory-mib 4096 > ~/serve.log 2>&1 &
           for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
           curl -fsS -m 10 localhost:7878/build; echo
-      - name: Hunt (host/metal-hunt.sh, as on an AWS machine; its report published as soon as the run exists, then every 10 minutes)
+      - name: Hunt (host/metal-hunt.sh, as on an AWS machine; its page live from the first minute, Pages' copy every 10 minutes)
         env:
           GH_TOKEN: ${{ github.token }}
           NAME: ${{ github.run_number }}-runner-${{ matrix.try }}
         run: |
+          # The live page, for anyone, from the first minute (host/live-mirror.sh).
+          url=$(host/live-mirror.sh start live)
+          echo "live: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+          export LIVE_URL=$url
           bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}" "${{ inputs.workload }}" "${{ inputs.scenario }}" "${{ inputs.memory_mib }}" "${{ inputs.timeline }}" > hunt.log 2>&1 &
           hunt=$!
           shown=0
           next=0
           while kill -0 "$hunt" 2>/dev/null; do
-            sleep 20
+            sleep 15
             lines=$(wc -l < hunt.log)
             if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
-            [ "$(date +%s)" -ge "$next" ] && [ -s run-id ] || continue
+            [ -s run-id ] || continue
+            host/live-mirror.sh record http://127.0.0.1:7878 "$(cat run-id)" live 2>> live.log || { echo "$(date -u +%H:%M) live page not recorded: $(tail -1 live.log)"; continue; }
+            [ "$(date +%s)" -ge "$next" ] || continue
             next=$(( $(date +%s) + 600 ))
-            mkdir -p report
-            if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html > report.log 2>&1 \
-               && host/publish-report.sh report "$NAME" "${{ inputs.minutes }}" >> report.log 2>&1; then
-              echo "$(date -u +%H:%M) the report re-recorded and published: $(tail -1 report.log)"
+            if host/publish-report.sh live "$NAME" "${{ inputs.minutes }}" >> report.log 2>&1; then
+              echo "$(date -u +%H:%M) Pages' copy published: $(tail -1 report.log)"
             else
-              echo "$(date -u +%H:%M) the report not published this time: $(tail -1 report.log)"
+              echo "$(date -u +%H:%M) Pages' copy not published this time: $(tail -1 report.log)"
             fi
           done
           wait "$hunt" && status=0 || status=$?
@@ -141,6 +145,8 @@ jobs:
           [ -s run-id ] || { echo "no run"; exit 0; }
           mkdir -p report
           platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html
+          # The live page shows the end too, while the job lasts.
+          cp report/index.html report/stamp.json live/ 2>/dev/null || true
           url=$(host/publish-report.sh report "$NAME" "${{ inputs.minutes }}" | tail -1)
           echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

@@ -1,0 +1,165 @@
+--- a/external/duckdb/src/include/duckdb/transaction/duck_transaction_manager.hpp
++++ b/external/duckdb/src/include/duckdb/transaction/duck_transaction_manager.hpp
+@@ -13,6 +13,9 @@
+ #include "duckdb/common/enums/checkpoint_type.hpp"
+ #include "duckdb/common/queue.hpp"
+ 
++// determinismo: an assertion on reading last_commit (the C SDK; assertions.patch)
++#include "determinismo.h"
++
+ namespace duckdb {
+ class DuckTransactionManager;
+ class DuckTransaction;
+@@ -52,6 +55,9 @@
+ 		return lowest_visibility_bound;
+ 	}
+ 	transaction_t GetLastCommit() const {
++		// last_commit has no initializer (a std::atomic's default constructor leaves it so before
++		// C++20): read before a commit sets it, it is whatever the memory held.
++		DET_ALWAYS(det_committed.load(), "the last commit id is read only after a commit set it", NULL);
+ 		return last_commit;
+ 	}
+ 	optional_idx GetActiveCheckpoint() const {
+@@ -136,6 +142,10 @@
+ 	atomic<VisibilityBound> lowest_visibility_bound;
+ 	//! The last commit timestamp
+ 	atomic<transaction_t> last_commit;
++	// determinismo: whether a commit has set last_commit, and the commit id before this one (the
++	// assertions' own, so that they never read last_commit unset themselves)
++	atomic<bool> det_committed {false};
++	transaction_t det_previous_commit = 0;
+ 	//! The currently active checkpoint, zero when none is running
+ 	atomic<idx_t> active_checkpoint;
+ 	//! Source of checkpoint identities
+--- a/external/duckdb/src/storage/storage_manager.cpp
++++ b/external/duckdb/src/storage/storage_manager.cpp
+@@ -28,6 +28,10 @@
+ #include "mbedtls_wrapper.hpp"
+ #include "duckdb/common/path.hpp"
+ 
++// determinismo: assertions on recovery, commit and checkpoint paths (the C SDK; the workload's
++// assertions.patch adds only these, no behavior)
++#include "determinismo.h"
++
+ namespace duckdb {
+ using SHA256State = duckdb_mbedtls::MbedTlsWrapper::SHA256State;
+ 
+@@ -323,6 +327,7 @@
+ 	}
+ 
+ 	// we have had writes to the checkpoint WAL - we need to override our WAL with the checkpoint WAL
++	DET_SOMETIMES(true, "a checkpoint finishes with commits in its checkpoint WAL", NULL);
+ 	// first close the WAL writer
+ 	auto checkpoint_wal_path = wal->GetPath();
+ 	wal.reset();
+--- a/external/duckdb/src/storage/wal_replay.cpp
++++ b/external/duckdb/src/storage/wal_replay.cpp
+@@ -45,6 +45,10 @@
+ #include "duckdb/main/profiler/metrics.hpp"
+ #include "duckdb/main/query_profiler.hpp"
+ 
++// determinismo: assertions on recovery, commit and checkpoint paths (the C SDK; the workload's
++// assertions.patch adds only these, no behavior)
++#include "determinismo.h"
++
+ namespace duckdb {
+ enum class WALReplayState { MAIN_WAL, CHECKPOINT_WAL };
+ 
+@@ -524,6 +528,7 @@
+ 			con.Rollback();
+ 			error.Throw("Failure while replaying WAL file \"" + wal_path + "\": ");
+ 		}
++		DET_SOMETIMES(true, "WAL replay: a torn tail is ignored", NULL);
+ 	} // LCOV_EXCL_STOP
+ 
+ 	// Discard row group blocks from uncommitted transactions.
+@@ -549,6 +554,7 @@
+ 		}
+ 		// there is a checkpoint flag
+ 		// this means a checkpoint was on-going when we crashed
++		DET_SOMETIMES(true, "WAL replay: a checkpoint was under way at the crash", NULL);
+ 		// we need to reconcile this with what is in the data file
+ 		// first check if there is a checkpoint WAL
+ 		auto &manager = database.GetStorageManager();
+@@ -570,6 +576,7 @@
+ 			if (checkpoint_was_successful) {
+ 				// the checkpoint was successful
+ 				// the main WAL is no longer needed, we only need to replay the checkpoint WAL
++				DET_SOMETIMES(true, "WAL replay: the interrupted checkpoint had finished, its checkpoint WAL replayed", NULL);
+ 				// if this is a read-only connection then replay the checkpoint WAL directly
+ 				if (storage_manager.GetAttached().IsReadOnly()) {
+ 					return ReplayLog(std::move(checkpoint_handle), WALReplayState::CHECKPOINT_WAL);
+@@ -594,6 +601,7 @@
+ 			if (!storage_manager.GetAttached().IsReadOnly()) {
+ 				// if this is not a read-only connection, then merge the two WALs and replay the merged WAL
+ 				// we merge into the recovery WAL path
++				DET_SOMETIMES(true, "WAL replay: the interrupted checkpoint had not finished, both WALs merged", NULL);
+ 				auto recovery_path = manager.GetRecoveryWALPath();
+ 				MergeIntoRecoveryWAL(con, checkpoint_state, reader, recovery_path, std::move(checkpoint_handle));
+ 
+@@ -610,6 +618,7 @@
+ 	}
+ 	unique_ptr<BufferedFileReader> truncated_wal_reader;
+ 	if (truncate_failed_checkpoint_marker) {
++		DET_SOMETIMES(true, "WAL replay: a failed checkpoint's marker is truncated", NULL);
+ 		// The failed checkpoint marker is the logical end of the WAL and must not become writable again. Truncate to
+ 		// the preceding commit boundary, which is zero if the WAL only contained its header before the marker.
+ 		reader.handle.reset();
+@@ -635,6 +644,7 @@
+ 
+ 	// If there are no committed transactions in the WAL, rollback and truncate.
+ 	if (last_wal_flush_end == 0) {
++		DET_SOMETIMES(true, "WAL replay: a WAL with no committed transaction is truncated", NULL);
+ 		con.Rollback();
+ 		return make_uniq<WriteAheadLog>(storage_manager, wal_path, idx_t(0),
+ 		                                WALInitState::UNINITIALIZED_REQUIRES_TRUNCATE);
+@@ -686,11 +696,15 @@
+ 		if (config.options.abort_on_wal_failure || error.Type() != ExceptionType::SERIALIZATION) {
+ 			error.Throw("Failure while replaying WAL file \"" + wal_path + "\": ");
+ 		}
++		// This pass reads only up to the last commit boundary the first pass read whole: an entry
++		// failing here is a committed transaction skipped, and the WAL truncated after it.
++		DET_UNREACHABLE("WAL replay: a committed transaction fails to replay and is skipped", NULL);
+ 	} catch (...) {
+ 		// exception thrown in WAL replay: rollback
+ 		con.Query("ROLLBACK");
+ 		throw;
+ 	} // LCOV_EXCL_STOP
++	DET_SOMETIMES(successful_offset > 0, "WAL replay: committed transactions are replayed", NULL);
+ 	if (all_succeeded && checkpoint_handle) {
+ 		// we have successfully replayed the main WAL - but there is still a checkpoint WAL remaining
+ 		// this can only happen in read-only mode
+--- a/external/duckdb/src/transaction/duck_transaction_manager.cpp
++++ b/external/duckdb/src/transaction/duck_transaction_manager.cpp
+@@ -22,6 +22,10 @@
+ #include "duckdb/storage/checkpoint/checkpoint_options.hpp"
+ #include "duckdb/common/string_util.hpp"
+ 
++// determinismo: assertions on recovery, commit and checkpoint paths (the C SDK; the workload's
++// assertions.patch adds only these, no behavior)
++#include "determinismo.h"
++
+ namespace duckdb {
+ 
+ static ErrorData BuildAutocheckpointError(AttachedDatabase &db, const std::exception &ex) {
+@@ -415,7 +419,10 @@
+ 		}
+ 	} else {
+ 		DUCKDB_LOG(context, TransactionLogType, db, "Commit", info.commit_id);
++		DET_ALWAYS(info.commit_id > det_previous_commit, "commit ids only grow", NULL);
++		det_previous_commit = info.commit_id;
+ 		last_commit = info.commit_id;
++		det_committed = true;
+ 
+ 		// check if catalog changes were made
+ 		if (transaction.catalog_version >= TRANSACTION_ID_START) {
+@@ -461,6 +468,9 @@
+ 		}
+ 		// we can unlock the transaction lock while checkpointing
+ 		// checkpoint the database to disk
++		DET_SOMETIMES(true, "a commit runs an automatic checkpoint", NULL);
++		DET_SOMETIMES(checkpoint_decision.type == CheckpointType::CONCURRENT_CHECKPOINT,
++		              "an automatic checkpoint runs beside other transactions", NULL);
+ 		CheckpointOptions options;
+ 		options.action = CheckpointAction::ALWAYS_CHECKPOINT;
+ 		options.type = checkpoint_decision.type;

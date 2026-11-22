@@ -83,12 +83,20 @@ pub fn main(init: std.process.Init) !void {
 }
 
 const build: sdk.schema.Build = .{ .context = ".", .dockerfile = "workloads/duckdb/Dockerfile" };
+/// DuckDB built from its release's source with coverage (Dockerfile): the engine, Quack and httpfs
+/// (their sources and the build's unity files under /opt/duckdb, third-party libraries left out),
+/// and the nodes' Python with DuckDB's Python package (the Python SDK).
+const coverage: sdk.schema.Coverage = .{
+    .include = &.{ "/opt/duckdb/", "/usr/local/lib/python3.12/site-packages/duckdb/" },
+    .exclude = &.{"/opt/duckdb/src/external/duckdb/third_party/"},
+};
 const quack_port = 9494;
 
 fn describe(d: *System.Describe) !void {
     const profile = try d.profile("default");
     profile.node(.duck, .{
         .build = build,
+        .coverage = coverage,
         .ready = .{ .tcp = port },
         .faults = .{ .restart = true, .crash = true, .stop = true },
     });
@@ -97,6 +105,7 @@ fn describe(d: *System.Describe) !void {
         const env: []const []const u8 = if (entry[1]) &.{"QUACK_RECONNECTS=1"} else &.{};
         quack.node(.db, .{
             .build = build,
+            .coverage = coverage,
             .entrypoint = &.{ "python3", "-u", "/opt/duckdb/quack_server.py" },
             .env = env,
             .ready = .{ .tcp = quack_port },
@@ -105,6 +114,7 @@ fn describe(d: *System.Describe) !void {
         inline for (.{ .c1, .c2 }) |name| {
             quack.node(name, .{
                 .build = build,
+                .coverage = coverage,
                 // After the image's entrypoint (local_node.py 7000).
                 .command = &.{ "--quack", "db" },
                 .env = env,

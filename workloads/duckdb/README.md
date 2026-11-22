@@ -11,9 +11,29 @@ determinismo explore --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --memor
   --program zig-out/bin/duckdb-test --scenario append --seed 1 --branches 64
 ```
 
-Coverage (the platform's Python SDK, `coverage_start`): the nodes' code and DuckDB's Python
-package, a line at a time. DuckDB's engine is C++ and not instrumented, so its coverage signal is
-the Python layer's alone.
+Coverage: DuckDB is built from its release's source (PyPI's sdist, checksummed) by clang with
+trace-pc-guard and the C SDK's callbacks, with Quack and httpfs built into the module at the
+commits the release pins; their edges report themselves as source lines (the module unstripped
+in /symbols) and are thread pausing's points. The nodes' Python and DuckDB's Python package: the
+Python SDK's `coverage_start`. The profiles' coverage set holds both (`duckdb_test.zig`).
+
+Assertions in DuckDB's own source (`assertions.patch`, applied before the build: assertions
+only, DuckDB's behavior unchanged), each a property of every run:
+
+- WAL replay's recovery paths, `sometimes`: a torn tail ignored; a checkpoint under way at the
+  crash, and its outcomes (it had finished: its checkpoint WAL replayed; it had not: both WALs
+  merged; a failed checkpoint's marker truncated); a WAL with no committed transaction
+  truncated; committed transactions replayed.
+- `unreachable`: a committed transaction failing WAL replay's second pass. That pass reads only
+  up to the last commit boundary the first pass read whole, and a serialization error there is
+  ignored: the transactions after it would be skipped without a word.
+- `always`: commit ids only grow; the last commit id is read only after a commit set it.
+  DuckDB 2.0.0's `last_commit` has no initializer until its first commit, and a checkpoint
+  before it reads whatever the memory held: fixed upstream after the release (duckdb/duckdb
+  PR #28066, "Initialize last_commit at the bootstrap timestamp": a forced shutdown checkpoint on
+  a reopened database left tables out).
+- `sometimes`: a commit runs an automatic checkpoint, one beside other transactions, and a
+  checkpoint finishing with commits in its checkpoint WAL (moved over the main WAL).
 
 Elle checks each timeline at strong snapshot isolation, what Jepsen's test checks (DuckDB's
 optimistic concurrency: each transaction reads its snapshot, and a conflict found at the commit

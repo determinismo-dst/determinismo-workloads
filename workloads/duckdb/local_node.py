@@ -63,7 +63,7 @@ import determinismo as det
 PATH = "/data/jepsen.duckdb"
 TABLES = 3
 TOKEN = "determinismo-token"
-EXTENSIONS = {"extension_directory": "/opt/duckdb/extensions"}  # Quack's, installed by the image.
+EXTENSIONS = {"extension_directory": "/opt/duckdb/extensions"}  # Quack and httpfs are built in (Dockerfile); none installed.
 # DuckDB folds its WAL into the database file (a checkpoint) once the WAL passes 16 MB, which a
 # timeline's few MB never reach: each start draws the threshold ($DETERMINISMO_DRAW, the number
 # determinismo draws for it; DuckDB's default outside it), so checkpoints run under the faults.

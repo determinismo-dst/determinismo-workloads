@@ -15,7 +15,7 @@ import determinismo as det
 
 PATH = "/data/jepsen.duckdb"
 TOKEN = "determinismo-token"
-EXTENSIONS = {"extension_directory": "/opt/duckdb/extensions"}  # Quack's, installed by the image.
+EXTENSIONS = {"extension_directory": "/opt/duckdb/extensions"}  # Quack and httpfs are built in (Dockerfile); none installed.
 # The checkpoint threshold drawn for this start, as local_node.py draws it (its THRESHOLDS).
 THRESHOLDS = ("16MB", "1MB", "64KB", "8KB")
 THRESHOLD = THRESHOLDS[(int(os.environ.get("DETERMINISMO_DRAW", "0")) >> 8) % len(THRESHOLDS)]

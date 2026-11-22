@@ -34,6 +34,9 @@ on:
       not_before:
         description: Unix seconds the stretch waits for (set by the stretch before it; empty, at once)
         default: ""
+      chain:
+        description: Whether this stretch asks for the next (false for a test)
+        default: "true"
 
 permissions:
   contents: write # The report's page: the gh-pages branch.
@@ -76,6 +79,7 @@ jobs:
       MINUTES: ${{ inputs.minutes || '60' }}
       COUNT_EVERY: ${{ inputs.count_every || '600' }}
       NOT_BEFORE: ${{ inputs.not_before }}
+      CHAIN: ${{ inputs.chain || 'true' }}
       GH_TOKEN: ${{ github.token }}
       # A workload in jank runs its --describe on the host's jank: tools.sh's pinned build, kept
       # on this repository's release (jank's own repository republishes it under one name).
@@ -105,17 +109,20 @@ jobs:
                      # The next stretch, two hours from this one's start: asked now, so that a
                      # stretch that dies still has a successor (it waits behind this one, then for
                      # its time). Only the try that runs asks: a retry asks for a try instead.
-                     gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
-                       -f workload="$WORKLOAD" -f minutes="$MINUTES" -f count_every="$COUNT_EVERY" \
-                       -f not_before=$(( $(date +%s) + 7200 ))
-                     echo "the next stretch asked for, from $(date -u -d @$(( $(date +%s) + 7200 )) +%H:%M) UTC"
+                     if [ "$CHAIN" = true ]; then
+                       gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+                         -f workload="$WORKLOAD" -f minutes="$MINUTES" -f count_every="$COUNT_EVERY" \
+                         -f not_before=$(( $(date +%s) + 7200 ))
+                       echo "the next stretch asked for, from $(date -u -d @$(( $(date +%s) + 7200 )) +%H:%M) UTC"
+                     fi
                      exit 0
                    fi ;;
           esac
           echo "not an AWS-hosted runner with a core PMU: another try"
           if [ "$TRY" -lt 8 ]; then
             gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
-              -f workload="$WORKLOAD" -f minutes="$MINUTES" -f try=$((TRY + 1)) -f count_every="${COUNT_EVERY:-600}"
+              -f workload="$WORKLOAD" -f minutes="$MINUTES" -f try=$((TRY + 1)) -f count_every="${COUNT_EVERY:-600}" \
+              -f chain="$CHAIN"
             echo "asked for try $((TRY + 1))"
           else
             echo "try $TRY: no more tries for this stretch"

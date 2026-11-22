@@ -10,6 +10,26 @@
 name: runner-trial
 
 on:
+  workflow_call:
+    inputs:
+      workload:
+        type: string
+        default: duckdb
+      scenario:
+        type: string
+        default: append
+      memory_mib:
+        type: string
+        default: "2048"
+      timeline:
+        type: string
+        default: 180s
+      minutes:
+        type: string
+        default: "20"
+      platform_ref:
+        type: string
+        default: next
   workflow_dispatch:
     inputs:
       workload:
@@ -32,7 +52,7 @@ on:
         default: next
 
 permissions:
-  contents: read
+  contents: write # The report's page: the gh-pages branch.
 
 jobs:
   trial:
@@ -103,18 +123,46 @@ jobs:
             --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --append quiet --cache ~/cache --memory-mib 4096 > ~/serve.log 2>&1 &
           for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
           curl -fsS -m 10 localhost:7878/build; echo
-      - name: Hunt (host/metal-hunt.sh, as on an AWS machine)
-        run: bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}" "${{ inputs.workload }}" "${{ inputs.scenario }}" "${{ inputs.memory_mib }}" "${{ inputs.timeline }}"
+      - name: Hunt (host/metal-hunt.sh, as on an AWS machine; its report published as soon as the run exists, then every 10 minutes)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ github.run_number }}-runner-${{ matrix.try }}
+        run: |
+          bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}" "${{ inputs.workload }}" "${{ inputs.scenario }}" "${{ inputs.memory_mib }}" "${{ inputs.timeline }}" > hunt.log 2>&1 &
+          hunt=$!
+          shown=0
+          next=0
+          while kill -0 "$hunt" 2>/dev/null; do
+            sleep 20
+            lines=$(wc -l < hunt.log)
+            if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
+            [ "$(date +%s)" -ge "$next" ] && [ -s run-id ] || continue
+            next=$(( $(date +%s) + 600 ))
+            mkdir -p report
+            if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html > report.log 2>&1 \
+               && host/publish-report.sh report "$NAME" "${{ inputs.minutes }}" >> report.log 2>&1; then
+              echo "$(date -u +%H:%M) the report re-recorded and published: $(tail -1 report.log)"
+            else
+              echo "$(date -u +%H:%M) the report not published this time: $(tail -1 report.log)"
+            fi
+          done
+          wait "$hunt" && status=0 || status=$?
+          sed -n "$((shown + 1)),\$p" hunt.log
+          exit "$status"
       - name: The run's report on this page (the job summary)
         if: always()
         run: cat summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report"
-      - name: The run's report as a page of its own (read only)
+      - name: The run's report as a page of its own (read only), published (GitHub Pages)
         if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ github.run_number }}-runner-${{ matrix.try }}
         run: |
           [ -s run-id ] || { echo "no run"; exit 0; }
           mkdir -p report
           platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html
-          free -g | head -2
+          url=$(host/publish-report.sh report "$NAME" "${{ inputs.minutes }}" | tail -1)
+          echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

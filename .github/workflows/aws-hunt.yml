@@ -34,6 +34,32 @@
 name: aws-hunt
 
 on:
+  workflow_call:
+    inputs:
+      workload:
+        type: string
+        default: duckdb
+      scenario:
+        type: string
+        default: append
+      memory_mib:
+        type: string
+        default: "2048"
+      timeline:
+        type: string
+        default: 180s
+      minutes:
+        type: string
+        default: "60"
+      platform_ref:
+        type: string
+        default: ""
+      keep_minutes:
+        type: string
+        default: "15"
+      purchase:
+        type: string
+        default: spot
   workflow_dispatch:
     inputs:
       workload:
@@ -308,7 +334,7 @@ jobs:
             next=$(( $(date +%s) + 600 ))
             mkdir -p report
             if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html > report.log 2>&1 \
-               && host/publish-report.sh report ${{ github.run_number }} "$MINUTES" >> report.log 2>&1; then
+               && host/publish-report.sh report "${{ github.run_number }}-aws" "$MINUTES" >> report.log 2>&1; then
               echo "$(date -u +%H:%M) the report re-recorded and published"
             else
               echo "$(date -u +%H:%M) the report not published this time: $(tail -1 report.log)"
@@ -334,7 +360,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && env.REPORT_RUN != ''
         with:
-          name: report-${{ github.run_number }}
+          name: report-${{ github.run_number }}-aws
           path: |
             report/index.html
             report/stamp.json
@@ -344,7 +370,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          url=$(host/publish-report.sh report ${{ github.run_number }} "$MINUTES" | tail -1)
+          url=$(host/publish-report.sh report "${{ github.run_number }}-aws" "$MINUTES" | tail -1)
           echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
       # Fresh credentials: the first ones last an hour.
       - uses: aws-actions/configure-aws-credentials@v4

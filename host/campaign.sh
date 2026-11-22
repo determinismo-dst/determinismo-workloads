@@ -93,5 +93,6 @@ if [ "$state_now" = running ] || [ "$state_now" = unread ]; then
 fi
 
 python3 "$here/host/run-summary.py" "$serve" "$run" "campaign run $run, stretch $stretch" \
-  "$stretch stretches of $minutes minutes" "$workload" "$scenario" > "$state/summary.md"
+  "$stretch stretches of $minutes minutes" "$workload" "$scenario" > "$state/summary.md" \
+  || [ $? = 3 ] # Not branched yet (the summary says it): the next stretch resumes it.
 [ "$state_now" = stopped ] || { echo "the run is $state_now, not stopped: the next stretch cannot resume it"; exit 1; }

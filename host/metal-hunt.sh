@@ -10,7 +10,8 @@
 # that runs it) and put where serve's tree keeps programs, the workloads beside it (a workload
 # names its Dockerfiles from the tree's root, as in an assembled tree); then one tree run of the
 # asked length, its counts every ten minutes and at its end. Counts only: the workflow's log is a public repository's. Exit 0 when the run ended
-# (failing properties are findings, not errors), 1 when it could not start or did not end.
+# (failing properties are findings, not errors), 1 when it could not start or did not end, 3 when
+# it ended without ever branching (run-summary.py: the hunt failed, its report kept).
 set -euo pipefail
 minutes=${1:?usage: metal-hunt.sh <minutes> [seed] [workload] [scenario] [memory-mib] [timeline]}
 seed=${2:-1}
@@ -48,7 +49,7 @@ s = r.get('stats') or {}
 wall = s.get('wall_ns', 0) / 3.6e12
 virtual = s.get('vtime_ns', 0) / 3.6e12
 print(r.get('state', ''), f\"{s.get('timelines', 0)} timelines, {s.get('failing_timelines', 0)} failing,\",
-      f\"{s.get('behaviors', 0)} behaviors, {virtual:.1f} virtual h\")" 2>/dev/null || echo "unread"
+      f\"{s.get('behaviors', 0)} behaviors, {virtual:.1f} virtual h (prefixes counted again)\")" 2>/dev/null || echo "unread"
 }
 properties() {
   curl -s -m 60 "$serve/runs/$run/properties" | python3 -c "

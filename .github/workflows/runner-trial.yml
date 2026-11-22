@@ -53,10 +53,38 @@ jobs:
           repository: determinismo-dst/determinismo
           ref: ${{ inputs.platform_ref }}
           path: platform
-      - name: Our KVM (build-kvm.sh, load-kvm.sh)
+      # What does not change between runs, kept (GitHub's Actions cache): our KVM's modules (the
+      # runner's kernel and our patches), the guest kernel and its module (their sources), and
+      # Zig's build caches (the platform's commit, the nearest earlier one's to start from).
+      - name: The keys of what is kept
+        id: keys
         run: |
-          platform/infra/host/build-kvm.sh > kvm.log 2>&1 || { tail -30 kvm.log; exit 1; }
-          sudo platform/infra/host/load-kvm.sh
+          echo "kernel=$(uname -r)" >> "$GITHUB_OUTPUT"
+          echo "platform=$(git -C platform rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/kept/kvm
+          key: kvm-${{ steps.keys.outputs.kernel }}-${{ hashFiles('platform/kernel/**', 'platform/infra/host/build-kvm.sh') }}
+      - uses: actions/cache@v4
+        with:
+          path: ~/kept/guest
+          key: guest-${{ hashFiles('platform/guest/kernel/**', 'platform/guest/module/**') }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zig
+            platform/.zig-cache
+          key: zig-${{ steps.keys.outputs.platform }}
+          restore-keys: zig-
+      - name: Our KVM (build-kvm.sh once for this kernel and patches, load-kvm.sh)
+        run: |
+          if [ ! -f ~/kept/kvm/kvm-intel.ko ]; then
+            platform/infra/host/build-kvm.sh > kvm.log 2>&1 || { tail -30 kvm.log; exit 1; }
+            mkdir -p ~/kept/kvm && cp ~/kvm-build/linux-*/arch/x86/kvm/kvm.ko ~/kvm-build/linux-*/arch/x86/kvm/kvm-intel.ko ~/kept/kvm/
+          else
+            echo "our KVM kept for $(uname -r)"
+          fi
+          sudo platform/infra/host/load-kvm.sh ~/kept/kvm
           sudo chmod 666 /dev/kvm
       - uses: actions/cache@v4
         with:
@@ -68,7 +96,12 @@ jobs:
           cd platform
           infra/host/tools.sh --no-jank > /dev/null
           ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
-          guest/kernel/build.sh ~/guest > guest.log 2>&1 || { tail -30 guest.log; exit 1; }
+          if [ -f ~/kept/guest/vmlinuz ] && [ -f ~/kept/guest/det_guest.ko ]; then
+            mkdir -p ~/guest && cp ~/kept/guest/vmlinuz ~/kept/guest/det_guest.ko ~/guest/ && echo "the guest kernel kept"
+          else
+            guest/kernel/build.sh ~/guest > guest.log 2>&1 || { tail -30 guest.log; exit 1; }
+            mkdir -p ~/kept/guest && cp ~/guest/vmlinuz ~/guest/det_guest.ko ~/kept/guest/
+          fi
           zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
             --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out ~/guest/base.cpio
           zig-out/bin/determinismo doctor 2>&1 | grep -E "FAIL|warn|ready" || true

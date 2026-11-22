@@ -103,6 +103,8 @@ image for a closer look there.
   `analyze/invalid-cpp-operator-call`, "Operator calls may only take one or two arguments" (the
   callable counted as an operand); 0 and 1 arguments work, and a function pointer of two. The book
   promises arbitrary callables with jank's call syntax. No issue in jank's tracker.
+  On jank main 774d02f (2026-11-19), the workload's jank since 2026-11-22, its repro passes:
+  fixed by jank-lang/jank#1225.
 - **A `static` global from `cpp/raw` is another variable in code jank compiles later.** A
   constructor incrementing `static int64_t g` and a `read()` beside it, both in one `cpp/raw`: a
   `let` binding the type (compiled after) increments a copy, `read()` answers 0. Plain and
@@ -114,9 +116,13 @@ image for a closer look there.
   [#1071](https://github.com/jank-lang/jank/issues/1071) (open), rediscovered blind: `(#cpp
   (std.vector double))` with `.push_back` fails with `Symbols not found:
   __new_allocator<double>::deallocate`; `std::vector<int>` works.
+  On jank main 774d02f (2026-11-19), the workload's jank since 2026-11-22, its repro passes:
+  `std::vector<double>` links there.
 - **A `let` answering `(.size v)` of a `std::vector<int>` does not compile** = jank
   [#1185](https://github.com/jank-lang/jank/issues/1185) (open), met writing the reproductions:
   the generated C++ declares `std::vector::size_type`, its template argument dropped.
+  On jank main 774d02f (2026-11-19), the workload's jank since 2026-11-22, its repro passes:
+  compiles there.
 
 - **A transient of an array map writes into the persistent map it came from.** Found by the
   persistent maps property under determinismo CI (the private examples' ci-jank, run 4: failing in each of its
@@ -157,6 +163,8 @@ image for a closer look there.
   and jank died with a panic in `jit::processor::create_function` (exit 1): one failed link can
   take a whole program down, not only unrelated C++ calls. No issue in jank's tracker beyond #1071
   itself. Repro: `repro/failed-link-poisons-symbols.jank`.
+  On jank main 774d02f (2026-11-19), the workload's jank since 2026-11-22, its repro passes:
+  its trigger is gone there (that vector links); the poisoning itself untested.
 - **The literal `-2147483648` cast to `int32_t` reaches C++ as a `long`.** With C++ overloads
   `f(int8_t)` and `f(int32_t)`, `(cpp/f (cpp/cast cpp/int32_t -2147483648))` does not compile ("call
   to 'f' is ambiguous"), directly or bound in a `let`; C++ calls `f(int32_t)` for an `int32_t`. Any
@@ -212,6 +220,8 @@ image for a closer look there.
   `runtime::sequence_equal` for any object not of its own type, which checks only that both sides
   are seqable (runtime/obj/persistent_vector.cpp, core/seq.cpp, main 44eea86); `nil` is seqable and
   empty. No issue in jank's tracker. Repro: `repro/sequential-equals-any-seqable.jank`.
+  On jank main 774d02f (2026-11-19), the workload's jank since 2026-11-22, its repro passes:
+  fixed by jank-lang/jank#1222.
 - **`count`'s result compares as an unsigned number.** `(< (count [1 2]) -9)` is true,
   `(> (count []) -1)` false, `(max (count [1 2]) -9)` is -9, with the negative number a literal, a
   local or `(- 9)`; `+` and `=` are right, and so is a count boxed by a call (`(identity (count

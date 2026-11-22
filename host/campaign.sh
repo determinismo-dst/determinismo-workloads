@@ -36,9 +36,14 @@ else
   body=$(python3 -c "
 import json, sys
 workload, scenario, memory_mib, timeline = sys.argv[1:5]
-print(json.dumps({'program': f'zig-out/bin/{workload}-test', 'scenario': scenario, 'seed': 1,
-                  'time_budget': '100000h', 'timeline': timeline, 'memory_mib': int(memory_mib),
-                  'branching': 'tree'}))" "$workload" "$scenario" "$memory_mib" "$timeline")
+request = {'program': f'zig-out/bin/{workload}-test', 'scenario': scenario, 'seed': 1,
+           'time_budget': '100000h', 'timeline': timeline, 'memory_mib': int(memory_mib),
+           'branching': 'tree'}
+# CPU_MODULATION=false: every branch at one speed (the speeds vary by counter interrupts, which a
+# runner's nested virtualization could not keep up with).
+if sys.argv[5] == 'false':
+    request['cpu_modulation'] = False
+print(json.dumps(request))" "$workload" "$scenario" "$memory_mib" "$timeline" "${CPU_MODULATION:-true}")
   curl -s -m 900 -X POST -d "$body" "$serve/runs" > started.json
   run=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id',''))" started.json 2>/dev/null || true)
   [ -n "$run" ] || { echo "the run was refused: $(head -c 300 started.json)"; exit 1; }

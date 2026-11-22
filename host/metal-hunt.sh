@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# metal-hunt.sh <minutes> [seed]: Datalevin's hunt on a machine the platform's
+# metal-hunt.sh <minutes> [seed] [workload] [scenario] [memory-mib] [timeline]: a workload's hunt
+# (DuckDB's append by default: its 2 GiB VMs and 180 s timelines) on a machine the platform's
 # infra/host/setup.sh has just set up (serve on 127.0.0.1:7878, its tree ~/determinismo), with
 # this repository copied to ~/determinismo-workloads (.github/workflows/aws-hunt.yml does both).
 #
@@ -11,27 +12,32 @@
 # asked length, its counts every ten minutes and at its end. Counts only: the workflow's log is a public repository's. Exit 0 when the run ended
 # (failing properties are findings, not errors), 1 when it could not start or did not end.
 set -euo pipefail
-minutes=${1:?usage: metal-hunt.sh <minutes> [seed]}
+minutes=${1:?usage: metal-hunt.sh <minutes> [seed] [workload] [scenario] [memory-mib] [timeline]}
 seed=${2:-1}
+workload=${3:-duckdb}
+scenario=${4:-append}
+memory_mib=${5:-2048}
+timeline=${6:-180s}
 serve=http://127.0.0.1:7878
 tree=$HOME/determinismo
 here=$HOME/determinismo-workloads
 
 cd "$here"
-~/opt/zig/zig build -Drelease --fork="$tree" datalevin-test
-install -m 755 zig-out/bin/datalevin-test "$tree/zig-out/bin/datalevin-test"
+~/opt/zig/zig build -Drelease --fork="$tree" "$workload-test"
+install -m 755 "zig-out/bin/$workload-test" "$tree/zig-out/bin/$workload-test"
 mkdir -p "$tree/workloads"
 rsync -a --delete "$here/workloads/" "$tree/workloads/"
 
 body=$(python3 -c "
 import json, sys
-print(json.dumps({'program': 'zig-out/bin/datalevin-test', 'scenario': 'append', 'seed': int(sys.argv[2]),
-                  'time_budget': sys.argv[1] + 'm', 'timeline': '600s', 'memory_mib': 10240,
-                  'branching': 'tree'}))" "$minutes" "$seed")
+minutes, seed, workload, scenario, memory_mib, timeline = sys.argv[1:7]
+print(json.dumps({'program': f'zig-out/bin/{workload}-test', 'scenario': scenario, 'seed': int(seed),
+                  'time_budget': minutes + 'm', 'timeline': timeline, 'memory_mib': int(memory_mib),
+                  'branching': 'tree'}))" "$minutes" "$seed" "$workload" "$scenario" "$memory_mib" "$timeline")
 curl -s -m 900 -X POST -d "$body" "$serve/runs" > started.json
 run=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id',''))" started.json 2>/dev/null || true)
 [ -n "$run" ] || { echo "the run was refused: $(head -c 300 started.json)"; exit 1; }
-echo "run $run started: Datalevin append, seed $seed, ${minutes} minutes"
+echo "run $run started: $workload $scenario, seed $seed, ${minutes} minutes"
 echo "$run" > "$here/run-id" # The workflow's report reads it.
 
 status() {
@@ -66,9 +72,9 @@ done
 echo "run $run $state: $(properties)"
 
 # The run's report in Markdown (summary.md), for the workflow's run page (its job summary).
-python3 - "$serve" "$run" "$seed" "$minutes" > "$here/summary.md" <<'EOF'
+python3 - "$serve" "$run" "$seed" "$minutes" "$workload" "$scenario" > "$here/summary.md" <<'EOF'
 import json, sys, urllib.request
-serve, run, seed, minutes = sys.argv[1:5]
+serve, run, seed, minutes, workload, scenario = sys.argv[1:7]
 def get(path):
     with urllib.request.urlopen(f"{serve}{path}", timeout=120) as response:
         return json.load(response)
@@ -76,7 +82,7 @@ r = get(f"/runs/{run}")
 s = r.get("stats") or {}
 properties = get(f"/runs/{run}/properties")
 failing = [p for p in properties if p.get("status") == "failing"]
-print(f"## Datalevin `append`, seed {seed}: {r.get('state', '')}")
+print(f"## {workload} `{scenario}`, seed {seed}: {r.get('state', '')}")
 print()
 print(f"- {s.get('timelines', 0)} timelines in {minutes} minutes, {s.get('failing_timelines', 0)} failing; "
       f"{s.get('behaviors', 0)} behaviors; {s.get('vtime_ns', 0) / 3.6e12:.1f} hours of virtual time")

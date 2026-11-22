@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Datalevin's hunt on an AWS bare-metal machine, from GitHub's hosted runner. determinismo's
+# A workload's hunt (DuckDB's by default) on an AWS bare-metal machine, from GitHub's hosted runner. determinismo's
 # deterministic VMs run on its own KVM on the hardware, so the runner rents a bare-metal machine
 # for the hunt: a spot m5zn.metal (48 vCPUs, 192 GB) from your determinismo base AMI, set up by
 # the platform's own infra/host/setup.sh over SSH, the hunt run through serve for the asked
@@ -36,6 +36,18 @@ name: aws-hunt
 on:
   workflow_dispatch:
     inputs:
+      workload:
+        description: The workload (workloads/<name>)
+        default: duckdb
+      scenario:
+        description: Its scenario
+        default: append
+      memory_mib:
+        description: A VM's memory (MiB)
+        default: "2048"
+      timeline:
+        description: A timeline's driving length
+        default: 180s
       minutes:
         description: The hunt's length in minutes (10 to 240; the machine's setup, about half an hour, comes first)
         default: "60"
@@ -66,6 +78,10 @@ env:
   PURCHASE: ${{ inputs.purchase }}
   PLATFORM_REF: ${{ inputs.platform_ref }}
   KEEP: ${{ inputs.keep_minutes }}
+  WORKLOAD: ${{ inputs.workload }}
+  SCENARIO: ${{ inputs.scenario }}
+  MEMORY_MIB: ${{ inputs.memory_mib }}
+  TIMELINE: ${{ inputs.timeline }}
   SSH_OPTS: -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=60 -o ServerAliveCountMax=10
 
 jobs:
@@ -224,7 +240,7 @@ jobs:
           echo "IP=$ip" >> "$GITHUB_ENV"
           echo "running at $(date -u +%H:%M)"
       - name: Set up the machine (the platform's infra/host/setup.sh; a kept machine only when the platform changed)
-        # No jank: Datalevin's program is Clojure (jank's rolling package needs a kept copy).
+        # No jank: no public workload is in jank yet (jank's rolling package needs a kept copy).
         run: |
           commit=$(git -C platform rev-parse HEAD)
           if [ "$(ssh $SSH_OPTS "admin@$IP" 'cat .ci-platform 2>/dev/null' || true)" = "$commit" ]; then
@@ -275,7 +291,7 @@ jobs:
         run: |
           rsync -az -e "ssh $SSH_OPTS" --exclude .git --exclude platform --exclude zig-out --exclude .zig-cache \
             --exclude user-data --exclude launch.err --exclude report ./ "admin@$IP:determinismo-workloads/"
-          ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }}" > hunt.log 2>&1 &
+          ssh $SSH_OPTS "admin@$IP" "bash determinismo-workloads/host/metal-hunt.sh $MINUTES ${{ github.run_number }} $WORKLOAD $SCENARIO $MEMORY_MIB $TIMELINE" > hunt.log 2>&1 &
           hunt=$!
           # serve on the machine, here at 7878 (the reports' recordings).
           ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"

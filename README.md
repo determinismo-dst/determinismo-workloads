@@ -43,7 +43,7 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
 - `.github/workflows/build.yml`: builds every workload on each push and pull request.
 - `.github/workflows/probe.yml`: what GitHub's hosted runners offer determinismo's hypervisor (run
   by hand).
-- `.github/workflows/aws-hunt.yml` with `host/metal-hunt.sh`: Datalevin's hunt on an AWS
+- `.github/workflows/aws-hunt.yml` with `host/metal-hunt.sh`: a workload's hunt (DuckDB's by default) on an AWS
   bare-metal machine rented for it (a spot m5zn.metal, about a dollar an hour), from GitHub's
   hosted runner: launched from your determinismo base AMI through an OIDC role (no keys stored),
   set up by the platform's `infra/host/setup.sh`, the hunt run for the asked minutes, its counts

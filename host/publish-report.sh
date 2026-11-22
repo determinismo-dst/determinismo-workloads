@@ -27,14 +27,19 @@ recording = json.loads(re.search(r'id="determinismo-report">(.*?)</script>', pag
 info = json.loads(recording["answers"][f"/runs/{run}"])
 properties = json.loads(recording["answers"].get(f"/runs/{run}/properties", "[]"))
 stats = info.get("stats") or {}
+request = info.get("request") or {}
+program = request.get("program_asked") or request.get("program") or ""
+# A kept program's name has serve's content hash before it (<16 hex>-duckdb-test).
+workload = re.sub(r"^[0-9a-f]{16}-", "", program.rsplit("/", 1)[-1]).removesuffix("-test") or "datalevin"
 entry = {"number": int(number), "run": int(run), "date": recording["recorded"][:16].replace("T", " ") + " UTC",
+         "workload": workload, "scenario": request.get("scenario", ""),
          "state": info.get("state", ""), "minutes": int(minutes), "timelines": stats.get("timelines", 0),
          "failing": sum(1 for p in properties if p.get("status") == "failing"), "properties": len(properties)}
 runs = [r for r in json.load(open(f"{pages}/runs.json")) if r["number"] != entry["number"]] + [entry]
 runs.sort(key=lambda r: -r["number"])
 json.dump(runs, open(f"{pages}/runs.json", "w"), indent=1)
 items = "\n".join(
-    f'<li><a href="runs/{r["number"]}/">Run {r["number"]}</a>: Datalevin <code>append</code>, {html.escape(r["date"])}, '
+    f'<li><a href="runs/{r["number"]}/">Run {r["number"]}</a>: {html.escape(r.get("workload", "datalevin"))} <code>{html.escape(r.get("scenario", "append"))}</code>, {html.escape(r["date"])}, '
     f'{r["minutes"]} minutes, {r["timelines"]:,} timelines, '
     f'{"running (updating)" if r["state"] == "running" else html.escape(r["state"])}, '
     f'{r["failing"]} of {r["properties"]} properties failing</li>' for r in runs)

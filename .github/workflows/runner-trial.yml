@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Datalevin's hunt on GitHub's free hosted runners (run by hand), a trial: does a workload of its
+# A workload's hunt (DuckDB's by default) on GitHub's free hosted runners (run by hand), a trial: does a workload of its
 # size run there? A runner is a VM (4 vCPUs, 15 GiB, Ubuntu's AWS 7.0 kernel, nested VT-x and
 # the core PMU on AWS hardware), so determinismo's VMs run nested: our KVM built for its kernel
 # and loaded (the platform's build-kvm.sh, load-kvm.sh: kernel/patches-7.0), determinismo built,
@@ -12,6 +12,18 @@ name: runner-trial
 on:
   workflow_dispatch:
     inputs:
+      workload:
+        description: The workload (workloads/<name>)
+        default: duckdb
+      scenario:
+        description: Its scenario
+        default: append
+      memory_mib:
+        description: A VM's memory (MiB)
+        default: "2048"
+      timeline:
+        description: A timeline's driving length
+        default: 180s
       minutes:
         description: The hunt's time budget in minutes
         default: "20"
@@ -73,10 +85,10 @@ jobs:
           "$HOME/opt/jdk-25/bin/java" -version 2>&1 | head -1
       - name: The program's description, as serve asks for it
         run: |
-          ~/opt/zig/zig build -Drelease --fork="$PWD/platform" datalevin-test
+          ~/opt/zig/zig build -Drelease --fork="$PWD/platform" "${{ inputs.workload }}-test"
           ls -la platform/zig-out/bin/libdeterminismo.so platform/zig-out/lib/ 2>&1 | head -5
           set +e
-          DETERMINISMO_LIBRARY="$PWD/platform/zig-out/bin/libdeterminismo.so" zig-out/bin/datalevin-test --describe > describe.out 2> describe.err
+          DETERMINISMO_LIBRARY="$PWD/platform/zig-out/bin/libdeterminismo.so" "zig-out/bin/${{ inputs.workload }}-test" --describe > describe.out 2> describe.err
           echo "exit $?"
           head -c 600 describe.out; echo; tail -30 describe.err
           set -e
@@ -92,7 +104,7 @@ jobs:
           for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
           curl -fsS -m 10 localhost:7878/build; echo
       - name: Hunt (host/metal-hunt.sh, as on an AWS machine)
-        run: bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}"
+        run: bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}" "${{ inputs.workload }}" "${{ inputs.scenario }}" "${{ inputs.memory_mib }}" "${{ inputs.timeline }}"
       - name: The run's report on this page (the job summary)
         if: always()
         run: cat summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report"

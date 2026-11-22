@@ -230,6 +230,7 @@ jobs:
           # The spot quota taken (a machine still shutting down holds its vCPUs for minutes):
           # the zones tried again each minute, 45 times at most (a c5.metal took up to 20 minutes to shut down).
           for attempt in $(seq 45); do
+          quota= # any zone of this round refused for the quota: a zone without capacity says nothing of it
           while read -r price zone; do
             subnet=$(aws ec2 describe-subnets --filters "Name=availability-zone,Values=$zone" Name=default-for-az,Values=true \
               --query 'Subnets[0].SubnetId' --output text < /dev/null)
@@ -244,9 +245,10 @@ jobs:
               break
             fi
             echo "$zone: none ($(grep -oE '\([A-Za-z]+\)' launch.err | head -1))"
+            if grep -q MaxSpotInstanceCountExceeded launch.err; then quota=1; fi
             id=
           done <<< "$ranked"
-          [ -z "$id" ] && grep -q MaxSpotInstanceCountExceeded launch.err || break
+          [ -z "$id" ] && [ -n "$quota" ] || break
           echo "the spot quota is taken: again in a minute"
           sleep 60
           done

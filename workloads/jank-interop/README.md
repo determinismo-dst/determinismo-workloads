@@ -179,6 +179,16 @@ image for a closer look there.
   `-9223372036854775808` is unsigned in C++. The same natively on x86-64 Linux with jank's PPA
   build, 44eea86 and main 774d02f (2026-11-19); a macOS arm64 build of 2026-11-09 answers 0. No
   issue found in jank's tracker. Repro: `repro/int64-min-literal-is-unsigned.jank`.
+- **An empty lazy seq is `=` to `[]` and hashes differently.** With `e` `(filter odd? [2])`,
+  `(= [] e)` is true and `(contains? (conj (set (range 20)) []) e)` false; a hash map keyed by `[]`
+  does not find `e` either, and `(distinct [[] e])` keeps both. `take 0`, `concat` and `lazy-seq`
+  answer the same; a seq with elements hashes right. Found by the equality and hashing construct in
+  the same hunt ([aws-hunt run 17](https://determinismo-dst.github.io/determinismo-workloads/runs/17-aws/),
+  2026-11-22: 366 evaluations in 55 of its 1,773 timelines). `lazy_sequence::to_hash` answers a bare
+  1 when the seq is empty, where `hash::ordered` mixes that 1 with the length. The same natively
+  with jank's PPA build and main 774d02f (2026-11-19) on x86-64 Linux, and on macOS arm64. Nothing
+  found searching the text of jank's issues and pull requests. Repro:
+  `repro/empty-lazy-seq-hash.jank`.
 - **A NaN made by arithmetic crashes jank when used.** `(NaN? (/ 0.0 0.0))`, `(str (- ##Inf
   ##Inf))`, `(= 1.0 (/ 0.0 0.0))`, `(type (/ 0.0 0.0))`: a segmentation fault each, natively too;
   the literal `##NaN` (and its negation) is fine. Found by the float arithmetic construct under

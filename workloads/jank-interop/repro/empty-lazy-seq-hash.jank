@@ -1,0 +1,12 @@
+; SPDX-License-Identifier: MIT
+; An empty lazy seq (filter, take 0, concat, lazy-seq) is = to [] and hashes differently, so a set or
+; a hash map keyed by [] does not find it and distinct keeps both. lazy_sequence::to_hash answers a
+; bare 1 when the seq is empty; hash::ordered, which [] and () hash with, mixes that 1 with the
+; length (hash.cpp). A seq with elements hashes right.
+; Clojure answers true, true, :v, 1.
+(def e (filter odd? [2]))
+(println "expected true, = answers:" (= [] e))
+(println "expected true, a set's lookup answers:" (contains? (conj (set (range 20)) []) e))
+(println "expected :v, a hash map's lookup answers:" (get (assoc (into {} (map (fn [i] [i i]) (range 20))) [] :v) e))
+(println "expected 1, distinct's count answers:" (count (distinct [[] e])))
+(println "passing, with elements:" (contains? (conj (set (range 20)) [1]) (filter odd? [1 2])))

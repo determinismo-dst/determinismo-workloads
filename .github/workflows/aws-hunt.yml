@@ -263,13 +263,20 @@ jobs:
         # Without jank here: a workload in jank gets it next.
         run: |
           commit=$(git -C platform rev-parse HEAD)
+          # SSH first (bare metal answers a while after EC2 says running): refused, the check below
+          # read as not set up, and a machine from a commit's hunt image would be set up again.
+          up=
+          for _ in $(seq 90); do
+            if ssh $SSH_OPTS -o ConnectTimeout=10 "admin@$IP" true 2> /dev/null; then up=1; break; fi
+            sleep 10
+          done
+          [ -n "$up" ] || { echo "no SSH from the machine (90 tries)"; exit 1; }
           if [ "$(ssh $SSH_OPTS "admin@$IP" 'cat .ci-platform 2>/dev/null' || true)" = "$commit" ]; then
             echo "set up already with the platform at ${commit::12}"
             exit 0
           fi
           # A fresh machine ends its own boot first (cloud-init; apt's timers catching up on an
           # image days old held dpkg's lock and setup's apt failed), 15 minutes at most for each.
-          for _ in $(seq 90); do ssh $SSH_OPTS -o ConnectTimeout=10 "admin@$IP" true 2> /dev/null && break; sleep 10; done
           ssh $SSH_OPTS "admin@$IP" 'timeout 900 cloud-init status --wait > /dev/null || true
             sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer
             # Busy: an apt process, or a lock of theirs held (by inode in /proc/locks: not by the

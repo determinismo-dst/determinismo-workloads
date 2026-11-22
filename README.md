@@ -56,13 +56,6 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
   on its run page (the job summary), and whole, read only, at
   [determinismo-dst.github.io/determinismo-workloads](https://determinismo-dst.github.io/determinismo-workloads/)
   (one page a run). What to set up once is at the top of the workflow. Run by hand.
-- `.github/workflows/hunt.yml` with `host/hunt.sh`: an example of a continuous hunt on your own
-  determinismo host. Each tick (every 15 minutes) asks the host, over SSH with a key limited to
-  that one command (`restrict,command="…/hunt.sh"` in its `authorized_keys`), to keep Datalevin's
-  hunt going: its run resumed, a new run when the last finished or the deployed build changed, or
-  stopped when the host is busy with other runs. Off unless the repository variable `HUNT` is
-  `on` and the secrets `HUNT_HOST`, `HUNT_USER`, `HUNT_SSH_KEY` and `HUNT_KNOWN_HOSTS` are set;
-  never on pull requests; its log holds counts only.
 
 ## License
 

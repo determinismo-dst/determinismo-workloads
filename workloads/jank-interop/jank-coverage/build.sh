@@ -34,7 +34,13 @@ mkdir -p "$work/voidstar" && cp "$voidstar" "$work/voidstar/"
 # The C SDK's assertions: its header for the patched files, its implementation an archive.
 mkdir -p "$work/det" && cp "$header" "$work/det/"
 printf '#define DETERMINISMO_IMPLEMENTATION\n#include "determinismo.h"\n' > "$work/det/det.c"
-"$CC" -O2 -fPIC -I"$work/det" -c "$work/det/det.c" -o "$work/det/det.o"
+# Hidden: jank's executable exports its symbols to the code it compiles at run time, and the C
+# SDK's det_ functions share their names with libdeterminismo's, not their signatures (det_swarm_index
+# takes a name and a count, libdeterminismo's a name, its size and a count). Exported, they took the
+# jank SDK's calls: the name's size read as the count (an index of 15 for 12 types), a size read as
+# a string (a crash at 0xd), in every timeline (srv4 campaign run 6). Hidden, jank's own patched
+# files still link them, and compiled jank code finds libdeterminismo's.
+"$CC" -O2 -fPIC -fvisibility=hidden -I"$work/det" -c "$work/det/det.c" -o "$work/det/det.o"
 ar rcs "$work/det/libdeterminismo-assert.a" "$work/det/det.o"
 cov="-fsanitize-coverage=trace-pc-guard -I$work/det"
 # -fno-sanitize-link-runtime: with -fsanitize-coverage on the link, Clang's driver links compiler-rt's
@@ -46,7 +52,15 @@ link="-fno-sanitize-link-runtime -L$work/voidstar -lvoidstar -Wl,-rpath,/usr/lib
 ./bin/configure -GNinja -DCMAKE_BUILD_TYPE=Release -Djank_local_clang=on \
   -DCMAKE_C_FLAGS="$cov" -DCMAKE_CXX_FLAGS="$cov" \
   -DCMAKE_EXE_LINKER_FLAGS="$link" -DCMAKE_SHARED_LINKER_FLAGS="$link"
-./bin/compile
+# A job per 4 GB available (jank's translation units are large), at most one per CPU it may use.
+jobs=$(awk '/MemAvailable/ {j = int($2 / 4194304); print j < 1 ? 1 : j}' /proc/meminfo)
+if [ "$jobs" -gt "$(nproc)" ]; then jobs=$(nproc); fi
+./bin/compile --parallel "$jobs"
+# Not one det_ function exported (above): a check, the install refused otherwise.
+if nm -D --defined-only build/jank | grep -q ' det_'; then
+  echo "error: build/jank exports det_ functions" >&2
+  exit 1
+fi
 install=$work/jank-install
 rm -rf "$install" && DESTDIR=$install cmake --install build > /dev/null
 mkdir -p "$install/usr/lib" && cp "$voidstar" "$install/usr/lib/libvoidstar.so"

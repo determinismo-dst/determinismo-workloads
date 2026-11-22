@@ -14,6 +14,10 @@ on:
       platform_ref:
         description: The platform's ref for report-static.sh
         default: next
+      logs:
+        description: Also show the run's host checks' lines and podman's images and containers
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -78,6 +82,12 @@ jobs:
           platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html
           url=$(host/publish-report.sh report "$NUMBER" "$MINUTES" | tail -1)
           echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The run's host checks, as the machine has them
+        if: inputs.logs
+        run: |
+          ssh $SSH_OPTS "admin@$IP" 'run=$(cat determinismo-workloads/run-id); f=~/.determinismo/runs/$run/output.log;
+            ls -la ~/.determinismo/runs/$run/ | head -30; grep -n -i -B2 -A12 "elle\|check " "$f" | tail -120;
+            podman images --format "{{.Repository}}:{{.Tag}} {{.Created}}"; podman ps -a --format "{{.Names}} {{.Status}}"; podman logs --tail 40 determinismo-elle 2>&1 | tail -40' || true
       - name: SSH closed for this runner
         if: always() && env.SG != ''
         run: |

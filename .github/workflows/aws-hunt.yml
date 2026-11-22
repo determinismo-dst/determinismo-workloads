@@ -306,6 +306,12 @@ jobs:
             sleep 15
             lines=$(wc -l < hunt.log)
             if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
+            # The tunnel's troubles as they come (its warnings, errors, lost connections).
+            troubles=$(ssh $SSH_OPTS "admin@$IP" "grep -nE 'ERR|WRN|Unregistered|Lost|Retrying|terminated' ~/live-tunnel.log"  2>/dev/null || true)
+            if [ -n "$troubles" ]; then
+              echo "$troubles" | awk -F: -v after="${troubles_seen:-0}" '$1 > after' | cut -d: -f2- | sed 's/^/tunnel: /'
+              troubles_seen=$(echo "$troubles" | tail -1 | cut -d: -f1)
+            fi
             # The live link checked from here each minute; when it does not answer, the tunnel's log.
             if [ "$(( $(date +%s) / 60 ))" != "${checked:-}" ]; then
               checked=$(( $(date +%s) / 60 ))

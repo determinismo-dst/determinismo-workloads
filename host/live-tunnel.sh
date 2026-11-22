@@ -22,7 +22,13 @@ chmod +x "$binary"
 nohup "$binary" tunnel --no-autoupdate --protocol http2 --url "http://127.0.0.1:$port" > "$log" 2>&1 &
 for _ in $(seq 90); do
   url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" | head -1 || true)
-  [ -n "$url" ] && { echo "$url"; exit 0; }
+  registered=$(grep -m1 "Registered tunnel connection" "$log" || true)
+  if [ -n "$url" ] && [ -n "$registered" ]; then
+    # Where Cloudflare holds it, in the job's log (stderr): what to look at when it drops.
+    echo "tunnel: $(echo "$registered" | grep -oE 'location=[a-z0-9]+|protocol=[a-z0-9]+' | tr '\n' ' ')" >&2
+    echo "$url"
+    exit 0
+  fi
   sleep 1
 done
 echo "error: no tunnel address in 90 s: $(tail -3 "$log")" >&2

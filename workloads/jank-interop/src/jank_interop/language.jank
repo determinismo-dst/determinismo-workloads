@@ -221,7 +221,9 @@ int64_t jank_interop_smodel_snapshot() { jank_interop_sversions.push_back(jank_i
       :letfn (let [p (fresh)]
                (list 'letfn [(list 'helper [p] (sub (conj scope p)))] (list 'helper (sub scope))))
       :closure (let [g (fresh) p (hegel/element tc (filterv #(not= % g) names))]
-                 (list 'let [g (list 'fn [p] (sub (conj scope p)))] (list g (sub scope))))
+                 ;; The argument without g, the function inside the let: a name in scope that g
+                 ;; shadowed would pass the function where a number is due ((c c); Clojure throws).
+                 (list 'let [g (list 'fn [p] (sub (conj scope p)))] (list g (sub (disj scope g)))))
       :collection (let [items (vec (for [_ (range (hegel/integer tc 1 4))] (sub scope)))]
                     (hegel/element tc [(list 'count items) (list 'nth items 0) (list 'reduce '+ items)
                                        (list 'first (list 'map 'inc items)) (list 'apply 'max items)])))))

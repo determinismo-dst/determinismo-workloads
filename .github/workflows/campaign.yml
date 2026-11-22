@@ -1,0 +1,240 @@
+# SPDX-License-Identifier: MIT
+# Campaigns: each workload's one long hunt on GitHub's free runners, a stretch of an hour every
+# two hours, each stretch continuing where the last stopped (host/campaign.sh: the run started
+# once, then resumed: the same run, its tree continued from its timelines' summaries). What a
+# stretch leaves (serve's data for the run: its record, summaries, events, tapes and artifacts;
+# the system it booted, pinned, with its image) is this workflow's artifact
+# campaign-<workload>-<campaign>, the newest one taken by the next stretch; a campaign is a
+# workload's scenario at a platform commit (campaigns.json's, a fixed one: else build.zig.zon's
+# pin) and a version of its workload files (a change to either starts a new run: a resume needs
+# the same inputs). Its report: the job summary, and the
+# static page on this repository's Pages (runs/campaign-<workload>/), recorded after each
+# stretch. A runner without a core PMU (Azure's) cannot run determinismo: the job asks for
+# another (this workflow again, a few tries) and stops.
+name: campaign
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      workload:
+        description: One workload (empty, every campaign in campaigns.json)
+        default: ""
+      minutes:
+        description: The stretch's length in minutes
+        default: "60"
+      try:
+        description: Which try (a job on a runner without a PMU asks for the next)
+        default: "1"
+
+permissions:
+  contents: write # The report's page: the gh-pages branch.
+  actions: write # Another try (a dispatch), the campaign's older artifacts deleted.
+
+jobs:
+  campaigns:
+    runs-on: ubuntu-24.04
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        env:
+          ONLY: ${{ inputs.workload }}
+        run: |
+          echo "list=$(python3 -c "
+          import json, os
+          campaigns = json.load(open('campaigns.json'))
+          only = os.environ.get('ONLY', '')
+          print(json.dumps([c for c in campaigns if not only or c['workload'] == only]))")" >> "$GITHUB_OUTPUT"
+
+  stretch:
+    needs: campaigns
+    strategy:
+      fail-fast: false
+      matrix:
+        campaign: ${{ fromJSON(needs.campaigns.outputs.list) }}
+    # One stretch of a campaign at a time: the next waits for this one's state.
+    concurrency:
+      group: campaign-${{ matrix.campaign.workload }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      WORKLOAD: ${{ matrix.campaign.workload }}
+      SCENARIO: ${{ matrix.campaign.scenario }}
+      MEMORY_MIB: ${{ matrix.campaign.memory_mib }}
+      TIMELINE: ${{ matrix.campaign.timeline }}
+      MINUTES: ${{ inputs.minutes || '60' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The machine (one without a core PMU asks for another)
+        id: machine
+        env:
+          TRY: ${{ inputs.try || '1' }}
+        run: |
+          echo "kernel $(uname -r), cpu $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2), $(nproc) vCPUs, $(free -g | awk '/Mem:/{print $2}') GiB"
+          if grep -q arch_perfmon /proc/cpuinfo; then echo "ok=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "no core PMU here (an Azure runner)"
+          if [ "$TRY" -lt 4 ]; then
+            gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+              -f workload="$WORKLOAD" -f minutes="$MINUTES" -f try=$((TRY + 1))
+            echo "asked for try $((TRY + 1))"
+          else
+            echo "try $TRY: no more tries for this stretch"
+          fi
+      - name: Room on the disk (a system's image build, DuckDB's from source, and the state)
+        if: steps.machine.outputs.ok
+        run: |
+          # The runner's ~14 GB free would not hold them: SDKs this job never uses removed.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h / | tail -1
+      - uses: actions/checkout@v4
+        if: steps.machine.outputs.ok
+      - name: The platform, at the campaign's commit (campaigns.json's platform, else build.zig.zon's pin)
+        if: steps.machine.outputs.ok
+        id: keys
+        env:
+          PLATFORM: ${{ matrix.campaign.platform }}
+        run: |
+          # A fixed commit, not a branch: a campaign continues only on the platform it started on.
+          ref=${PLATFORM:-$(grep -oE 'determinismo/archive/[0-9a-f]{40}' build.zig.zon | cut -d/ -f3)}
+          git clone -q https://github.com/determinismo-dst/determinismo platform
+          git -C platform checkout -q "$ref"
+          echo "kernel=$(uname -r)" >> "$GITHUB_OUTPUT"
+          echo "platform=$ref" >> "$GITHUB_OUTPUT"
+          # The campaign: the scenario, the platform's commit and the workload's files.
+          files=$(find "workloads/$WORKLOAD" -type f | sort | xargs sha256sum | sha256sum | cut -c1-12)
+          echo "campaign=campaign-$WORKLOAD-$SCENARIO-${ref:0:12}-$files" >> "$GITHUB_OUTPUT"
+      # What does not change between stretches, kept (GitHub's Actions cache): our KVM's modules,
+      # the guest kernel and its module, the tools, Zig's build caches.
+      - uses: actions/cache@v4
+        if: steps.machine.outputs.ok
+        with:
+          path: ~/kept/kvm
+          key: kvm-${{ steps.keys.outputs.kernel }}-${{ hashFiles('platform/kernel/**', 'platform/infra/host/build-kvm.sh') }}
+      - uses: actions/cache@v4
+        if: steps.machine.outputs.ok
+        with:
+          path: ~/kept/guest
+          key: guest-${{ hashFiles('platform/guest/kernel/**', 'platform/guest/module/**') }}
+      - uses: actions/cache@v4
+        if: steps.machine.outputs.ok
+        with:
+          path: |
+            ~/.cache/zig
+            platform/.zig-cache
+          key: zig-${{ steps.keys.outputs.platform }}
+          restore-keys: zig-
+      - name: Our KVM (build-kvm.sh once for this kernel and patches, load-kvm.sh)
+        if: steps.machine.outputs.ok
+        run: |
+          if [ ! -f ~/kept/kvm/kvm-intel.ko ]; then
+            platform/infra/host/build-kvm.sh > kvm.log 2>&1 || { tail -30 kvm.log; exit 1; }
+            mkdir -p ~/kept/kvm && cp ~/kvm-build/linux-*/arch/x86/kvm/kvm.ko ~/kvm-build/linux-*/arch/x86/kvm/kvm-intel.ko ~/kept/kvm/
+          else
+            echo "our KVM kept for $(uname -r)"
+          fi
+          sudo platform/infra/host/load-kvm.sh ~/kept/kvm
+          sudo chmod 666 /dev/kvm
+      - uses: actions/cache@v4
+        if: steps.machine.outputs.ok
+        with:
+          path: ~/opt
+          key: tools-nojank-${{ hashFiles('platform/infra/host/tools.sh') }}
+      - name: determinismo and the guest
+        if: steps.machine.outputs.ok
+        run: |
+          sudo apt-get install -y -q busybox-static e2fsck-static erofs-utils cpio zstd > /dev/null
+          cd platform
+          infra/host/tools.sh --no-jank > /dev/null
+          ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
+          if [ -f ~/kept/guest/vmlinuz ] && [ -f ~/kept/guest/det_guest.ko ]; then
+            mkdir -p ~/guest && cp ~/kept/guest/vmlinuz ~/kept/guest/det_guest.ko ~/guest/ && echo "the guest kernel kept"
+          else
+            guest/kernel/build.sh ~/guest > guest.log 2>&1 || { tail -30 guest.log; exit 1; }
+            mkdir -p ~/kept/guest && cp ~/guest/vmlinuz ~/guest/det_guest.ko ~/kept/guest/
+          fi
+          zig-out/bin/det-initramfs --bin zig-out/bin --module ~/guest/det_guest.ko \
+            --busybox "$(command -v busybox)" --e2fsck "$(command -v e2fsck.static)" --out ~/guest/base.cpio
+          zig-out/bin/determinismo doctor 2>&1 | grep -E "FAIL|warn|ready" || true
+      - name: The campaign's state (the newest stretch's artifact; none, a new run)
+        if: steps.machine.outputs.ok
+        env:
+          CAMPAIGN: ${{ steps.keys.outputs.campaign }}
+        run: |
+          mkdir -p ~/campaign ~/cache
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$CAMPAIGN&per_page=20" \
+            --jq '[.artifacts[] | select(.expired | not)] | sort_by(.created_at) | last | .id // empty')
+          if [ -z "$id" ]; then echo "$CAMPAIGN: no stretch yet, a new run"; exit 0; fi
+          # Written as it comes (a state of a GB or more): curl, not gh api.
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -o ~/state.zip \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip"
+          unzip -q ~/state.zip -d ~ && rm ~/state.zip
+          tar -C ~ --zstd -xf ~/state.tar.zst && rm ~/state.tar.zst
+          echo "$CAMPAIGN: run $(cat ~/campaign/run-id), $(cat ~/campaign/stretches) stretches so far ($(du -sh ~/.determinismo | cut -f1) of serve's data)"
+      - name: serve, as infra/host/serve.sh starts it
+        if: steps.machine.outputs.ok
+        run: |
+          # The layout an AWS machine has (host/metal-hunt.sh's): the platform's tree and this repository.
+          ln -sfn "$PWD/platform" ~/determinismo
+          ln -sfn "$PWD" ~/determinismo-workloads
+          cd platform
+          nohup zig-out/bin/determinismo serve --listen 127.0.0.1:7878 --bb ~/opt/bb/bb \
+            --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --append quiet --cache ~/cache --memory-mib 4096 > ~/serve.log 2>&1 &
+          for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
+          curl -fsS -m 10 localhost:7878/build; echo
+      - name: The stretch (host/campaign.sh; counts every 10 minutes)
+        if: steps.machine.outputs.ok
+        run: bash host/campaign.sh ~/campaign "$MINUTES" "$WORKLOAD" "$SCENARIO" "$MEMORY_MIB" "$TIMELINE"
+      - name: The run's report on this page (the job summary)
+        if: always() && steps.machine.outputs.ok
+        run: cat summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report"
+      - name: The run's report as a page of its own (read only), published (GitHub Pages)
+        if: always() && steps.machine.outputs.ok
+        run: |
+          [ -s run-id ] || { echo "no run"; exit 0; }
+          mkdir -p report
+          platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html
+          url=$(host/publish-report.sh report "campaign-$WORKLOAD" "$(( $(cat ~/campaign/stretches) * MINUTES ))" | tail -1)
+          echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The campaign's state for the next stretch (the run stopped to be continued)
+        if: always() && steps.machine.outputs.ok
+        id: state
+        run: |
+          [ -s ~/campaign/run-id ] || { echo "no run to keep"; exit 0; }
+          run=$(cat ~/campaign/run-id)
+          state=$(curl -s -m 30 "localhost:7878/runs/$run" | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))" || true)
+          [ "$state" = stopped ] || { echo "run $run is '$state': nothing to continue, not kept"; exit 0; }
+          # Its holders and snapshots stay: the next stretch makes its own as it returns.
+          tar -C ~ --zstd -cf ~/state.tar.zst --exclude='.determinismo/runs/*/holders' \
+            --exclude='.determinismo/runs/*/snapshots' .determinismo cache/systems cache/images campaign
+          echo "kept $(du -h ~/state.tar.zst | cut -f1)"
+          echo "keep=1" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.state.outputs.keep
+        with:
+          name: ${{ steps.keys.outputs.campaign }}
+          path: ~/state.tar.zst
+          compression-level: 0
+          retention-days: 30
+          overwrite: false
+      - name: The campaign's older states deleted (the newest two kept)
+        if: always() && steps.state.outputs.keep
+        env:
+          CAMPAIGN: ${{ steps.keys.outputs.campaign }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$CAMPAIGN&per_page=50" \
+            --jq '[.artifacts[] | select(.expired | not)] | sort_by(.created_at) | reverse | .[2:] | .[].id' |
+          while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" && echo "deleted $id"; done
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.machine.outputs.ok
+        with:
+          name: logs-${{ matrix.campaign.workload }}-${{ github.run_id }}
+          path: |
+            report/index.html
+            kvm.log
+            ~/serve.log
+          if-no-files-found: ignore
+          retention-days: 14

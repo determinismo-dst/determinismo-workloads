@@ -207,7 +207,7 @@ jobs:
             if id=$(aws ec2 run-instances --image-id "$ami" --instance-type "$TYPE" --subnet-id "$subnet" \
                  --security-group-ids "$sg" "${market[@]}" --instance-initiated-shutdown-behavior terminate \
                  --user-data file://user-data \
-                 --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=200,VolumeType=gp3,DeleteOnTermination=true}' \
+                 --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=1000,VolumeType=gp3,DeleteOnTermination=true}' \
                  --tag-specifications "ResourceType=instance,Tags=[{Key=project,Value=determinismo-ci},{Key=Name,Value=determinismo-ci},{Key=ci-state,Value=busy}]" \
                    'ResourceType=volume,Tags=[{Key=project,Value=determinismo-ci}]' \
                  --query 'Instances[0].InstanceId' --output text 2> launch.err < /dev/null); then

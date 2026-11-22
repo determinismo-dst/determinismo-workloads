@@ -58,6 +58,8 @@ import threading
 
 import duckdb
 
+import determinismo as det
+
 PATH = "/data/jepsen.duckdb"
 TABLES = 3
 TOKEN = "determinismo-token"
@@ -424,6 +426,10 @@ def serve(connection):
 
 
 def main():
+    # The platform's coverage (the Python SDK, sys.monitoring): this node's code and DuckDB's
+    # Python package, each line a "coverage" event the first time it runs. DuckDB's engine is
+    # C++, not covered (serve's gate: a run without coverage is stopped, "coverage always").
+    det.coverage_start([os.path.dirname(os.path.abspath(__file__)), os.path.dirname(duckdb.__file__)])
     port = int(sys.argv[1])
     if QUACK_HOST is None:
         opened()  # The database opened (its WAL replayed) before the node listens: ready.

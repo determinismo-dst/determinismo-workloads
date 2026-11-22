@@ -11,6 +11,8 @@ import time
 
 import duckdb
 
+import determinismo as det
+
 PATH = "/data/jepsen.duckdb"
 TOKEN = "determinismo-token"
 EXTENSIONS = {"extension_directory": "/opt/duckdb/extensions"}  # Quack's, installed by the image.
@@ -20,6 +22,10 @@ THRESHOLD = THRESHOLDS[(int(os.environ.get("DETERMINISMO_DRAW", "0")) >> 8) % le
 
 
 def main():
+    # The platform's coverage (the Python SDK, sys.monitoring): this node's code and DuckDB's
+    # Python package, each line a "coverage" event the first time it runs. DuckDB's engine is
+    # C++, not covered (serve's gate: a run without coverage is stopped, "coverage always").
+    det.coverage_start([os.path.dirname(os.path.abspath(__file__)), os.path.dirname(duckdb.__file__)])
     # The WAL replayed before serving.
     database = duckdb.connect(PATH, config=dict(EXTENSIONS, checkpoint_threshold=THRESHOLD))
     database.execute("LOAD quack")

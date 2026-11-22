@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir duckdb==2.0.0
 # (autoloaded: "read-only crypto module loaded" without it). In a directory of their own: a node
 # starts without HOME, where DuckDB looks by default (~/.duckdb).
 RUN python3 -c "import duckdb; c = duckdb.connect(config={'extension_directory': '/opt/duckdb/extensions'}); c.execute('INSTALL quack'); c.execute('INSTALL httpfs')"
+# The platform's Python SDK (determinismo.py: events, assertions, coverage), as the build's
+# context determinismo-sdk gives it.
+COPY --from=determinismo-sdk python/determinismo.py /opt/duckdb/determinismo.py
 COPY workloads/duckdb/local_node.py /opt/duckdb/local_node.py
 COPY workloads/duckdb/quack_server.py /opt/duckdb/quack_server.py
 RUN mkdir -p /data

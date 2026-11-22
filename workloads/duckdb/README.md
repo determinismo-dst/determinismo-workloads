@@ -11,6 +11,10 @@ determinismo explore --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --memor
   --program zig-out/bin/duckdb-test --scenario append --seed 1 --branches 64
 ```
 
+Coverage (the platform's Python SDK, `coverage_start`): the nodes' code and DuckDB's Python
+package, a line at a time. DuckDB's engine is C++ and not instrumented, so its coverage signal is
+the Python layer's alone.
+
 Elle checks each timeline at strong snapshot isolation, what Jepsen's test checks (DuckDB's
 optimistic concurrency: each transaction reads its snapshot, and a conflict found at the commit
 rolls it back; Jepsen saw it allow G2-item, so no more than snapshot isolation is asked):

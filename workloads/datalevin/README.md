@@ -182,7 +182,14 @@ partitions, clock skew. The client has none of its own.
   a node whose init fails inside `createAndInitRaftNode` never reaches the service Datalevin
   shuts down). Still so on master (2026-11-06, `save-fsm-snapshot!` and `dump-bytes`). Not in
   the tracker (searched snapshot load failed, Thaw failed, Fail to init node, thread leak,
-  control snapshot, fsync snapshot). Not reported.
+  control snapshot, fsync snapshot). Not reported. Two such losses take the whole cluster:
+  in [aws-hunt run 18](https://determinismo-dst.github.io/determinismo-workloads/runs/18-aws/)
+  (2026-11-22, c5.metal), timeline 49, dl2's and dl3's power losses at 677 to 681 s each cut its
+  published `fsm-state.nippy` from 385 bytes to 0 (`snapshot_1342`, `snapshot_1425`: the power
+  loss's own record of the files it changed, that file the only one), both control planes failed
+  every start from 776 s on (816 times), and with two of three voters gone no read answered for
+  the 600 s after the faults ("the cluster answers once faults stop"). Still written unsynced in
+  1.2.11 and on master c992272 (2026-11-21).
   Reproduce: `determinismo bundle <run 1145's directory> 6 <out>`, then in it `determinismo
   explore --run . --branch 6`; its threads: `infra/host/moment.sh 1145 6 1630000 'det:threads dl1'`.
 

@@ -68,6 +68,10 @@ jobs:
       TIMELINE: ${{ matrix.campaign.timeline }}
       MINUTES: ${{ inputs.minutes || '60' }}
       GH_TOKEN: ${{ github.token }}
+      # A workload in jank runs its --describe on the host's jank: tools.sh's pinned build, kept
+      # on this repository's release (jank's own repository republishes it under one name).
+      JANK: ${{ matrix.campaign.jank && '1' || '' }}
+      JANK_DEB: https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-0.1-noble-68f6d0d8/jank_0.1-noble_amd64.deb
     steps:
       - name: The machine (one without a core PMU asks for another)
         id: machine
@@ -142,13 +146,20 @@ jobs:
         if: steps.machine.outputs.ok
         with:
           path: ~/opt
-          key: tools-nojank-${{ hashFiles('platform/infra/host/tools.sh') }}
+          key: tools-${{ matrix.campaign.jank && 'jank' || 'nojank' }}-${{ hashFiles('platform/infra/host/tools.sh') }}
       - name: determinismo and the guest
         if: steps.machine.outputs.ok
         run: |
           sudo apt-get install -y -q busybox-static e2fsck-static erofs-utils cpio zstd > /dev/null
           cd platform
-          infra/host/tools.sh --no-jank > /dev/null
+          if [ -n "$JANK" ]; then
+            # tools.sh's fetch takes a file already there with its checksum.
+            mkdir -p ~/opt
+            [ -f ~/opt/jank/.sha256 ] || curl -fsSL -o ~/opt/jank_0.1-noble_amd64.deb "$JANK_DEB"
+            infra/host/tools.sh > /dev/null
+          else
+            infra/host/tools.sh --no-jank > /dev/null
+          fi
           ~/opt/zig/zig build determinismo guest -Drelease -Dduckdb="$HOME/opt/duckdb" -Djdk="$HOME/opt/jdk-25"
           if [ -f ~/kept/guest/vmlinuz ] && [ -f ~/kept/guest/det_guest.ko ]; then
             mkdir -p ~/guest && cp ~/kept/guest/vmlinuz ~/kept/guest/det_guest.ko ~/guest/ && echo "the guest kernel kept"

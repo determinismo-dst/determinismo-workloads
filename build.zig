@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 //! The workloads' test programs, the platform a Zig dependency (build.zig.zon): `zig build
-//! <workload>`, each into zig-out/bin. A Clojure workload is packed into one file, a shell script
-//! that runs itself as a jar of its sources and the platform's Clojure SDK (the platform's
-//! tools/program_pack.zig).
+//! <workload>`, each into zig-out/bin. A Clojure or jank workload is packed into one file, a shell
+//! script that runs itself as a jar of its sources and the platform's SDK for its language (the
+//! platform's tools/program_pack.zig; a jank one runs on the host's jank, infra/host/tools.sh).
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
@@ -23,9 +23,11 @@ pub fn build(b: *std.Build) void {
     const all = b.step("workloads", "Every workload");
     // Each workload found by its layout, nothing to list: workloads/<name>/workload/ holds a
     // Clojure program (the platform's sdk/clojure, determinismo.workload), built as <name>-test,
-    // its main namespace <name>-workload; workloads/<name>/<name>_test.zig a Zig one, <name>-test
-    // too, with the platform's modules (determinismo, tcp, resp, nrepl, pg). Moving a workload here
-    // is moving its directory.
+    // its main namespace <name>-workload; workloads/<name>/src/<name, - as _>/workload.jank a jank
+    // one (sdk/jank's determinismo.workload; a lein project's layout), <name>-test, its main
+    // namespace <name>.workload; workloads/<name>/<name>_test.zig a Zig one, <name>-test too, with
+    // the platform's modules (determinismo, tcp, resp, nrepl, pg). Moving a workload here is moving
+    // its directory.
     var workloads_dir = b.root.openDir(b.graph.io, "workloads", .{ .iterate = true }) catch @panic("no workloads/");
     defer workloads_dir.close(b.graph.io);
     var names: std.ArrayList([]const u8) = .empty;
@@ -64,6 +66,28 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&installed.step);
             continue;
         } else |_| {}
+        const jank_main = b.fmt("workloads/{s}/src/{s}/workload.jank", .{ name, underscored(b, name) });
+        if (b.root.access(b.graph.io, jank_main, .{})) {
+            const program = .{
+                .name = b.fmt("{s}-test", .{name}),
+                .main = b.fmt("{s}.workload", .{name}),
+                .sources = b.fmt("workloads/{s}/src", .{name}),
+            };
+            const pack = b.addRunArtifact(program_pack);
+            const packed_program = pack.addOutputFileArg(program.name);
+            pack.addArg("jank");
+            pack.addArg(program.main);
+            pack.addDirectoryArg(b.path(program.sources));
+            pack.addDirectoryArg(determinismo.path("sdk/jank/determinismo/src"));
+            inputs(b, pack, program.sources, ".jank");
+            inputs(determinismo.builder, pack, "sdk/jank/determinismo/src", ".jank");
+            const installed = b.addInstallFileWithDir(packed_program, .bin, program.name);
+            const step = b.step(program.name, b.fmt("The {s} workload: its test program (jank)", .{program.name}));
+            step.dependOn(&installed.step);
+            all.dependOn(step);
+            b.getInstallStep().dependOn(&installed.step);
+            continue;
+        } else |_| {}
         workloads_dir.access(b.graph.io, b.pathJoin(&.{ name, "workload" }), .{}) catch continue;
         const program = .{
             .name = b.fmt("{s}-test", .{name}),
@@ -77,8 +101,8 @@ pub fn build(b: *std.Build) void {
         pack.addDirectoryArg(b.path(program.sources));
         pack.addDirectoryArg(determinismo.path("sdk/clojure"));
         // Each source an input: a directory argument is its path, not its files.
-        inputs(b, pack, program.sources);
-        inputs(determinismo.builder, pack, "sdk/clojure");
+        inputs(b, pack, program.sources, ".clj");
+        inputs(determinismo.builder, pack, "sdk/clojure", ".clj");
         const installed = b.addInstallFileWithDir(packed_program, .bin, program.name);
         const step = b.step(program.name, b.fmt("The {s} workload: its test program (Clojure)", .{program.name}));
         step.dependOn(&installed.step);
@@ -87,9 +111,9 @@ pub fn build(b: *std.Build) void {
     }
 }
 
-/// Each .clj file under `directory` (relative to `b`'s root: this build's or the platform's) an
-/// input of `run`.
-fn inputs(b: *std.Build, run: *std.Build.Step.Run, directory: []const u8) void {
+/// Each file ending in `extension` under `directory` (relative to `b`'s root: this build's or the
+/// platform's) an input of `run`.
+fn inputs(b: *std.Build, run: *std.Build.Step.Run, directory: []const u8, extension: []const u8) void {
     const io = b.graph.io;
     var dir = b.root.openDir(io, directory, .{ .iterate = true }) catch |err|
         std.debug.panic("{s}: {t}", .{ directory, err });
@@ -97,7 +121,14 @@ fn inputs(b: *std.Build, run: *std.Build.Step.Run, directory: []const u8) void {
     var walker = dir.walk(b.allocator) catch @panic("out of memory");
     defer walker.deinit();
     while (walker.next(io) catch |err| std.debug.panic("{s}: {t}", .{ directory, err })) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".clj")) continue;
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, extension)) continue;
         run.addFileInput(b.path(b.pathJoin(&.{ directory, entry.path })));
     }
+}
+
+/// A workload's name as a namespace's directory: `-` as `_` (jank-interop's src/jank_interop/).
+fn underscored(b: *std.Build, name: []const u8) []const u8 {
+    const out = b.allocator.dupe(u8, name) catch @panic("out of memory");
+    std.mem.replaceScalar(u8, out, '-', '_');
+    return out;
 }

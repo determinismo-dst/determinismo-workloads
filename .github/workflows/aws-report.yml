@@ -18,6 +18,10 @@ on:
         description: Also show the run's host checks' lines, podman's images and containers, and serve's journal
         type: boolean
         default: false
+      operator:
+        description: Authorize the operator's key (the OPERATOR_SSH_KEYS variable) on the hunt's machine
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -71,8 +75,8 @@ jobs:
           { echo "IP=$ip"; echo "SG=$sg"; echo "ME=$me"; echo "NUMBER=$number"; } >> "$GITHUB_ENV"
           echo "the hunt: run $number"
       - name: Recorded and published
-        # With logs, the logs alone: nothing published by hand beside the run's own.
-        if: ${{ !inputs.logs }}
+        # With logs or the operator's key, that alone: nothing published by hand beside the run's own.
+        if: ${{ !inputs.logs && !inputs.operator }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -84,6 +88,13 @@ jobs:
           platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html
           url=$(host/publish-report.sh report "$NUMBER" "$MINUTES" | tail -1)
           echo "report: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The operator's key authorized on the machine
+        if: inputs.operator
+        env:
+          OPERATOR_SSH_KEYS: ${{ vars.OPERATOR_SSH_KEYS }}
+        run: |
+          [ -n "$OPERATOR_SSH_KEYS" ] || { echo "no OPERATOR_SSH_KEYS variable"; exit 1; }
+          printf '%s\n' "$OPERATOR_SSH_KEYS" | ssh $SSH_OPTS "admin@$IP" 'cat >> ~/.ssh/authorized_keys && sort -u -o ~/.ssh/authorized_keys ~/.ssh/authorized_keys && echo "operator key authorized"'
       - name: The run's host checks, as the machine has them
         if: inputs.logs
         run: |

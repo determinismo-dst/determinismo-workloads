@@ -108,6 +108,9 @@ jobs:
       - name: A machine (the idle one kept from a run before, or a new one)
         env:
           CI_SSH_KEY: ${{ secrets.CI_SSH_KEY }}
+          # The operator's public key too (a repository variable): to debug a machine from one's
+          # own, once one's address is let in on SSH.
+          OPERATOR_SSH_KEYS: ${{ vars.OPERATOR_SSH_KEYS }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && printf '%s\n' "$CI_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
@@ -166,6 +169,7 @@ jobs:
           #cloud-config
           ssh_authorized_keys:
             - $(cat ~/.ssh/id_ed25519.pub)
+            - ${OPERATOR_SSH_KEYS:-$(cat ~/.ssh/id_ed25519.pub)}
           write_files:
             - path: /etc/systemd/system/ci-deadline.timer
               content: |

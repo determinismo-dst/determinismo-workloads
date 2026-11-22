@@ -50,7 +50,9 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
   in the log. A machine set up for a platform commit is saved as that commit's image, so later
   launches skip the setup; and it waits 15 minutes (`keep_minutes`) for the next run, which takes
   it as it is; untaken, it powers itself off, as it does past its deadline should a job die.
-  Each run's report: on its run page (the job summary), and whole, read only, at
+  While it runs, serve's own page live and read only for anyone (a tunnel to serve's
+  `--public-listen` address; the link in the job's log and the reports' index). Each run's report:
+  on its run page (the job summary), and whole, read only, at
   [determinismo-dst.github.io/determinismo-workloads](https://determinismo-dst.github.io/determinismo-workloads/)
   (one page a run). What to set up once is at the top of the workflow. Run by hand.
 - `.github/workflows/hunt.yml` with `host/hunt.sh`: an example of a continuous hunt on your own

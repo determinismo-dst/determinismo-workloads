@@ -280,15 +280,16 @@ jobs:
           # serve on the machine, here at 7878 (the reports' recordings).
           ssh $SSH_OPTS -f -N -o ExitOnForwardFailure=yes -L 7878:127.0.0.1:7878 "admin@$IP"
           shown=0
-          next=$(( $(date +%s) + 600 ))
+          # The first as soon as the run exists, then every 10 minutes.
+          next=0
           while kill -0 "$hunt" 2>/dev/null; do
             sleep 20
             lines=$(wc -l < hunt.log)
             if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
             [ "$(date +%s)" -ge "$next" ] || continue
-            next=$(( $(date +%s) + 600 ))
             run=$(ssh $SSH_OPTS "admin@$IP" 'cat determinismo-workloads/run-id 2>/dev/null' || true)
             [ -n "$run" ] && [ -x platform/infra/host/report-static.sh ] || continue
+            next=$(( $(date +%s) + 600 ))
             mkdir -p report
             if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$run" report/index.html > report.log 2>&1 \
                && host/publish-report.sh report ${{ github.run_number }} "$MINUTES" >> report.log 2>&1; then

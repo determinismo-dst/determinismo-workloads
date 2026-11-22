@@ -1,0 +1,5 @@
+; SPDX-License-Identifier: MIT
+; Reading a string that holds a NUL character never returns: jank's lexer decodes with mbrtowc,
+; which answers 0 bytes for a NUL, and the lexer does not advance (stacks at the hang:
+; read::lex::processor::peek -> convert_to_codepoint -> mbrtowc). Clojure reads it back.
+(println "expected the string back, a NUL inside:" (pr-str (read-string (pr-str (str "a" (char 0) "b")))))

@@ -1,0 +1,7 @@
+; SPDX-License-Identifier: MIT
+; A thrown number, string or boolean leaves as a native C++ value (int, double, bool, char const*),
+; not a jank object: no jank catch takes it, and the program aborts ("terminate called after
+; throwing an instance of 'int'"). A keyword and nil are caught. jank's book: a thrown jank value of
+; any type is type-erased into an object_ref. With :kw in place of 5 it prints the caught value (the
+; abort also loses output printed before it: jank has no flush yet).
+(try (throw 5) (catch cpp/jank.runtime.object_ref e (println "expected caught, integer:" e)))

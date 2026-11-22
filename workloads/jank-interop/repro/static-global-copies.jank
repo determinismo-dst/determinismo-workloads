@@ -1,0 +1,13 @@
+; SPDX-License-Identifier: MIT
+; A static global defined by cpp/raw is another variable in code jank compiles later: the
+; constructor inlined into the let increments a copy, read() beside it answers 0. A plain global: 1.
+(cpp/raw "int plain_count = 0;
+struct plain_bump { plain_bump() { ++plain_count; } };
+int plain_read() { return plain_count; }
+static int static_count = 0;
+struct static_bump { static_bump() { ++static_count; } };
+int static_read() { return static_count; }")
+(defn plain [] (let [x (cpp/plain_bump)] (cpp/plain_read)))
+(defn statically [] (let [x (cpp/static_bump)] (cpp/static_read)))
+(println "expected 1, plain global:" (plain))
+(println "expected 1, static global:" (statically))

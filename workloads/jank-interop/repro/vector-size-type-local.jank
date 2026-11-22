@@ -1,0 +1,6 @@
+; SPDX-License-Identifier: MIT
+; A let answering a class template's nested type (std::vector<int>::size_type from .size) does not
+; compile: the C++ jank generates declares std::vector::size_type, its template argument dropped
+; (= jank-lang/jank#1185).
+(let [v (#cpp (std.vector int))] (.push_back v 1) (println "expected 1, printed in the let:" (.size v)))
+(println "expected 1, answered by the let:" (let [v (#cpp (std.vector int))] (.push_back v 1) (.size v)))

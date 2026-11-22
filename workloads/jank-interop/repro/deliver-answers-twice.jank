@@ -1,0 +1,6 @@
+; SPDX-License-Identifier: MIT
+; A second deliver to a delivered promise answers non-nil, as the first did: Clojure answers the
+; promise only from the delivery that took the value, nil after (callers use it to know they won).
+; The value itself stays the first one.
+(let [p (promise) a (deliver p 1) b (deliver p 2)]
+  (println "expected true false 1:" (some? a) (some? b) @p))

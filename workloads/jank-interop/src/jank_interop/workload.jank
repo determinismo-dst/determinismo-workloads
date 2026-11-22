@@ -1,0 +1,46 @@
+; SPDX-License-Identifier: MIT
+; The test program (determinismo.workload): a jank node and a driver running Hegel's test cases
+; there (jank-interop.run, required by the driver alone: the host describing the program has no
+; libhegel).
+(ns jank-interop.workload
+  (:require [determinismo.workload :as w]))
+
+(defn- cases-of
+  "A driver running the area's constructs (jank-interop.run, required in the node alone)."
+  [area]
+  (fn [_]
+    (require 'jank-interop.run)
+    ((resolve 'jank-interop.run/run-cases!) area)))
+
+(defn- scenario
+  "A scenario of one area: a run explores its constructs alone, none diluted by the others' cases
+  or hidden behind their failures."
+  [area]
+  {:name (name area)
+   :faults false
+   :commands [(w/singleton-driver (name area) (cases-of area))]})
+
+(def program
+  ;; jank with determinismo's coverage by default (the Dockerfile's JANK=coverage, built by
+  ;; jank-coverage/build.sh); packaged: the PPA's jank, no coverage.
+  {:profiles [{:name "default"
+               :nodes [[:jank {:build {:context "." :dockerfile "workloads/jank-interop/Dockerfile"
+                                       :args ["JANK=coverage"]}
+                               ;; libvoidstar at /usr/lib: libhegel's backend draws determinismo's
+                               ;; decisions through it (fuzz_get_random), and jank's edges report there.
+                               :antithesis-library true}]]}
+              {:name "packaged"
+               :nodes [[:jank {:build {:context "." :dockerfile "workloads/jank-interop/Dockerfile"
+                                       :args ["JANK=package"]}
+                               :antithesis-library true}]]}]
+   :node :jank
+   :program "/opt/workload/run"
+   ;; One jank process compiling at a time; what varies is the cases, not a network. A scenario
+   ;; an area: C++ interop, the language (binding forms, data, throwing), generated programs
+   ;; (differential and grammar forms: one may hang jank, so apart), collections (state machines
+   ;; and sequence laws); mixed runs them all in one process, for what one construct leaves behind
+   ;; for another (the JIT, the GC, globals).
+   :scenarios (mapv scenario [:interop :language :programs :collections :semantics :mixed])})
+
+(defn -main [& arguments]
+  (w/main program arguments))

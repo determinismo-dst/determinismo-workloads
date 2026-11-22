@@ -1,0 +1,7 @@
+; SPDX-License-Identifier: MIT
+; A transient of an array map (every small map, {:a 1} literals included) writes into the
+; persistent map it came from: assoc! on an existing key changes the original, dissoc! corrupts it
+; (a key twice). Clojure leaves the original as it was. Hash maps are not affected.
+(let [m1 (hash-map 0 0) m2 (persistent! (assoc! (transient m1) 0 1))] (println "expected {0 0}, hash map after assoc!:  " m1 m2))
+(let [m1 {:a 1} m2 (persistent! (assoc! (transient m1) :a 2))] (println "expected {:a 1}, array map after assoc!:" m1 m2))
+(let [m1 (array-map 0 0 1 1) m2 (persistent! (dissoc! (transient m1) 0))] (println "expected {0 0, 1 1}, after dissoc!:     " m1 m2))

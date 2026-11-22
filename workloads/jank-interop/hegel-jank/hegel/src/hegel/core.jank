@@ -1,0 +1,562 @@
+; SPDX-License-Identifier: MIT
+; Hegel for jank: property-based testing on Hegel's engine (libhegel's C ABI, hegel-sys).
+;
+;   (require '[hegel.core :as hegel])
+;   (hegel/run! {:test-cases 200}
+;               (fn [tc]
+;                 (let [a (hegel/integer tc -100 100)
+;                       b (hegel/integer tc -100 100)]
+;                   (= (+ a b) (+ b a)))))
+;   ;; => {:passed? true :failures []}
+;
+; A property is a function of a test case: it draws its inputs from it and returns true when the
+; property holds. False, or an exception, is a failure; its origin (an exception's :origin, else
+; its message, else "property returned false") groups failures into bugs, each shrunk by Hegel.
+; `assume` rejects a case. The run's settings come from libhegel's profiles ("default", "ci",
+; "workload": under a fuzzer that sets ANTITHESIS_OUTPUT_DIR, its backend draws through
+; libvoidstar's fuzz_get_random) and the HEGEL_* environment variables.
+(ns hegel.core
+  (:refer-clojure :exclude [boolean run!])
+  (:include "hegel.h"))
+
+(cpp/raw "
+#include <cmath>
+#include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
+#include <hegel.h>
+
+// A run of test cases, kept here by its id: jank holds numbers, not C++ handles.
+struct hegel_jank_run {
+  hegel_context_t *ctx = nullptr;
+  hegel_run_t *run = nullptr;
+  hegel_test_case_t *tc = nullptr;
+  hegel_run_result_t *result = nullptr;
+  // The test case's state: 0 drawing, 1 stopped (past its data), 2 rejected, 3 an error (readable).
+  int64_t state = 0;
+  std::string error;
+  // The case's collections and state machines, freed with it.
+  std::vector<hegel_collection_t *> collections;
+  std::vector<hegel_state_machine_t *> machines;
+  // The run's grammars, compiled once each (by their text, start rule and caps).
+  std::map<std::string, hegel_grammar_t *> grammars;
+};
+static std::vector<hegel_jank_run *> hegel_jank_runs;
+
+static hegel_jank_run *hegel_jank_of(int64_t id) {
+  return id >= 0 && (size_t)id < hegel_jank_runs.size() ? hegel_jank_runs[id] : nullptr;
+}
+
+static void hegel_jank_error(hegel_jank_run *r) {
+  hegel_string_t message = hegel_context_last_error(r->ctx);
+  r->error.assign(message.data ? message.data : \"\", message.len);
+}
+
+// A new run (its id), or -1-id when it could not start (its error then readable). An empty key
+// leaves the example database unscoped (its replay of past failures off); an empty function name
+// leaves the test's location unset.
+int64_t hegel_jank_start(std::string const &profile, int64_t test_cases, int64_t seed, bool has_seed,
+                         std::string const &key, std::string const &file, int64_t line,
+                         std::string const &module, std::string const &function) {
+  auto *r = new hegel_jank_run();
+  r->ctx = hegel_context_new();
+  int64_t id = (int64_t)hegel_jank_runs.size();
+  hegel_jank_runs.push_back(r);
+  hegel_settings_t *settings = nullptr;
+  hegel_string_t name{ profile.data(), profile.size() };
+  if (hegel_settings_new_for_profile(r->ctx, name, &settings) != HEGEL_OK) { hegel_jank_error(r); return -1 - id; }
+  if (test_cases > 0) hegel_settings_set_test_cases(r->ctx, settings, (uint64_t)test_cases);
+  if (has_seed) hegel_settings_set_seed(r->ctx, settings, (uint64_t)seed, true);
+  if (!key.empty()) {
+    hegel_string_t named_key{ key.data(), key.size() };
+    hegel_settings_set_database_key(r->ctx, settings, &named_key);
+  }
+  if (!function.empty() &&
+      hegel_settings_set_test_location(r->ctx, settings, hegel_string_t{ file.data(), file.size() }, (uint32_t)line,
+                                       hegel_string_t{ module.data(), module.size() },
+                                       hegel_string_t{ function.data(), function.size() }) != HEGEL_OK) {
+    hegel_jank_error(r); hegel_settings_free(r->ctx, settings); return -1 - id;
+  }
+  hegel_result_t started = hegel_run_start(r->ctx, settings, nullptr, nullptr, &r->run);
+  hegel_settings_free(r->ctx, settings);
+  if (started != HEGEL_OK) { hegel_jank_error(r); return -1 - id; }
+  return id;
+}
+
+// A libhegel answer for the current test case: true when it is OK, else the case's state set.
+static bool hegel_jank_ok(hegel_jank_run *r, hegel_result_t result) {
+  if (result == HEGEL_OK) return true;
+  if (result == HEGEL_E_STOP_TEST) r->state = 1;
+  else if (result == HEGEL_E_ASSUME) r->state = 2;
+  else { r->state = 3; hegel_jank_error(r); }
+  return false;
+}
+
+static bool hegel_jank_drawing(hegel_jank_run *r) { return r && r->tc && r->state == 0; }
+
+static void hegel_jank_release_case(hegel_jank_run *r) {
+  for (auto *c : r->collections) hegel_collection_free(r->ctx, c);
+  for (auto *m : r->machines) hegel_state_machine_free(r->ctx, m);
+  r->collections.clear();
+  r->machines.clear();
+  if (r->tc) { hegel_test_case_free(r->ctx, r->tc); r->tc = nullptr; }
+}
+
+bool hegel_jank_next(int64_t id) {
+  auto *r = hegel_jank_of(id);
+  if (!r || !r->run) return false;
+  hegel_jank_release_case(r);
+  r->state = 0;
+  if (hegel_next_test_case(r->ctx, r->run, &r->tc) != HEGEL_OK) { hegel_jank_error(r); return false; }
+  return r->tc != nullptr;
+}
+
+int64_t hegel_jank_state(int64_t id) { auto *r = hegel_jank_of(id); return r ? r->state : 1; }
+
+int64_t hegel_jank_integer(int64_t id, int64_t low, int64_t high) {
+  auto *r = hegel_jank_of(id);
+  int64_t value = low;
+  if (hegel_jank_drawing(r)) hegel_jank_ok(r, hegel_generate_integer(r->ctx, r->tc, low, high, &value));
+  return value;
+}
+
+bool hegel_jank_boolean(int64_t id, double p) {
+  auto *r = hegel_jank_of(id);
+  bool value = false;
+  if (hegel_jank_drawing(r)) hegel_jank_ok(r, hegel_generate_boolean(r->ctx, r->tc, p, false, false, &value));
+  return value;
+}
+
+double hegel_jank_float(int64_t id, int64_t width, double low, double high, bool nan, bool infinity) {
+  auto *r = hegel_jank_of(id);
+  double value = 0.0;
+  double smallest = width == 32 ? 1.40129846e-45 : 5e-324;
+  if (hegel_jank_drawing(r))
+    hegel_jank_ok(r, hegel_generate_float(r->ctx, r->tc, (uint32_t)width, low, high, nan, infinity, false, false,
+                                          smallest, &value));
+  return value;
+}
+
+// Collections: a handle (an index among the case's), whether Hegel wants one more element, and
+// the last element rejected.
+int64_t hegel_jank_collection(int64_t id, int64_t min_size, int64_t max_size) {
+  auto *r = hegel_jank_of(id);
+  hegel_collection_t *c = nullptr;
+  if (!hegel_jank_drawing(r)) return -1;
+  uint64_t most = max_size < 0 ? HEGEL_MAX_SIZE_DEFAULT : (uint64_t)max_size;
+  if (!hegel_jank_ok(r, hegel_new_collection(r->ctx, r->tc, (uint64_t)min_size, most, &c))) return -1;
+  r->collections.push_back(c);
+  return (int64_t)r->collections.size() - 1;
+}
+
+bool hegel_jank_more(int64_t id, int64_t handle) {
+  auto *r = hegel_jank_of(id);
+  bool more = false;
+  if (hegel_jank_drawing(r) && handle >= 0 && (size_t)handle < r->collections.size())
+    hegel_jank_ok(r, hegel_collection_more(r->ctx, r->tc, r->collections[handle], &more));
+  return more;
+}
+
+void hegel_jank_reject_element(int64_t id, int64_t handle) {
+  auto *r = hegel_jank_of(id);
+  if (hegel_jank_drawing(r) && handle >= 0 && (size_t)handle < r->collections.size())
+    hegel_jank_ok(r, hegel_collection_reject(r->ctx, r->tc, r->collections[handle], nullptr));
+}
+
+// Strings: a string generator's draw, the generator freed after it.
+static std::string hegel_jank_string(hegel_jank_run *r, hegel_result_t built, hegel_string_generator_t *generator) {
+  std::string out;
+  if (hegel_jank_ok(r, built)) {
+    hegel_owned_string_t drawn{ nullptr, 0 };
+    if (hegel_jank_ok(r, hegel_generate_string(r->ctx, r->tc, generator, &drawn)) && drawn.data) out.assign(drawn.data, drawn.len);
+    hegel_owned_string_free(r->ctx, &drawn);
+  }
+  hegel_string_generator_free(r->ctx, generator);
+  return out;
+}
+
+static hegel_string_t hegel_jank_borrow(std::string const &text) {
+  return text.empty() ? hegel_string_t{ nullptr, 0 } : hegel_string_t{ text.data(), text.size() };
+}
+
+std::string hegel_jank_text(int64_t id, int64_t min_size, int64_t max_size, std::string const &codec,
+                            int64_t min_codepoint, int64_t max_codepoint,
+                            std::string const &include, std::string const &exclude) {
+  auto *r = hegel_jank_of(id);
+  if (!hegel_jank_drawing(r)) return std::string();
+  hegel_string_t named = hegel_jank_borrow(codec);
+  hegel_string_generator_t *generator = nullptr;
+  hegel_result_t built = hegel_string_generator_text(
+    r->ctx, (uint64_t)min_size, max_size < 0 ? HEGEL_MAX_SIZE_DEFAULT : (uint64_t)max_size,
+    codec.empty() ? nullptr : &named, (uint32_t)min_codepoint,
+    max_codepoint < 0 ? UINT32_MAX : (uint32_t)max_codepoint, nullptr, 0, nullptr, 0,
+    hegel_jank_borrow(include), hegel_jank_borrow(exclude), &generator);
+  return hegel_jank_string(r, built, generator);
+}
+
+std::string hegel_jank_regex(int64_t id, std::string const &pattern, bool fullmatch) {
+  auto *r = hegel_jank_of(id);
+  if (!hegel_jank_drawing(r)) return std::string();
+  hegel_string_generator_t *generator = nullptr;
+  hegel_result_t built = hegel_string_generator_regex(r->ctx, hegel_string_t{ pattern.data(), pattern.size() },
+                                                      fullmatch, nullptr, &generator);
+  return hegel_jank_string(r, built, generator);
+}
+
+// Grammars (Lark's syntax, no %import): compiled at their first draw in a run, kept for it.
+static hegel_grammar_t *hegel_jank_grammar_of(hegel_jank_run *r, std::string const &text, std::string const &start,
+                                              int64_t max_size, int64_t max_depth) {
+  std::string key = start + '\\0' + std::to_string(max_size) + '\\0' + std::to_string(max_depth) + '\\0' + text;
+  auto found = r->grammars.find(key);
+  if (found != r->grammars.end()) return found->second;
+  hegel_grammar_builder_t *builder = nullptr;
+  if (!hegel_jank_ok(r, hegel_grammar_builder_new(r->ctx, hegel_string_t{ text.data(), text.size() }, &builder))) return nullptr;
+  hegel_string_t path{ nullptr, 0 };
+  if (hegel_grammar_builder_file(r->ctx, builder, 0, &path) == HEGEL_OK) {
+    r->state = 3;
+    r->error = \"hegel-jank: a grammar takes no %import\";
+    hegel_grammar_builder_free(r->ctx, builder);
+    return nullptr;
+  }
+  hegel_string_t named{ start.data(), start.size() };
+  hegel_grammar_t *grammar = nullptr;
+  bool built = hegel_jank_ok(r, hegel_grammar_new(r->ctx, builder, start.empty() ? nullptr : &named, (uint64_t)max_size,
+                                                  (uint32_t)max_depth, nullptr, nullptr, 0, &grammar));
+  hegel_grammar_builder_free(r->ctx, builder);
+  if (!built) return nullptr;
+  r->grammars[key] = grammar;
+  return grammar;
+}
+
+std::string hegel_jank_grammar(int64_t id, std::string const &text, std::string const &start, int64_t max_size, int64_t max_depth) {
+  auto *r = hegel_jank_of(id);
+  std::string out;
+  if (!hegel_jank_drawing(r)) return out;
+  auto *grammar = hegel_jank_grammar_of(r, text, start, max_size, max_depth);
+  if (!grammar) return out;
+  hegel_owned_string_t drawn{ nullptr, 0 };
+  if (hegel_jank_ok(r, hegel_generate_grammar(r->ctx, r->tc, grammar, 0, &drawn)) && drawn.data) out.assign(drawn.data, drawn.len);
+  hegel_owned_string_free(r->ctx, &drawn);
+  return out;
+}
+
+// State machines, at concurrency 1 (one group, one worker): libhegel picks each step's rule,
+// swarm testing which rules a test case enables.
+static hegel_state_machine_t *hegel_jank_machine_of(hegel_jank_run *r, int64_t handle) {
+  return hegel_jank_drawing(r) && handle >= 0 && (size_t)handle < r->machines.size() ? r->machines[handle] : nullptr;
+}
+
+int64_t hegel_jank_machine(int64_t id, int64_t steps) {
+  auto *r = hegel_jank_of(id);
+  hegel_state_machine_t *m = nullptr;
+  if (!hegel_jank_drawing(r)) return -1;
+  if (!hegel_jank_ok(r, hegel_new_state_machine(r->ctx, r->tc, 1, 1, steps, &m))) return -1;
+  r->machines.push_back(m);
+  return (int64_t)r->machines.size() - 1;
+}
+
+void hegel_jank_machine_rule(int64_t id, int64_t handle, std::string const &name, double weight) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  int64_t group = 0;
+  if (m) hegel_jank_ok(r, hegel_state_machine_add_rule(r->ctx, r->tc, m, hegel_string_t{ name.data(), name.size() }, weight, &group, 1));
+}
+
+void hegel_jank_machine_invariant(int64_t id, int64_t handle, std::string const &name, bool always) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  if (m) hegel_jank_ok(r, hegel_state_machine_add_invariant(r->ctx, r->tc, m, hegel_string_t{ name.data(), name.size() }, always));
+}
+
+void hegel_jank_machine_start(int64_t id, int64_t handle) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  int64_t concurrency = 0;
+  if (m) hegel_jank_ok(r, hegel_state_machine_start(r->ctx, r->tc, m, &concurrency));
+}
+
+// Whether another round runs.
+bool hegel_jank_machine_round(int64_t id, int64_t handle) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  int64_t group = HEGEL_STATE_MACHINE_DONE, concurrency = 0;
+  if (!m || !hegel_jank_ok(r, hegel_state_machine_next_group(r->ctx, r->tc, m, &group, &concurrency))) return false;
+  return group != HEGEL_STATE_MACHINE_DONE;
+}
+
+// The round's next rule, or -1 at its join point.
+int64_t hegel_jank_machine_rule_next(int64_t id, int64_t handle) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  int64_t rule = HEGEL_STATE_MACHINE_DONE;
+  if (!m || !hegel_jank_ok(r, hegel_state_machine_next_rule(r->ctx, r->tc, m, 0, &rule))) return -1;
+  return rule == HEGEL_STATE_MACHINE_DONE ? -1 : rule;
+}
+
+void hegel_jank_machine_rejected(int64_t id, int64_t handle) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  if (m) hegel_jank_ok(r, hegel_state_machine_rule_rejected(r->ctx, r->tc, m, 0));
+}
+
+bool hegel_jank_machine_check(int64_t id, int64_t handle, int64_t invariant) {
+  auto *r = hegel_jank_of(id);
+  auto *m = hegel_jank_machine_of(r, handle);
+  bool check = false;
+  if (m) hegel_jank_ok(r, hegel_state_machine_should_check_invariant(r->ctx, r->tc, m, invariant, &check));
+  return check;
+}
+
+// 0 valid, 1 invalid, 2 overrun, 3 interesting (a failure, grouped by its origin).
+void hegel_jank_complete(int64_t id, int64_t status, std::string const &origin) {
+  auto *r = hegel_jank_of(id);
+  if (!r || !r->tc) return;
+  hegel_string_t named{ origin.data(), origin.size() };
+  hegel_mark_complete(r->ctx, r->tc, (uint32_t)status, status == 3 ? &named : nullptr);
+}
+
+// The finished run's result: 0 passed, 1 failed, 2 error (its error readable), -1 unreadable.
+int64_t hegel_jank_finish(int64_t id) {
+  auto *r = hegel_jank_of(id);
+  if (!r || !r->run) return -1;
+  hegel_jank_release_case(r);
+  if (hegel_run_result(r->ctx, r->run, &r->result) != HEGEL_OK) { hegel_jank_error(r); return -1; }
+  hegel_run_status_t status = HEGEL_RUN_STATUS_ERROR;
+  hegel_run_result_status(r->ctx, r->result, &status);
+  if (status == HEGEL_RUN_STATUS_ERROR) {
+    hegel_string_t const *message = nullptr;
+    if (hegel_run_result_error(r->ctx, r->result, &message) == HEGEL_OK && message && message->data) r->error.assign(message->data, message->len);
+  }
+  return (int64_t)status;
+}
+
+int64_t hegel_jank_failure_count(int64_t id) {
+  auto *r = hegel_jank_of(id);
+  size_t count = 0;
+  if (r && r->result) hegel_run_result_failure_count(r->ctx, r->result, &count);
+  return (int64_t)count;
+}
+
+// A failure's origin (what = 0) or reproduction blob (what = 1).
+std::string hegel_jank_failure(int64_t id, int64_t index, int64_t what) {
+  auto *r = hegel_jank_of(id);
+  if (!r || !r->result) return \"\";
+  hegel_failure_t *failure = nullptr;
+  if (hegel_run_result_failure(r->ctx, r->result, (size_t)index, &failure) != HEGEL_OK) return \"\";
+  std::string out;
+  if (what == 0) {
+    hegel_string_t text{ nullptr, 0 };
+    if (hegel_failure_origin(r->ctx, failure, &text) == HEGEL_OK && text.data) out.assign(text.data, text.len);
+  } else {
+    hegel_string_t const *blob = nullptr;
+    if (hegel_failure_reproduction_blob(r->ctx, failure, &blob) == HEGEL_OK && blob && blob->data) out.assign(blob->data, blob->len);
+  }
+  hegel_failure_free(r->ctx, failure);
+  return out;
+}
+
+double hegel_jank_infinity(bool negative) { return negative ? -INFINITY : INFINITY; }
+
+std::string hegel_jank_error_text(int64_t id) { auto *r = hegel_jank_of(id); return r ? r->error : std::string(); }
+
+// Frees the run's handles (its id is not reused).
+void hegel_jank_free(int64_t id) {
+  auto *r = hegel_jank_of(id);
+  if (!r) return;
+  hegel_jank_release_case(r);
+  for (auto &entry : r->grammars) hegel_grammar_free(r->ctx, entry.second);
+  r->grammars.clear();
+  if (r->result) hegel_run_result_free(r->ctx, r->result);
+  if (r->run) hegel_run_free(r->ctx, r->run);
+  if (r->ctx) hegel_context_free(r->ctx);
+  delete r;
+  hegel_jank_runs[id] = nullptr;
+}
+")
+
+(def ^:private stop
+  "Thrown by a draw past the test case's data: the case ends as an overrun."
+  ::stop)
+
+(defn- checked
+  "The value drawn, or the case ended: stopped (an overrun), rejected (libhegel's own assume) or
+  an error (thrown, libhegel's message its origin)."
+  [tc value]
+  (let [state (cpp/hegel_jank_state (:run tc))]
+    (cond (= state 0) value
+          (= state 1) (throw stop)
+          (= state 2) (throw ::invalid)
+          :else (throw {:origin (str "hegel: " (cpp/hegel_jank_error_text (:run tc)))}))))
+
+(defn- rejected?
+  "Whether e is assume's rejection."
+  [e]
+  (= e ::invalid))
+
+(defn integer
+  "An integer in [low, high], both inclusive."
+  [tc low high]
+  (checked tc (cpp/hegel_jank_integer (:run tc) low high)))
+
+(defn boolean
+  "A boolean, true with probability p (default 0.5)."
+  ([tc] (boolean tc 0.5))
+  ([tc p] (checked tc (cpp/hegel_jank_boolean (:run tc) (cpp/cast cpp/double p)))))
+
+(defn floating
+  "A float of width 32 or 64 (default 64) in [low, high] (default unbounded); NaN only with
+  :nan? true; infinities by default when a side is unbounded (:infinity? to choose)."
+  ([tc] (floating tc {}))
+  ([tc {:keys [width low high nan? infinity?] :or {width 64 nan? false}}]
+   (let [infinity? (if (some? infinity?) infinity? (not (and low high)))]
+    (checked tc (cpp/hegel_jank_float (:run tc) width
+                                      (if low (cpp/cast cpp/double low) (cpp/hegel_jank_infinity true))
+                                      (if high (cpp/cast cpp/double high) (cpp/hegel_jank_infinity false))
+                                      (cpp/cast cpp/bool nan?) (cpp/cast cpp/bool infinity?))))))
+
+(defn element
+  "One of the items (a vector), shrinking toward the first."
+  [tc items]
+  (nth items (integer tc 0 (dec (count items)))))
+
+(defn- size-bound [n] (if n n -1))
+
+(defn collection
+  "A vector of elements, each (draw tc), its length chosen by Hegel and shrunk like a list's:
+  :min-size (default 0), :max-size (default Hegel's). An element whose draw calls assume is left
+  out, the collection going on."
+  ([tc draw] (collection tc {} draw))
+  ([tc {:keys [min-size max-size] :or {min-size 0}} draw]
+   (let [handle (checked tc (cpp/hegel_jank_collection (:run tc) min-size (size-bound max-size)))]
+     (loop [out []]
+       (if (checked tc (cpp/hegel_jank_more (:run tc) handle))
+         (let [[kept? value] (try [true (draw tc)]
+                                  (catch cpp/jank.runtime.object_ref e
+                                    (if (rejected? e) [false nil] (throw e))))]
+           (if kept?
+             (recur (conj out value))
+             (do (checked tc (cpp/hegel_jank_reject_element (:run tc) handle))
+                 (recur out))))
+         out)))))
+
+(defn text
+  "A string: :min-size and :max-size in characters, :codec (\"ascii\", \"latin-1\" or \"utf-8\",
+  the default), :min-codepoint and :max-codepoint, :include and :exclude (strings of characters)."
+  ([tc] (text tc {}))
+  ([tc {:keys [min-size max-size codec min-codepoint max-codepoint include exclude]
+        :or {min-size 0 codec "" min-codepoint 0 include "" exclude ""}}]
+   (checked tc (str (cpp/hegel_jank_text (:run tc) min-size (size-bound max-size)
+                                         (cpp/cast cpp/std.string codec) min-codepoint
+                                         (size-bound max-codepoint)
+                                         (cpp/cast cpp/std.string include)
+                                         (cpp/cast cpp/std.string exclude))))))
+
+(defn regex
+  "A string matching pattern (Python re syntax), the whole string unless :fullmatch? false."
+  ([tc pattern] (regex tc pattern {}))
+  ([tc pattern {:keys [fullmatch?] :or {fullmatch? true}}]
+   (checked tc (str (cpp/hegel_jank_regex (:run tc) (cpp/cast cpp/std.string pattern)
+                                          (cpp/cast cpp/bool fullmatch?))))))
+
+(defn grammar
+  "A string the grammar accepts (Lark's syntax, no %import), from its rule :start (default
+  start), shrunk structurally by Hegel: :max-size characters (default 8192), :max-depth of
+  rules' nesting (default 200). The grammar is compiled once a run."
+  ([tc text] (grammar tc text {}))
+  ([tc text {:keys [start max-size max-depth] :or {start "" max-size 0 max-depth 0}}]
+   (checked tc (str (cpp/hegel_jank_grammar (:run tc) (cpp/cast cpp/std.string text) (cpp/cast cpp/std.string start)
+                                            max-size max-depth)))))
+
+(defn swarm
+  "Swarm testing for a choice among items (a vector): the items this test case enables, each
+  left out with probability 1/2, at least one kept. Draw from them with element. Shrinking
+  enables them all again, so a minimal failure names only what it needs left out."
+  [tc items]
+  (let [kept (vec (filter (fn [_] (not (boolean tc 0.5))) items))]
+    (if (seq kept) kept [(first items)])))
+
+(defn state-machine
+  "Runs a state machine in the test case and returns its final state. From :initial, Hegel
+  picks each step's rule among :rules ({:name :run (fn [tc state] state') :weight}), swarm
+  testing which rules a test case enables; a rule calling assume is rejected (state unchanged).
+  :invariants ({:name :check (fn [state] holds?) :always? false}) are checked where Hegel
+  samples them: one not holding fails the case, its name the origin. :steps bounds the rounds
+  (default 50)."
+  [tc {:keys [initial rules invariants steps] :or {steps 50}}]
+  (let [id (:run tc)
+        handle (checked tc (cpp/hegel_jank_machine id steps))
+        rules (vec rules)
+        invariants (vec invariants)]
+    (doseq [{:keys [name weight]} rules]
+      (cpp/hegel_jank_machine_rule id handle (cpp/cast cpp/std.string (str name))
+                                   (cpp/cast cpp/double (or weight 1.0))))
+    (doseq [{:keys [name always?]} invariants]
+      (cpp/hegel_jank_machine_invariant id handle (cpp/cast cpp/std.string (str name))
+                                        (cpp/cast cpp/bool (clojure.core/boolean always?))))
+    (checked tc (cpp/hegel_jank_machine_start id handle))
+    (loop [state initial]
+      (if-not (checked tc (cpp/hegel_jank_machine_round id handle))
+        state
+        ;; The inner loop's own name: jank 0.1 fails to compile an inner loop that rebinds an
+        ;; outer loop's name and recurs (the generated C++ names a variable it never declared).
+        (let [state (loop [current state]
+                      (let [index (checked tc (cpp/hegel_jank_machine_rule_next id handle))]
+                        (if (neg? index)
+                          current
+                          (recur (try ((:run (nth rules index)) tc current)
+                                      (catch cpp/jank.runtime.object_ref e
+                                        (if (rejected? e)
+                                          (do (checked tc (cpp/hegel_jank_machine_rejected id handle)) current)
+                                          (throw e))))))))]
+          (doseq [[index {:keys [name check]}] (map-indexed vector invariants)]
+            (when (and (checked tc (cpp/hegel_jank_machine_check id handle index))
+                       (not (check state)))
+              (throw {:origin (str "invariant " name)})))
+          (recur state))))))
+
+(defn assume
+  "Rejects the test case unless condition holds (it is then not counted)."
+  [tc condition]
+  (when-not condition (throw ::invalid)))
+
+(defn- origin-of [e]
+  (cond (and (map? e) (:origin e)) (str (:origin e))
+        :else (str e)))
+
+(defn run!
+  "Runs the property (a function of a test case) over Hegel's test cases. Options: :profile
+  (\"default\", \"ci\", \"workload\", or one from hegel.toml), :test-cases, :seed, :key (the
+  example database's scope: the failures stored under it are replayed first, where the profile
+  keeps a database), :location {:file :line :module :function} (where the property lives: under
+  a fuzzer setting ANTITHESIS_OUTPUT_DIR, libhegel reports its verdict as an always assertion).
+  Returns {:passed? :failures [{:origin :blob}] :error}."
+  ([property] (run! {} property))
+  ([{:keys [profile test-cases seed key location] :or {profile "default" test-cases 0}} property]
+   (let [{:keys [file line module function]} location
+         id (cpp/hegel_jank_start (cpp/cast cpp/std.string profile) test-cases (or seed 0) (cpp/cast cpp/bool (some? seed))
+                                  (cpp/cast cpp/std.string (str (or key "")))
+                                  (cpp/cast cpp/std.string (str (or file ""))) (or line 0)
+                                  (cpp/cast cpp/std.string (str (or module "")))
+                                  (cpp/cast cpp/std.string (str (or function ""))))]
+     (if (neg? id)
+       {:passed? false :failures [] :error (str (cpp/hegel_jank_error_text (- -1 id)))}
+       (let [tc {:run id}]
+         (loop []
+           (when (cpp/hegel_jank_next id)
+             (let [outcome (try
+                             (if (property tc) [0 ""] [3 "property returned false"])
+                             (catch cpp/jank.runtime.object_ref e
+                               (cond (= e stop) [2 ""]
+                                     (rejected? e) [1 ""]
+                                     :else [3 (origin-of e)])))]
+               (cpp/hegel_jank_complete id (first outcome) (cpp/cast cpp/std.string (second outcome))))
+             (recur)))
+         (let [status (cpp/hegel_jank_finish id)
+               failures (vec (for [i (range (cpp/hegel_jank_failure_count id))]
+                               {:origin (str (cpp/hegel_jank_failure id i 0))
+                                :blob (str (cpp/hegel_jank_failure id i 1))}))
+               error (str (cpp/hegel_jank_error_text id))]
+           (cpp/hegel_jank_free id)
+           (cond-> {:passed? (= status 0) :failures failures}
+             (seq error) (assoc :error error))))))))

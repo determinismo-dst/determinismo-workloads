@@ -1,0 +1,8 @@
+; SPDX-License-Identifier: MIT
+; A C++ char outside ASCII becomes a jank character whose int is 0 in compiled code: its value
+; lost. ASCII is kept.
+(cpp/raw "char ascii_char() { return 'A'; }
+char high_char() { return (char)-5; }")
+(defn code [c] (int c))
+(println "expected 65, ASCII char:" (code (cpp/ascii_char)))
+(println "expected 251 or -5, char -5:" (code (cpp/high_char)))

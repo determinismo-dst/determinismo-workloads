@@ -1,0 +1,623 @@
+; SPDX-License-Identifier: MIT
+; The cases: each one generated C++ (compiled by cpp/raw, as the REPL compiles it), a jank form
+; using it, and what the form must answer. Every value is drawn by Hegel as its own bits
+; (integers in their type's range, floats exactly representable at their width), so nothing
+; round-trips through text: a difference is the interop's. Each construct is one property.
+(ns jank-interop.cases
+  (:require [clojure.string :as string]
+            [hegel.core :as hegel]
+            [jank-interop.language :as language]))
+
+(cpp/raw "
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
+#include <jank/error.hpp>
+#include <stdexcept>
+#include <string>
+
+// What the process writes to standard error meanwhile (Clang's diagnostics of a failed compile:
+// the bug's own words), into a file of no name: capture_start, then capture_stop's text.
+static int jank_interop_saved_stderr = -1;
+int64_t jank_interop_capture_start() {
+  std::fflush(stderr);
+  char path[] = \"/tmp/jank-interop-stderr-XXXXXX\";
+  int fd = mkstemp(path);
+  if (fd < 0) return -1;
+  unlink(path);
+  jank_interop_saved_stderr = dup(2);
+  dup2(fd, 2);
+  return fd;
+}
+std::string jank_interop_capture_stop(int64_t fd) {
+  if (fd < 0) return std::string();
+  std::fflush(stderr);
+  dup2(jank_interop_saved_stderr, 2);
+  close(jank_interop_saved_stderr);
+  std::string text;
+  char buffer[4096];
+  lseek((int)fd, 0, SEEK_SET);
+  for (ssize_t n; (n = read((int)fd, buffer, sizeof buffer)) > 0;) text.append(buffer, (size_t)n);
+  close((int)fd);
+  return text;
+}
+
+// A jank error's kind and message (jank's own errors are jank::error_ref, not jank objects).
+std::string jank_interop_error_text(jank::error_ref e) {
+  return std::string(jank::error::kind_str(e->kind)) + \": \" + std::string(e->message.c_str());
+}
+
+// A float's and a double's bits, as the interop carried them.
+int64_t jank_interop_bits32(float value) { uint32_t bits; std::memcpy(&bits, &value, 4); return (int64_t)bits; }
+int64_t jank_interop_bits64(double value) { int64_t bits; std::memcpy(&bits, &value, 8); return bits; }
+float jank_interop_float_of(int64_t bits) { uint32_t narrow = (uint32_t)bits; float value; std::memcpy(&value, &narrow, 4); return value; }
+double jank_interop_double_of(int64_t bits) { double value; std::memcpy(&value, &bits, 8); return value; }
+
+// 64-bit arithmetic as C++ does it: op 0 +, 1 -, 2 *; whether it overflows, and its result.
+bool jank_interop_overflows(int64_t op, int64_t a, int64_t b) {
+  int64_t result;
+  return op == 0 ? __builtin_add_overflow(a, b, &result)
+       : op == 1 ? __builtin_sub_overflow(a, b, &result)
+                 : __builtin_mul_overflow(a, b, &result);
+}
+int64_t jank_interop_result(int64_t op, int64_t a, int64_t b) {
+  int64_t result;
+  if (op == 0) __builtin_add_overflow(a, b, &result);
+  else if (op == 1) __builtin_sub_overflow(a, b, &result);
+  else __builtin_mul_overflow(a, b, &result);
+  return result;
+}
+
+// IEEE double arithmetic on operands given as bits: op 0 +, 1 -, 2 *, 3 /; the result's bits, or
+// whether it is NaN (any NaN: its payload is no guarantee).
+int64_t jank_interop_fop_bits(int64_t op, int64_t a, int64_t b) {
+  double x = jank_interop_double_of(a), y = jank_interop_double_of(b);
+  return jank_interop_bits64(op == 0 ? x + y : op == 1 ? x - y : op == 2 ? x * y : x / y);
+}
+bool jank_interop_fop_nan(int64_t op, int64_t a, int64_t b) {
+  double x = jank_interop_double_of(a), y = jank_interop_double_of(b);
+  double r = op == 0 ? x + y : op == 1 ? x - y : op == 2 ? x * y : x / y;
+  return r != r;
+}
+")
+
+(def types
+  "C++'s scalar types, each with its range (integers), width (floats) or neither (bool)."
+  [{:name "i8" :cpp "int8_t" :low -128 :high 127}
+   {:name "u8" :cpp "uint8_t" :low 0 :high 255}
+   {:name "i16" :cpp "int16_t" :low -32768 :high 32767}
+   {:name "u16" :cpp "uint16_t" :low 0 :high 65535}
+   {:name "i32" :cpp "int32_t" :low -2147483648 :high 2147483647}
+   {:name "u32" :cpp "uint32_t" :low 0 :high 4294967295}
+   {:name "i64" :cpp "int64_t" :low cpp/INT64_MIN :high 9223372036854775807}
+   {:name "u64" :cpp "uint64_t" :low 0 :high 9223372036854775807}
+   ;; ASCII here: a char outside it is the characters construct's own.
+   {:name "char" :cpp "char" :low 0 :high 127}
+   {:name "bool" :cpp "bool" :bool true}
+   {:name "f32" :cpp "float" :width 32}
+   {:name "f64" :cpp "double" :width 64}])
+
+(defn value-of "A value of type t, drawn by Hegel." [tc t]
+  (cond (:bool t) (hegel/boolean tc)
+        (:width t) (hegel/floating tc {:width (:width t)})
+        :else (hegel/integer tc (:low t) (:high t))))
+
+(defn report
+  "What a value of type t is, exactly: its integer (a char's as its byte, 0-255: a C++ char read
+  into jank is a character, its code), its boolean as 1 or 0, a float's bits."
+  [t value]
+  (str (:name t) ":"
+       (cond (:bool t) (if value 1 0)
+             (= "char" (:name t)) (mod (if (char? value) (int value) value) 256)
+             (= 32 (:width t)) (cpp/jank_interop_bits32 (cpp/cast cpp/float value))
+             (= 64 (:width t)) (cpp/jank_interop_bits64 (cpp/cast cpp/double value))
+             :else value)
+       ";"))
+
+(defn bits-of
+  "A jank number's double bits, :nan for any NaN."
+  [x]
+  (if (not= x x) :nan (cpp/jank_interop_bits64 (cpp/cast cpp/double x))))
+
+(defn real-of "The double of these bits, as jank holds it." [bits] (cpp/jank_interop_double_of bits))
+
+(defn- echo-cpp
+  "C++ appending to `out` what the variable of type t received, as report says it."
+  [t variable]
+  (str "out += \"" (:name t) ":\" + "
+       (cond (:bool t) (str "std::string(" variable " ? \"1\" : \"0\")")
+             (= 32 (:width t)) (str "std::to_string(jank_interop_bits32(" variable "))")
+             (= 64 (:width t)) (str "std::to_string(jank_interop_bits64(" variable "))")
+             (= "char" (:name t)) (str "std::to_string((unsigned)(unsigned char)" variable ")")
+             (string/starts-with? (:name t) "u") (str "std::to_string((unsigned long long)" variable ")")
+             :else (str "std::to_string((long long)" variable ")"))
+       " + \";\";\n"))
+
+(defn- argument
+  "The jank form passing a value as type t."
+  [t value]
+  (list 'cpp/cast (symbol "cpp" (:cpp t)) value))
+
+(defn- draw-types [tc kept n] (vec (for [_ (range n)] (hegel/element tc kept))))
+
+(defn- fields-cpp
+  "A struct's fields, f0... of the types ts."
+  [ts]
+  (apply str (map-indexed (fn [i t] (str (:cpp t) " f" i "; ")) ts)))
+
+(defn- read-fields
+  "The jank form reporting each field of v (a value, a reference or a pointer)."
+  [ts v]
+  (cons 'str (map-indexed (fn [i t]
+                            (list 'jank-interop.cases/report (list 'quote t) (list (symbol (str ".-f" i)) v)))
+                          ts)))
+
+(defn- type-named
+  "The C++ DSL's name of a scalar type (inside #cpp and type positions)."
+  [t]
+  (:cpp t))
+
+(defn scalar-arguments
+  "A C++ function of 1-6 scalar parameters answering what it received."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 1 6))
+        vs (mapv #(value-of tc %) ts)
+        f (str "jank_interop_args_" id)]
+    {:property "jank passes C++ scalar arguments unchanged"
+     :cpp (str "std::string " f "("
+               (string/join ", " (map-indexed (fn [i t] (str (:cpp t) " p" i)) ts))
+               ") {\nstd::string out;\n"
+               (apply str (map-indexed (fn [i t] (echo-cpp t (str "p" i))) ts))
+               "return out;\n}")
+     :form (list 'str (cons (symbol "cpp" f) (map argument ts vs)))
+     :expected (apply str (map report ts vs))}))
+
+(defn scalar-result
+  "A C++ function returning a scalar, made from its bits: jank receives it unchanged."
+  [tc id kept]
+  (let [t (hegel/element tc kept)
+        value (value-of tc t)
+        f (str "jank_interop_result_" id)
+        bits (cond (:bool t) (if value 1 0)
+                   (= 32 (:width t)) (cpp/jank_interop_bits32 (cpp/cast cpp/float value))
+                   (= 64 (:width t)) (cpp/jank_interop_bits64 (cpp/cast cpp/double value))
+                   :else value)]
+    {:property "jank receives C++ scalar results unchanged"
+     :cpp (str (:cpp t) " " f "(int64_t bits) { return "
+               (cond (:bool t) "bits != 0"
+                     (= 32 (:width t)) "jank_interop_float_of(bits)"
+                     (= 64 (:width t)) "jank_interop_double_of(bits)"
+                     :else (str "(" (:cpp t) ")bits"))
+               "; }")
+     :form (list 'jank-interop.cases/report (list 'quote t) (list (symbol "cpp" f) (list 'cpp/cast 'cpp/int64_t bits)))
+     :expected (report t value)}))
+
+(defn struct-by-value
+  "A struct of 1-5 scalar fields, built by aggregate initialization in jank and passed by value."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 1 5))
+        vs (mapv #(value-of tc %) ts)
+        s (str "jank_interop_s_" id)
+        f (str "jank_interop_struct_" id)]
+    {:property "jank passes a C++ struct by value unchanged"
+     :cpp (str "struct " s " { "
+               (apply str (map-indexed (fn [i t] (str (:cpp t) " f" i "; ")) ts))
+               "};\nstd::string " f "(" s " v) {\nstd::string out;\n"
+               (apply str (map-indexed (fn [i t] (echo-cpp t (str "v.f" i))) ts))
+               "return out;\n}")
+     :form (list 'let ['v (cons (symbol "cpp" s) (map argument ts vs))]
+                 (list 'str (list (symbol "cpp" f) 'v)))
+     :expected (apply str (map report ts vs))}))
+
+(defn struct-fields
+  "A struct's fields read back in jank (`.-f<i>`) as they were stored."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 1 5))
+        vs (mapv #(value-of tc %) ts)
+        s (str "jank_interop_fields_" id)]
+    {:property "jank reads a C++ struct's fields as stored"
+     :cpp (str "struct " s " { "
+               (apply str (map-indexed (fn [i t] (str (:cpp t) " f" i "; ")) ts))
+               "};")
+     :form (list 'let ['v (cons (symbol "cpp" s) (map argument ts vs))]
+                 (cons 'str (map-indexed (fn [i t]
+                                           (list 'jank-interop.cases/report (list 'quote t)
+                                                 (list (symbol (str ".-f" i)) 'v)))
+                                         ts)))
+     :expected (apply str (map report ts vs))}))
+
+(defn overload
+  "Overloads of one name on distinct scalar types: an argument cast to one picks that one."
+  [tc id kept]
+  (let [candidates (vec (distinct (draw-types tc kept (hegel/integer tc 2 6))))
+        chosen (hegel/integer tc 0 (dec (count candidates)))
+        t (nth candidates chosen)
+        value (value-of tc t)
+        f (str "jank_interop_overload_" id)]
+    {:property "jank calls the C++ overload C++ would"
+     :cpp (apply str (map-indexed (fn [i c] (str "int64_t " f "(" (:cpp c) ") { return " i "; }\n")) candidates))
+     :form (list (symbol "cpp" f) (argument t value))
+     :expected chosen}))
+
+(def ^:private exceptions ["std::runtime_error" "std::logic_error" "std::out_of_range" "std::invalid_argument"])
+
+(defn exception
+  "A C++ exception caught in jank by its base type, its message intact."
+  [tc id _]
+  (let [kind (hegel/element tc exceptions)
+        message (apply str (for [_ (range (hegel/integer tc 0 40))]
+                             (let [c (char (hegel/integer tc 32 126))]
+                               (if (#{\" \\} c) \_ c))))
+        f (str "jank_interop_throw_" id)]
+    {:property "jank catches a C++ exception by its base type, its message intact"
+     :cpp (str "void " f "() { throw " kind "(\"" message "\"); }")
+     :form (list 'try (list (symbol "cpp" f)) "no exception"
+                 (list 'catch 'cpp/std.exception 'e (list 'str (list '.what 'e))))
+     :expected message}))
+
+(defn arithmetic
+  "jank's integer arithmetic on 64-bit values that C++ computes without overflow."
+  [tc _ _]
+  (let [op (hegel/integer tc 0 2)
+        a (hegel/integer tc cpp/INT64_MIN 9223372036854775807)
+        b (hegel/integer tc cpp/INT64_MIN 9223372036854775807)]
+    (hegel/assume tc (not (cpp/jank_interop_overflows op a b)))
+    (do
+      {:property "jank's integer arithmetic is 64-bit"
+       :form (list (['+ '- '*] op) a b)
+       :expected (cpp/jank_interop_result op a b)})))
+
+(defn pointer-fields
+  "A struct made by cpp/new, its fields read through the pointer (no dereference), then deleted."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 1 5))
+        vs (mapv #(value-of tc %) ts)
+        s (str "jank_interop_ptr_" id)]
+    {:property "jank reads a C++ struct's fields through a pointer as stored"
+     :cpp (str "struct " s " { " (fields-cpp ts) "};")
+     :form (list 'let ['p (cons 'cpp/new (cons (symbol "cpp" s) (map argument ts vs)))
+                       'out (read-fields ts 'p)]
+                 '(cpp/delete p)
+                 'out)
+     :expected (apply str (map report ts vs))}))
+
+(defn field-writes
+  "A struct's fields assigned in jank through their references (.-f<i> yields one), read back."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 1 4))
+        before (mapv #(value-of tc %) ts)
+        after (mapv #(value-of tc %) ts)
+        s (str "jank_interop_writes_" id)]
+    {:property "jank writes a C++ struct's fields through their references"
+     :cpp (str "struct " s " { " (fields-cpp ts) "};")
+     :form (concat (list 'let ['v (cons (symbol "cpp" s) (map argument ts before))])
+                   (map-indexed (fn [i t] (list 'cpp/= (list (symbol (str ".-f" i)) 'v) (argument t (nth after i)))) ts)
+                   [(read-fields ts 'v)])
+     :expected (apply str (map report ts after))}))
+
+(defn member-function
+  "A C++ member function called in jank on a value or through a pointer: it answers its object's
+  fields and its arguments."
+  [tc id kept]
+  (let [fts (draw-types tc kept (hegel/integer tc 1 3))
+        fvs (mapv #(value-of tc %) fts)
+        pts (draw-types tc kept (hegel/integer tc 0 4))
+        pvs (mapv #(value-of tc %) pts)
+        pointer? (hegel/boolean tc)
+        s (str "jank_interop_member_" id)
+        call (cons '.echo (cons 'o (map argument pts pvs)))]
+    {:property "jank calls a C++ member function with its object and arguments intact"
+     :cpp (str "struct " s " { " (fields-cpp fts) "\nstd::string echo("
+               (string/join ", " (map-indexed (fn [i t] (str (:cpp t) " p" i)) pts))
+               ") const {\nstd::string out;\n"
+               (apply str (map-indexed (fn [i t] (echo-cpp t (str "f" i))) fts))
+               (apply str (map-indexed (fn [i t] (echo-cpp t (str "p" i))) pts))
+               "return out;\n}\n};")
+     :form (if pointer?
+             (list 'let ['o (cons 'cpp/new (cons (symbol "cpp" s) (map argument fts fvs)))
+                         'out (list 'str call)]
+                   '(cpp/delete o)
+                   'out)
+             (list 'let ['o (cons (symbol "cpp" s) (map argument fts fvs))] (list 'str call)))
+     :expected (str (apply str (map report fts fvs)) (apply str (map report pts pvs)))}))
+
+(defn strings
+  "A jank string through a C++ std::string const& or const char* parameter and back, unchanged."
+  [tc id _]
+  (let [via (hegel/element tc [:std-string :c-string])
+        text (hegel/text tc {:max-size 24 :exclude (str (char 0))})
+        f (str "jank_interop_string_" id)]
+    {:property "jank strings cross to C++ and back unchanged"
+     :cpp (if (= via :std-string)
+            (str "std::string " f "(std::string const &s) { return s; }")
+            (str "std::string " f "(const char *s) { return std::string(s); }"))
+     :form (list 'str (list (symbol "cpp" f) text))
+     :expected text}))
+
+(defn let-destructors
+  "Values bound in nested lets destroyed at the end of their own let, each exactly once."
+  [tc id _]
+  (let [outer (hegel/integer tc 0 4)
+        inner (hegel/integer tc 1 4)
+        d (str "jank_interop_d_" id)
+        alive (str "jank_interop_alive_" id)
+        bind (fn [prefix n] (vec (mapcat (fn [i] [(symbol (str prefix i)) (list (symbol "cpp" d) i)]) (range n))))]
+    {:property "jank destroys a let's C++ values at its end, once each"
+     ;; inline: a static one is another variable in each unit jank compiles (static-globals).
+     :cpp (str "inline int64_t " alive "_count = 0;\n"
+               "struct " d " { int64_t v; " d "(int64_t v) : v(v) { ++" alive "_count; } "
+               d "(" d " const &o) : v(o.v) { ++" alive "_count; } "
+               d "(" d " &&o) : v(o.v) { ++" alive "_count; } "
+               "~" d "() { --" alive "_count; } };\n"
+               "int64_t " alive "() { return " alive "_count; }")
+     :form (list 'let ['seen (list 'let (bind "a" outer)
+                                   (list 'let ['in (list 'let (bind "b" inner) (list (symbol "cpp" alive)))
+                                               'mid (list (symbol "cpp" alive))]
+                                         '[in mid]))]
+                 (list 'conj 'seen (list (symbol "cpp" alive))))
+     :expected [(+ outer inner) outer 0]}))
+
+(defn opaque-box
+  "A pointer in an opaque box through jank functions, unboxed as its type (the same pointee), and
+  refused as another type."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 1 4))
+        vs (mapv #(value-of tc %) ts)
+        s (str "jank_interop_boxed_" id)
+        other (str "jank_interop_other_" id)
+        wrong? (hegel/boolean tc)]
+    {:property "jank's opaque boxes give back their pointer, and refuse another type"
+     :cpp (str "struct " s " { " (fields-cpp ts) "};\nstruct " other " { int64_t x; };")
+     :form (list 'let ['p (cons 'cpp/new (cons (symbol "cpp" s) (map argument ts vs)))
+                       'b '(first (list (identity (cpp/box p))))
+                       'q (list 'cpp/unbox (list :* (symbol s)) 'b)
+                       'out (list 'str (read-fields ts 'q)
+                                  (if wrong?
+                                    (list 'try (list 'cpp/unbox (list :* (symbol other)) 'b) "|unboxed"
+                                          '(catch cpp/jank.error_ref e "|refused"))
+                                    ""))]
+                 '(cpp/delete p)
+                 'out)
+     :expected (str (apply str (map report ts vs)) (if wrong? "|refused" ""))}))
+
+(defn callable
+  "A C++ callable called with jank's call syntax: a type with operator() or a function pointer."
+  [tc id kept]
+  (let [ts (draw-types tc kept (hegel/integer tc 0 4))
+        vs (mapv #(value-of tc %) ts)
+        pointer? (hegel/boolean tc)
+        c (str "jank_interop_callable_" id)
+        f (str "jank_interop_fn_" id)
+        parameters (string/join ", " (map-indexed (fn [i t] (str (:cpp t) " p" i)) ts))
+        body (str "{\nstd::string out;\n" (apply str (map-indexed (fn [i t] (echo-cpp t (str "p" i))) ts)) "return out;\n}")]
+    {:property "jank calls C++ callables with their arguments intact"
+     :cpp (str "struct " c " { std::string operator()(" parameters ") const " body " };\n"
+               "std::string " f "(" parameters ") " body "\n"
+               "using " f "_t = std::string (*)(" (string/join ", " (map :cpp ts)) ");\n"
+               f "_t " f "_pointer() { return &" f "; }")
+     :form (list 'let ['g (if pointer? (list (symbol "cpp" (str f "_pointer"))) (list (symbol "cpp" (str c "."))))]
+                 (list 'str (cons 'g (map argument ts vs))))
+     :expected (apply str (map report ts vs))}))
+
+(def ^:private integral-only #{"%" "&" "|" "^" "<<" ">>"})
+
+(defn native-operator
+  "A C++ operator (cpp/+, cpp/<< ...) on native values of two scalar types: what C++ computes, the
+  usual arithmetic conversions and promotions included (undefined cases left out)."
+  [tc id kept]
+  (let [numeric (or (seq (vec (remove #(or (:bool %) (= "char" (:name %))) kept))) [(nth types 6)])
+        ta (hegel/element tc (vec numeric))
+        tb (hegel/element tc (vec numeric))
+        floating? (or (:width ta) (:width tb))
+        op (hegel/element tc (if floating?
+                               ["+" "-" "*" "/" "==" "!=" "<" "<=" ">" ">="]
+                               ["+" "-" "*" "/" "%" "&" "|" "^" "<<" ">>" "==" "!=" "<" "<=" ">" ">="]))
+        a (value-of tc ta)
+        b (value-of tc tb)
+        f (str "jank_interop_op_" id)
+        compares? (#{"==" "!=" "<" "<=" ">" ">="} op)
+        float-result? (and floating? (not compares?))
+        undefined (str "bool " f "_undefined(" (:cpp ta) " a, " (:cpp tb) " b) {\n"
+                       "  using R = decltype(a " op " b);\n"
+                       (cond (#{"/" "%"} op)
+                             (if floating? "  return false;\n"
+                                 "  if (b == 0) return true;\n  return std::is_signed_v<R> && (R)a == std::numeric_limits<R>::min() && (R)b == (R)-1;\n")
+                             (#{"+" "-" "*"} op)
+                             (if floating? "  return false;\n"
+                                 (str "  R r; return __builtin_" ({"+" "add" "-" "sub" "*" "mul"} op) "_overflow((R)a, (R)b, &r);\n"))
+                             (#{"<<" ">>"} op)
+                             (str "  if (b < 0 || (uint64_t)b >= sizeof(R) * 8) return true;\n"
+                                  (if (= op "<<") "  if (std::is_signed_v<R> && (a < 0 || (R)a > (std::numeric_limits<R>::max() >> b))) return true;\n" "")
+                                  "  return false;\n")
+                             :else "  return false;\n")
+                       "}\n")
+        result (if float-result? (str "jank_interop_bits64((double)(a " op " b))") (str "(int64_t)(a " op " b)"))
+        operands ['a (argument ta a) 'b (argument tb b)]
+        native (list (symbol "cpp" op) 'a 'b)]
+    {:property "jank's C++ operators compute what C++ computes"
+     :cpp (str "#include <limits>\n#include <type_traits>\n" undefined
+               "int64_t " f "(" (:cpp ta) " a, " (:cpp tb) " b) { return " result "; }")
+     :form (list 'let operands
+                 (list 'if (list (symbol "cpp" (str f "_undefined")) 'a 'b) :undefined
+                       (if float-result?
+                         (list 'cpp/jank_interop_bits64 (list 'cpp/cast 'cpp/double native))
+                         (list 'cpp/cast 'cpp/int64_t native))))
+     :expected-form (list 'let operands
+                          (list 'if (list (symbol "cpp" (str f "_undefined")) 'a 'b) :undefined
+                                (list (symbol "cpp" f) 'a 'b)))}))
+
+(defn std-vector
+  "A std::vector<T> made with the C++ DSL, filled from jank: it holds what was pushed, and .at past
+  its end throws std::out_of_range, caught in jank by std::exception."
+  [tc _ kept]
+  (let [t (hegel/element tc (or (seq (vec (remove :bool kept))) [(nth types 6)]))
+        vs (hegel/collection tc {:max-size 6} #(value-of % t))
+        n (count vs)
+        text (str "(let [v (#cpp (std.vector " (type-named t) "))] "
+                  (apply str (map (fn [v] (str "(.push_back v (cpp/cast cpp/" (:cpp t) " " (pr-str v) ")) ")) vs))
+                  "(str (.size v) \";\" "
+                  (apply str (map (fn [i] (str "(jank-interop.cases/report (quote " (pr-str t) ") (.at v " i ")) ")) (range n)))
+                  "(try (.at v " n ") \"|no exception\" (catch cpp/std.exception e \"|out of range\"))))")]
+    {:property "jank fills and reads a C++ std::vector, its range checked"
+     :form-text text
+     :expected (str n ";" (apply str (map #(report t %) vs)) "|out of range")}))
+
+(defn numeric-limits
+  "std::numeric_limits<T> through the C++ DSL: its member functions called (max, min, lowest) and
+  its member values read (digits, is_signed), as C++ answers them."
+  [tc id kept]
+  (let [t (hegel/element tc (vec kept))
+        member (hegel/element tc ["max" "min" "lowest" "digits" "is_signed"])
+        call? (#{"max" "min" "lowest"} member)
+        f (str "jank_interop_limit_" id)
+        floating? (and call? (:width t))
+        value (str "std::numeric_limits<" (:cpp t) ">::" member (if call? "()" ""))
+        dsl (str "#cpp (:member (std.numeric_limits " (type-named t) ") " member ")")]
+    {:property "jank reaches std::numeric_limits as C++ does"
+     :cpp (str "#include <limits>\nint64_t " f "() { return "
+               (if floating? (str "jank_interop_bits64((double)" value ")") (str "(int64_t)" value)) "; }")
+     :form-text (if floating?
+                  (str "(cpp/jank_interop_bits64 (cpp/cast cpp/double " (if call? (str "(" dsl ")") dsl) "))")
+                  (str "(cpp/cast cpp/int64_t " (if call? (str "(" dsl ")") dsl) ")"))
+     :expected-form (list (symbol "cpp" f))}))
+
+(defn float-arithmetic
+  "jank's +, -, *, / on doubles (infinities, signed zeros, subnormals, division by zero) are
+  IEEE's, as C++ computes them; a double constant in an evaluated form keeps its value."
+  [tc _ _]
+  (let [op (hegel/integer tc 0 3)
+        a (hegel/floating tc {})
+        b (hegel/floating tc {})
+        a-bits (cpp/jank_interop_bits64 (cpp/cast cpp/double a))
+        b-bits (cpp/jank_interop_bits64 (cpp/cast cpp/double b))
+        constant? (hegel/boolean tc)]
+    {:property "jank's double arithmetic is IEEE's"
+     :form (list 'jank-interop.cases/bits-of
+                 (list (['+ '- '* '/] op)
+                       (if constant? a (list 'jank-interop.cases/real-of a-bits))
+                       (if constant? b (list 'jank-interop.cases/real-of b-bits))))
+     :expected (if (cpp/jank_interop_fop_nan op a-bits b-bits) :nan (cpp/jank_interop_fop_bits op a-bits b-bits))}))
+
+(defn static-globals
+  "A global defined by cpp/raw (static, plain or inline), changed by a constructor and read by a
+  function defined with it, from jank code compiled after it: one variable, as in C++."
+  [tc id _]
+  (let [kind (hegel/element tc ["static" "plain" "inline"])
+        n (hegel/integer tc 1 4)
+        g (str "jank_interop_global_" id)]
+    {:property "a C++ global from cpp/raw is one variable for jank code compiled later"
+     :cpp (str (case kind "static" "static " "plain" "" "inline" "inline ") "int64_t " g " = 0;\n"
+               "struct " g "_bump { " g "_bump() { ++" g "; } };\n"
+               "int64_t " g "_read() { return " g "; }")
+     :form (list 'let (vec (mapcat (fn [i] [(symbol (str "x" i)) (list (symbol "cpp" (str g "_bump")))]) (range n)))
+                 (list (symbol "cpp" (str g "_read"))))
+     :expected n
+     :kind kind}))
+
+(defn characters
+  "A C++ char of any value (outside ASCII too) read into jank from a field or a result: its byte
+  kept (jank makes it a character)."
+  [tc id _]
+  (let [value (hegel/integer tc -128 127)
+        from (hegel/element tc [:field :result])
+        f (str "jank_interop_char_" id)
+        t {:name "char" :cpp "char"}]
+    {:property "jank keeps a C++ char's value"
+     :cpp (str "struct " f "_s { char c; };\nchar " f "() { return (char)" value "; }")
+     :form (list 'jank-interop.cases/report (list 'quote t)
+                 (if (= from :field)
+                   (list '.-c (list (symbol "cpp" (str f "_s")) (list 'cpp/cast 'cpp/char value)))
+                   (list (symbol "cpp" f))))
+     :expected (report t value)}))
+
+(defn- compiler-error
+  "The first `error:` line Clang wrote while the case ran, its file and line cut off."
+  [captured]
+  (some (fn [line] (when-let [i (clojure.string/index-of line "error: ")] (subs line (+ i 7))))
+        (clojure.string/split-lines (str captured))))
+
+(defn failure-origin
+  "What tells one bug from another for Hegel (its failures grouped and shrunk by origin): the
+  outcome, and for an error its first line, numbers and generated names blanked. One known bug
+  (jank #984, case's default) then hides no other the same construct finds."
+  [{:keys [outcome answer]}]
+  (if (= outcome :error)
+    (str "error: " (-> (str answer)
+                       (clojure.string/split #"\n") first
+                       (clojure.string/replace #"jank_interop_[a-z_]+_\d+" "jank_interop_*")
+                       (clojure.string/replace #"\d+" "N")))
+    (name outcome)))
+
+(defn- evaluate-in
+  [c]
+  (try
+    (when-let [cpp (:cpp c)] (eval (list 'cpp/raw cpp)))
+    (let [answer (eval (if-let [text (:form-text c)] (read-string text) (:form c)))
+          expected (cond (:expected-form-text c) (eval (read-string (:expected-form-text c)))
+                         (:expected-form c) (eval (:expected-form c))
+                         :else (:expected c))]
+      (if (= answer expected)
+        {:outcome :passed}
+        {:outcome :failed :answer (pr-str answer) :expected (pr-str expected)}))
+    (catch cpp/jank.runtime.object_ref e
+      {:outcome :error :answer (str e)})
+    (catch cpp/jank.error_ref e
+      {:outcome :error :answer (str (cpp/jank_interop_error_text e))})
+    (catch cpp/std.exception e
+      {:outcome :error :answer (str "C++ exception: " (.what e))})))
+
+(defn evaluate
+  "Compiles the case's C++ and evaluates its form (or reads its text first): :passed, :failed
+  with the answer, or :error (it did not compile or run)."
+  [c]
+  (let [fd (cpp/jank_interop_capture_start)
+        result (evaluate-in c)
+        captured (str (cpp/jank_interop_capture_stop fd))
+        clang (compiler-error captured)]
+    (if (and (= :error (:outcome result)) clang)
+      (assoc result :answer (str (:answer result) " (C++: " clang ")"))
+      result)))
+
+(def constructs
+  "Each construct a generator of cases, its own property, in an area (the workload's scenario:
+  :interop, :language, :programs, :collections) so that a scenario runs its area's constructs
+  alone. :programs (generated jank programs) apart: one hanging in jank (count's loop) stops its
+  driver, and the constructs beside it would get no more cases."
+  [{:name "scalar arguments" :area :interop :make scalar-arguments}
+   {:name "scalar results" :area :interop :make scalar-result}
+   {:name "struct by value" :area :interop :make struct-by-value}
+   {:name "struct fields" :area :interop :make struct-fields}
+   {:name "overload" :area :interop :make overload}
+   {:name "exception" :area :interop :make exception}
+   {:name "arithmetic" :area :interop :make arithmetic}
+   {:name "pointer fields" :area :interop :make pointer-fields}
+   {:name "field writes" :area :interop :make field-writes}
+   {:name "member function" :area :interop :make member-function}
+   {:name "strings" :area :interop :make strings}
+   {:name "let destructors" :area :interop :make let-destructors}
+   {:name "opaque box" :area :interop :make opaque-box}
+   {:name "callable" :area :interop :make callable}
+   {:name "native operator" :area :interop :make native-operator}
+   {:name "std vector" :area :interop :make std-vector}
+   {:name "numeric limits" :area :interop :make numeric-limits}
+   {:name "float arithmetic" :area :interop :make float-arithmetic}
+   {:name "static globals" :area :interop :make static-globals}
+   {:name "characters" :area :interop :make characters}
+   {:name "binding forms" :area :language :make language/binding-forms}
+   {:name "differential forms" :area :programs :make language/differential-forms}
+   {:name "grammar forms" :area :programs :make language/grammar-forms}
+   {:name "constants" :area :language :make language/constants}
+   {:name "print and read" :area :language :make language/print-read}
+   {:name "thrown values" :area :language :make language/thrown-values}
+   {:name "persistent maps" :area :collections :make language/persistent-maps}
+   {:name "persistent vectors" :area :collections :make language/persistent-vectors}
+   {:name "persistent sets" :area :collections :make language/persistent-sets}
+   {:name "sequence pipelines" :area :collections :make language/sequence-pipelines}
+   {:name "sorting" :area :collections :make language/sorting}
+   {:name "equality and hashing" :area :collections :make language/equality-and-hashing}
+   {:name "multimethods" :area :semantics :make language/multimethods}
+   {:name "ex-info chains" :area :semantics :make language/ex-info-chains}
+   {:name "metadata through operations" :area :semantics :make language/metadata-through-operations}
+   {:name "dynamic bindings" :area :semantics :make language/dynamic-bindings}])

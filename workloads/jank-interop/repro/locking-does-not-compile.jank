@@ -1,0 +1,6 @@
+; SPDX-License-Identifier: MIT
+; clojure.core/locking is defined, but any use fails to compile: its expansion calls
+; monitor-enter, which jank does not define ("The symbol clojure.core/monitor-enter could not be
+; resolved"). Clojure runs the body holding the object's monitor.
+(def lock (atom 0))
+(println "expected 2:" (locking lock (+ 1 1)))

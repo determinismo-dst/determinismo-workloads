@@ -1,0 +1,79 @@
+; SPDX-License-Identifier: MIT
+; Native fuzzing of one construct, no determinismo (fuzz/run.sh cycles them, on the Mac too): Hegel
+; draws the construct's cases (the development profile: failures kept in .hegel/ and replayed first
+; next time, under the construct's key), each case evaluated as the workload's driver evaluates it.
+; A failure prints its origin and its minimal case; a case past its deadline is a hang, printed and
+; the process ended (a jank thread cannot be interrupted), as the driver's watchdog does.
+(ns jank-interop.fuzz
+  (:require [hegel.core :as hegel]
+            [jank-interop.cases :as cases]))
+
+(cpp/raw "
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unistd.h>
+
+static std::atomic<int64_t> fuzz_deadline_ms{0};
+static std::atomic<bool> fuzz_stopping{false};
+static std::mutex fuzz_case_mutex;
+static std::string fuzz_case_text;
+static std::thread *fuzz_watch = nullptr;
+
+static int64_t fuzz_now_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+void fuzz_case_begin(std::string const &text, int64_t limit_ms) {
+  if (!fuzz_watch) {
+    fuzz_watch = new std::thread([] {
+      while (!fuzz_stopping.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        int64_t deadline = fuzz_deadline_ms.load();
+        if (deadline == 0 || fuzz_now_ms() < deadline) continue;
+        std::lock_guard<std::mutex> lock(fuzz_case_mutex);
+        std::fprintf(stdout, \"HANG %s\\n\", fuzz_case_text.c_str());
+        std::fflush(stdout);
+        _exit(3);
+      }
+    });
+  }
+  {
+    std::lock_guard<std::mutex> lock(fuzz_case_mutex);
+    fuzz_case_text = text;
+  }
+  fuzz_deadline_ms.store(fuzz_now_ms() + limit_ms);
+}
+
+void fuzz_case_end() { fuzz_deadline_ms.store(0); }
+
+void fuzz_stop() {
+  fuzz_deadline_ms.store(0);
+  fuzz_stopping.store(true);
+  if (fuzz_watch) { fuzz_watch->join(); delete fuzz_watch; fuzz_watch = nullptr; }
+}
+")
+
+(defn -main [construct-name cases-text & _]
+  (let [construct (first (filter #(= construct-name (:name %)) cases/constructs))
+        ids (atom 0)
+        last-bad (atom nil)]
+    (try
+      (let [result (hegel/run! {:profile "development" :test-cases (parse-long cases-text) :key (str "fuzz " construct-name)}
+                               (fn [tc]
+                                 (let [c ((:make construct) tc (swap! ids inc) cases/types)
+                                       text (str (or (:form-text c) (pr-str (:form c))) (when (:cpp c) (str " C++: " (:cpp c))))
+                                       _ (cpp/fuzz_case_begin (cpp/cast cpp/std.string text) 120000)
+                                       r (cases/evaluate c)
+                                       _ (cpp/fuzz_case_end)]
+                                   (when-not (= :passed (:outcome r))
+                                     (reset! last-bad {:outcome (:outcome r) :answer (:answer r) :expected (or (:expected r) (pr-str (:expected c))) :case text})
+                                     (throw {:origin (cases/failure-origin r)}))
+                                   true)))]
+        (println (if (:passed? result) "PASS" "FAIL") construct-name
+                 (pr-str {:origins (mapv :origin (:failures result)) :error (:error result) :last-case @last-bad})))
+      (finally (cpp/fuzz_stop)))))

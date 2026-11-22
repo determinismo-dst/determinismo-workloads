@@ -1,0 +1,779 @@
+; SPDX-License-Identifier: MIT
+; The jank language's own cases (jank-interop.cases runs them as its constructs): generated
+; let/loop/recur/fn forms against a model of Clojure's semantics, constants in evaluated forms,
+; printing and reading, thrown values, and persistent maps against a C++ std::map.
+(ns jank-interop.language
+  (:require [clojure.string]
+            [hegel.core :as hegel]))
+
+(cpp/raw "
+#include <cstdint>
+#include <algorithm>
+#include <map>
+#include <set>
+#include <vector>
+
+// The persistent map property's model: the current map and the versions kept.
+static std::map<int64_t, int64_t> jank_interop_model;
+static std::vector<std::map<int64_t, int64_t>> jank_interop_versions;
+void jank_interop_model_reset() { jank_interop_model.clear(); jank_interop_versions.clear(); }
+void jank_interop_model_assoc(int64_t k, int64_t v) { jank_interop_model[k] = v; }
+void jank_interop_model_dissoc(int64_t k) { jank_interop_model.erase(k); }
+bool jank_interop_model_has(int64_t version, int64_t k) {
+  auto &m = version < 0 ? jank_interop_model : jank_interop_versions[version];
+  return m.count(k) > 0;
+}
+int64_t jank_interop_model_get(int64_t version, int64_t k) {
+  auto &m = version < 0 ? jank_interop_model : jank_interop_versions[version];
+  auto it = m.find(k);
+  return it == m.end() ? 0 : it->second;
+}
+int64_t jank_interop_model_count(int64_t version) {
+  return (int64_t)(version < 0 ? jank_interop_model : jank_interop_versions[version]).size();
+}
+// The version's i-th key in order.
+int64_t jank_interop_model_key(int64_t version, int64_t i) {
+  auto &m = version < 0 ? jank_interop_model : jank_interop_versions[version];
+  auto it = m.begin();
+  std::advance(it, i);
+  return it->first;
+}
+int64_t jank_interop_model_snapshot() { jank_interop_versions.push_back(jank_interop_model); return (int64_t)jank_interop_versions.size() - 1; }
+
+// The persistent vector property's model: a std::vector and its versions.
+static std::vector<int64_t> jank_interop_vmodel;
+static std::vector<std::vector<int64_t>> jank_interop_vversions;
+void jank_interop_vmodel_reset() { jank_interop_vmodel.clear(); jank_interop_vversions.clear(); }
+void jank_interop_vmodel_conj(int64_t x) { jank_interop_vmodel.push_back(x); }
+void jank_interop_vmodel_pop() { jank_interop_vmodel.pop_back(); }
+void jank_interop_vmodel_assoc(int64_t i, int64_t x) { jank_interop_vmodel[(size_t)i] = x; }
+void jank_interop_vmodel_subvec(int64_t from, int64_t to) {
+  jank_interop_vmodel = std::vector<int64_t>(jank_interop_vmodel.begin() + from, jank_interop_vmodel.begin() + to);
+}
+int64_t jank_interop_vmodel_count(int64_t version) {
+  return (int64_t)(version < 0 ? jank_interop_vmodel : jank_interop_vversions[version]).size();
+}
+int64_t jank_interop_vmodel_nth(int64_t version, int64_t i) {
+  return (version < 0 ? jank_interop_vmodel : jank_interop_vversions[version])[(size_t)i];
+}
+int64_t jank_interop_vmodel_snapshot() { jank_interop_vversions.push_back(jank_interop_vmodel); return (int64_t)jank_interop_vversions.size() - 1; }
+
+// The persistent set property's model: a std::set and its versions.
+static std::set<int64_t> jank_interop_smodel;
+static std::vector<std::set<int64_t>> jank_interop_sversions;
+void jank_interop_smodel_reset() { jank_interop_smodel.clear(); jank_interop_sversions.clear(); }
+void jank_interop_smodel_conj(int64_t x) { jank_interop_smodel.insert(x); }
+void jank_interop_smodel_disj(int64_t x) { jank_interop_smodel.erase(x); }
+int64_t jank_interop_smodel_count(int64_t version) {
+  return (int64_t)(version < 0 ? jank_interop_smodel : jank_interop_sversions[version]).size();
+}
+// The version's i-th element in order.
+int64_t jank_interop_smodel_nth(int64_t version, int64_t i) {
+  auto &s = version < 0 ? jank_interop_smodel : jank_interop_sversions[version];
+  auto it = s.begin();
+  std::advance(it, i);
+  return *it;
+}
+// The sequence laws' sort model: keys sorted stably (ascending or descending), their indices.
+static std::vector<std::pair<int64_t, int64_t>> jank_interop_sort_keys;
+void jank_interop_sort_reset() { jank_interop_sort_keys.clear(); }
+void jank_interop_sort_push(int64_t key) { jank_interop_sort_keys.push_back({key, (int64_t)jank_interop_sort_keys.size()}); }
+void jank_interop_sort_run(bool descending) {
+  std::stable_sort(jank_interop_sort_keys.begin(), jank_interop_sort_keys.end(), [descending](auto const &a, auto const &b) {
+    return descending ? a.first > b.first : a.first < b.first;
+  });
+}
+int64_t jank_interop_sort_index(int64_t i) { return jank_interop_sort_keys[(size_t)i].second; }
+
+int64_t jank_interop_smodel_snapshot() { jank_interop_sversions.push_back(jank_interop_smodel); return (int64_t)jank_interop_sversions.size() - 1; }
+")
+
+;; Binding forms: let, loop/recur, fn and if over small integers, names from a pool of three so
+;; that they shadow each other, against a model evaluating Clojure's semantics.
+
+(def ^:private names '[a b c])
+
+(defn- clamp [e] (list 'min 9 (list 'max -9 e)))
+
+(defn- expression
+  "A form of the enabled kinds over the names in scope, depth bounding its nesting."
+  [tc kinds scope depth]
+  (let [in-scope (filterv scope names)
+        choices (cond-> [:literal]
+                  (seq in-scope) (conj :name)
+                  (pos? depth) (into kinds))
+        kind (hegel/element tc choices)
+        sub (fn [scope] (expression tc kinds scope (dec depth)))]
+    (case kind
+      :literal (hegel/integer tc -9 9)
+      :name (hegel/element tc in-scope)
+      :arithmetic (list (hegel/element tc ['+ '-]) (sub scope) (sub scope))
+      :if (list 'if (list '< (sub scope) (sub scope)) (sub scope) (sub scope))
+      :let (let [n (hegel/integer tc 1 2)
+                 [bindings scope'] (reduce (fn [[bindings scope] _]
+                                             (let [name (hegel/element tc names)]
+                                               [(conj bindings name (sub scope)) (conj scope name)]))
+                                           [[] scope] (range n))]
+             (list 'let bindings (sub scope')))
+      ;; (loop [v init] (let [w e] (if (< v bound) (recur (+ v step)) body))): w is not v, so the
+      ;; loop ends; e may itself loop over v's name (an inner loop shadowing the outer one).
+      :loop (let [v (hegel/element tc names)
+                  w (hegel/element tc (filterv #(not= % v) names))
+                  init (clamp (sub scope))
+                  e (sub (conj scope v))
+                  bound (hegel/integer tc -9 9)
+                  step (hegel/integer tc 1 3)
+                  body (sub (conj scope v w))]
+              (list 'loop [v init]
+                    (list 'let [w e]
+                          (list 'if (list '< v bound) (list 'recur (list '+ v step)) body))))
+      :fn (let [p (hegel/element tc names)]
+            (list (list 'fn [p] (sub (conj scope p))) (sub scope))))))
+
+(defn- recur? [x] (and (map? x) (contains? x ::recur)))
+
+(defn model
+  "What Clojure evaluates the generated form e to, in env (names to values)."
+  [env e]
+  (cond
+    (integer? e) e
+    (symbol? e) (get env e)
+    (seq? (first e)) (let [[[_ [p] body] argument] e]
+                       (model (assoc env p (model env argument)) body))
+    :else
+    (let [[op & args] e]
+      (case op
+        + (+ (model env (first args)) (model env (second args)))
+        - (- (model env (first args)) (model env (second args)))
+        < (< (model env (first args)) (model env (second args)))
+        min (min (model env (first args)) (model env (second args)))
+        max (max (model env (first args)) (model env (second args)))
+        if (let [[test then else] args]
+             (if (model env test) (model env then) (model env else)))
+        let (let [[bindings body] args]
+              (model (reduce (fn [env [name value]] (assoc env name (model env value)))
+                             env (partition 2 bindings))
+                     body))
+        recur {::recur (mapv #(model env %) args)}
+        loop (let [[bindings body] args
+                   pairs (partition 2 bindings)
+                   start (reduce (fn [env [name value]] (assoc env name (model env value))) env pairs)]
+               (loop [scope start]
+                 (let [result (model scope body)]
+                   (if (recur? result)
+                     (recur (merge scope (zipmap (map first pairs) (::recur result))))
+                     result))))))))
+
+(defn binding-forms
+  "A generated form of let, loop/recur, fn and if, names shadowing each other, evaluated at the
+  top level or compiled in a function: Clojure's answer."
+  [tc _ _]
+  (let [kinds (hegel/swarm tc [:arithmetic :if :let :loop :fn])
+        e (expression tc kinds #{} (hegel/integer tc 1 4))
+        compiled? (hegel/boolean tc)]
+    {:property "jank evaluates let, loop, fn and if forms as Clojure does"
+     :form (if compiled? (list (list 'fn [] e)) e)
+     :expected (model {} e)}))
+
+;; Differential forms: a richer grammar (destructuring, multi-binding loops, cond, case, when,
+;; multi-arity fns, letfn, closures, collections) evaluated at the top level and compiled in a
+;; function: the two must agree, and a valid form must compile at all. No model needed: jank's
+;; two paths are each other's oracle (an internal-failure on a valid form is the finding too).
+
+(defn- rich
+  "A form of the enabled kinds over the names in scope (numbers in, numbers out), depth bounding
+  its nesting; every loop counts up to a literal bound, so it ends."
+  [tc kinds scope depth]
+  (let [in-scope (filterv scope names)
+        choices (cond-> [:literal]
+                  (seq in-scope) (conj :name)
+                  (pos? depth) (into kinds))
+        sub (fn [scope] (rich tc kinds scope (dec depth)))
+        fresh (fn [] (hegel/element tc names))]
+    (case (hegel/element tc choices)
+      :literal (hegel/integer tc -9 9)
+      :name (hegel/element tc in-scope)
+      :arithmetic (list (hegel/element tc ['+ '- 'max 'min]) (sub scope) (sub scope))
+      :if (list 'if (list (hegel/element tc ['< '= '>=]) (sub scope) (sub scope)) (sub scope) (sub scope))
+      :cond (list 'cond (list '< (sub scope) (sub scope)) (sub scope)
+                  (list '= (sub scope) (sub scope)) (sub scope)
+                  :else (sub scope))
+      :case (list 'case (list 'mod (sub scope) 3) 0 (sub scope) 1 (sub scope) (sub scope))
+      :when (list 'or (list 'when (list '< (sub scope) (sub scope)) (sub scope)) 0)
+      :do (list 'do (sub scope) (sub scope))
+      :let (let [n (fresh)] (list 'let [n (sub scope)] (sub (conj scope n))))
+      :vector-destructure (let [x (fresh) y (fresh)]
+                            (list 'let [[x y] [(sub scope) (sub scope)]] (sub (conj scope x y))))
+      :map-destructure (let [x (fresh)]
+                         (list 'let [{:keys [x]} {(keyword x) (sub scope)}] (sub (conj scope x))))
+      ;; Two loop names, the second carried from the first: (loop [v init w init] (if (< v bound)
+      ;; (recur (+ v step) (+ w v)) body)), w never v.
+      :loop (let [v (fresh)
+                  w (hegel/element tc (filterv #(not= % v) names))]
+              (list 'loop [v (clamp (sub scope)) w (clamp (sub scope))]
+                    (list 'if (list '< v (hegel/integer tc -9 9))
+                          (list 'recur (list '+ v (hegel/integer tc 1 3)) (list 'max -50 (list 'min 50 (list '+ w v))))
+                          (sub (conj scope v w)))))
+      :fn (let [p (fresh)] (list (list 'fn [p] (sub (conj scope p))) (sub scope)))
+      :multi-arity (let [p (fresh) q (fresh)
+                         f (list 'fn (list [p] (sub (conj scope p))) (list [p q] (sub (conj scope p q))))]
+                     (if (hegel/boolean tc) (list f (sub scope)) (list f (sub scope) (sub scope))))
+      :letfn (let [p (fresh)]
+               (list 'letfn [(list 'helper [p] (sub (conj scope p)))] (list 'helper (sub scope))))
+      :closure (let [g (fresh) p (hegel/element tc (filterv #(not= % g) names))]
+                 (list 'let [g (list 'fn [p] (sub (conj scope p)))] (list g (sub scope))))
+      :collection (let [items (vec (for [_ (range (hegel/integer tc 1 4))] (sub scope)))]
+                    (hegel/element tc [(list 'count items) (list 'nth items 0) (list 'reduce '+ items)
+                                       (list 'first (list 'map 'inc items)) (list 'apply 'max items)])))))
+
+(defn differential-forms
+  "A generated form (the rich grammar, its kinds swarmed) evaluated at the top level and compiled
+  in a function: the same answer, and no failure to compile."
+  [tc _ _]
+  (let [kinds (hegel/swarm tc [:arithmetic :if :cond :case :when :do :let :vector-destructure
+                                :map-destructure :loop :fn :multi-arity :letfn :closure :collection])
+        e (rich tc kinds #{} (hegel/integer tc 1 4))]
+    {:property "jank evaluates a form the same at the top level and compiled in a function"
+     :form e
+     :expected-form (list (list 'fn [] e))}))
+
+;; Grammar forms: jank code from a Lark grammar (hegel-jank's grammar: drawn and shrunk
+;; structurally), every name bound by the let around it, so any string of it is valid Clojure;
+;; read by jank's reader, then evaluated at the top level and compiled in a function.
+
+(def ^:private forms-grammar
+  "Expressions over the names a, b and c: arithmetic, if, let, collections, maps, fns (one and
+  two arities), do, case, cond, loops counting to a literal, when, str."
+  "start: expr
+?expr: NUM | name | FORMS
+NUM: /-?[0-9]/
+name: \"a\" | \"b\" | \"c\"
+arith: \"(\" OP \" \" expr \" \" expr \")\"
+OP: \"+\" | \"-\" | \"max\" | \"min\"
+ifx: \"(if (\" CMP \" \" expr \" \" expr \") \" expr \" \" expr \")\"
+CMP: \"<\" | \"=\" | \">=\"
+letx: \"(let [\" name \" \" expr \"] \" expr \")\" | \"(let [\" name \" \" expr \" \" name \" \" expr \"] \" expr \")\"
+vecx: \"(count [\" expr (\" \" expr)* \"])\" | \"(nth [\" expr (\" \" expr)* \"] 0)\" | \"(reduce + [\" expr (\" \" expr)* \"])\"
+mapx: \"(get {:k \" expr \" :j \" expr \"} :k)\" | \"(:j {:k \" expr \" :j \" expr \"})\"
+fnx: \"((fn [\" name \"] \" expr \") \" expr \")\" | \"((fn ([\" name \"] \" expr \") ([\" name \" \" name \"] \" expr \")) \" expr \" \" expr \")\"
+dox: \"(do \" expr \" \" expr \")\"
+casex: \"(case (mod \" expr \" 3) 0 \" expr \" 1 \" expr \" \" expr \")\"
+condx: \"(cond (< \" expr \" \" expr \") \" expr \" :else \" expr \")\"
+loopa: \"(loop [a (min 9 (max -9 \" expr \"))] (if (< a \" NUM \") (recur (+ a 1)) \" expr \"))\"
+loopb: \"(loop [b (min 9 (max -9 \" expr \"))] (if (< b \" NUM \") (recur (+ b 1)) \" expr \"))\"
+whenx: \"(or (when (< \" expr \" \" expr \") \" expr \") 0)\"
+strx: \"(count (str \" expr \" \" expr \"))\"
+")
+
+(def ^:private grammar-rules
+  ["arith" "ifx" "letx" "vecx" "mapx" "fnx" "dox" "casex" "condx" "loopa" "loopb" "whenx" "strx"])
+
+(defn grammar-forms
+  "A form of the grammar, read from its text, at the top level and compiled in a function: the
+  same answer, and it compiles. The forms a case may use are swarmed (each left out with
+  probability 1/2): a bug in one form (case's, #984) is in nearly every program of the whole
+  grammar and hides the others; cases without that form reach them, cases with it still find it."
+  [tc _ _]
+  (let [rules (hegel/swarm tc grammar-rules)
+        grammar (clojure.string/replace forms-grammar "FORMS" (clojure.string/join " | " rules))
+        text (str "(let [a 1 b 2 c 3] " (hegel/grammar tc grammar {:max-size 600 :max-depth 12}) ")")]
+    {:property "jank evaluates a grammar's form the same at the top level and compiled in a function"
+     :form-text text
+     ;; Read where the evaluation's errors are caught: a text the reader refuses is the
+     ;; case's outcome (jank's reader is under test too), never an error out of the run.
+     :expected-form-text (str "((fn [] " text "))")}))
+
+;; Data: what printing, reading, constants and throwing carry.
+
+(defn datum
+  "A jank value: numbers, strings, keywords, symbols, characters, booleans, nil, and vectors,
+  lists, maps and sets of them (depth bounding the nesting)."
+  [tc depth]
+  (let [kinds (cond-> [:integer :string :keyword :symbol :character :boolean :nil :double]
+                (pos? depth) (into [:vector :list :map :set]))
+        sub #(datum % (dec depth))]
+    (case (hegel/element tc kinds)
+      :integer (hegel/integer tc -9223372036854775807 9223372036854775807)
+      :string (hegel/text tc {:max-size 12})
+      :keyword (keyword (hegel/regex tc "[a-z][a-z0-9-]{0,6}"))
+      :symbol (symbol (hegel/regex tc "[a-z][a-z0-9-]{0,6}"))
+      :character (char (hegel/integer tc 32 126))
+      :boolean (hegel/boolean tc)
+      :nil nil
+      :double (hegel/floating tc {})
+      :vector (hegel/collection tc {:max-size 4} sub)
+      :list (apply list (hegel/collection tc {:max-size 4} sub))
+      :map (into {} (hegel/collection tc {:max-size 4} (fn [tc] [(sub tc) (sub tc)])))
+      :set (set (hegel/collection tc {:max-size 4} sub)))))
+
+(defn constants
+  "A value as a constant in an evaluated form (quoted), at the top level or in a function."
+  [tc _ _]
+  (let [v (datum tc (hegel/integer tc 0 3))
+        compiled? (hegel/boolean tc)]
+    {:property "a constant in an evaluated form keeps its value"
+     :form (if compiled? (list (list 'fn [] (list 'quote v))) (list 'quote v))
+     :expected v}))
+
+(defn print-read
+  "A value printed (pr-str) and read back (read-string)."
+  [tc _ _]
+  (let [v (datum tc (hegel/integer tc 0 3))]
+    {:property "jank reads back what it prints"
+     :form (list 'read-string (pr-str v))
+     :expected v}))
+
+(defn thrown-values
+  "A value thrown and caught as object_ref, through a finally: what was thrown, the finally run."
+  [tc _ _]
+  (let [v (datum tc (hegel/integer tc 0 2))]
+    {:property "jank catches the value thrown, its finally run once"
+     :form (list 'let ['log '(atom [])]
+                 (list 'try
+                       (list 'try (list 'throw (list 'quote v))
+                             '(finally (swap! log conj :finally)))
+                       '(catch cpp/jank.runtime.object_ref e (swap! log conj [:caught e])))
+                 '(deref log))
+     :expected [:finally [:caught v]]}))
+
+;; Persistent maps against a C++ std::map: assoc, dissoc, transient batches; every version kept
+;; must still hold what it held.
+
+(defn- divergence
+  "Where map (or the version's) differs from the model: nil when it does not."
+  [m version what]
+  (let [n (cpp/jank_interop_model_count version)
+        model-keys (mapv #(cpp/jank_interop_model_key version %) (range n))]
+    (cond
+      (not= (count m) n) (str what ": count " (count m) ", model " n)
+      (not (every? #(and (contains? m %) (= (get m %) (cpp/jank_interop_model_get version %))) model-keys))
+      (str what ": entries " (pr-str (into (sorted-map) m)) ", the model's "
+           (pr-str (into (sorted-map) (map (fn [k] [k (cpp/jank_interop_model_get version k)]) model-keys))))
+      (and (sorted? m) (not= (vec (keys m)) model-keys))
+      (str what ": order " (pr-str (keys m)) ", model " model-keys))))
+
+(defn- step
+  "The state after an operation (logged), its divergence recorded with the operations that led to it."
+  [state operation check]
+  (let [state (update state :log conj operation)]
+    (if (:diverged state)
+      state
+      (let [found (check)]
+        (if found (assoc state :diverged (str found " after " (pr-str (:log state)))) state)))))
+
+(defn persistent-maps
+  "Maps (hash, array or sorted) under assoc, dissoc and transient batches against a C++ std::map,
+  each version snapshotted along the way still equal to its own."
+  [tc _ _]
+  (cpp/jank_interop_model_reset)
+  (let [kind (hegel/element tc [:hash :array :sorted])
+        key-range (hegel/element tc [3 12 100])
+        draw-key #(hegel/integer % 0 key-range)
+        result (hegel/state-machine
+                tc
+                {:initial {:m (case kind :hash (hash-map) :array (array-map) :sorted (sorted-map))
+                           :versions [] :log []}
+                 :rules [{:name "assoc"
+                          :run (fn [tc state]
+                                 (let [k (draw-key tc) v (hegel/integer tc -100 100) m (assoc (:m state) k v)]
+                                   (cpp/jank_interop_model_assoc k v)
+                                   (step (assoc state :m m) [:assoc k v] #(divergence m -1 "after assoc"))))}
+                         {:name "dissoc"
+                          :run (fn [tc state]
+                                 (let [k (draw-key tc) m (dissoc (:m state) k)]
+                                   (cpp/jank_interop_model_dissoc k)
+                                   (step (assoc state :m m) [:dissoc k] #(divergence m -1 "after dissoc"))))}
+                         {:name "transient batch"
+                          :run (fn [tc state]
+                                 ;; Clojure has no transient sorted map.
+                                 (hegel/assume tc (not (sorted? (:m state))))
+                                 (let [ops (hegel/collection tc {:max-size 8}
+                                                             (fn [tc] [(hegel/boolean tc) (draw-key tc) (hegel/integer tc -100 100)]))
+                                       m (persistent! (reduce (fn [t [assoc? k v]]
+                                                                (if assoc?
+                                                                  (do (cpp/jank_interop_model_assoc k v) (assoc! t k v))
+                                                                  (do (cpp/jank_interop_model_dissoc k) (dissoc! t k))))
+                                                              (transient (:m state)) ops))]
+                                   (step (assoc state :m m) [:transient ops] #(divergence m -1 "after a transient batch"))))}
+                         {:name "snapshot"
+                          :run (fn [_ state]
+                                 (-> state
+                                     (update :versions conj [(:m state) (cpp/jank_interop_model_snapshot)])
+                                     (update :log conj [:snapshot])))}
+                         {:name "check versions"
+                          :run (fn [_ state]
+                                 (step state [:check-versions]
+                                       #(some (fn [[m version]] (divergence m version (str "version " version)))
+                                              (:versions state))))}]})]
+    {:property "jank's persistent maps hold what a std::map holds, every version kept"
+     :form (list 'quote (if (:diverged result) (str (name kind) " map, " (:diverged result)) :consistent))
+     :expected :consistent
+     :kind (name kind)}))
+
+;; Persistent vectors against a C++ std::vector: conj, pop, assoc by index, subvec, transient
+;; batches; every version kept must still hold what it held.
+
+(defn- vector-divergence
+  "Where the vector (or the version's) differs from the model: nil when it does not."
+  [v version what]
+  (let [n (cpp/jank_interop_vmodel_count version)
+        model (mapv #(cpp/jank_interop_vmodel_nth version %) (range n))]
+    (cond
+      (not= (count v) n) (str what ": count " (count v) ", model " n)
+      (not= (mapv #(nth v %) (range n)) model) (str what ": by nth " (pr-str (mapv #(nth v %) (range n))) ", model " (pr-str model))
+      (not= (vec (seq v)) model) (str what ": its seq " (pr-str (seq v)) ", model " (pr-str model))
+      ;; reverse, not rseq: jank 0.1 has not ported rseq ("TODO: port rseq").
+      (not= (vec (reverse v)) (vec (reverse model))) (str what ": reversed " (pr-str (reverse v)) ", model " (pr-str (reverse model)))
+      (and (pos? n) (not= (peek v) (peek model))) (str what ": peek " (peek v) ", model " (peek model))
+      (not= v model) (str what ": not = to the model's vector " (pr-str model)))))
+
+(defn persistent-vectors
+  "Vectors under conj, pop, assoc, subvec and transient batches against a C++ std::vector, each
+  version snapshotted along the way still equal to its own."
+  [tc _ _]
+  (cpp/jank_interop_vmodel_reset)
+  (let [start (hegel/element tc [:empty :literal :into])
+        draw-value #(hegel/integer % -100 100)
+        result (hegel/state-machine
+                tc
+                {:initial {:v (case start :empty [] :literal [] :into (into [] (range 0)))
+                           :versions [] :log []}
+                 :rules [{:name "conj"
+                          :run (fn [tc state]
+                                 (let [x (draw-value tc) v (conj (:v state) x)]
+                                   (cpp/jank_interop_vmodel_conj x)
+                                   (step (assoc state :v v) [:conj x] #(vector-divergence v -1 "after conj"))))}
+                         {:name "conj many"
+                          ;; Enough at once to cross the 32-wide tail and the trie's levels.
+                          :run (fn [tc state]
+                                 (let [n (hegel/element tc [31 32 33 64 1024 1057])
+                                       v (reduce (fn [v i] (cpp/jank_interop_vmodel_conj i) (conj v i)) (:v state) (range n))]
+                                   (step (assoc state :v v) [:conj-many n] #(vector-divergence v -1 "after conj many"))))}
+                         {:name "pop"
+                          :run (fn [tc state]
+                                 (hegel/assume tc (pos? (count (:v state))))
+                                 (let [v (pop (:v state))]
+                                   (cpp/jank_interop_vmodel_pop)
+                                   (step (assoc state :v v) [:pop] #(vector-divergence v -1 "after pop"))))}
+                         {:name "assoc"
+                          :run (fn [tc state]
+                                 (let [n (count (:v state))
+                                       _ (hegel/assume tc (pos? n))
+                                       i (hegel/integer tc 0 (dec n))
+                                       x (draw-value tc)
+                                       v (assoc (:v state) i x)]
+                                   (cpp/jank_interop_vmodel_assoc i x)
+                                   (step (assoc state :v v) [:assoc i x] #(vector-divergence v -1 "after assoc"))))}
+                         {:name "subvec"
+                          :run (fn [tc state]
+                                 (let [n (count (:v state))
+                                       from (hegel/integer tc 0 n)
+                                       to (hegel/integer tc from n)
+                                       v (subvec (:v state) from to)]
+                                   (cpp/jank_interop_vmodel_subvec from to)
+                                   (step (assoc state :v v) [:subvec from to] #(vector-divergence v -1 "after subvec"))))}
+                         {:name "transient batch"
+                          :run (fn [tc state]
+                                 ;; A subvec has no transient in Clojure: only a vector proper.
+                                 (hegel/assume tc (= (type (:v state)) (type [])))
+                                 (let [ops (hegel/collection tc {:max-size 40}
+                                                             (fn [tc] [(hegel/element tc [:conj :pop :assoc]) (draw-value tc) (hegel/integer tc 0 1000000)]))
+                                       [t applied] (reduce (fn [[t applied] [op x r]]
+                                                             (let [n (count t)]
+                                                               (case op
+                                                                 :conj (do (cpp/jank_interop_vmodel_conj x) [(conj! t x) (conj applied [:conj! x])])
+                                                                 :pop (if (pos? n)
+                                                                        (do (cpp/jank_interop_vmodel_pop) [(pop! t) (conj applied [:pop!])])
+                                                                        [t applied])
+                                                                 :assoc (if (pos? n)
+                                                                          (let [i (mod r n)] (cpp/jank_interop_vmodel_assoc i x) [(assoc! t i x) (conj applied [:assoc! i x])])
+                                                                          [t applied]))))
+                                                           [(transient (:v state)) []] ops)
+                                       v (persistent! t)]
+                                   (step (assoc state :v v) [:transient applied] #(vector-divergence v -1 "after a transient batch"))))}
+                         {:name "snapshot"
+                          :run (fn [_ state]
+                                 (-> state
+                                     (update :versions conj [(:v state) (cpp/jank_interop_vmodel_snapshot)])
+                                     (update :log conj [:snapshot])))}
+                         {:name "check versions"
+                          :run (fn [_ state]
+                                 (step state [:check-versions]
+                                       #(some (fn [[v version]] (vector-divergence v version (str "version " version)))
+                                              (:versions state))))}]})]
+    {:property "jank's persistent vectors hold what a std::vector holds, every version kept"
+     :form (list 'quote (if (:diverged result) (str (name start) " vector, " (:diverged result)) :consistent))
+     :expected :consistent}))
+
+;; Persistent sets (hash or sorted) against a C++ std::set: conj, disj, into, transient batches
+;; (hash sets: Clojure has no transient sorted set); every version kept must still hold its own.
+
+(defn- set-divergence
+  "Where the set (or the version's) differs from the model: nil when it does not."
+  [s version what]
+  (let [n (cpp/jank_interop_smodel_count version)
+        model (mapv #(cpp/jank_interop_smodel_nth version %) (range n))]
+    (cond
+      (not= (count s) n) (str what ": count " (count s) ", model " n)
+      (not (every? #(contains? s %) model)) (str what ": " (pr-str (into (sorted-set) s)) ", model " (pr-str model))
+      (not= (count (seq s)) n) (str what ": its seq has " (count (seq s)) " elements, model " n)
+      (and (sorted? s) (not= (vec (seq s)) model)) (str what ": order " (pr-str (seq s)) ", model " (pr-str model))
+      (not= s (set model)) (str what ": not = to the model's set " (pr-str model)))))
+
+(defn persistent-sets
+  "Sets (hash or sorted) under conj, disj, into and transient batches against a C++ std::set, each
+  version snapshotted along the way still equal to its own."
+  [tc _ _]
+  (cpp/jank_interop_smodel_reset)
+  (let [kind (hegel/element tc [:hash :sorted])
+        value-range (hegel/element tc [3 12 100 10000])
+        draw-value #(hegel/integer % 0 value-range)
+        result (hegel/state-machine
+                tc
+                {:initial {:s (case kind :hash (hash-set) :sorted (sorted-set)) :versions [] :log []}
+                 :rules [{:name "conj"
+                          :run (fn [tc state]
+                                 (let [x (draw-value tc) s (conj (:s state) x)]
+                                   (cpp/jank_interop_smodel_conj x)
+                                   (step (assoc state :s s) [:conj x] #(set-divergence s -1 "after conj"))))}
+                         {:name "disj"
+                          :run (fn [tc state]
+                                 (let [x (draw-value tc) s (disj (:s state) x)]
+                                   (cpp/jank_interop_smodel_disj x)
+                                   (step (assoc state :s s) [:disj x] #(set-divergence s -1 "after disj"))))}
+                         {:name "into"
+                          :run (fn [tc state]
+                                 (let [xs (hegel/collection tc {:max-size 40} draw-value)
+                                       s (into (:s state) xs)]
+                                   (doseq [x xs] (cpp/jank_interop_smodel_conj x))
+                                   (step (assoc state :s s) [:into xs] #(set-divergence s -1 "after into"))))}
+                         {:name "transient batch"
+                          :run (fn [tc state]
+                                 (hegel/assume tc (not (sorted? (:s state))))
+                                 (let [ops (hegel/collection tc {:max-size 40} (fn [tc] [(hegel/boolean tc) (draw-value tc)]))
+                                       s (persistent! (reduce (fn [t [conj? x]]
+                                                                (if conj?
+                                                                  (do (cpp/jank_interop_smodel_conj x) (conj! t x))
+                                                                  (do (cpp/jank_interop_smodel_disj x) (disj! t x))))
+                                                              (transient (:s state)) ops))]
+                                   (step (assoc state :s s) [:transient ops] #(set-divergence s -1 "after a transient batch"))))}
+                         {:name "snapshot"
+                          :run (fn [_ state]
+                                 (-> state
+                                     (update :versions conj [(:s state) (cpp/jank_interop_smodel_snapshot)])
+                                     (update :log conj [:snapshot])))}
+                         {:name "check versions"
+                          :run (fn [_ state]
+                                 (step state [:check-versions]
+                                       #(some (fn [[s version]] (set-divergence s version (str "version " version)))
+                                              (:versions state))))}]})]
+    {:property "jank's persistent sets hold what a std::set holds, every version kept"
+     :form (list 'quote (if (:diverged result) (str (name kind) " set, " (:diverged result)) :consistent))
+     :expected :consistent
+     :kind (name kind)}))
+
+;; Sequence laws, each its own property (one law always failing must not hide the others): a
+;; transducer pipeline gives one answer eagerly (into, transduce) and lazily (the same steps as seq
+;; functions); sort-by matches a C++ std::stable_sort (ties kept in order); = is symmetric and equal
+;; collections of different kinds hash alike (jank's = isn't: a vector = any seqable).
+
+(def ^:private pipeline-steps
+  "Each step as a transducer and as the seq function it stands for."
+  {:map-inc [(map inc) #(map inc %)]
+   :map-neg [(map -) #(map - %)]
+   :filter-odd [(filter odd?) #(filter odd? %)]
+   :remove-pos [(remove pos?) #(remove pos? %)]
+   :keep [(keep #(when (even? %) (* 3 %))) #(keep (fn [x] (when (even? x) (* 3 x))) %)]
+   :mapcat [(mapcat #(vector % %)) #(mapcat (fn [x] [x x]) %)]
+   :take [(take 5) #(take 5 %)]
+   :drop [(drop 3) #(drop 3 %)]
+   :take-while [(take-while #(< % 40)) #(take-while (fn [x] (< x 40)) %)]
+   :drop-while [(drop-while neg?) #(drop-while neg? %)]
+   :partition-all [(comp (partition-all 3) (map #(reduce + %))) #(map (fn [p] (reduce + p)) (partition-all 3 %))]
+   :dedupe [(dedupe) #(dedupe %)]
+   :distinct [(distinct) #(distinct %)]})
+
+(defn- drawn-numbers
+  "A drawn vector of small integers, sized to cross the 32-element chunks."
+  [tc]
+  (let [size (hegel/element tc [0 1 31 32 33 70 300])]
+    (vec (for [_ (range size)] (hegel/integer tc -50 50)))))
+
+(defn sequence-pipelines
+  "A drawn collection through a drawn pipeline: into, transduce and the lazy seq functions agree."
+  [tc _ _]
+  (let [xs (drawn-numbers tc)
+        source (hegel/element tc [:vector :list :range :lazy])
+        coll (case source :vector xs :list (apply list xs) :range (map #(nth xs %) (range (count xs))) :lazy (lazy-seq (seq xs)))
+        steps (vec (for [_ (range (hegel/integer tc 1 6))] (hegel/element tc (hegel/swarm tc (vec (keys pipeline-steps))))))
+        xf (apply comp (map #(first (pipeline-steps %)) steps))
+        lazy (vec (reduce (fn [c step] ((second (pipeline-steps step)) c)) coll steps))
+        eager (into [] xf coll)
+        transduced (transduce xf conj [] coll)
+        broken (cond (not= eager lazy) [:into eager :lazy lazy]
+                     (not= eager transduced) [:into eager :transduce transduced])]
+    {:property "jank's transducers and lazy seq functions give one answer"
+     :form (list 'quote (if broken {:broken broken :source source :steps steps :xs xs} :consistent))
+     :expected :consistent}))
+
+(defn sorting
+  "sort-by with an ascending or descending comparator against C++'s std::stable_sort: the same
+  order, ties kept in place."
+  [tc _ _]
+  (let [xs (drawn-numbers tc)
+        descending? (hegel/boolean tc)
+        divisor (hegel/element tc [1 5 50])
+        keyed (vec (map-indexed (fn [i x] [(quot x divisor) i]) xs))
+        sorted (mapv second (sort-by first (if descending? > <) keyed))
+        _ (cpp/jank_interop_sort_reset)
+        _ (doseq [[k _] keyed] (cpp/jank_interop_sort_push k))
+        _ (cpp/jank_interop_sort_run descending?)
+        model (mapv #(cpp/jank_interop_sort_index %) (range (count xs)))]
+    {:property "jank's sort-by orders as std::stable_sort, ties kept in place"
+     :form (list 'quote (if (not= sorted model) {:sort-by sorted :stable-sort model :descending? descending? :keys (mapv first keyed)} :consistent))
+     :expected :consistent}))
+
+(defn equality-and-hashing
+  "= symmetric over values of every kind (nil, empties, strings and drawn collections, swarmed), and
+  equal collections of different kinds (vector, list, seqs; map kinds; set kinds) hashing alike."
+  [tc _ _]
+  (let [xs (drawn-numbers tc)
+        entries (map-indexed (fn [i x] [(mod x 17) i]) xs)
+        letters (map #(char (+ 97 (mod % 26))) xs)
+        pool (hegel/swarm tc [nil [] () {} #{} "" (vec xs) (apply list xs) (set xs) (into {} entries)
+                              (vec (map vector xs xs)) (into {} (map vector xs xs)) (vec letters) (apply str letters)])
+        asymmetric (some (fn [[a b]] (when (not= (= a b) (= b a)) [:not-symmetric (pr-str a) (pr-str b) (= a b) (= b a)]))
+                         (for [a pool b pool] [a b]))
+        ;; (seq []) is nil, no collection: an empty seq is the empty list.
+        equal-kinds [[(vec xs) (apply list xs) (or (seq xs) ()) (lazy-seq xs)]
+                     [(into {} entries) (into (sorted-map) entries) (into (array-map) entries)]
+                     [(set xs) (into (sorted-set) xs)]]
+        unhashed (some (fn [group]
+                         (some (fn [[a b]]
+                                 (cond (not= a b) [:not-equal (pr-str a) (pr-str b)]
+                                       (not= (hash a) (hash b)) [:equal-but-hash-differs (pr-str a) (pr-str b) (hash a) (hash b)]))
+                               (for [a group b group] [a b])))
+                       equal-kinds)
+        broken (or asymmetric unhashed)]
+    {:property "jank's = is symmetric, and equal collections hash alike"
+     :form (list 'quote (if broken {:broken broken :xs xs} :consistent))
+     :expected :consistent}))
+
+;; Semantics: what jank has of Clojure's dispatch, exceptions, metadata and dynamic scope (jank 0.1
+;; has no defprotocol, defrecord, deftype or set!, and functions hold no metadata), each against a
+;; model of Clojure's rules written apart from the jank feature it tests.
+
+(defn- try-form
+  "The form's value, or :threw when it throws (jank's errors and thrown objects alike)."
+  [form]
+  (list 'try form '(catch cpp/jank.runtime.object_ref _ :threw) '(catch cpp/jank.error_ref _ :threw)
+        ;; jank raises some errors as C++ exceptions (a multimethod without the method), and has no
+        ;; Exception class: caught as what they are.
+        '(catch cpp/std.exception _ :threw)))
+
+(defn multimethods
+  "A drawn keyword hierarchy (derive, a DAG), methods on some of its keys, a :default or not: a
+  dispatch answers the one most specific method's value, :threw when none or several tie (Clojure:
+  no method, or ambiguous)."
+  [tc id _]
+  (let [n (hegel/integer tc 2 6)
+        k (fn [i] (keyword (str "sem" id) (str "k" i)))
+        drawn (vec (for [i (range n)]
+                     (if (zero? i) [] (vec (distinct (for [_ (range (hegel/integer tc 0 2))] (hegel/integer tc 0 (dec i))))))))
+        ;; A parent already among the key's ancestors is left out: Clojure's derive refuses it
+        ;; ("already has ... as ancestor"), and so does jank's. Parents come from lower keys, whose
+        ;; ancestors are settled first.
+        parents (reduce (fn [parents i]
+                          (let [ancestors-of (fn ancestors-of [j] (into #{j} (mapcat ancestors-of (nth parents j))))]
+                            (conj parents (reduce (fn [kept p] (if (some #(contains? (ancestors-of %) p) kept) kept (conj kept p)))
+                                                  [] (nth drawn i)))))
+                        [] (range n))
+        methods (vec (filter (fn [_] (hegel/boolean tc)) (range n)))
+        default? (hegel/boolean tc)
+        v (hegel/integer tc 0 (dec n))
+        ancestors-of (fn ancestors-of [i] (into #{i} (mapcat ancestors-of (nth parents i))))
+        isa (fn [x y] (contains? (ancestors-of x) y))
+        matching (filter #(isa v %) methods)
+        best (filter (fn [c] (every? #(isa c %) matching)) matching)
+        ;; Clojure's findAndCacheBestMethod walks the method table (a hash map: no set order) and
+        ;; throws once its best so far does not dominate an entry: with matching methods not in a
+        ;; chain (k2's parents k1 and k0 both with methods, k2 too), it answers k2's method or
+        ;; "neither is preferred" by that order (jank lands on the throw where a run of Clojure
+        ;; may not). Both are Clojure's answers then; a chain has one.
+        chain? (every? (fn [[a b]] (or (isa a b) (isa b a))) (for [a matching b matching] [a b]))
+        accepted (cond (= 1 (count best)) (if chain? #{(* 10 (first best))} #{(* 10 (first best)) :threw})
+                       (and (empty? matching) default?) #{-1}
+                       :else #{:threw})
+        m (symbol (str "sem-mm-" id))
+        form (concat ['do]
+                     (for [i (range n) p (nth parents i)] (list 'derive (k i) (k p)))
+                     [(list 'defmulti m 'identity)]
+                     (for [i methods] (list 'defmethod m (k i) ['_] (* 10 i)))
+                     (when default? [(list 'defmethod m :default ['_] -1)])
+                     [(list 'let ['answer (try-form (list m (k v)))]
+                            (list 'if (list 'contains? accepted 'answer) :consistent 'answer))])]
+    {:property "jank's multimethods dispatch to the one most specific method, as Clojure's"
+     :form-text (pr-str form)
+     :expected :consistent}))
+
+(defn ex-info-chains
+  "ex-info with drawn messages and data, nested as causes: caught, its chain walked by ex-cause,
+  every level's message and data as thrown."
+  [tc _ _]
+  (let [levels (vec (for [_ (range (hegel/integer tc 1 5))]
+                      [(str "m" (hegel/integer tc 0 99)) {:level (hegel/integer tc -9 9) :tag (hegel/element tc [:a :b nil])}]))
+        build (reduce (fn [cause [message data]] (if cause (list 'ex-info message data cause) (list 'ex-info message data)))
+                      nil (reverse levels))
+        form (list 'try (list 'throw build)
+                   (list 'catch 'cpp/jank.runtime.object_ref 'e
+                         '(loop [e e out []] (if e (recur (ex-cause e) (conj out [(ex-message e) (ex-data e)])) out))))]
+    {:property "jank's ex-info keeps every level's message and data along ex-cause"
+     :form-text (pr-str form)
+     :expected levels}))
+
+(def ^:private meta-ops
+  "Each operation on a vector with metadata, and whether Clojure keeps the metadata on its result."
+  {:conj [(fn [v] (list 'conj v 9)) true]
+   :assoc [(fn [v] (list 'assoc v 0 9)) true]
+   :pop [(fn [v] (list 'pop v)) true]
+   :into-target [(fn [v] (list 'into v [7 8])) true]
+   :update [(fn [v] (list 'update v 0 'inc)) true]
+   ;; Clojure's subvec builds its result with no metadata (RT.subvec: new SubVector(null, ...)).
+   :subvec [(fn [v] (list 'subvec v 0 1)) false]
+   :seq [(fn [v] (list 'seq v)) false]
+   :map [(fn [v] (list 'map 'inc v)) false]
+   :rest [(fn [v] (list 'rest v)) false]
+   :into-empty [(fn [v] (list 'into [] v)) false]
+   :vec [(fn [v] (list 'vec (list 'seq v))) false]})
+
+(defn metadata-through-operations
+  "A vector with drawn metadata through a drawn operation: its result keeps the metadata exactly
+  when Clojure's does (conj, assoc, pop, into, update keep it; subvec, seq, map, rest, a new
+  vector do not)."
+  [tc _ _]
+  (let [m {:tag (hegel/integer tc 0 99)}
+        op (hegel/element tc (vec (keys meta-ops)))
+        [make keeps?] (meta-ops op)
+        v (list 'with-meta [1 2 3] m)]
+    {:property "jank keeps metadata through the operations Clojure keeps it through, and drops it elsewhere"
+     :form-text (pr-str (list 'meta (make v)))
+     :expected (when keeps? m)
+     :kind (name op)}))
+
+(def ^:dynamic *sem-dynamic* :root)
+
+(defn dynamic-bindings
+  "Nested bindings of a dynamic var at drawn depths, read at every depth, in the body and in a
+  future started there (conveyance), and after unwinding: the innermost binding, then the root."
+  [tc _ _]
+  (let [values (vec (for [_ (range (hegel/integer tc 1 5))] (hegel/integer tc -99 99)))
+        in-future? (hegel/boolean tc)
+        read (if in-future? '(deref (future jank-interop.language/*sem-dynamic*)) 'jank-interop.language/*sem-dynamic*)
+        nested (reduce (fn [body value] (list 'binding ['jank-interop.language/*sem-dynamic* value] (list 'vector read body)))
+                       (list 'vector read) (reverse values))
+        form (list 'vector nested 'jank-interop.language/*sem-dynamic*)
+        expected [(reduce (fn [inner value] [value inner]) [(peek values) [(peek values)]] (reverse (pop values))) :root]]
+    {:property "jank's dynamic bindings nest, unwind and are conveyed into futures, as Clojure's"
+     :form-text (pr-str form)
+     :expected expected
+     :kind (if in-future? "future" "body")}))

@@ -1,0 +1,6 @@
+; SPDX-License-Identifier: MIT
+; Run with LANG=C LC_ALL=C (a container's default when nothing sets a locale): a non-ASCII string
+; is "Unterminated string", in a program's source or read-string alike. jank decodes UTF-8 through
+; the process's locale (mbrtowc); under C.UTF-8 it reads. Clojure reads UTF-8 in any locale.
+; jank-lang/jank#277's symptom (closed), still under the C locale.
+(println "expected café:" (read-string (pr-str "café")))

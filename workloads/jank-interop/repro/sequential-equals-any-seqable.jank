@@ -1,0 +1,17 @@
+; SPDX-License-Identifier: MIT
+; A vector or list is = to anything seqable with the same elements in seq order: nil, a map, a set,
+; a string. Not the other way round. Clojure answers false to each: = between a sequential
+; collection and another needs the other to be sequential too. jank's persistent_vector::equal
+; (and the list's) fall back to sequence_equal for any other object, which asks only that both
+; sides be seqable; nil is seqable and empty. A map with [] as a key answers nil's lookup with it.
+(doseq [[text form expected]
+        [["(= nil [])" (quote (= nil [])) false]
+         ["(= [] nil)" (quote (= [] nil)) false]
+         ["(= [] {})" (quote (= [] {})) false]
+         ["(= [1] #{1})" (quote (= [1] #{1})) false]
+         ["(= [[1 2]] {1 2})" (quote (= [[1 2]] {1 2})) false]
+         ["(= {1 2} [[1 2]])" (quote (= {1 2} [[1 2]])) false]
+         ["(= [\\a \\b] \"ab\")" (quote (= [\a \b] "ab")) false]
+         ["(= (list 1) #{1})" (quote (= (list 1) #{1})) false]
+         ["(get {[] :v} nil)" (quote (get {[] :v} nil)) nil]]]
+  (println text "expected" (pr-str expected) "jank" (pr-str (eval form))))

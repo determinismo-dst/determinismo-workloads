@@ -1,0 +1,7 @@
+; SPDX-License-Identifier: MIT
+; An inner loop rebinding an outer loop's name and recurring does not compile (the generated C++
+; uses a variable it never declared). Clojure: 11. The inner loop under another name: 11.
+(defn renamed [n] (loop [x n] (let [y (loop [z x] (if (odd? z) z (recur (inc z))))] (if (> y 9) y (recur (inc y))))))
+(println "expected 11, renamed inner loop:" (renamed 0))
+(defn shadowing [n] (loop [x n] (let [y (loop [x x] (if (odd? x) x (recur (inc x))))] (if (> y 9) y (recur (inc y))))))
+(println "expected 11, shadowing inner loop:" (shadowing 0))

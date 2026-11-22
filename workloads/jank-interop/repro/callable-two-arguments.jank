@@ -1,0 +1,12 @@
+; SPDX-License-Identifier: MIT
+; A C++ callable (operator()) of two or more arguments cannot be called with jank's call syntax
+; ("Operator calls may only take one or two arguments"). Zero or one argument, and a function
+; pointer of two, work.
+(cpp/raw "struct one { long operator()(long a) const { return a; } };
+struct two { long operator()(long a, long b) const { return a + b; } };
+long times(long a, long b) { return a * b; }
+using times_t = long (*)(long, long);
+times_t times_pointer() { return &times; }")
+(println "expected 5, callable of one:" (let [g (cpp/one.)] (g 5)))
+(println "expected 30, function pointer of two:" (let [g (cpp/times_pointer)] (g 5 6)))
+(println "expected 11, callable of two:" (let [g (cpp/two.)] (g 5 6)))

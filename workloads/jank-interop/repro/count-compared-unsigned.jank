@@ -1,0 +1,15 @@
+; SPDX-License-Identifier: MIT
+; count's result compares as an unsigned number: (< (count [1 2]) -9) is true, (> (count []) -1)
+; false, (max (count [1 2]) -9) is -9, and a loop counting from a count up to a negative bound
+; never ends. count is inlined as jank.runtime.sequence_length (usize) and < as jank.runtime.lt,
+; whose two-primitive overload is C++'s l < r: the negative i64 converts to a huge unsigned value.
+; Through a call (identity, a fn) count is boxed and compares right.
+; Its last line never ends: run it in a terminal, or with stdbuf -o0 when piped (jank buffers a
+; pipe's output, and flush is not ported), to see the lines before it.
+(println "passing (count boxed by a call):" (< (identity (count [1 2])) -9) "expected false")
+(println "expected false:" (< (count [1 2]) -9))
+(println "expected true: " (> (count []) -1))
+(println "expected 2:    " (max (count [1 2]) -9))
+(println "expected true: " (let [n (count "ab")] (> n -1)))
+(println "a loop from a count to a negative bound (expected 2, never ends):")
+(println (loop [a (count "ab")] (if (< a -9) (recur (+ a 1)) a)))

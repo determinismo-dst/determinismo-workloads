@@ -1,0 +1,5 @@
+; SPDX-License-Identifier: MIT
+; std::vector<T> beyond what jank's precompiled header instantiates does not link
+; (= jank-lang/jank#1071): Symbols not found: __new_allocator<double>::deallocate.
+(let [v (#cpp (std.vector int))] (.push_back v 1) (println "expected 1, std::vector<int>:" (.size v)))
+(let [v (#cpp (std.vector double))] (.push_back v 1.5) (println "expected 1, std::vector<double>:" (.size v)))

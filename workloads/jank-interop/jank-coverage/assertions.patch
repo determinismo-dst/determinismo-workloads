@@ -1,0 +1,67 @@
+--- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
+@@ -15,6 +15,10 @@
+ #include <jank/error/analyze.hpp>
+ #include <jank/error/codegen.hpp>
+ 
++// determinismo: assertions on jank's rarer paths (the C SDK; jank-coverage/assertions.patch adds
++// only these, no behavior)
++#include <determinismo.h>
++
+ namespace jank::runtime
+ {
+   i64 to_i64(object_ref const o);
+@@ -1190,6 +1194,8 @@
+             return err("No matching overload was found. When considering automatic trait "
+                        "conversions, this call is ambiguous.");
+           }
++          DET_SOMETIMES(true, "jank interop: an argument converted through a trait reaches an overload",
++                        NULL);
+           needed_conversion = fn_idx;
+           converted_args[arg_idx + member_offset] = param_type;
+         }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
+@@ -9,6 +9,10 @@
+ #include <jank/runtime/sequence_range.hpp>
+ #include <jank/util/fmt.hpp>
+ 
++// determinismo: assertions on jank's rarer paths (the C SDK; jank-coverage/assertions.patch adds
++// only these, no behavior)
++#include <determinismo.h>
++
+ namespace jank::runtime::obj
+ {
+   persistent_array_map::persistent_array_map(value_type &&d)
+@@ -78,6 +82,10 @@
+      * TODO: Benchmark if it's faster to have this behavior or to check first. */
+     if(data.size() == runtime::detail::native_array_map::max_size)
+     {
++      DET_SOMETIMES(true, "jank: a persistent array map grows into a hash map", NULL);
++      DET_SOMETIMES(data.find(key).is_some(),
++                    "jank: an array map at its size becomes a hash map on an existing key's update",
++                    NULL);
+       return make_box<persistent_hash_map>(meta, data, key, val);
+     }
+     else
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
+@@ -8,6 +8,10 @@
+ #include <jank/runtime/core/seq.hpp>
+ #include <jank/util/fmt.hpp>
+ 
++// determinismo: assertions on jank's rarer paths (the C SDK; jank-coverage/assertions.patch adds
++// only these, no behavior)
++#include <determinismo.h>
++
+ namespace jank::runtime::obj
+ {
+   transient_array_map::transient_array_map()
+@@ -77,6 +81,7 @@
+     /* TODO: Benchmark how much does the promotion cost, from transient array map to transient hash map? */
+     if(data.size() == runtime::detail::native_array_map::max_size)
+     {
++      DET_SOMETIMES(true, "jank: a transient array map grows into a transient hash map", NULL);
+       auto const promoted_map{ make_box<transient_hash_map>(data) };
+       promoted_map->assoc_in_place(key, value);
+       return promoted_map;

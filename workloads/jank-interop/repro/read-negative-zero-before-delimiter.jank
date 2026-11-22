@@ -1,0 +1,14 @@
+; SPDX-License-Identifier: MIT
+; -0 is refused by jank's reader when anything but a space follows it: [-0], (f -0), -0 then a
+; newline or a comma are "lex/invalid-number: This base-8 number literal ended unexpectedly".
+; Clojure reads each as 0. jank's lexer (read/lex.cpp) takes "-0" followed by a non-space as an
+; octal number's start (radix 8, more digits expected); the check that lets a lone 0 end before a
+; delimiter looks for the 0 at the token's first character, which for -0 is the minus sign.
+(defn read-each [text]
+  (println (pr-str text) "=>"
+           (try (pr-str (read-string text))
+                (catch cpp/jank.error_ref e "refused by the reader"))))
+(println "passing: a space or the end after -0, and 0 without its sign")
+(doseq [text ["[-0 ]" "-0" "[0]" "(+ 1 0)"]] (read-each text))
+(println "expected each read as 0 in its place:")
+(doseq [text ["[-0]" "(+ 1 -0)" "[-0,1]" "[-0\n]"]] (read-each text))

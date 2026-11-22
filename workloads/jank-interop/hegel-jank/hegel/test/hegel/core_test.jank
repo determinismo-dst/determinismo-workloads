@@ -1,0 +1,130 @@
+; SPDX-License-Identifier: MIT
+; hegel.core's own tests (lein test): each draw and runner on properties that hold and on ones
+; that fail, with what Hegel must find.
+(ns hegel.core-test
+  (:require [clojure.string :as string]
+            [clojure.test :refer [deftest is testing run-tests]]
+            [hegel.core :as hegel]))
+
+(def ^:private cases {:test-cases 100 :seed 7})
+
+(deftest a-property-that-holds-passes
+  (let [result (hegel/run! cases (fn [tc]
+                                   (let [a (hegel/integer tc -1000 1000)
+                                         b (hegel/integer tc -1000 1000)]
+                                     (= (+ a b) (+ b a)))))]
+    (is (:passed? result))
+    (is (empty? (:failures result)))))
+
+(deftest a-property-that-fails-is-found-with-its-origin
+  (let [result (hegel/run! cases (fn [tc]
+                                   (when (>= (hegel/integer tc 0 1000) 500)
+                                     (throw {:origin "too big"}))
+                                   true))]
+    (is (not (:passed? result)))
+    (is (= ["too big"] (mapv :origin (:failures result))))
+    (is (seq (:blob (first (:failures result)))))))
+
+(deftest assume-rejects-without-failing
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (let [n (hegel/integer tc 0 100)]
+                                      (hegel/assume tc (even? n))
+                                      (even? n)))))))
+
+(deftest draws-stay-in-their-bounds
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (and (<= -3 (hegel/integer tc -3 3) 3)
+                                         (boolean? (hegel/boolean tc))
+                                         (<= 1.5 (hegel/floating tc {:low 1.5 :high 2.5}) 2.5)
+                                         (#{:a :b :c} (hegel/element tc [:a :b :c]))))))))
+
+(deftest collections-honor-their-sizes
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (let [xs (hegel/collection tc {:min-size 2 :max-size 6}
+                                                               #(hegel/integer % 0 9))]
+                                      (and (<= 2 (count xs) 6) (every? #(<= 0 % 9) xs))))))))
+
+(deftest a-rejected-element-is-left-out
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (every? odd? (hegel/collection tc {:max-size 8}
+                                                                   (fn [tc]
+                                                                     (let [n (hegel/integer tc 0 99)]
+                                                                       (hegel/assume tc (odd? n))
+                                                                       n)))))))))
+
+(deftest strings-match-what-they-were-asked
+  (testing "text"
+    (is (:passed? (hegel/run! cases (fn [tc]
+                                      (let [s (hegel/text tc {:codec "ascii" :max-size 5})]
+                                        (and (<= (count s) 5) (every? #(< (int %) 128) s))))))))
+  (testing "regex"
+    (is (:passed? (hegel/run! cases (fn [tc]
+                                      (re-matches #"[a-c]{3}-[0-9]+" (hegel/regex tc "[a-c]{3}-[0-9]+"))))))))
+
+(deftest swarm-keeps-a-nonempty-subset
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (let [kept (hegel/swarm tc [:a :b :c :d])]
+                                      (and (seq kept) (every? #{:a :b :c :d} kept)
+                                           (= kept (filterv (set kept) [:a :b :c :d])))))))))
+
+(def ^:private parens
+  "Balanced parentheses around an x: start: \"(\" start \")\" | \"x\"."
+  "start: \"(\" start \")\" | \"x\"")
+
+(deftest grammars-draw-what-they-accept
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (let [s (hegel/grammar tc parens {:max-depth 30})
+                                          opened (count (filter #(= \( %) s))
+                                          closed (count (filter #(= \) %) s))]
+                                      (and (re-matches #"\(*x\)*" s) (= opened closed))))))))
+
+(deftest a-grammar-failure-shrinks-to-the-smallest-string
+  (let [smallest (atom nil)
+        result (hegel/run! cases (fn [tc]
+                                   (let [s (hegel/grammar tc parens {:max-depth 30})]
+                                     (when (>= (count s) 7)
+                                       (swap! smallest #(if (or (nil? %) (< (count s) (count %))) s %))
+                                       (throw {:origin "deep"}))
+                                     true)))]
+    (is (not (:passed? result)))
+    (is (= "(((x)))" @smallest) "shrunk to the shortest string with 3 pairs")))
+
+(def ^:private counter
+  {:initial 0
+   :rules [{:name "increment" :run (fn [_ n] (inc n))}
+           {:name "decrement" :run (fn [tc n] (hegel/assume tc (pos? n)) (dec n))}]})
+
+(deftest a-state-machine-whose-invariant-holds-passes
+  (is (:passed? (hegel/run! cases (fn [tc]
+                                    (hegel/state-machine tc (assoc counter :invariants
+                                                                   [{:name "never negative" :check #(>= % 0)}]))
+                                    true)))))
+
+(deftest a-state-machine-breaking-its-invariant-fails-with-its-name
+  (let [result (hegel/run! cases (fn [tc]
+                                   (hegel/state-machine tc (assoc counter :invariants
+                                                                  [{:name "below three" :check #(< % 3) :always? true}]))
+                                   true))]
+    (is (not (:passed? result)))
+    (is (= ["invariant below three"] (mapv :origin (:failures result))))))
+
+(deftest a-stored-failure-is-replayed-first
+  (let [key (str "hegel.core-test/replay-" (rand-int 1000000000))
+        run (fn []
+              (let [calls (atom 0)
+                    first-failure (atom nil)]
+                ;; development: the profile that keeps the database (default resolves to
+                ;; workload under a fuzzer, ci on a CI server: neither keeps one).
+                (hegel/run! {:profile "development" :key key :test-cases 200}
+                            (fn [tc]
+                              (swap! calls inc)
+                              (let [ok (< (hegel/integer tc 0 1000) 900)]
+                                (when (and (not ok) (nil? @first-failure)) (reset! first-failure @calls))
+                                ok)))
+                @first-failure))]
+    (is (some? (run)) "the first run finds the failure")
+    (is (= 1 (run)) "the second run starts with it, from the example database")))
+
+(defn -main [& _]
+  (let [{:keys [fail error]} (run-tests 'hegel.core-test)]
+    (println (if (zero? (+ fail error)) "hegel.core-test: all passed" "hegel.core-test: FAILED"))))

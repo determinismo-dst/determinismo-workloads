@@ -1,0 +1,13 @@
+; SPDX-License-Identifier: MIT
+; The literal -2147483648 (INT32_MIN) cast to int32_t reaches C++ as a long: a call to overloads
+; taking int8_t and int32_t is "ambiguous" (C++ picks the int32_t one for an int32_t), directly or
+; bound in a let. Any other int32_t value, or the same value computed, calls the int32_t overload.
+; In C++ source -2147483648 is unary minus on 2147483648, which does not fit an int: a long.
+; jank's cpp_processor writes an unboxed integer literal as its bare digits; the boxed path a few
+; lines above casts INT32_MIN explicitly ("The literal min value of an integer is treated as a
+; long"), the unboxed one does not.
+(cpp/raw "#include <cstdint>
+int64_t f(int8_t) { return 8; }
+int64_t f(int32_t) { return 32; }")
+(println "passing, the value computed:" (cpp/f (cpp/cast cpp/int32_t (dec -2147483647))) "and another literal:" (cpp/f (cpp/cast cpp/int32_t -2147483647)))
+(println "expected 32 (does not compile: call to 'f' is ambiguous):" (cpp/f (cpp/cast cpp/int32_t -2147483648)))

@@ -1,0 +1,15 @@
+; SPDX-License-Identifier: MIT
+; One failed link poisons the symbols it needed for the rest of the process: after a std::vector
+; of uint32_t fails to link (jank-lang/jank#1071), a plain uint32_t result from C++, which links in
+; a fresh process, fails too ("Failed to materialize symbols: jank::runtime::convert<unsigned
+; int>::into_object"), every time; an int32_t result (other symbols) still works. LLVM's ORC JIT
+; keeps a symbol whose materialization failed in its error state; the uint32_t conversion was first
+; asked for by the module that failed. The order matters: with the uint32_t result asked for
+; first, both later calls work.
+(cpp/raw "#include <cstdint>
+uint32_t s_u32() { return 7u; }")
+(defn try-eval [label form]
+  (println label "=>" (try (pr-str (eval form)) (catch cpp/jank.error_ref e "jank error") (catch cpp/jank.runtime.object_ref e "throws"))))
+(try-eval "a std::vector of uint32_t, its element boxed (jank#1071: fails to link)" (quote (let [v (#cpp (std.vector uint32_t))] (.push_back v (cpp/s_u32)) (.at v 0))))
+(try-eval "expected 7 (a uint32_t result, 7 in a fresh process):" (quote (cpp/s_u32)))
+(try-eval "passing, an int32_t result:" (quote (cpp/cast cpp/int32_t 3)))

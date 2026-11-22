@@ -15,8 +15,8 @@
 name: campaign
 
 on:
-  schedule:
-    - cron: "17 */2 * * *"
+  # Each stretch starts the next (below): GitHub's cron never fired here (04:17, 06:17 and 08:17
+  # on 2026-11-22, and hunt.yml's every 15 minutes ran once in five days).
   workflow_dispatch:
     inputs:
       workload:
@@ -31,6 +31,9 @@ on:
       count_every:
         description: Seconds between the stretch's counts (each with the runner's memory)
         default: "600"
+      not_before:
+        description: Unix seconds the stretch waits for (set by the stretch before it; empty, at once)
+        default: ""
 
 permissions:
   contents: write # The report's page: the gh-pages branch.
@@ -64,7 +67,7 @@ jobs:
       group: campaign-${{ matrix.campaign.workload }}
       cancel-in-progress: false
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 300
     env:
       WORKLOAD: ${{ matrix.campaign.workload }}
       SCENARIO: ${{ matrix.campaign.scenario }}
@@ -72,12 +75,20 @@ jobs:
       TIMELINE: ${{ matrix.campaign.timeline }}
       MINUTES: ${{ inputs.minutes || '60' }}
       COUNT_EVERY: ${{ inputs.count_every || '600' }}
+      NOT_BEFORE: ${{ inputs.not_before }}
       GH_TOKEN: ${{ github.token }}
       # A workload in jank runs its --describe on the host's jank: tools.sh's pinned build, kept
       # on this repository's release (jank's own repository republishes it under one name).
       JANK: ${{ matrix.campaign.jank && '1' || '' }}
       JANK_DEB: https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-0.1-noble-68f6d0d8/jank_0.1-noble_amd64.deb
     steps:
+      - name: Its slot (a stretch every two hours, as the one before set it)
+        run: |
+          now=$(date +%s)
+          if [ -n "$NOT_BEFORE" ] && [ "$NOT_BEFORE" -gt "$now" ]; then
+            echo "waiting $(( (NOT_BEFORE - now) / 60 )) minutes, until $(date -u -d @"$NOT_BEFORE" +%H:%M) UTC"
+            sleep $(( NOT_BEFORE - now ))
+          fi
       - name: The machine (one not on AWS or without a core PMU asks for another)
         id: machine
         env:
@@ -89,7 +100,17 @@ jobs:
           # (AMD: stopped here in seconds) or have one and lost the job to GitHub once our VMs ran
           # (every campaign stretch and kvm-probe job of 2026-11-22: "lost communication", no log).
           case "$(uname -r)" in
-            *-aws) if grep -q arch_perfmon /proc/cpuinfo; then echo "ok=1" >> "$GITHUB_OUTPUT"; exit 0; fi ;;
+            *-aws) if grep -q arch_perfmon /proc/cpuinfo; then
+                     echo "ok=1" >> "$GITHUB_OUTPUT"
+                     # The next stretch, two hours from this one's start: asked now, so that a
+                     # stretch that dies still has a successor (it waits behind this one, then for
+                     # its time). Only the try that runs asks: a retry asks for a try instead.
+                     gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+                       -f workload="$WORKLOAD" -f minutes="$MINUTES" -f count_every="$COUNT_EVERY" \
+                       -f not_before=$(( $(date +%s) + 7200 ))
+                     echo "the next stretch asked for, from $(date -u -d @$(( $(date +%s) + 7200 )) +%H:%M) UTC"
+                     exit 0
+                   fi ;;
           esac
           echo "not an AWS-hosted runner with a core PMU: another try"
           if [ "$TRY" -lt 8 ]; then

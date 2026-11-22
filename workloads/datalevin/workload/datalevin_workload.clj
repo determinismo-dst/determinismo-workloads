@@ -38,12 +38,15 @@
 (defn- dl [sym] (requiring-resolve (symbol "datalevin.core" (name sym))))
 
 (defn- connect
-  "A connection through a node (any: an explicit transaction finds the leader). Without the
+  "A connection of the caller's own through a node (any: an explicit transaction finds the
+  leader), which the caller closes. Never get-conn's, one a URI for the whole JVM: the warm
+  client's drivers shared it, and one's close pulled it from under another's transaction
+  (aws-hunt run 18: NullPointerException, read field store). Without the
   schema, which each server's own open sets (node/datalevin_node.clj): given one, connecting
   transacted it, a write that failed while no node led (\"Write outcome is unknown\", trial
   run 1107)."
   [node]
-  ((dl 'get-conn) (uri node) nil {:client-opts {:pool-size 1 :time-out 10000}}))
+  ((dl 'create-conn) (uri node) nil {:client-opts {:pool-size 1 :time-out 10000}}))
 
 (defn- close [conn] (try ((dl 'close) conn) (catch Throwable _ nil)))
 
@@ -119,36 +122,41 @@
     ;; Its start, and each connection's, timed: a JVM loading Datalevin's client, then a login
     ;; the server verifies with argon2id one at a time (trial run 1099's drivers did nothing in
     ;; 48 s of a drive phase).
-    (dl 'get-conn)
+    (dl 'create-conn)
     (w/event "driver_loaded" {:ms (quot (- (System/nanoTime) started) 1000000)})
-    (loop [sequence 0 process (w/elle-process) conn nil failing-since nil]
-      (when (and (< sequence ops)
-                 (or (nil? failing-since) (< (- (System/nanoTime) failing-since) 15000000000)))
-        (let [node (w/choice nodes)
-              asked (System/nanoTime)
-              conn (or conn (try (let [made (connect node)]
-                                   (w/event "connected" {:node node :ms (quot (- (System/nanoTime) asked) 1000000)})
-                                   made)
-                                 (catch Throwable e
-                                   (w/event "connect_failed" {:node node :error (str (class e)) :message (ex-message e)})
-                                   nil)))]
-          (if-not conn
-            (do (w/sleep-ms 500) (recur sequence process nil (or failing-since (System/nanoTime))))
-            (let [mops (draw id sequence)
-                  _ (w/elle-note :elle process :invoke mops)
-                  outcome (try [:ok (execute conn mops)]
-                               (catch Throwable e [:info e]))]
-              (if (= :ok (first outcome))
-                (w/elle-note :elle process :ok (second outcome))
-                (let [^Throwable e (second outcome)]
-                  (w/elle-note :elle process :info mops)
-                  (w/event "txn_unknown" {:node node :error (str (class e)) :message (ex-message e)
-                                          :data (pr-str (ex-data e))})))
-              (w/sometimes (= :ok (first outcome)) "a transaction commits" {})
-              (w/sleep-ms (w/random-below 100))
-              (if (= :ok (first outcome))
-                (recur (inc sequence) process conn nil)
-                (do (close conn) (recur (inc sequence) (w/elle-process) nil nil))))))))))
+    (let [held (atom nil)] ; Its connection and that connection's node: closed however it ends.
+      (try
+        (loop [sequence 0 process (w/elle-process) failing-since nil]
+          (when (and (< sequence ops)
+                     (or (nil? failing-since) (< (- (System/nanoTime) failing-since) 15000000000)))
+            (let [node (or (first @held) (w/choice nodes))
+                  asked (System/nanoTime)
+                  conn (or (second @held)
+                           (try (let [made (connect node)]
+                                  (reset! held [node made])
+                                  (w/event "connected" {:node node :ms (quot (- (System/nanoTime) asked) 1000000)})
+                                  made)
+                                (catch Throwable e
+                                  (w/event "connect_failed" {:node node :error (str (class e)) :message (ex-message e)})
+                                  nil)))]
+              (if-not conn
+                (do (w/sleep-ms 500) (recur sequence process (or failing-since (System/nanoTime))))
+                (let [mops (draw id sequence)
+                      _ (w/elle-note :elle process :invoke mops)
+                      outcome (try [:ok (execute conn mops)]
+                                   (catch Throwable e [:info e]))]
+                  (if (= :ok (first outcome))
+                    (w/elle-note :elle process :ok (second outcome))
+                    (let [^Throwable e (second outcome)]
+                      (w/elle-note :elle process :info mops)
+                      (w/event "txn_unknown" {:node node :error (str (class e)) :message (ex-message e)
+                                              :data (pr-str (ex-data e))})))
+                  (w/sometimes (= :ok (first outcome)) "a transaction commits" {})
+                  (w/sleep-ms (w/random-below 100))
+                  (if (= :ok (first outcome))
+                    (recur (inc sequence) process nil)
+                    (do (close conn) (reset! held nil) (recur (inc sequence) (w/elle-process) nil))))))))
+        (finally (some-> (second @held) close))))))
 
 (defn- committed
   "Each key's appends acknowledged in the history (ok lines)."

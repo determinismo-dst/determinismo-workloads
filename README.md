@@ -8,6 +8,7 @@ properties), with what it found in its README.
 |---|---|---|
 | [datalevin](workloads/datalevin/README.md) | Datalevin 1.2.10, high availability (three servers) | `append` |
 | [duckdb](workloads/duckdb/README.md) | DuckDB 2.0.0, embedded (Jepsen's local node) and over Quack, its client-server protocol | `append`, `fkey_register`, `trigger`, `variant` |
+| [flecs](workloads/flecs/README.md) | Flecs v4.2.0, an in-memory entity component system, under a stress harness checked against a model | `stress` |
 
 ## Build
 

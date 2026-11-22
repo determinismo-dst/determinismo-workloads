@@ -412,7 +412,13 @@ jobs:
               aws ec2 create-tags --resources "$INSTANCE" --tags Key=ci-state,Value=idle
               echo "kept for the next run: idle, powering itself off in $KEEP minutes unless taken"
             else
+              spot=$(aws ec2 describe-instances --instance-ids "$INSTANCE" --query 'Reservations[0].Instances[0].SpotInstanceRequestId' --output text)
               aws ec2 terminate-instances --instance-ids "$INSTANCE" > /dev/null && echo "machine terminated"
+              # Its spot request ended too: left to AWS, it stayed active for 20 minutes after the
+              # machine's end, its vCPUs still counted against the quota of the next run's.
+              if [ "$spot" != None ]; then
+                aws ec2 cancel-spot-instance-requests --spot-instance-request-ids "$spot" > /dev/null && echo "its spot request cancelled"
+              fi
             fi
           fi
           if [ -n "${SG:-}" ]; then

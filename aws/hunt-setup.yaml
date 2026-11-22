@@ -142,6 +142,12 @@ Resources:
                 Condition:
                   StringEquals:
                     ec2:ResourceTag/project: determinismo-ci
+              - Sid: EndSpotRequests
+                # A terminated machine's one-time request, cancelled so that its vCPUs leave the quota
+                # at once (cancelling a request never stops a running machine).
+                Effect: Allow
+                Action: ec2:CancelSpotInstanceRequests
+                Resource: "*"
               - Sid: OwnGroup
                 Effect: Allow
                 Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress]

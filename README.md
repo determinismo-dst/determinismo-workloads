@@ -65,6 +65,38 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
   [determinismo-dst.github.io/determinismo-workloads](https://determinismo-dst.github.io/determinismo-workloads/)
   (one page a run). What to set up once is at the top of the workflow. Run by hand.
 
+## Hunts on your own AWS account
+
+`aws-hunt.yml` runs a workload's hunt on a bare-metal machine it rents for the run (spot: about
+$1 an hour for `c5.metal`'s 48 cores or `m5zn.metal`'s 24; determinismo runs its own KVM on the
+hardware, so no virtual machine will do). Once, in a fork or copy of this repository:
+
+1. The stack (`aws/hunt-setup.yaml`): GitHub's OIDC provider, a role only your repository's
+   main branch may take (no access keys), and the security group `determinismo-ci`.
+   ```
+   aws cloudformation deploy --region us-east-1 --stack-name determinismo-ci \
+     --template-file aws/hunt-setup.yaml --capabilities CAPABILITY_IAM \
+     --parameter-overrides GitHubOwner=<you> GitHubRepository=<this repository>
+   ```
+   (`CreateOidcProvider=false` if your account has GitHub's provider already.)
+2. The repository's secrets and variable:
+   ```
+   gh secret set AWS_ROLE_ARN --body "$(aws cloudformation describe-stacks --region us-east-1 \
+     --stack-name determinismo-ci --query 'Stacks[0].Outputs[0].OutputValue' --output text)"
+   ssh-keygen -t ed25519 -N '' -f ci-key && gh secret set CI_SSH_KEY < ci-key && rm ci-key ci-key.pub
+   gh variable set BASE_AMI --body ami-02e6a531699846d74
+   ```
+   `BASE_AMI` is determinismo's public base image in us-east-1 (Debian with determinismo's KVM
+   and tooling; each machine is then set up for the platform's commit by its own setup.sh).
+3. A spot vCPU quota of the machine's vCPUs (Service Quotas, "All Standard (A, C, D, H, I, M,
+   R, T, Z) Spot Instance Requests": 96 for `c5.metal`, 48 for `m5zn.metal`); new accounts start
+   lower.
+
+Then, in Actions, aws-hunt, Run workflow (or `gh workflow run aws-hunt.yml -f workload=duckdb
+-f machine=c5.metal -f minutes=60`): the machine's setup (about half an hour, skipped by later runs
+at the same platform commit), the hunt, its counts in the job's log, and its report on this
+repository's Pages. A machine is one workload's; it powers itself off after the run.
+
 ## License
 
 MIT (LICENSE). Each system under test keeps its own license; its workload names it.

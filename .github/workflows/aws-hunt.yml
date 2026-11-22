@@ -267,6 +267,13 @@ jobs:
             echo "set up already with the platform at ${commit::12}"
             exit 0
           fi
+          # A fresh machine ends its own boot first (cloud-init; apt's timers catching up on an
+          # image days old held dpkg's lock and setup's apt failed), 15 minutes at most for each.
+          for _ in $(seq 90); do ssh $SSH_OPTS -o ConnectTimeout=10 "admin@$IP" true 2> /dev/null && break; sleep 10; done
+          ssh $SSH_OPTS "admin@$IP" 'timeout 900 cloud-init status --wait > /dev/null || true
+            sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer
+            for _ in $(seq 90); do pgrep -x "apt-get|apt|dpkg|unattended-upgr|apt.systemd.dai" > /dev/null || exit 0; sleep 10; done
+            echo "apt still busy after 15 minutes"; exit 1'
           platform/infra/host/setup.sh "$IP" --user admin --no-jank
           ssh $SSH_OPTS "admin@$IP" "echo $commit > .ci-platform"
           echo "SET_UP=1" >> "$GITHUB_ENV"

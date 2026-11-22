@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
-# A workload's hunt (DuckDB's by default) on GitHub's free hosted runners (run by hand), a trial: does a workload of its
+# A workload's hunt (DuckDB's by default) on GitHub's free hosted runners (run by hand): its counts in
+# the job's log as it goes, its report at the end (the job summary, and the static page on this
+# repository's Pages, runs/<number>-runner-<try>/). A trial too: does a workload of its
 # size run there? A runner is a VM (4 vCPUs, 15 GiB, Ubuntu's AWS 7.0 kernel, nested VT-x and
 # the core PMU on AWS hardware), so determinismo's VMs run nested: our KVM built for its kernel
 # and loaded (the platform's build-kvm.sh, load-kvm.sh: kernel/patches-7.0), determinismo built,
@@ -116,15 +118,6 @@ jobs:
           done
           echo "$HOME/opt/jdk-25/bin" >> "$GITHUB_PATH"
           "$HOME/opt/jdk-25/bin/java" -version 2>&1 | head -1
-      - name: The program's description, as serve asks for it
-        run: |
-          ~/opt/zig/zig build -Drelease --fork="$PWD/platform" "${{ inputs.workload }}-test"
-          ls -la platform/zig-out/bin/libdeterminismo.so platform/zig-out/lib/ 2>&1 | head -5
-          set +e
-          DETERMINISMO_LIBRARY="$PWD/platform/zig-out/bin/libdeterminismo.so" "zig-out/bin/${{ inputs.workload }}-test" --describe > describe.out 2> describe.err
-          echo "exit $?"
-          head -c 600 describe.out; echo; tail -30 describe.err
-          set -e
       - name: serve, as infra/host/serve.sh starts it
         run: |
           # The layout an AWS machine has (host/metal-hunt.sh's): the platform's tree and this repository.
@@ -132,59 +125,12 @@ jobs:
           ln -sfn "$PWD" ~/determinismo-workloads
           mkdir -p ~/cache
           cd platform
-          # Its page read only on 7880 too (--public-listen), for the tunnel: live for anyone.
-          nohup zig-out/bin/determinismo serve --listen 127.0.0.1:7878 --public-listen 127.0.0.1:7880 --bb ~/opt/bb/bb \
+          nohup zig-out/bin/determinismo serve --listen 127.0.0.1:7878 --bb ~/opt/bb/bb \
             --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --append quiet --cache ~/cache --memory-mib 4096 > ~/serve.log 2>&1 &
           for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
           curl -fsS -m 10 localhost:7878/build; echo
-      - name: Hunt (host/metal-hunt.sh, as on an AWS machine; serve's page live for anyone, Pages' copy every 10 minutes)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NAME: ${{ github.run_number }}-runner-${{ matrix.try }}
-        run: |
-          # serve's page live and read only, for anyone, to the second (host/live-tunnel.sh).
-          url=$(host/live-tunnel.sh 7880)
-          bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}" "${{ inputs.workload }}" "${{ inputs.scenario }}" "${{ inputs.memory_mib }}" "${{ inputs.timeline }}" > hunt.log 2>&1 &
-          hunt=$!
-          shown=0
-          next=0
-          live=
-          while kill -0 "$hunt" 2>/dev/null; do
-            sleep 15
-            lines=$(wc -l < hunt.log)
-            if [ "$lines" -gt "$shown" ]; then sed -n "$((shown + 1)),${lines}p" hunt.log; shown=$lines; fi
-            # The tunnel's troubles as they come (its warnings, errors, lost connections).
-            troubles=$(grep -nE 'ERR|WRN|Unregistered|Lost|Retrying|terminated' ~/live-tunnel.log 2>/dev/null || true)
-            if [ -n "$troubles" ]; then
-              echo "$troubles" | awk -F: -v after="${troubles_seen:-0}" '$1 > after' | cut -d: -f2- | sed 's/^/tunnel: /'
-              troubles_seen=$(echo "$troubles" | tail -1 | cut -d: -f1)
-            fi
-            # The live link checked from here each minute; when it does not answer, the tunnel's log.
-            if [ "$(( $(date +%s) / 60 ))" != "${checked:-}" ]; then
-              checked=$(( $(date +%s) / 60 ))
-              code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$url/" || true)
-              [ "$code" = 200 ] || { echo "$(date -u +%H:%M) the live link answers $code; the tunnel says:"; tail -5 ~/live-tunnel.log; }
-            fi
-            [ -s run-id ] || continue
-            if [ -z "$live" ]; then
-              live="$url/#$(cat run-id)"
-              export LIVE_URL=$live
-              echo "live: $live"
-            fi
-            # Pages' copy (and the index's live link) every 10 minutes, the first at once.
-            [ "$(date +%s)" -ge "$next" ] || continue
-            next=$(( $(date +%s) + 600 ))
-            mkdir -p report
-            if platform/infra/host/report-static.sh http://127.0.0.1:7878 "$(cat run-id)" report/index.html > report.log 2>&1 \
-               && host/publish-report.sh report "$NAME" "${{ inputs.minutes }}" >> report.log 2>&1; then
-              echo "$(date -u +%H:%M) Pages' copy published: $(tail -1 report.log)"
-            else
-              echo "$(date -u +%H:%M) Pages' copy not published this time: $(tail -1 report.log)"
-            fi
-          done
-          wait "$hunt" && status=0 || status=$?
-          sed -n "$((shown + 1)),\$p" hunt.log
-          exit "$status"
+      - name: Hunt (host/metal-hunt.sh, as on an AWS machine; its counts every 10 minutes)
+        run: bash host/metal-hunt.sh "${{ inputs.minutes }}" "${{ github.run_number }}" "${{ inputs.workload }}" "${{ inputs.scenario }}" "${{ inputs.memory_mib }}" "${{ inputs.timeline }}"
       - name: The run's report on this page (the job summary)
         if: always()
         run: cat summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report"

@@ -88,7 +88,9 @@ hardware, so no virtual machine will do). Once, in a fork or copy of this reposi
    ```
    `BASE_AMI` is determinismo's public base image in us-east-1 (Debian with determinismo's KVM
    and tooling; each machine is then set up for the platform's commit by its own setup.sh).
-3. A spot vCPU quota of the machine's vCPUs (Service Quotas, "All Standard (A, C, D, H, I, M,
+3. Spot in your account: `aws iam create-service-linked-role --aws-service-name spot.amazonaws.com`
+   if it never used spot before (an error saying the role exists is fine: the stack's role may not
+   create it), and a spot vCPU quota of the machine's vCPUs (Service Quotas, "All Standard (A, C, D, H, I, M,
    R, T, Z) Spot Instance Requests": 96 for `c5.metal`, 48 for `m5zn.metal`); new accounts start
    lower.
 

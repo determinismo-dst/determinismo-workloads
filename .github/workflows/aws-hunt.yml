@@ -228,8 +228,8 @@ jobs:
           echo "$ranked" | sed 's/^/spot price: /'
           id=
           # The spot quota taken (a machine still shutting down holds its vCPUs for minutes):
-          # the zones tried again each minute, 20 minutes at most.
-          for attempt in $(seq 20); do
+          # the zones tried again each minute, 45 times at most (a c5.metal took up to 20 minutes to shut down).
+          for attempt in $(seq 45); do
           while read -r price zone; do
             subnet=$(aws ec2 describe-subnets --filters "Name=availability-zone,Values=$zone" Name=default-for-az,Values=true \
               --query 'Subnets[0].SubnetId' --output text < /dev/null)
@@ -294,7 +294,7 @@ jobs:
           JANK_DEB: https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-0.1-noble-68f6d0d8/jank_0.1-noble_amd64.deb
         run: |
           [ -f "workloads/$WORKLOAD/src/${WORKLOAD//-/_}/workload.jank" ] || { echo "not a workload in jank"; exit 0; }
-          ssh $SSH_OPTS "admin@$IP" "mkdir -p ~/opt && { [ -f ~/opt/jank/.sha256 ] || curl -fsSL -o ~/opt/jank_0.1-noble_amd64.deb $JANK_DEB; } && cd determinismo && infra/host/tools.sh | tail -1"
+          ssh $SSH_OPTS "admin@$IP" "mkdir -p ~/opt && { [ -f ~/opt/jank/.sha256 ] || curl -fsSL -o ~/opt/jank_0.1-noble_amd64.deb $JANK_DEB; } && cd determinismo && infra/host/tools.sh > ~/tools.log 2>&1 || { tail -20 ~/tools.log; exit 1; }; tail -1 ~/tools.log"
       # Fresh credentials: a setup can outlast the first ones (an hour).
       - uses: aws-actions/configure-aws-credentials@v4
         if: env.SET_UP == '1'
@@ -315,7 +315,6 @@ jobs:
           image=$(aws ec2 create-image --instance-id "$INSTANCE" --name "$name" --no-reboot \
             --description "determinismo hunt machine: the platform at $commit, set up by setup.sh --no-jank" \
             --tag-specifications "ResourceType=image,Tags=[{Key=project,Value=determinismo-ci},{Key=ci-platform,Value=$commit}]" \
-              "ResourceType=snapshot,Tags=[{Key=project,Value=determinismo-ci}]" \
               'ResourceType=snapshot,Tags=[{Key=project,Value=determinismo-ci}]' --query ImageId --output text)
           echo "::add-mask::$image"
           ssh $SSH_OPTS "admin@$IP" 'sudo systemctl enable --quiet ci-deadline.timer'

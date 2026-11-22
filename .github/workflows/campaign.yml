@@ -201,17 +201,21 @@ jobs:
           unzip -q ~/state.zip -d ~ && rm ~/state.zip
           tar -C ~ --zstd -xf ~/state.tar.zst && rm ~/state.tar.zst
           echo "$CAMPAIGN: run $(cat ~/campaign/run-id), $(cat ~/campaign/stretches) stretches so far ($(du -sh ~/.determinismo | cut -f1) of serve's data)"
-      - name: serve, as infra/host/serve.sh starts it
+      - name: serve, started by the platform's infra/host/serve.sh (one core and 6 GiB for the rest)
         if: steps.machine.outputs.ok
         run: |
           # The layout an AWS machine has (host/metal-hunt.sh's): the platform's tree and this repository.
           ln -sfn "$PWD/platform" ~/determinismo
           ln -sfn "$PWD" ~/determinismo-workloads
-          cd platform
-          nohup zig-out/bin/determinismo serve --listen 127.0.0.1:7878 --bb ~/opt/bb/bb \
-            --kernel ~/guest/vmlinuz --initrd ~/guest/base.cpio --append quiet --cache ~/cache --memory-mib 4096 > ~/serve.log 2>&1 &
+          mkdir -p ~/cache && sudo mkdir -p /etc/determinismo
+          # As on srv4: serve a systemd unit, its runs on every core but one reserved core, which
+          # (isolate.sh) the runner's own agent and every other service share, and 6 GiB of memory
+          # the runs leave free. Two stretches whose runs took the whole runner lost it ("The hosted
+          # runner lost communication with the server", campaign runs 44985849043, 44987024097).
+          sudo platform/infra/host/serve.sh "$(id -un)" start --reserved-cores 1 --siblings on
           for i in $(seq 60); do curl -fs -m 5 localhost:7878/runs > /dev/null && break; sleep 2; done
           curl -fsS -m 10 localhost:7878/build; echo
+          systemctl show determinismo-serve -p AllowedCPUs -p Environment --no-pager | cut -c1-200
       - name: The stretch (host/campaign.sh; counts every 10 minutes)
         if: steps.machine.outputs.ok
         run: bash host/campaign.sh ~/campaign "$MINUTES" "$WORKLOAD" "$SCENARIO" "$MEMORY_MIB" "$TIMELINE"

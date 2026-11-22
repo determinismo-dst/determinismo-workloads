@@ -45,7 +45,8 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
 - `.github/workflows/build.yml`: builds every workload on each push and pull request.
 - Campaigns, `host/campaigns-here.sh` with `host/campaign.sh` and `campaigns.json`: each listed
   workload's campaign on a host of ours, against a serve of its own (its cores, memory limit and
-  data), an hour every two hours (a systemd timer): one long run per campaign (a workload's
+  data), every two hours (a systemd timer) one campaign after another, 35 minutes each with all
+  the serve's cores: one long run per campaign (a workload's
   scenario at a platform commit and a version of its files), each stretch resuming it where the
   last stopped. Each stretch's report at the reports' site (`runs/campaign-<workload>/`).
   GitHub's hosted runners cannot run them: within minutes of our VMs starting, the counters'

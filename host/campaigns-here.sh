@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT
 # campaigns-here.sh [minutes]: one stretch of every campaign in campaigns.json on a host of our
 # own, against a campaign serve of its own (its systemd unit determinismo-campaigns: its own
-# cores, memory limit, data and port), all at once, each continuing its run (host/campaign.sh),
-# then each campaign's report published to this repository's Pages. Run every two hours by a
-# timer (determinismo-campaigns-stretch.timer). GitHub's hosted runners cannot run hunts: our VMs'
+# cores, memory limit, data and port), one campaign after another, each with all the serve's
+# cores for <minutes> and continuing its run (host/campaign.sh), then its report published to
+# this repository's Pages. All at once, the campaigns shared the cores unevenly: DuckDB's
+# timelines (minutes each) took every core freed, Flecs's (seconds) waited about 250 s for one
+# each (srv4, 2026-11-22). Run every two hours by a timer (determinismo-campaigns-stretch.timer:
+# the campaigns' minutes together within the two hours). GitHub's hosted runners cannot run hunts: our VMs'
 # counter interrupts, virtualized twice, took every runner down within minutes.
 #
 # Layout under CAMPAIGNS (default ~/campaigns): workloads/ (this repository, pulled each stretch),
@@ -36,8 +39,8 @@ if [ "$have" != "$want" ]; then
   for _ in $(seq 60); do curl -fs -m 5 "$serve/runs" > /dev/null && break; sleep 2; done
 fi
 
-# Each campaign's stretch, all at once.
-# (The loop in this shell, not behind a pipe: its stretches are this shell's jobs, waited for.)
+# Each campaign's stretch, one after another.
+# (The loop in this shell, not behind a pipe: campaign.sh reads nothing of the list.)
 while read -r workload scenario memory timeline commit; do
   files=$(cd "$workloads" && find "workloads/$workload" -type f | sort | xargs sha256sum | sha256sum | cut -c1-12)
   campaign=campaign-$workload-$scenario-$commit-$files
@@ -58,10 +61,9 @@ while read -r workload scenario memory timeline commit; do
           "$(( $(cat "$root/state/$campaign/stretches") * minutes ))" >> "$root/logs/$workload.log" 2>&1 || true
     fi
     log "$workload: $(tail -1 "$root/logs/$workload.log")"
-  ) &
+  ) < /dev/null
 done < <(python3 -c "
 import json
 for c in json.load(open('$workloads/campaigns.json')):
     print(c['workload'], c['scenario'], c['memory_mib'], c['timeline'], c['platform'][:12])
 ")
-wait

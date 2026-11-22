@@ -8,7 +8,9 @@
 # (the workflow carries it from one job to the next), the run's id in <state>/run-id, the
 # stretches so far in <state>/stretches. Counts every ten minutes, summary.md at the end.
 # Exit 0 when the stretch ran and the run stopped to be continued (failing properties are
-# findings, not errors), 1 otherwise.
+# findings, not errors), 1 otherwise. SERVE, PLATFORM and WORKLOADS: serve's address and the trees
+# (default 127.0.0.1:7878, ~/determinismo, ~/determinismo-workloads; host/campaigns-here.sh gives a
+# campaign serve's own).
 set -euo pipefail
 state=${1:?usage: campaign.sh <state> <minutes> <workload> [scenario] [memory-mib] [timeline]}
 minutes=${2:?usage: campaign.sh <state> <minutes> <workload> [scenario] [memory-mib] [timeline]}
@@ -16,9 +18,9 @@ workload=${3:?usage: campaign.sh <state> <minutes> <workload> [scenario] [memory
 scenario=${4:-append}
 memory_mib=${5:-2048}
 timeline=${6:-180s}
-serve=http://127.0.0.1:7878
-tree=$HOME/determinismo
-here=$HOME/determinismo-workloads
+serve=${SERVE:-http://127.0.0.1:7878}
+tree=${PLATFORM:-$HOME/determinismo}
+here=${WORKLOADS:-$HOME/determinismo-workloads}
 cd "$here"
 
 if [ -s "$state/run-id" ]; then

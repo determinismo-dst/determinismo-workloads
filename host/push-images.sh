@@ -8,11 +8,12 @@
 # built (`zig build determinismo guest`), at the commit the campaigns run (default ~/determinismo;
 # on a host whose serve runs from there, give another: its workloads/ is written).
 #
-# For each workload: its test program (built here) says, with --describe, how each node's image
-# is built (its Dockerfile and build arguments: the coverage set among them); each distinct build
+# For each workload: workloads/<name>/images.json says how each node's image is built (its
+# Dockerfile and build arguments: the coverage set, which must match the program's profiles,
+# among them); each distinct build
 # is made by podman with the platform's SDK as the build context determinismo-sdk, as the
 # explorer's prepare does, then pushed as ghcr.io/determinismo-dst/<workload>-<node>:<the
-# workloads' commit>. Prints each image with its digest: what the test program's node names
+# workloads' commit>-<the build's hash>. Prints each image with its digest: what the test program's node names
 # (`.image = "ghcr.io/...@sha256:..."`) in place of its build.
 #
 # REGISTRY_AUTH_FILE: a podman login to ghcr.io (a token with write:packages), kept outside the
@@ -31,38 +32,31 @@ cd "$here"
 mkdir -p "$tree/workloads"
 rsync -a --delete "$here/workloads/" "$tree/workloads/"
 for workload in "$@"; do
-  ~/opt/zig/zig build -Drelease --fork="$tree" "$workload-test" > /dev/null
-  # The builds as the program describes them (a jank program describes itself through the
-  # platform's libdeterminismo and the host's jank).
-  DETERMINISMO_LIBRARY=$tree/zig-out/bin/libdeterminismo.so "zig-out/bin/$workload-test" --describe |
+  # The builds the test program's pinned images come from (workloads/<name>/images.json: each
+  # node's Dockerfile and build arguments, its profiles' coverage set among them).
   python3 -c '
-import json, sys
-seen = set()
-for profile in json.load(sys.stdin).get("profiles", []):
-    for node in profile.get("nodes", []):
-        spec = node.get("source") or node.get("spec") or node
-        build = spec.get("build")
-        if not build:
-            continue
-        key = json.dumps(build, sort_keys=True)
-        if key in seen:
-            continue
-        seen.add(key)
-        print(node["name"], build["context"], build["dockerfile"], " ".join(build.get("args", [])))
-' | while read -r node context dockerfile args; do
+import hashlib, json, sys
+for build in json.load(open(sys.argv[1])):
+    key = json.dumps({k: build[k] for k in ("context", "dockerfile", "args")}, sort_keys=True)
+    print(build["node"], hashlib.sha256(key.encode()).hexdigest()[:8], build["context"], build["dockerfile"],
+          " ".join(build.get("args", [])))
+' "workloads/$workload/images.json" | while read -r node build_key context dockerfile args; do
     image=ghcr.io/determinismo-dst/$workload-$node
+    # A node built more than one way (jank-interop's profiles: JANK=coverage, JANK=package): each
+    # build its own tag, the workloads' commit and its build's hash.
+    tag=$commit-$build_key
     build_args=()
     for arg in $args; do build_args+=(--build-arg "$arg"); done
     (cd "$tree" && podman build --quiet --build-context determinismo-sdk="$tree/sdk" "${build_args[@]}" \
-      -f "$dockerfile" -t "$image:$commit" "$context" > /dev/null)
-    if [ -n "${NO_PUSH:-}" ]; then echo "$workload $node: $image:$commit built"; continue; fi
+      -f "$dockerfile" -t "$image:$tag" "$context" > /dev/null)
+    if [ -n "${NO_PUSH:-}" ]; then echo "$workload $node: $image:$tag built"; continue; fi
     if [ -z "${REGISTRY_AUTH_FILE:-}" ]; then
       mkdir -p "$archives"
-      podman save --quiet --format oci-archive -o "$archives/$workload-$node-$commit.tar" "$image:$commit"
-      echo "$workload $node: $image:$commit archived, $archives/$workload-$node-$commit.tar sha256 $(sha256sum "$archives/$workload-$node-$commit.tar" | cut -c1-64)"
+      podman save --quiet --format oci-archive -o "$archives/$workload-$node-$tag.tar" "$image:$tag"
+      echo "$workload $node: $image:$tag archived, $archives/$workload-$node-$tag.tar sha256 $(sha256sum "$archives/$workload-$node-$tag.tar" | cut -c1-64)"
       continue
     fi
-    podman push --quiet --authfile "$REGISTRY_AUTH_FILE" --digestfile "/tmp/$workload-$node.digest" "$image:$commit"
+    podman push --quiet --authfile "$REGISTRY_AUTH_FILE" --digestfile "/tmp/$workload-$node.digest" "$image:$tag"
     echo "$workload $node: $image@$(cat "/tmp/$workload-$node.digest")"
     rm -f "/tmp/$workload-$node.digest"
   done

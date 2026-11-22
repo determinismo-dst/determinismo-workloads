@@ -25,7 +25,11 @@ pub fn main(init: std.process.Init) !void {
 fn describe(d: *System.Describe) !void {
     const profile = try d.profile("default");
     profile.node(.flecs, .{
-        .build = .{ .context = ".", .dockerfile = "workloads/flecs/Dockerfile" },
+        // workloads/flecs/Dockerfile built on a host of ours (host/push-images.sh, with images.json's
+        // build arguments: the coverage set below, which they must match) and pushed
+        // (push-image.yml), pinned by digest: pushed again and pinned here when the Dockerfile,
+        // its files or the coverage set change.
+        .image = "ghcr.io/determinismo-dst/flecs-flecs@sha256:b175f0c4823b81ceb20ed1a9aa330e449b581ab596251d498452e45ea377ca2e",
         // Flecs's sources and the harness, as the Dockerfile compiles them (/src).
         .coverage = .{ .include = &.{"/src/"} },
         .faults = .{

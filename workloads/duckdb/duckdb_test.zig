@@ -82,7 +82,12 @@ pub fn main(init: std.process.Init) !void {
     });
 }
 
-const build: sdk.schema.Build = .{ .context = ".", .dockerfile = "workloads/duckdb/Dockerfile" };
+/// The nodes' image: workloads/duckdb/Dockerfile built on a host of ours (host/push-images.sh,
+/// with images.json's build arguments: the coverage set below, which they must match) and pushed
+/// (push-image.yml), pinned by digest: DuckDB's engine from source takes half an hour of a free
+/// runner. A change to the Dockerfile, its files or the coverage set is pushed again and pinned
+/// here.
+const image = "ghcr.io/determinismo-dst/duckdb-duck@sha256:f38591d9c142831e2cf56a566712ebc02000b8503d24de9a978d1b72fc2dd411";
 /// DuckDB built from its release's source with coverage (Dockerfile): the engine, Quack and httpfs
 /// (their sources and the build's unity files under /opt/duckdb, third-party libraries left out),
 /// and the nodes' Python with DuckDB's Python package (the Python SDK).
@@ -95,7 +100,7 @@ const quack_port = 9494;
 fn describe(d: *System.Describe) !void {
     const profile = try d.profile("default");
     profile.node(.duck, .{
-        .build = build,
+        .image = image,
         .coverage = coverage,
         .ready = .{ .tcp = port },
         .faults = .{ .restart = true, .crash = true, .stop = true },
@@ -104,7 +109,7 @@ fn describe(d: *System.Describe) !void {
         const quack = try d.profile(entry[0]);
         const env: []const []const u8 = if (entry[1]) &.{"QUACK_RECONNECTS=1"} else &.{};
         quack.node(.db, .{
-            .build = build,
+            .image = image,
             .coverage = coverage,
             .entrypoint = &.{ "python3", "-u", "/opt/duckdb/quack_server.py" },
             .env = env,
@@ -113,7 +118,7 @@ fn describe(d: *System.Describe) !void {
         });
         inline for (.{ .c1, .c2 }) |name| {
             quack.node(name, .{
-                .build = build,
+                .image = image,
                 .coverage = coverage,
                 // After the image's entrypoint (local_node.py 7000).
                 .command = &.{ "--quack", "db" },

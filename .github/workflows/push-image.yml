@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: MIT
+# A workload's node image, built on a host of ours (host/push-images.sh: hours of a runner's time
+# for DuckDB's engine) and handed over as an archive on this repository's release images-staging,
+# pushed to GitHub's container registry with this run's own token (packages: write), so that no
+# personal token needs the packages scope. The archive is checked against the given checksum;
+# the pushed image's digest is in the job summary, for the test program to name.
+name: push-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      archive:
+        description: The archive's file name on the release images-staging (podman save --format oci-archive)
+      sha256:
+        description: The archive's sha256
+      image:
+        description: The image's name (ghcr.io/determinismo-dst/<workload>-<node>)
+      tag:
+        description: Its tag (the workloads' commit it was built at)
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ARCHIVE: ${{ inputs.archive }}
+      SHA256: ${{ inputs.sha256 }}
+      IMAGE: ${{ inputs.image }}
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The archive, checked
+        run: |
+          case "$IMAGE" in ghcr.io/determinismo-dst/*) ;; *) echo "image: ghcr.io/determinismo-dst/..."; exit 2 ;; esac
+          gh release download images-staging -R "$GITHUB_REPOSITORY" -p "$ARCHIVE" -O image.tar
+          echo "$SHA256  image.tar" | sha256sum -c -
+      - name: Pushed
+        run: |
+          echo "$GH_TOKEN" | podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          podman load -q -i image.tar
+          podman tag "$(podman images -q | head -1)" "$IMAGE:$TAG"
+          podman push --digestfile digest "$IMAGE:$TAG"
+          echo "pushed: $IMAGE@$(cat digest)" | tee -a "$GITHUB_STEP_SUMMARY"

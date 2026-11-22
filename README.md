@@ -42,6 +42,11 @@ curl -X POST localhost:7878/runs -d '{"program": "zig-out/bin/datalevin-test", "
 ## CI
 
 - `.github/workflows/build.yml`: builds every workload on each push and pull request.
+- `.github/workflows/campaign.yml` with `host/campaign.sh` and `campaigns.json`: each listed
+  workload's campaign on GitHub's free hosted runners, an hour every two hours: one long run per
+  campaign (a workload's scenario at a platform commit), each stretch resuming it where the last
+  stopped, its state kept between stretches as the workflow's artifact. Each stretch's report on
+  its run page and at the reports' site (`runs/campaign-<workload>/`).
 - `.github/workflows/probe.yml`: what GitHub's hosted runners offer determinismo's hypervisor (run
   by hand).
 - `.github/workflows/aws-hunt.yml` with `host/metal-hunt.sh`: a workload's hunt (DuckDB's by default) on an AWS

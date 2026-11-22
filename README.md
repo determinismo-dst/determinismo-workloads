@@ -95,7 +95,7 @@ hardware, so no virtual machine will do). Once, in a fork or copy of this reposi
    lower.
 
 Then, in Actions, aws-hunt, Run workflow (or `gh workflow run aws-hunt.yml -f workload=duckdb
--f machine=c5.metal -f minutes=60`): the machine's setup (about half an hour, skipped by later runs
+-f machine=c5.metal -f minutes=60`): the machine's setup (8 to 10 minutes in three runs on m5zn.metal, skipped by later runs
 at the same platform commit), the hunt, its counts in the job's log, and its report on this
 repository's Pages. A machine is one workload's; it powers itself off after the run.
 

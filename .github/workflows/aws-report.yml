@@ -71,6 +71,8 @@ jobs:
           { echo "IP=$ip"; echo "SG=$sg"; echo "ME=$me"; echo "NUMBER=$number"; } >> "$GITHUB_ENV"
           echo "the hunt: run $number"
       - name: Recorded and published
+        # With logs, the logs alone: nothing published by hand beside the run's own.
+        if: ${{ !inputs.logs }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

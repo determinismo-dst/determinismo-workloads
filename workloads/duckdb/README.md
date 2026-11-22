@@ -1,6 +1,6 @@
 # DuckDB under determinismo
 
-DuckDB 2.0.0 (MIT), embedded as Jepsen's DuckDB test embeds it (jepsen-io/duckdb, an early
+DuckDB 2.0.1 (MIT), embedded as Jepsen's DuckDB test embeds it (jepsen-io/duckdb, an early
 prototype of Kyle Kingsbury's): a local node (`local_node.py`, Python with DuckDB's package)
 holds one database file on its node's own disk and serves transactions to the drivers, a DuckDB
 connection each; and through 2.0's Quack client-server protocol (the `quack` profiles).
@@ -27,11 +27,12 @@ only, DuckDB's behavior unchanged), each a property of every run:
 - `unreachable`: a committed transaction failing WAL replay's second pass. That pass reads only
   up to the last commit boundary the first pass read whole, and a serialization error there is
   ignored: the transactions after it would be skipped without a word.
-- `always`: commit ids only grow; the last commit id is read only after a commit set it.
-  DuckDB 2.0.0's `last_commit` has no initializer until its first commit, and a checkpoint
-  before it reads whatever the memory held: fixed upstream after the release (duckdb/duckdb
-  PR #28066, "Initialize last_commit at the bootstrap timestamp": a forced shutdown checkpoint on
-  a reopened database left tables out).
+- `always`: commit ids only grow; the last commit id read before any commit is the bootstrap
+  timestamp. DuckDB 2.0.0's `last_commit` had no initializer until its first commit, and a
+  checkpoint before it read whatever the memory held (the assertion "the last commit id is read
+  only after a commit set it" failed there); fixed by duckdb/duckdb PR #28066 ("Initialize
+  last_commit at the bootstrap timestamp": a forced shutdown checkpoint on a reopened database
+  left tables out), in 2.0.1.
 - `sometimes`: a commit runs an automatic checkpoint, one beside other transactions, and a
   checkpoint finishing with commits in its checkpoint WAL (moved over the main WAL).
 
@@ -147,8 +148,9 @@ retried), so whatever the WAL held after the last checkpoint is out of reach. du
 (closed 2026-11-05, PR #28274 on main: "Always rotate WAL at checkpoint start, even when
 empty") is the same refusal from a forced checkpoint that starts with an empty WAL while a
 transaction commits: the header advances, the WAL keeps the old iteration (there N+1 against N;
-here two apart). No released build has the fix yet (2.0.0, and the newest pre-release wheel,
-2.1.0.dev2610310630, predates it): its profile waits for one. Since, the checkpoint driver
+here two apart). 2.0.1 (2026-11-20) carries the fix (its backport 8845ee0bd), and the workload runs 2.0.1 since
+2026-11-22: the srv4 campaign's first stretch on 2.0.0 met the refusal again after process
+crashes alone, no power loss (run 4, timeline 7: file iteration 635, WAL 628). Since, the checkpoint driver
 records each request (`duckdb_checkpoint`, forced or not). Hunt run 1203 (`quack`, `trigger`,
 its first pass, about 150 timelines) met it in five incidents (timelines 4, 46, 52, 70 and 97,
 and 144 forked from 52 at 291.8 s), each after forced checkpoints (2 to 47 completed). Timeline

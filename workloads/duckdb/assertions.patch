@@ -14,9 +14,9 @@
  		return lowest_visibility_bound;
  	}
  	transaction_t GetLastCommit() const {
-+		// last_commit has no initializer (a std::atomic's default constructor leaves it so before
-+		// C++20): read before a commit sets it, it is whatever the memory held.
-+		DET_ALWAYS(det_committed.load(), "the last commit id is read only after a commit set it", NULL);
++		// Before any commit, the bootstrap timestamp (2.0.0 left last_commit uninitialized until a
++		// commit: duckdb/duckdb PR #28066). det_committed is set before last_commit (below).
++		DET_ALWAYS(det_committed.load() || last_commit == SYSTEM_TRANSACTION_TIMESTAMP, "the last commit id read before any commit is the bootstrap timestamp", NULL);
  		return last_commit;
  	}
  	optional_idx GetActiveCheckpoint() const {
@@ -148,8 +148,8 @@
  		DUCKDB_LOG(context, TransactionLogType, db, "Commit", info.commit_id);
 +		DET_ALWAYS(info.commit_id > det_previous_commit, "commit ids only grow", NULL);
 +		det_previous_commit = info.commit_id;
- 		last_commit = info.commit_id;
 +		det_committed = true;
+ 		last_commit = info.commit_id;
  
  		// check if catalog changes were made
  		if (transaction.catalog_version >= TRANSACTION_ID_START) {

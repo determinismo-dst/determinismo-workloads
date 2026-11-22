@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# DuckDB 2.0.0 (MIT) embedded in Jepsen's local node, as jepsen-io/duckdb runs it: a Python
+# DuckDB 2.0.1 (MIT) embedded in Jepsen's local node, as jepsen-io/duckdb runs it: a Python
 # process (local_node.py) holding one database file, serving the drivers. DuckDB built from its
 # release's source (PyPI's sdist, checksummed) by clang with trace-pc-guard coverage and the C
 # SDK's callbacks (sdk/c/coverage.c), Quack (its client-server protocol) and httpfs (whose crypto
@@ -9,13 +9,13 @@
 # threads there. The nodes' Python and DuckDB's Python package: the Python SDK's coverage. Every
 # dependency fetched at build time: the guest has no network.
 FROM docker.io/library/python:3.12.16-slim-bookworm AS duckdb
-ARG DUCKDB_SHA256=09de511ef0dc76a5213e8d3d87a8b89bb4d3e8a6fe73a9f60dc001269946b44f
+ARG DUCKDB_SHA256=5b3f493140e35b75298ee0fc606d98e3065e8601e64fe81b09326de7a6fd68e0
 RUN apt-get update -q \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
       clang git libssl-dev libcurl4-openssl-dev ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL -o /tmp/duckdb.tar.gz \
-      https://files.pythonhosted.org/packages/c2/7c/dfdf5e9cebefd032f57f09b224993e861ecb55f61e36c709544b04b44f70/duckdb-2.0.0.tar.gz \
+      https://files.pythonhosted.org/packages/49/d8/ebb8ff07c617d1a8c25e7f7718a6955d2d5f7e539ec5219be1da478c0a42/duckdb-2.0.1.tar.gz \
  && echo "${DUCKDB_SHA256}  /tmp/duckdb.tar.gz" | sha256sum -c - \
  && mkdir -p /opt/duckdb/src && tar -xzf /tmp/duckdb.tar.gz -C /opt/duckdb/src --strip-components=1 && rm /tmp/duckdb.tar.gz
 COPY --from=determinismo-sdk c/determinismo.h c/coverage.c c/coverage-flags.sh /sdk/

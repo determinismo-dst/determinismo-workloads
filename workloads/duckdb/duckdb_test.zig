@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Example test program: DuckDB 2.0.0, embedded as Jepsen's DuckDB test embeds it (jepsen-io/duckdb:
+//! Example test program: DuckDB 2.0.1, embedded as Jepsen's DuckDB test embeds it (jepsen-io/duckdb:
 //! a local node holding one database file, transactions submitted to it), its file on the
 //! node's own disk. Jepsen's two workloads, each checked by Elle at strong snapshot isolation (as
 //! Jepsen's test checks: DuckDB's optimistic concurrency, each transaction reading its snapshot,
@@ -87,7 +87,7 @@ pub fn main(init: std.process.Init) !void {
 /// (push-image.yml), pinned by digest: DuckDB's engine from source takes half an hour of a free
 /// runner. A change to the Dockerfile, its files or the coverage set is pushed again and pinned
 /// here.
-const image = "ghcr.io/determinismo-dst/duckdb-duck@sha256:f38591d9c142831e2cf56a566712ebc02000b8503d24de9a978d1b72fc2dd411";
+const image = "ghcr.io/determinismo-dst/duckdb-duck@sha256:de02eb5ccd41d0bf42783236aa874d2c26df07d77f890aa6ea8c2851d2a6990f";
 /// DuckDB built from its release's source with coverage (Dockerfile): the engine, Quack and httpfs
 /// (their sources and the build's unity files under /opt/duckdb, third-party libraries left out),
 /// and the nodes' Python with DuckDB's Python package (the Python SDK).

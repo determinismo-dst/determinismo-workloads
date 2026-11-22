@@ -120,6 +120,15 @@ jobs:
           else
             echo "try $TRY: no more tries for this stretch"
           fi
+      - name: The runner's state every 30 s, outside it (the release runner-diagnostics)
+        if: steps.machine.outputs.ok
+        run: |
+          # A runner GitHub loses takes its job's log with it: its kernel's messages, load, memory and
+          # busiest processes go to an asset of their own every 30 seconds instead, the last one kept.
+          name="diag-$WORKLOAD-$GITHUB_RUN_ID.log"
+          nohup bash -c "while :; do { date -u; uptime; free -m; ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -12; sudo dmesg -T | tail -80; } > /tmp/$name 2>&1; gh release upload runner-diagnostics /tmp/$name --clobber -R $GITHUB_REPOSITORY > /dev/null 2>&1; sleep 30; done" \
+            > /dev/null 2>&1 &
+          echo "the runner's state: release runner-diagnostics, $name"
       - name: Room on the disk (a system's image build, DuckDB's from source, and the state)
         if: steps.machine.outputs.ok
         run: |

@@ -9,8 +9,9 @@
 # pin) and a version of its workload files (a change to either starts a new run: a resume needs
 # the same inputs). Its report: the job summary, and the
 # static page on this repository's Pages (runs/campaign-<workload>/), recorded after each
-# stretch. A runner without a core PMU (Azure's) cannot run determinismo: the job asks for
-# another (this workflow again, a few tries) and stops.
+# stretch. Only AWS-hosted runners (an -aws kernel, the core PMU) run it: on Azure's, without a
+# PMU or with one, nested VMs did not run or lost the runner. Another runner is asked for (this
+# workflow again, up to 8 tries) and the job stops.
 name: campaign
 
 on:
@@ -77,15 +78,21 @@ jobs:
       JANK: ${{ matrix.campaign.jank && '1' || '' }}
       JANK_DEB: https://github.com/determinismo-dst/determinismo-workloads/releases/download/jank-0.1-noble-68f6d0d8/jank_0.1-noble_amd64.deb
     steps:
-      - name: The machine (one without a core PMU asks for another)
+      - name: The machine (one not on AWS or without a core PMU asks for another)
         id: machine
         env:
           TRY: ${{ inputs.try || '1' }}
         run: |
           echo "kernel $(uname -r), cpu $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2), $(nproc) vCPUs, $(free -g | awk '/Mem:/{print $2}') GiB"
-          if grep -q arch_perfmon /proc/cpuinfo; then echo "ok=1" >> "$GITHUB_OUTPUT"; exit 0; fi
-          echo "no core PMU here (an Azure runner)"
-          if [ "$TRY" -lt 4 ]; then
+          # AWS-hosted runners only (an -aws kernel, the core PMU): our VMs ran there (the bank e2e,
+          # 7.0.0-1014-aws on Xeon 6975P-C, 2026-11-21), while runners on Azure either have no PMU
+          # (AMD: stopped here in seconds) or have one and lost the job to GitHub once our VMs ran
+          # (every campaign stretch and kvm-probe job of 2026-11-22: "lost communication", no log).
+          case "$(uname -r)" in
+            *-aws) if grep -q arch_perfmon /proc/cpuinfo; then echo "ok=1" >> "$GITHUB_OUTPUT"; exit 0; fi ;;
+          esac
+          echo "not an AWS-hosted runner with a core PMU: another try"
+          if [ "$TRY" -lt 8 ]; then
             gh workflow run campaign.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
               -f workload="$WORKLOAD" -f minutes="$MINUTES" -f try=$((TRY + 1)) -f count_every="${COUNT_EVERY:-600}"
             echo "asked for try $((TRY + 1))"

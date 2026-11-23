@@ -195,7 +195,7 @@ partitions, clock skew. The client has none of its own.
 
 ### In 1.2.11
 
-Read in 1.2.11's source (2026-11-20; master c992272 has the same `src/`), 2026-11-22, not hunted:
+Read in 1.2.11's source (2026-11-20; master c992272 has the same `src/`), 2026-11-22, not hunted: (the ones still there, in brief: [FINDINGS.md](FINDINGS.md))
 
 | Finding | 1.2.11 |
 |---|---|

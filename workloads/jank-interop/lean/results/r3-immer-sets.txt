@@ -1,0 +1,155 @@
+### jank3-immer sets S1 S1r1 S1r2
+== S1 sets: conj/disj/hash-set, identity keys, 3 steps
+  census: complete, 129021 timelines; violations per class:
+    [count] 2878 timelines; shrunk (8 decisions): (def s0 #{}); (def s1 (conj s0 :a)); (def s2 (conj s0 :a)); (def s3 (hash-set 1 1N)) ⇒ (count s3) jank 2, Clojure 1
+    [hash] 3742 timelines; shrunk (8 decisions): (def s0 #{}); (def s1 (conj s0 :a)); (def s2 (conj s0 0.0)); (def s3 (conj s0 -0.0)) ⇒ (= s2 s3) but hashes differ
+    [contains] 40222 timelines; shrunk (8 decisions): (def s0 #{}); (def s1 (conj s0 :a)); (def s2 (conj s0 :a)); (def s3 (conj s0 1)) ⇒ (contains? s3 1N) jank false, Clojure true
+    [key-identity] 8416 timelines; shrunk (8 decisions): (def s0 #{}); (def s1 (conj s0 :a)); (def s2 (conj s0 :a)); (def s3 (hash-set [1] '(1))) ⇒ (seq s3) jank #{'(1)}, Clojure #{[1]}
+  (10 s)
+== S1r1: D12 keys removed
+  census: complete, 77249 timelines; violations per class:
+    [key-identity] 4236 timelines; shrunk (8 decisions): (def s0 #{}); (def s1 (conj s0 :a)); (def s2 (conj s0 :a)); (def s3 (hash-set [1] '(1))) ⇒ (seq s3) jank #{'(1)}, Clojure #{[1]}
+  (5 s)
+== S1r2: and key-identity set aside
+  census: complete, 86625 timelines, nothing
+  (5 s)
+### exit 0
+### jank3-immer sets S2
+== S2 sets: transients, identity keys, 4 steps
+  census: complete, 289031 timelines; violations per class:
+    [count] 540 timelines; shrunk (10 decisions): (def s0 #{}); (def s1 #{:a '(1)}); (def ts0 (transient s0)); (def ts1 (transient s0)); (def ts0 (conj! ts0 1)); (def ts0 (conj! ts0 1N)) ⇒ (count ts0) jank 2, Clojure 1
+    [hash] 5462 timelines; shrunk (10 decisions): (def s0 #{}); (def s1 #{:a '(1)}); (def ts0 (transient s0)); (def ts1 (transient s0)); (def s2 (conj s0 0.0)); (def s3 (conj s0 -0.0)) ⇒ (= s2 s3) but hashes differ
+    [contains] 54448 timelines; shrunk (9 decisions): (def s0 #{}); (def s1 #{:a '(1)}); (def ts0 (transient s0)); (def ts1 (transient s0)); (def ts2 (transient s0)); (def s2 (conj s0 1)) ⇒ (contains? s2 1N) jank false, Clojure true
+    [key-identity] 21576 timelines; shrunk (9 decisions): (def s0 #{}); (def s1 #{:a '(1)}); (def ts0 (transient s0)); (def ts1 (transient s0)); (def ts2 (transient s0)); (def s2 (conj s1 [1])) ⇒ (s2 [1]) jank [1], Clojure '(1) (the element stored for that key)
+  (39 s)
+### exit 0
+### jank3-immer sets S2r
+== S2r: D12 keys removed; key-identity set aside
+  census: complete, 274732 timelines, nothing
+  (37 s)
+### exit 0
+### jank3-immer sets S3
+== S3 sets: designed-hash keys, all operations, 4 steps
+Terminated: 15
+  (stopped by hand after 12 min without output: the census prints only at its end and the world size was unknown; rerun below in time-budgeted, resumable segments)
+### jank3-immer sets S3
+== S3 sets: designed-hash keys, all operations, 4 steps
+  checkpoint: 250000 timelines, 38 s, no violations
+  checkpoint: 500000 timelines, 69 s, no violations
+  checkpoint: 750000 timelines, 111 s, no violations
+  checkpoint: 1000000 timelines, 161 s, no violations
+  checkpoint: 1250000 timelines, 200 s, no violations
+  checkpoint: 1500000 timelines, 230 s, no violations
+  checkpoint: 1750000 timelines, 268 s, no violations
+  checkpoint: 2000000 timelines, 299 s, no violations
+  checkpoint: 2250000 timelines, 340 s, no violations
+  checkpoint: 2500000 timelines, 385 s, no violations
+  checkpoint: 2750000 timelines, 430 s, no violations
+  checkpoint: 3000000 timelines, 458 s, no violations
+  checkpoint: 3250000 timelines, 491 s, no violations
+  checkpoint: 3500000 timelines, 527 s, no violations
+  checkpoint: 3750000 timelines, 565 s, no violations
+  checkpoint: 4000000 timelines, 603 s, no violations
+  checkpoint: 4250000 timelines, 649 s, no violations
+  checkpoint: 4500000 timelines, 682 s, no violations
+  checkpoint: 4750000 timelines, 715 s, no violations
+  checkpoint: 5000000 timelines, 753 s, no violations
+  checkpoint: 5250000 timelines, 783 s, no violations
+  checkpoint: 5500000 timelines, 823 s, no violations
+  checkpoint: 5750000 timelines, 869 s, no violations
+  checkpoint: 6000000 timelines, 914 s, no violations
+  checkpoint: 6250000 timelines, 948 s, no violations
+  checkpoint: 6500000 timelines, 992 s, no violations
+  checkpoint: 6750000 timelines, 1036 s, no violations
+  checkpoint: 7000000 timelines, 1078 s, no violations
+  checkpoint: 7250000 timelines, 1122 s, no violations
+  census: stopped at 7250000 timelines (time budget; resumed in the next job), nothing
+  resume: 0.4.2.3.4.2.1.6.1.2.6
+  (1122 s)
+### exit 0
+### jank3-immer sets S3>0.4.2.3.4.2.1.6.1.2.6
+== S3 sets: designed-hash keys, all operations, 4 steps [resumed from 0.4.2.3.4.2.1.6.1.2.6]
+  checkpoint: 250000 timelines, 47 s, no violations
+  checkpoint: 500000 timelines, 79 s, no violations
+  checkpoint: 750000 timelines, 119 s, no violations
+  checkpoint: 1000000 timelines, 155 s, no violations
+  checkpoint: 1250000 timelines, 192 s, no violations
+  checkpoint: 1500000 timelines, 231 s, no violations
+  checkpoint: 1750000 timelines, 279 s, no violations
+  checkpoint: 2000000 timelines, 316 s, no violations
+  checkpoint: 2250000 timelines, 351 s, no violations
+  checkpoint: 2500000 timelines, 380 s, no violations
+  checkpoint: 2750000 timelines, 407 s, no violations
+  checkpoint: 3000000 timelines, 446 s, no violations
+  checkpoint: 3250000 timelines, 489 s, no violations
+  checkpoint: 3500000 timelines, 529 s, no violations
+  checkpoint: 3750000 timelines, 558 s, no violations
+  checkpoint: 4000000 timelines, 586 s, no violations
+  checkpoint: 4250000 timelines, 615 s, no violations
+  checkpoint: 4500000 timelines, 652 s, no violations
+  checkpoint: 4750000 timelines, 691 s, no violations
+  checkpoint: 5000000 timelines, 733 s, no violations
+  checkpoint: 5250000 timelines, 760 s, no violations
+  checkpoint: 5500000 timelines, 785 s, no violations
+  checkpoint: 5750000 timelines, 808 s, no violations
+  checkpoint: 6000000 timelines, 835 s, no violations
+  checkpoint: 6250000 timelines, 869 s, no violations
+  checkpoint: 6500000 timelines, 911 s, no violations
+  checkpoint: 6750000 timelines, 942 s, no violations
+  checkpoint: 7000000 timelines, 965 s, no violations
+  checkpoint: 7250000 timelines, 989 s, no violations
+  checkpoint: 7500000 timelines, 1013 s, no violations
+  checkpoint: 7750000 timelines, 1047 s, no violations
+  checkpoint: 8000000 timelines, 1084 s, no violations
+  census: stopped at 8000000 timelines (time budget; resumed in the next job), nothing
+  resume: 1.2.2.4.0.2.2.6.8.1.3
+  (1084 s)
+### exit 0
+### jank3-immer sets S3>1.2.2.4.0.2.2.6.8.1.3
+== S3 sets: designed-hash keys, all operations, 4 steps [resumed from 1.2.2.4.0.2.2.6.8.1.3]
+  checkpoint: 250000 timelines, 35 s, no violations
+  checkpoint: 500000 timelines, 58 s, no violations
+  checkpoint: 750000 timelines, 82 s, no violations
+  checkpoint: 1000000 timelines, 105 s, no violations
+  checkpoint: 1250000 timelines, 136 s, no violations
+  checkpoint: 1500000 timelines, 168 s, no violations
+  checkpoint: 1750000 timelines, 206 s, no violations
+  checkpoint: 2000000 timelines, 232 s, no violations
+  checkpoint: 2250000 timelines, 256 s, no violations
+  checkpoint: 2500000 timelines, 280 s, no violations
+  checkpoint: 2750000 timelines, 303 s, no violations
+  checkpoint: 3000000 timelines, 337 s, no violations
+  checkpoint: 3250000 timelines, 377 s, no violations
+  checkpoint: 3500000 timelines, 408 s, no violations
+  checkpoint: 3750000 timelines, 430 s, no violations
+  checkpoint: 4000000 timelines, 453 s, no violations
+  checkpoint: 4250000 timelines, 476 s, no violations
+  checkpoint: 4500000 timelines, 508 s, no violations
+  checkpoint: 4750000 timelines, 544 s, no violations
+  checkpoint: 5000000 timelines, 580 s, no violations
+  checkpoint: 5250000 timelines, 604 s, no violations
+  checkpoint: 5500000 timelines, 628 s, no violations
+  checkpoint: 5750000 timelines, 652 s, no violations
+  checkpoint: 6000000 timelines, 683 s, no violations
+  checkpoint: 6250000 timelines, 715 s, no violations
+  checkpoint: 6500000 timelines, 752 s, no violations
+  checkpoint: 6750000 timelines, 777 s, no violations
+  checkpoint: 7000000 timelines, 799 s, no violations
+  checkpoint: 7250000 timelines, 830 s, no violations
+  checkpoint: 7500000 timelines, 855 s, no violations
+  checkpoint: 7750000 timelines, 889 s, no violations
+  checkpoint: 8000000 timelines, 928 s, no violations
+  checkpoint: 8250000 timelines, 960 s, no violations
+  checkpoint: 8500000 timelines, 984 s, no violations
+  checkpoint: 8750000 timelines, 1019 s, no violations
+  checkpoint: 9000000 timelines, 1055 s, no violations
+  checkpoint: 9250000 timelines, 1104 s, no violations
+  census: stopped at 9250000 timelines (time budget; resumed in the next job), nothing
+  resume: 2.0.1.2.1.4.1.0.2.8
+  (1104 s)
+### exit (segment job ended)
+### jank3-immer sets S4
+== S4 explore: all operations, identity and designed keys, 8 steps (key-identity set aside)
+  explore (20000 seeds): nothing
+  (5 s)
+### exit 0

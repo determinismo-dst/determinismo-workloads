@@ -1,0 +1,772 @@
+== analyzer examples (jank: the replica's analysis then evaluation; Clojure: the spec)
+   W3: a local bound to a literal, called in a branch never taken: (let* [x 1] (if false (x) :ok))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure :ok; agree false; tags [native-callee]
+   W3: the same with a double literal: (let* [x 1.5] (if (= 1 2) (x 1) :ok))
+      jank compile error (analyze/invalid-cpp-call: Values of type `double` are not callable.); Clojure :ok; agree false; tags [native-callee]
+   W3: round 2's shrunk program (tag native-callee): (let* [when (quote 0)] (if 0 0 (when 0 when)))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure 0; agree false; tags [native-callee]
+   W3: a loop local bound to a literal, then to a keyword, called (no dead code): (loop* [f 2147483647 k 0] (if (= k 1) (f 2147483647) (recur :k 1)))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure nil; agree false; tags [native-callee]
+   W3: a let-bound boolean literal, called in a branch never taken: (let* [x true] (if false (x) :ok))
+      jank compile error (analyze/invalid-cpp-call: Values of type `bool` are not callable.); Clojure :ok; agree false; tags [native-callee]
+   control: a local bound to a fn, called: (let* [x (fn* [] :ok)] (x))
+      jank :ok; Clojure :ok; agree true; tags []
+   control: a local bound to a literal, called (both throw): (let* [x 1] (x))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure throws (1 cannot be cast to clojure.lang.IFn); agree true; tags [native-callee]
+== analyzer: round 2's tiny grammar (literals 0 1.5 true nil, names x when), exact sizes
+   depth 0: 8 programs
+   depth 1: 14523 programs
+   depth 2: 44589295635161858 programs
+   depth 1 by exhaust: 14523 timelines
+   depth 2 by Knuth's estimate (3000 paths): 9.820000e13 programs, 11 decisions on average
+   round 2's exhaust stopped at 1,500,000 of these, all under the first top-level kind's first options
+   by the top kind (round 2's first decision): [(leaf, 8), (if, 3063366191196), (do, 210917529), (let, 608136102), (loop, 12732545567574), (fn, 75040767279096), (macro, 210961100), (private, 1), (call, 632781633), (quote, 14523), (case, 44498457293313096)]
+   round 2's reduced grammar (6 literals, 3 names) at depth 1: 76731 programs (round 2 ran 76,731)
+== analyzer, round 3 grammars: Knuth's estimates of their sizes (2000 paths each)
+   budget 1, all kinds, 12 literals, 4 names: about 399400 programs (4 decisions on average)
+   budget 2, all kinds, 12 literals, 4 names: about 2.240000e10 programs (7 decisions on average)
+   budget 2, all kinds, tiny literals, 2 names: about 2.360000e7 programs (7 decisions on average)
+   budget 2, all kinds, 6 literals, 3 names: about 4.500000e8 programs (7 decisions on average)
+   budget 3, all kinds, tiny literals, 2 names: about 1.020000e11 programs (9 decisions on average)
+== analyzer: round 2's tiny grammar, depth 2, top kind 0, R23–R36 set aside
+  exhaust under prefix [0]: complete, 8 timelines, nothing
+  (0 s)
+== analyzer: round 2's tiny grammar, depth 2, top kind 7, R23–R36 set aside
+  exhaust under prefix [7]: complete, 1 timelines, nothing
+  (0 s)
+== analyzer: round 2's tiny grammar, depth 2, top kind 9, R23–R36 set aside
+  exhaust under prefix [9]: complete, 14523 timelines, nothing
+  (0 s)
+== analyzer tally, budget 1, depth 1, full literals, every kind: 383161 programs (complete), 370227 agree, 12934 differ, 227 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 4), (jank: unbound, 156), (jank: C++, 63), (jank: mul, 4)]
+   outside the models, e.g. (+ true true) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (+ true false) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (+ false true) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (+ false false) => jank unsupported (add); Clojure throws (+ of a non-number)
+   if-native-merge [R23]: 6316 take this path, 998 only this one; e.g. (if 0 0 1.5) => jank 0.0; Clojure 0
+   loop-native-recur [R24]: 3224 take this path, 3224 only this one; e.g. (loop* [x 0 k 0] (if (= k 1) x (recur 2147483648 1))) => jank -2147483648; Clojure 2147483648
+   op-equal-object-builtin [R36]: 3120 take this path, 3120 only this one; e.g. (loop* [x nil k 0] (if (= k 1) 0 (recur 0 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0
+   macro-form-env [R30]: 13 take this path, 13 only this one; e.g. (form-of 0) => jank ((0)); Clojure (form-of 0)
+   macro-meta-on-literal [R31]: 12 take this path, 12 only this one; e.g. (meta (mk-vec 0)) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil
+   private-under-expansion [R32]: 1 take this path, 1 only this one; e.g. (other/secret-of) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 58 take this path, 58 only this one; e.g. (inc true) => jank 2; Clojure throws (inc of a non-number)
+   int-arith [R25]: 4 take this path, 4 only this one; e.g. (+ 1 2147483647) => jank -2147483648; Clojure 2147483648
+   case-branch-type [R26]: 5504 take this path, 186 only this one; e.g. (case 1 1 0 2 nil nil) => jank throws (invalid object type (expected jank::runtime::obj::nil_ref found Jank.Analyzer.ObjectType.smallInteger)); Clojure 0
+  (10 s)
+== analyzer sample, budget 3, depth 3, 12 literals, 4 names, every kind, 1000000 mixed seeds from 0: 1000000 programs (stopped), 812456 agree, 187544 differ, 14469 outside the models
+   differing with no tag (unexplained): 8
+   outside the models, by cause: []
+     unexplained, e.g. (case 1 1 (var when) 2 1.5 (do (def when 1) when)) => jank #'user/when; Clojure #'clojure.core/when
+     unexplained, e.g. ((fn* f [& when] #{(str when f)}) :k) => jank #{"(:k)#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{"(:k)#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. ((fn when [f k] (if (= k 1) (count (str when 0.0)) (recur 2147483647 1))) 1 0) => jank 49; Clojure 50
+     unexplained, e.g. (letfn* [when (fn* when [when] (and "s" (when true when)))] (when 0)) => jank 0; Clojure throws (0 cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. ((fn f [x k] (if (= k 1) (count (str :k f)) (recur :k 1))) 1.5 0) => jank 48; Clojure 49
+     unexplained, e.g. ((fn inc [when k] (if (= k 1) {:k (str inc -1)} (recur 0 1))) 1.5 0) => jank {:k "#object[Jank.Analyzer.ObjectType.jitClosure 0]-1"}; Clojure {:k "#object[Jank.Analyzer.ObjectType.jitFunction 0]-1"}
+     unexplained, e.g. ((fn* when [& f] #{(str 2147483647 when)}) 2147483648) => jank #{"2147483647#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{"2147483647#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. ((fn f [x k] (if (= k 1) {:k (str f 0.0)} (recur false 1))) 0 0) => jank {:k "#object[Jank.Analyzer.ObjectType.jitClosure 0]0.0"}; Clojure {:k "#object[Jank.Analyzer.ObjectType.jitFunction 0]0.0"}
+   recur-crosses-fn [R27]: 14142 take this path, 12539 only this one; e.g. ((fn* [& when] (loop* [f ((fn when [f k] (if (= k 1) f (recur 0.0 1))) -1 0) k 0] (if (= k 1) f (recur 2147483648 1)))) nil) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 2147483648
+   op-equal-object-builtin [R36]: 66998 take this path, 55966 only this one; e.g. (loop* [inc ((fn* [& x] (quote 1)) false) k 0] (if (= k 1) 0 (recur false 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0
+   private-under-expansion [R32]: 29001 take this path, 24157 only this one; e.g. (case 3 1 other/secret other/secret) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   macro-meta-on-literal [R31]: 17862 take this path, 8393 only this one; e.g. ((fn* [when k] (if (= k 1) (try (meta (mk-vec 0))) (recur when 1))) 2147483647 0) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil
+   if-native-merge [R23]: 27714 take this path, 11478 only this one; e.g. ((fn* f [& x] (or (do true "s") true)) -1) => jank true; Clojure "s"
+   case-branch-type [R26]: 12063 take this path, 803 only this one; e.g. (list (case 1 1 ((fn* [& inc] false) "s") 2 0 0) 2147483648) => jank (0 2147483648); Clojure (false 2147483648)
+   loop-native-recur [R24]: 22101 take this path, 13771 only this one; e.g. (loop* [when (let* [x (try false) when x] 1) k 0] (if (= k 1) "s" (recur :k 1))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.keyword); Clojure "s"
+   macro-form-env [R30]: 27700 take this path, 25908 only this one; e.g. (do (def x (let* [when (env-count)] 1)) (var x)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure #'user/x
+   int-arith [R25]: 277 take this path, 67 only this one; e.g. (do (def f (+ (let [x 0.0] 1) 2147483647)) f) => jank -2147483648; Clojure 2147483648
+   fn-name-shadowed [R28]: 1571 take this path, 515 only this one; e.g. (try ((fn* x [& f] ((fn* f [when k] (if (= k 1) f (recur -1 1))) f 0)) 0.0)) => jank (0.0); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+   bool-arith [R33]: 3459 take this path, 2540 only this one; e.g. (or (do (def when (+ false 1)) (var when)) 0.0) => jank #'user/when; Clojure throws (+ of a non-number)
+   macro-over-fn-name [R29]: 30 take this path, 19 only this one; e.g. (do (def x ((fn* when ([x] (when "s" when)) ([x q] x)) 0.0)) x) => jank #object[Jank.Analyzer.ObjectType.jitClosure 0]; Clojure "s"
+   native-callee [round 2 tag (R23/R24 family: a native literal local called)]: 1 take this path, 1 only this one; e.g. {:k (loop* [inc 0.0 k 0] (if (= k 1) (inc 0.0) (recur :k 1)))} => jank compile error (analyze/invalid-cpp-call: Values of type `double` are not callable.); Clojure {:k nil}
+  (54 s)
+== analyzer sample, budget 4, depth 3, 12 literals, 4 names, every kind, 1000000 mixed seeds from 1000000: 1000000 programs (stopped), 799779 agree, 200221 differ, 17466 outside the models
+   differing with no tag (unexplained): 26
+   outside the models, by cause: []
+     unexplained, e.g. {:k (letfn* [f (fn* f [inc] (count inc))] (f (str f 0.0)))} => jank {:k 49}; Clojure {:k 50}
+     unexplained, e.g. #{(let [inc ((fn* when [& inc] when) 1)] (str :k inc))} => jank #{":k#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{":k#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. (case 1 1 (var when) (do (def when #{2147483647}) when)) => jank #'user/when; Clojure #'clojure.core/when
+     unexplained, e.g. ((fn* x [& when] (and true (when x 2147483647))) 2147483647) => jank 2147483647; Clojure throws ((2147483647) cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (letfn* [when (fn* when [f] (or (let* [x true] nil) (when f 1.5)))] (when when)) => jank 1.5; Clojure throws (ArityException: Wrong number of args (2))
+     unexplained, e.g. (case 2 1 (do (def inc (if 0.0 :k)) (var inc)) (var inc)) => jank #'clojure.core/inc; Clojure #'user/inc
+     unexplained, e.g. (case 3 1 (try (do (def inc "s") inc)) (inc -1)) => jank 0; Clojure throws (Unbound var user/inc)
+     unexplained, e.g. ((fn* when ([inc] (or ((fn [when k] (if (= k 1) false (recur true 1))) -1 0) (when nil 1.5))) ([inc q] 1)) :k) => jank nil; Clojure 1
+     unexplained, e.g. ((fn* [f k] (if (= k 1) (case 2 1 (do (def when 1) when) (var when)) (recur 0 1))) 0 0) => jank #'clojure.core/when; Clojure #'user/when
+     unexplained, e.g. (case 1 1 (do (def inc (var when)) inc) 2 true (do (def when nil) when)) => jank #'user/when; Clojure #'clojure.core/when
+     unexplained, e.g. (case 1 1 (var inc) (do (def inc (do 0.0 2147483647)) (var inc))) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. ((fn inc [when k] (if (= k 1) (and (quote :k) (when nil -1)) (recur 0 1))) false 0) => jank nil; Clojure throws (0 cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (case 1 1 (var inc) 2 false ((fn* f ([when] (do (def inc true) (var inc))) ([when q] :k)) 1.5)) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. ((fn* when [& when] (and ((fn* [& inc] 2147483648) -1) (when 1 "s"))) "s") => jank "s"; Clojure throws (("s") cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. ((fn* [& when] (and #{false} (when true 1.5))) -1) => jank 1.5; Clojure throws ((-1) cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (letfn* [x (fn* x [when] (or (nil? when) (when 1 when)))] (x -1)) => jank -1; Clojure throws (-1 cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (case 1 1 (var inc) 2 0 (str (do (def inc true) inc) 1)) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. (case 1 1 (var inc) 2 -1 (letfn* [when (fn* when [f] (do (def inc 2147483647) inc))] (when :k))) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. ((fn* f [& when] (and (let* [inc when when f] "s") (when 0 f))) 1) => jank #object[Jank.Analyzer.ObjectType.jitClosure 0]; Clojure throws ((1) cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (letfn* [f (fn* f [x] #{(let* [when x inc 0] x)})] (f (str f 0))) => jank #{"#object[Jank.Analyzer.ObjectType.jitClosure 0]0"}; Clojure #{"#object[Jank.Analyzer.ObjectType.jitFunction 0]0"}
+     unexplained, e.g. (case 3 1 (do (def inc (try true)) inc) (var inc)) => jank #'clojure.core/inc; Clojure #'user/inc
+     unexplained, e.g. #{(str ((fn* when [f k] (if (= k 1) when (recur "s" 1))) nil 0) ((fn* ([when] 0) ([when q] :k)) true))} => jank #{"#object[Jank.Analyzer.ObjectType.jitClosure 0]0"}; Clojure #{"#object[Jank.Analyzer.ObjectType.jitFunction 0]0"}
+     unexplained, e.g. ((fn* x [& f] #{(str "s" x)}) (if nil 1 2147483647)) => jank #{"s#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{"s#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. ((fn* ([when] (and (and 0 :k) (when 0 0.0))) ([when q] 2147483647)) 0.0) => jank 0.0; Clojure throws (0.0 cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. ((fn* when ([inc] (and (if inc 2147483648) (when "s" when))) ([inc q] false)) 2147483648) => jank #object[Jank.Analyzer.ObjectType.jitClosure 0]; Clojure false
+     unexplained, e.g. #{((fn* when [inc k] (if (= k 1) (str false when) (recur ((fn* when [x k] (if (= k 1) 2147483648 (recur "s" 1))) "s" 0) 1))) true 0)} => jank #{"false#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{"false#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+   macro-meta-on-literal [R31]: 21162 take this path, 8698 only this one; e.g. (meta (mk-vec (and (loop [inc 1 k 0] (if (= k 1) true (recur -1 1))) (when nil -1)))) => jank {:jank/macro-expansion (mk-vec (and (loop [inc 1 k 0] (if (= k 1) true (recur -1 1))) (when nil -1)))}; Clojure nil
+   private-under-expansion [R32]: 40189 take this path, 31521 only this one; e.g. (other/secret-of) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   macro-form-env [R30]: 32856 take this path, 29108 only this one; e.g. (form-of other/secret) => jank ((other/secret)); Clojure (form-of other/secret)
+   recur-crosses-fn [R27]: 20931 take this path, 13365 only this one; e.g. (loop* [inc ((fn* f [f k] (if (= k 1) (let [when 2147483647] f) (recur (if 2147483647 0) 1))) 2147483647 0) k 0] (if (= k 1) nil (recur 0.0 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure nil
+   op-equal-object-builtin [R36]: 58270 take this path, 39480 only this one; e.g. (loop* [when (loop* [inc ((fn* ([f] 1.5) ([f q] -1)) 1.5 7) k 0] (if (= k 1) #{-1} (recur 1 1))) k 0] (if (= k 1) 1.5 (recur 2147483647 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 1.5
+   if-native-merge [R23]: 31269 take this path, 9517 only this one; e.g. (let [f #{(case 2 1 nil nil)}] (and 0 false)) => jank 0; Clojure false
+   loop-native-recur [R24]: 31962 take this path, 18389 only this one; e.g. (case 1 1 (var inc) 2 -1 (if (loop [x 0 k 0] (if (= k 1) false (recur "s" 1))) true nil)) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `int` and `char const[2]`.); Clojure #'clojure.core/inc
+   case-branch-type [R26]: 11889 take this path, 556 only this one; e.g. (and (var when) (case 1 1 (if false true) 2 0 0)) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure nil
+   bool-arith [R33]: 4007 take this path, 2778 only this one; e.g. [(inc (let* [x "s"] false)) (str -1 -1)] => jank [1 "-1-1"]; Clojure throws (inc of a non-number)
+   fn-name-shadowed [R28]: 2889 take this path, 607 only this one; e.g. (letfn* [x (fn* x [inc] ((fn inc [x k] (if (= k 1) ((fn* [x k] (if (= k 1) x (recur inc 1))) 2147483648 0) (recur (letfn* [f (fn* f [f] true)] (f "s")) 1))) 0 0))] (x 1)) => jank 1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+   int-arith [R25]: 443 take this path, 53 only this one; e.g. (letfn* [inc (fn* inc [f] (let [inc (quote 1)] (+ 2147483647 inc)))] (inc 2147483648)) => jank -2147483648; Clojure 2147483648
+   native-callee [round 2 tag (R23/R24 family: a native literal local called)]: 8 take this path, 6 only this one; e.g. ((fn* ([x] (loop [when -1 k 0] (if (= k 1) (when x 1) (recur :k 1)))) ([x q] (case -1 1 2147483648 q))) -1 7) => jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure 7
+   macro-over-fn-name [R29]: 48 take this path, 18 only this one; e.g. ((fn* when ([x] (when ((fn* inc [& x] x) -1) (do nil nil))) ([x q] 2147483647)) 1.5) => jank nil; Clojure 2147483647
+  (76 s)
+== analyzer sample, budget 6, depth 4, 12 literals, 4 names, every kind, 500000 mixed seeds from 2000000: 500000 programs (stopped), 376645 agree, 123355 differ, 11810 outside the models
+   differing with no tag (unexplained): 32
+   outside the models, by cause: []
+     unexplained, e.g. #{(or (case 3 1 ((fn* f [x k] (if (= k 1) 0.0 (recur :k 1))) 2147483647 0) 2 (do (def inc true) inc) (inc 0)) 2147483648)} => jank #{1}; Clojure throws (Unbound var user/inc)
+     unexplained, e.g. (or {:k ((fn* inc [& f] (str :k inc)) ((fn* [when k] (if (= k 1) "s" (recur :k 1))) -1 0))} (try 1.5)) => jank {:k ":k#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure {:k ":k#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. (letfn* [inc (fn* inc [when] (if (and (loop [when 0.0 k 0] (if (= k 1) when (recur when 1))) (when 1.5 0.0)) (let [inc false] true)))] (inc false)) => jank true; Clojure throws (false cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. #{(case 3 1 (try (or 2147483647 nil)) 2 (do (def when "s") when) (var when))} => jank #{#'clojure.core/when}; Clojure #{#'user/when}
+     unexplained, e.g. (try (case 2 1 (loop* [f nil k 0] (if (= k 1) (loop* [inc 2147483647 k 0] (if (= k 1) "s" (recur 2147483647 1))) (recur (do (def when false) when) 1))) (var when))) => jank #'clojure.core/when; Clojure #'user/when
+     unexplained, e.g. (case 1 1 #{(inc (let* [f -1] 0))} (do (def f (do (def inc :k) (var inc))) f)) => jank throws (unbound var user/inc); Clojure #{1}
+     unexplained, e.g. (rest (case 2 1 (let [f ((fn* when [x k] (if (= k 1) 2147483647 (recur 1.5 1))) true 0)] (do (def when "s") (var when))) (when 0 2147483647))) => jank (); Clojure throws (Unbound var user/when)
+     unexplained, e.g. ((fn* f [when k] (if (= k 1) (case 1 1 (and (let [x true] "s") (var inc)) 2 -1 (do (def inc -1) inc)) (recur -1 1))) 2147483647 0) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. ((fn* x [when k] (if (= k 1) {:k (and (quote true) (when 0 :k))} (recur {:k 2147483647} 1))) :k 0) => jank {:k :k}; Clojure throws ({:k 2147483647} cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (case 1 1 (var when) 2 -1 (let [inc (do (def when (let [x 0.0] 1.5)) when)] (var when))) => jank #'user/when; Clojure #'clojure.core/when
+     unexplained, e.g. ((fn* [when k] (if (= k 1) (and (if #{0.0} (quote 2147483648)) (when when true)) (recur "s" 1))) true 0) => jank true; Clojure throws ("s" cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. #{((fn* x [x k] (if (= k 1) ((fn* f [inc k] (if (= k 1) (str true f) (recur (quote f) 1))) (if false x) 0) (recur false 1))) nil 0)} => jank #{"true#object[Jank.Analyzer.ObjectType.jitClosure 1]"}; Clojure #{"true#object[Jank.Analyzer.ObjectType.jitFunction 1]"}
+     unexplained, e.g. (rest (do #{((fn* ([inc] 2147483647) ([inc q] 1)) 2147483647 7)} ((fn* x [& f] (str 1 x)) nil))) => jank (\# \o \b \j \e \c \t \[ \J \a \n \k \. \A \n \a \l \y \z \e \r \. \O \b \j \e \c \t \T \y \p \e \. \j \i \t \C \l \o \s \u \r \e \  \1 \]); Clojure (\# \o \b \j \e \c \t \[ \J \a \n \k \. \A \n \a \l \y \z \e \r \. \O \b \j \e \c \t \T \y \p \e \. \j \i \t \F \u \n \c \t \i \o \n \  \1 \])
+     unexplained, e.g. (and (case 3 1 (do (def when ((fn* when [& f] f) 1.5)) when) (when (let* [x 0] 2147483648) nil)) -1) => jank nil; Clojure throws (Unbound var user/when)
+     unexplained, e.g. (case 1 1 #{(var inc)} 2 0 (do (def inc ((fn [inc k] (if (= k 1) (do inc 1.5) (recur "s" 1))) true 0)) inc)) => jank #{#'user/inc}; Clojure #{#'clojure.core/inc}
+     unexplained, e.g. (or ((fn* [& f] (case 1 1 (var when) (do (def when 1.5) when))) (let* [x 0 inc -1] false)) nil) => jank #'user/when; Clojure #'clojure.core/when
+     unexplained, e.g. ((fn* f [& when] (do (def inc (and ((fn* ([inc] 2147483648) ([inc q] 0.0)) 0.0 7) (when 1.5 :k))) inc)) ((fn* x [when k] (if (= k 1) "s" (recur 2147483648 1))) 0 0)) => jank :k; Clojure throws (("s") cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. {:k (str ((fn x [inc k] (if (= k 1) (do (def x 1.5) x) (recur #{1.5} 1))) (and 0.0 :k) 0) 1)} => jank {:k "#object[Jank.Analyzer.ObjectType.jitClosure 0]1"}; Clojure {:k "#object[Jank.Analyzer.ObjectType.jitFunction 0]1"}
+     unexplained, e.g. ((fn inc [inc k] (if (= k 1) (if (case (let* [x 0 x 2147483647] 0.0) 1 (do (def when "s") when) (when "s" 0.0)) inc) (recur true 1))) 0.0 0) => jank true; Clojure throws (Unbound var user/when)
+     unexplained, e.g. (let* [x {:k (case #{0.0} 1 (do (def inc 2147483647) (var inc)) 2 1.5 (inc 1.5))}] 2147483648) => jank 2147483648; Clojure throws (Unbound var user/inc)
+     unexplained, e.g. (loop* [inc (do (case 1 1 (inc 1) 2 (try 0) (do (def inc :k) inc)) 2147483647) k 0] (if (= k 1) 2147483648 (recur 1 1))) => jank throws (unbound var user/inc); Clojure 2147483648
+     unexplained, e.g. ((fn* x [& inc] (case 1 1 #{(when :k inc)} (and (do (def when 0.0) when) true))) 0.0) => jank throws (unbound var user/when); Clojure #{(0.0)}
+     unexplained, e.g. (str (letfn* [when (fn* when [when] (and (let [f :k] 0.0) (when 2147483648 nil)))] (when (do 1 "s"))) false) => jank "false"; Clojure throws ("s" cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. (case 2 1 (do (def f (do (def inc ((fn* ([when] "s") ([when q] 2147483647)) :k)) inc)) f) (var inc)) => jank #'clojure.core/inc; Clojure #'user/inc
+     unexplained, e.g. ((fn* [& when] (case 1 1 (inc ((fn* inc ([f] f) ([f q] inc)) -1)) ((fn* [& f] (do (def inc 0) inc)) 2147483648))) 2147483647) => jank throws (unbound var user/inc); Clojure 0
+     unexplained, e.g. (case 1 1 (var inc) (let [f (let* [f (do (def inc 0) inc) f (and :k :k)] "s")] f)) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. #{((fn* inc [& when] (let* [f (case 1 1 inc when) f inc] (str 1.5 inc))) (rest true))} => jank #{"1.5#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{"1.5#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. ((fn* inc ([when] (do (and ((fn* [& inc] 0) :k) (when "s" 0.0)) ((fn* [& inc] 0) 2147483648))) ([when q] 0)) 0) => jank 0; Clojure throws (0 cannot be cast to clojure.lang.IFn)
+     unexplained, e.g. {:k ((fn* f [when k] (if (= k 1) ((fn* ([f] (str when :k)) ([f q] {:k 1})) (do 0 1.5)) (recur f 1))) 2147483647 0)} => jank {:k "#object[Jank.Analyzer.ObjectType.jitClosure 0]:k"}; Clojure {:k "#object[Jank.Analyzer.ObjectType.jitFunction 0]:k"}
+     unexplained, e.g. (case 1 1 (var inc) 2 2147483647 ((fn* [x k] (if (= k 1) ((fn [when k] (if (= k 1) (do when 0) (recur nil 1))) (do (def inc 0) inc) 0) (recur false 1))) 2147483647 0)) => jank #'user/inc; Clojure #'clojure.core/inc
+     unexplained, e.g. (or ((fn* inc ([x] (quote (let* [x true] 2147483648))) ([x q] #{(str 2147483648 inc)})) :k 7) :k) => jank #{"2147483648#object[Jank.Analyzer.ObjectType.jitClosure 0]"}; Clojure #{"2147483648#object[Jank.Analyzer.ObjectType.jitFunction 0]"}
+     unexplained, e.g. (vector ((fn* ([when] (let* [inc (try "s") f (inc 1)] ((fn inc [x k] (if (= k 1) :k (recur :k 1))) 2147483648 0))) ([when q] 0.0)) "s" 7) false) => jank compile error (model/unmodeled: C++ call (interop agent)); Clojure [0.0 false]
+   macro-meta-on-literal [R31]: 15946 take this path, 3747 only this one; e.g. (meta (mk-vec 0.0)) => jank {:jank/macro-expansion (mk-vec 0.0)}; Clojure nil
+   recur-crosses-fn [R27]: 19157 take this path, 10758 only this one; e.g. (loop [inc ((fn* f [inc k] (if (= k 1) (var inc) (recur {:k ((fn* [inc k] (if (= k 1) "s" (recur 2147483647 1))) "s" 0)} 1))) (do 1.5 1.5) 0) k 0] (if (= k 1) inc (recur 1 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 1
+   op-equal-object-builtin [R36]: 37007 take this path, 20569 only this one; e.g. [((fn* inc ([when] (letfn* [x (fn* x [when] (loop [x inc k 0] (if (= k 1) 0 (recur -1 1))))] (x (letfn* [f (fn* f [inc] 0.0)] (f 0))))) ([when q] (let* [when :k x true] false))) false 7) "s"] => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure [false "s"]
+   private-under-expansion [R32]: 29682 take this path, 20066 only this one; e.g. (loop [inc ((fn* ([inc] (try other/secret)) ([inc q] #{((fn* [& when] inc) nil)})) true) k 0] (if (= k 1) 2147483648 (recur inc 1))) => jank 2147483648; Clojure compile error (var: #'other/secret is not public)
+   fn-name-shadowed [R28]: 3082 take this path, 336 only this one; e.g. (try (letfn* [when (fn* when [when] ((fn when [inc k] (if (= k 1) {:k when} (recur (var inc) 1))) ((fn when [when k] (if (= k 1) when (recur 0.0 1))) 0.0 0) 0))] (when 2147483648))) => jank {:k 2147483648}; Clojure {:k #object[Jank.Analyzer.ObjectType.jitFunction 1]}
+   if-native-merge [R23]: 18663 take this path, 3033 only this one; e.g. (let* [when (do (def f 0.0) f)] (or (let [f (if 0 false)] (try "s")) true)) => jank true; Clojure "s"
+   case-branch-type [R26]: 7315 take this path, 262 only this one; e.g. (if (= (let* [f (case 1 1 nil 2 -1 1)] (loop* [x f k 0] (if (= k 1) false (recur 2147483647 1)))) ((fn* f ([when] "s") ([when q] nil)) 2147483648 7)) 1 1) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure 1
+   macro-form-env [R30]: 20842 take this path, 16630 only this one; e.g. (let [f [(do (def when (env-count)) when) (let* [when (do (def when 0) when) x "s"] x)]] 0.0) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure 0.0
+   loop-native-recur [R24]: 18720 take this path, 7893 only this one; e.g. (do (def x ((fn* inc [when k] (if (= k 1) (and (if :k 2147483648) (loop [inc 1 k 0] (if (= k 1) true (recur :k 1)))) (recur ((fn* inc [inc k] (if (= k 1) :k (recur true 1))) -1 0) 1))) 1 0)) x) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.keyword); Clojure true
+   bool-arith [R33]: 2026 take this path, 1083 only this one; e.g. {:k ((fn* [x k] (if (= k 1) [(do true 2147483648) ((fn* inc ([inc] :k) ([inc q] 2147483647)) :k 7)] (recur (+ true 0.0) 1))) -1 0)} => jank {:k [2147483648 2147483647]}; Clojure throws (+ of a non-number)
+   macro-over-fn-name [R29]: 44 take this path, 2 only this one; e.g. [((fn* when ([f] (when (if 2147483648 true) (letfn* [inc (fn* inc [when] 2147483647)] (inc 1.5)))) ([f q] (if nil true))) 0) nil] => jank [2147483647 nil]; Clojure [nil nil]
+   int-arith [R25]: 313 take this path, 26 only this one; e.g. (+ (let* [f (quote ((fn* inc [& inc] 1.5) "s"))] (do #{false} 2147483647)) 2147483647) => jank -2; Clojure 4294967294
+   native-callee [round 2 tag (R23/R24 family: a native literal local called)]: 18 take this path, 11 only this one; e.g. ((fn* ([when] (loop* [inc 1.5 k 0] (if (= k 1) true (recur (loop [when (inc 2147483647) k 0] (if (= k 1) (mk-map :k when) (recur ((fn* x ([when] 2147483647) ([when q] when)) nil) 1))) 1)))) ([when q] "s")) "s" 7) => jank compile error (analyze/invalid-cpp-call: Values of type `double` are not callable.); Clojure "s"
+  (54 s)
+== (from here on: W3/W4/W5 and str-of-fn recognized and set aside; 26 kinds)
+== analyzer examples (jank: the replica's analysis then evaluation; Clojure: the spec)
+   W3: a local bound to a literal, called in a branch never taken: (let* [x 1] (if false (x) :ok))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure :ok; agree false; tags [native-callee]
+   W3: the same with a double literal: (let* [x 1.5] (if (= 1 2) (x 1) :ok))
+      jank compile error (analyze/invalid-cpp-call: Values of type `double` are not callable.); Clojure :ok; agree false; tags [native-callee]
+   W3: round 2's shrunk program (tag native-callee): (let* [when (quote 0)] (if 0 0 (when 0 when)))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure 0; agree false; tags [native-callee]
+   W3: a loop local bound to a literal, then to a keyword, called (no dead code): (loop* [f 2147483647 k 0] (if (= k 1) (f 2147483647) (recur :k 1)))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure nil; agree false; tags [native-callee]
+   W3: a let-bound boolean literal, called in a branch never taken: (let* [x true] (if false (x) :ok))
+      jank compile error (analyze/invalid-cpp-call: Values of type `bool` are not callable.); Clojure :ok; agree false; tags [native-callee]
+   probe: letfn, fn named when, parameter when: (letfn* [when (fn* when [when] (and "s" (when true when)))] (when 0))
+      jank 0; Clojure throws (0 cannot be cast to clojure.lang.IFn); agree false; tags []
+   probe: fn named when, parameter when, no letfn: ((fn* when [when] (when true when)) 0)
+      jank throws (0 is not callable); Clojure throws (0 cannot be cast to clojure.lang.IFn); agree true; tags []
+   probe: letfn f, parameter when: (letfn* [f (fn* f [when] (when true when))] (f 0))
+      jank throws (0 is not callable); Clojure throws (0 cannot be cast to clojure.lang.IFn); agree true; tags []
+   probe: letfn named when, parameter x, calls when: (letfn* [when (fn* when [x] (when false x))] (when 0))
+      jank unsupported (unbound local 2); Clojure throws (ArityException: Wrong number of args (2)); agree true; tags [fn-name-shadowed]
+   probe: fn named when, parameter when, through and: ((fn* when [when] (and "s" (when true when))) 0)
+      jank 0; Clojure throws (0 cannot be cast to clojure.lang.IFn); agree false; tags []
+   probe: case, a var branch and a def in the default: (case 1 1 (var when) (do (def when 1) 2))
+      jank #'user/when; Clojure #'clojure.core/when; agree false; tags []
+   probe: case, a var branch and a def in the other branch: (case 1 1 (var when) 2 (do (def when 1) 2) 3)
+      jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.var); Clojure #'clojure.core/when; agree false; tags [case-branch-type]
+   probe W4: case, a def in a clause, the default calls it: (case 1 1 (def h 1) (h))
+      jank compile error (analyze/unresolved-symbol: The symbol `h` could not be resolved.); Clojure #'user/h; agree false; tags []
+   probe W4: case, a def of inc in a clause, the default calls inc: (case 2 1 (do (def inc 5) inc) (inc 1))
+      jank 2; Clojure throws (Unbound var user/inc); agree false; tags []
+   probe: fn params [& when], (and x (when …)): ((fn* [& when] (and 1 (when true 7))) -1)
+      jank 7; Clojure throws ((-1) cannot be cast to clojure.lang.IFn); agree false; tags []
+   probe: fn params [when], (and x (when …)): ((fn* [when] (and 1 (when true 7))) -1)
+      jank 7; Clojure throws (-1 cannot be cast to clojure.lang.IFn); agree false; tags []
+   probe: fn params [when], (if x (when …)): ((fn* [when] (if 1 (when true 7))) -1)
+      jank throws (-1 is not callable); Clojure throws (-1 cannot be cast to clojure.lang.IFn); agree true; tags []
+   probe: fn params [when], (let* [g x] (when …)): ((fn* [when] (let* [g 1] (when true 7))) -1)
+      jank throws (-1 is not callable); Clojure throws (-1 cannot be cast to clojure.lang.IFn); agree true; tags []
+   probe: let [when 0], (and 1 (when …)): (let* [when 0] (and 1 (when true 7)))
+      jank 7; Clojure throws (0 cannot be cast to clojure.lang.IFn); agree false; tags []
+   probe: let [when :k], (or nil (when …)): (let* [when :k] (or nil (when true 7)))
+      jank 7; Clojure 7; agree true; tags []
+   control: a local bound to a fn, called: (let* [x (fn* [] :ok)] (x))
+      jank :ok; Clojure :ok; agree true; tags []
+   control: a local bound to a literal, called (both throw): (let* [x 1] (x))
+      jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure throws (1 cannot be cast to clojure.lang.IFn); agree true; tags [native-callee]
+== analyzer tally, budget 1, depth 1, full literals, every kind: 383161 programs (complete), 370227 agree, 12934 differ, 227 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 4), (jank: unbound, 156), (jank: C++, 63), (jank: mul, 4)]
+   outside the models, e.g. (+ true true) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (+ true false) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (+ false true) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (+ false false) => jank unsupported (add); Clojure throws (+ of a non-number)
+   if-native-merge [R23]: 6316 take this path, 998 only this one; e.g. (if 0 0 1.5) => jank 0.0; Clojure 0
+   loop-native-recur [R24]: 3224 take this path, 3224 only this one; e.g. (loop* [x 0 k 0] (if (= k 1) x (recur 2147483648 1))) => jank -2147483648; Clojure 2147483648
+   op-equal-object-builtin [R36]: 3120 take this path, 3120 only this one; e.g. (loop* [x nil k 0] (if (= k 1) 0 (recur 0 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0
+   macro-form-env [R30]: 13 take this path, 13 only this one; e.g. (form-of 0) => jank ((0)); Clojure (form-of 0)
+   macro-meta-on-literal [R31]: 12 take this path, 12 only this one; e.g. (meta (mk-vec 0)) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil
+   private-under-expansion [R32]: 1 take this path, 1 only this one; e.g. (other/secret-of) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 58 take this path, 58 only this one; e.g. (inc true) => jank 2; Clojure throws (inc of a non-number)
+   int-arith [R25]: 4 take this path, 4 only this one; e.g. (+ 1 2147483647) => jank -2147483648; Clojure 2147483648
+   case-branch-type [R26]: 5504 take this path, 186 only this one; e.g. (case 1 1 0 2 nil nil) => jank throws (invalid object type (expected jank::runtime::obj::nil_ref found Jank.Analyzer.ObjectType.smallInteger)); Clojure 0
+  (10 s)
+== analyzer sample, budget 3, depth 3, 12 literals, 4 names, every kind, 1000000 mixed seeds from 0: 1000000 programs (stopped), 812460 agree, 187540 differ, 14469 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: []
+   recur-crosses-fn [R27]: 14142 take this path, 12539 only this one; e.g. ((fn* [& when] (loop* [f ((fn when [f k] (if (= k 1) f (recur 0.0 1))) -1 0) k 0] (if (= k 1) f (recur 2147483648 1)))) nil) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 2147483648
+   op-equal-object-builtin [R36]: 66998 take this path, 55966 only this one; e.g. (loop* [inc ((fn* [& x] (quote 1)) false) k 0] (if (= k 1) 0 (recur false 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0
+   private-under-expansion [R32]: 29001 take this path, 24157 only this one; e.g. (case 3 1 other/secret other/secret) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   macro-meta-on-literal [R31]: 17862 take this path, 8393 only this one; e.g. ((fn* [when k] (if (= k 1) (try (meta (mk-vec 0))) (recur when 1))) 2147483647 0) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil
+   if-native-merge [R23]: 27714 take this path, 11478 only this one; e.g. ((fn* f [& x] (or (do true "s") true)) -1) => jank true; Clojure "s"
+   case-branch-type [R26]: 12063 take this path, 803 only this one; e.g. (list (case 1 1 ((fn* [& inc] false) "s") 2 0 0) 2147483648) => jank (0 2147483648); Clojure (false 2147483648)
+   loop-native-recur [R24]: 22101 take this path, 13771 only this one; e.g. (loop* [when (let* [x (try false) when x] 1) k 0] (if (= k 1) "s" (recur :k 1))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.keyword); Clojure "s"
+   macro-form-env [R30]: 27700 take this path, 25908 only this one; e.g. (do (def x (let* [when (env-count)] 1)) (var x)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure #'user/x
+   int-arith [R25]: 277 take this path, 67 only this one; e.g. (do (def f (+ (let [x 0.0] 1) 2147483647)) f) => jank -2147483648; Clojure 2147483648
+   fn-name-shadowed [R28]: 1571 take this path, 515 only this one; e.g. (try ((fn* x [& f] ((fn* f [when k] (if (= k 1) f (recur -1 1))) f 0)) 0.0)) => jank (0.0); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+   bool-arith [R33]: 3459 take this path, 2540 only this one; e.g. (or (do (def when (+ false 1)) (var when)) 0.0) => jank #'user/when; Clojure throws (+ of a non-number)
+   macro-over-fn-name [R29]: 30 take this path, 19 only this one; e.g. (do (def x ((fn* when ([x] (when "s" when)) ([x q] x)) 0.0)) x) => jank #object[Jank.Analyzer.ObjectType.jitClosure 0]; Clojure "s"
+   case-def-order [W4 (case analyzes its default before its clauses)]: 1 take this path, 1 only this one; e.g. (case 1 1 (var when) 2 1.5 (do (def when 1) when)) => jank #'user/when; Clojure #'clojure.core/when
+   native-callee [W3 (round 2's tag: a native literal local called)]: 1 take this path, 1 only this one; e.g. {:k (loop* [inc 0.0 k 0] (if (= k 1) (inc 0.0) (recur :k 1)))} => jank compile error (analyze/invalid-cpp-call: Values of type `double` are not callable.); Clojure {:k nil}
+   str-of-fn [WA3 (a fn object's printed form, implementation-defined)]: 2 take this path, 2 only this one; e.g. ((fn when [f k] (if (= k 1) (count (str when 0.0)) (recur 2147483647 1))) 1 0) => jank 49; Clojure 50
+   local-macro-name [W5 (macroexpand keeps expanding a local's name as a macro)]: 1 take this path, 1 only this one; e.g. (letfn* [when (fn* when [when] (and "s" (when true when)))] (when 0)) => jank 0; Clojure throws (0 cannot be cast to clojure.lang.IFn)
+  (57 s)
+== analyzer sample, budget 4, depth 3, 12 literals, 4 names, every kind, 1000000 mixed seeds from 1000000: 1000000 programs (stopped), 799785 agree, 200215 differ, 17466 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: []
+   macro-meta-on-literal [R31]: 21161 take this path, 8697 only this one; e.g. (meta (mk-vec (and (loop [inc 1 k 0] (if (= k 1) true (recur -1 1))) (when nil -1)))) => jank {:jank/macro-expansion (mk-vec (and (loop [inc 1 k 0] (if (= k 1) true (recur -1 1))) (when nil -1)))}; Clojure nil
+   private-under-expansion [R32]: 40189 take this path, 31521 only this one; e.g. (other/secret-of) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   macro-form-env [R30]: 32856 take this path, 29108 only this one; e.g. (form-of other/secret) => jank ((other/secret)); Clojure (form-of other/secret)
+   recur-crosses-fn [R27]: 20931 take this path, 13365 only this one; e.g. (loop* [inc ((fn* f [f k] (if (= k 1) (let [when 2147483647] f) (recur (if 2147483647 0) 1))) 2147483647 0) k 0] (if (= k 1) nil (recur 0.0 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure nil
+   op-equal-object-builtin [R36]: 58270 take this path, 39480 only this one; e.g. (loop* [when (loop* [inc ((fn* ([f] 1.5) ([f q] -1)) 1.5 7) k 0] (if (= k 1) #{-1} (recur 1 1))) k 0] (if (= k 1) 1.5 (recur 2147483647 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 1.5
+   if-native-merge [R23]: 31269 take this path, 9517 only this one; e.g. (let [f #{(case 2 1 nil nil)}] (and 0 false)) => jank 0; Clojure false
+   loop-native-recur [R24]: 31962 take this path, 18389 only this one; e.g. (case 1 1 (var inc) 2 -1 (if (loop [x 0 k 0] (if (= k 1) false (recur "s" 1))) true nil)) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `int` and `char const[2]`.); Clojure #'clojure.core/inc
+   case-branch-type [R26]: 11889 take this path, 556 only this one; e.g. (and (var when) (case 1 1 (if false true) 2 0 0)) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure nil
+   bool-arith [R33]: 4007 take this path, 2778 only this one; e.g. [(inc (let* [x "s"] false)) (str -1 -1)] => jank [1 "-1-1"]; Clojure throws (inc of a non-number)
+   fn-name-shadowed [R28]: 2889 take this path, 607 only this one; e.g. (letfn* [x (fn* x [inc] ((fn inc [x k] (if (= k 1) ((fn* [x k] (if (= k 1) x (recur inc 1))) 2147483648 0) (recur (letfn* [f (fn* f [f] true)] (f "s")) 1))) 0 0))] (x 1)) => jank 1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+   int-arith [R25]: 443 take this path, 53 only this one; e.g. (letfn* [inc (fn* inc [f] (let [inc (quote 1)] (+ 2147483647 inc)))] (inc 2147483648)) => jank -2147483648; Clojure 2147483648
+   str-of-fn [WA3 (a fn object's printed form, implementation-defined)]: 1 take this path, 1 only this one; e.g. {:k (letfn* [f (fn* f [inc] (count inc))] (f (str f 0.0)))} => jank {:k 49}; Clojure {:k 50}
+   native-callee [W3 (round 2's tag: a native literal local called)]: 8 take this path, 6 only this one; e.g. ((fn* ([x] (loop [when -1 k 0] (if (= k 1) (when x 1) (recur :k 1)))) ([x q] (case -1 1 2147483648 q))) -1 7) => jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure 7
+   macro-over-fn-name [R29]: 48 take this path, 18 only this one; e.g. ((fn* when ([x] (when ((fn* inc [& x] x) -1) (do nil nil))) ([x q] 2147483647)) 1.5) => jank nil; Clojure 2147483647
+   case-def-order [W4 (case analyzes its default before its clauses)]: 10 take this path, 10 only this one; e.g. (case 1 1 (var when) (do (def when #{2147483647}) when)) => jank #'user/when; Clojure #'clojure.core/when
+   local-macro-name [W5 (macroexpand keeps expanding a local's name as a macro)]: 10 take this path, 10 only this one; e.g. ((fn* x [& when] (and true (when x 2147483647))) 2147483647) => jank 2147483647; Clojure throws ((2147483647) cannot be cast to clojure.lang.IFn)
+  (74 s)
+== analyzer sample, budget 6, depth 4, 12 literals, 4 names, every kind, 500000 mixed seeds from 2000000: 500000 programs (stopped), 376651 agree, 123349 differ, 11810 outside the models
+   differing with no tag (unexplained): 1
+   outside the models, by cause: []
+     unexplained, e.g. (vector ((fn* ([when] (let* [inc (try "s") f (inc 1)] ((fn inc [x k] (if (= k 1) :k (recur :k 1))) 2147483648 0))) ([when q] 0.0)) "s" 7) false) => jank compile error (model/unmodeled: C++ call (interop agent)); Clojure [0.0 false]
+   macro-meta-on-literal [R31]: 15946 take this path, 3747 only this one; e.g. (meta (mk-vec 0.0)) => jank {:jank/macro-expansion (mk-vec 0.0)}; Clojure nil
+   recur-crosses-fn [R27]: 19157 take this path, 10758 only this one; e.g. (loop [inc ((fn* f [inc k] (if (= k 1) (var inc) (recur {:k ((fn* [inc k] (if (= k 1) "s" (recur 2147483647 1))) "s" 0)} 1))) (do 1.5 1.5) 0) k 0] (if (= k 1) inc (recur 1 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 1
+   op-equal-object-builtin [R36]: 37007 take this path, 20569 only this one; e.g. [((fn* inc ([when] (letfn* [x (fn* x [when] (loop [x inc k 0] (if (= k 1) 0 (recur -1 1))))] (x (letfn* [f (fn* f [inc] 0.0)] (f 0))))) ([when q] (let* [when :k x true] false))) false 7) "s"] => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure [false "s"]
+   private-under-expansion [R32]: 29682 take this path, 20066 only this one; e.g. (loop [inc ((fn* ([inc] (try other/secret)) ([inc q] #{((fn* [& when] inc) nil)})) true) k 0] (if (= k 1) 2147483648 (recur inc 1))) => jank 2147483648; Clojure compile error (var: #'other/secret is not public)
+   fn-name-shadowed [R28]: 3082 take this path, 336 only this one; e.g. (try (letfn* [when (fn* when [when] ((fn when [inc k] (if (= k 1) {:k when} (recur (var inc) 1))) ((fn when [when k] (if (= k 1) when (recur 0.0 1))) 0.0 0) 0))] (when 2147483648))) => jank {:k 2147483648}; Clojure {:k #object[Jank.Analyzer.ObjectType.jitFunction 1]}
+   if-native-merge [R23]: 18663 take this path, 3033 only this one; e.g. (let* [when (do (def f 0.0) f)] (or (let [f (if 0 false)] (try "s")) true)) => jank true; Clojure "s"
+   case-branch-type [R26]: 7315 take this path, 262 only this one; e.g. (if (= (let* [f (case 1 1 nil 2 -1 1)] (loop* [x f k 0] (if (= k 1) false (recur 2147483647 1)))) ((fn* f ([when] "s") ([when q] nil)) 2147483648 7)) 1 1) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure 1
+   macro-form-env [R30]: 20842 take this path, 16630 only this one; e.g. (let [f [(do (def when (env-count)) when) (let* [when (do (def when 0) when) x "s"] x)]] 0.0) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure 0.0
+   loop-native-recur [R24]: 18720 take this path, 7893 only this one; e.g. (do (def x ((fn* inc [when k] (if (= k 1) (and (if :k 2147483648) (loop [inc 1 k 0] (if (= k 1) true (recur :k 1)))) (recur ((fn* inc [inc k] (if (= k 1) :k (recur true 1))) -1 0) 1))) 1 0)) x) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.keyword); Clojure true
+   bool-arith [R33]: 2026 take this path, 1083 only this one; e.g. {:k ((fn* [x k] (if (= k 1) [(do true 2147483648) ((fn* inc ([inc] :k) ([inc q] 2147483647)) :k 7)] (recur (+ true 0.0) 1))) -1 0)} => jank {:k [2147483648 2147483647]}; Clojure throws (+ of a non-number)
+   macro-over-fn-name [R29]: 44 take this path, 2 only this one; e.g. [((fn* when ([f] (when (if 2147483648 true) (letfn* [inc (fn* inc [when] 2147483647)] (inc 1.5)))) ([f q] (if nil true))) 0) nil] => jank [2147483647 nil]; Clojure [nil nil]
+   int-arith [R25]: 313 take this path, 26 only this one; e.g. (+ (let* [f (quote ((fn* inc [& inc] 1.5) "s"))] (do #{false} 2147483647)) 2147483647) => jank -2; Clojure 4294967294
+   native-callee [W3 (round 2's tag: a native literal local called)]: 18 take this path, 11 only this one; e.g. ((fn* ([when] (loop* [inc 1.5 k 0] (if (= k 1) true (recur (loop [when (inc 2147483647) k 0] (if (= k 1) (mk-map :k when) (recur ((fn* x ([when] 2147483647) ([when q] when)) nil) 1))) 1)))) ([when q] "s")) "s" 7) => jank compile error (analyze/invalid-cpp-call: Values of type `double` are not callable.); Clojure "s"
+   case-def-order [W4 (case analyzes its default before its clauses)]: 18 take this path, 18 only this one; e.g. #{(or (case 3 1 ((fn* f [x k] (if (= k 1) 0.0 (recur :k 1))) 2147483647 0) 2 (do (def inc true) inc) (inc 0)) 2147483648)} => jank #{1}; Clojure throws (Unbound var user/inc)
+   local-macro-name [W5 (macroexpand keeps expanding a local's name as a macro)]: 6 take this path, 6 only this one; e.g. (letfn* [inc (fn* inc [when] (if (and (loop [when 0.0 k 0] (if (= k 1) when (recur when 1))) (when 1.5 0.0)) (let [inc false] true)))] (inc false)) => jank true; Clojure throws (false cannot be cast to clojure.lang.IFn)
+   str-of-fn [WA3 (a fn object's printed form, implementation-defined)]: 1 take this path, 1 only this one; e.g. (rest (do #{((fn* ([inc] 2147483647) ([inc q] 1)) 2147483647 7)} ((fn* x [& f] (str 1 x)) nil))) => jank (\# \o \b \j \e \c \t \[ \J \a \n \k \. \A \n \a \l \y \z \e \r \. \O \b \j \e \c \t \T \y \p \e \. \j \i \t \C \l \o \s \u \r \e \  \1 \]); Clojure (\# \o \b \j \e \c \t \[ \J \a \n \k \. \A \n \a \l \y \z \e \r \. \O \b \j \e \c \t \T \y \p \e \. \j \i \t \F \u \n \c \t \i \o \n \  \1 \])
+  (51 s)
+== analyzer sample, budget 5, depth 4, 12 literals, 4 names, every kind, 1000000 mixed seeds from 3000000: 1000000 programs (stopped), 766036 agree, 233964 differ, 21687 outside the models
+   differing with no tag (unexplained): 3
+   outside the models, by cause: []
+     unexplained, e.g. (let* [inc "s" inc ((fn* ([when] ((fn* [x k] (if (= k 1) (inc nil) (recur (case 1 1 false 2147483648) 1))) 0 0)) ([when q] when)) :k 7)] false) => jank compile error (model/unmodeled: C++ call (interop agent)); Clojure false
+     unexplained, e.g. (let* [when "s" x ((fn* ([x] (when ((fn* [f k] (if (= k 1) when (recur x 1))) 0.0 0) (var when))) ([x q] 1.5)) -1 7)] -1) => jank compile error (model/unmodeled: C++ call (interop agent)); Clojure -1
+     unexplained, e.g. (case 2 1 (let [when "s"] #{(when "s" 2147483648)}) 2 0.0 (inc -1)) => jank compile error (analyze/invalid-case: C++ call (interop agent)); Clojure 0.0
+   private-under-expansion [R32]: 51781 take this path, 37749 only this one; e.g. (other/secret-of) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   recur-crosses-fn [R27]: 31833 take this path, 21744 only this one; e.g. ((fn* x ([when] (var when)) ([when q] (loop* [f ((fn* [x k] (if (= k 1) (if nil :k) (recur false 1))) x 0) k 0] (if (= k 1) true (recur when 1))))) -1 7) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure true
+   loop-native-recur [R24]: 31691 take this path, 15068 only this one; e.g. (let [inc (do (or (loop* [x -1 k 0] (if (= k 1) 0 (recur "s" 1))) (loop* [x 2147483648 k 0] (if (= k 1) -1 (recur 1.5 1)))) nil)] "s") => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `int` and `char const[2]`.); Clojure "s"
+   op-equal-object-builtin [R36]: 72778 take this path, 47624 only this one; e.g. (try (loop* [inc (loop [when (let* [x 0.0 x 2147483647] x) k 0] (if (= k 1) true (recur (do 2147483648 1) 1))) k 0] (if (= k 1) 2147483648 (recur 1.5 1)))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 2147483648
+   if-native-merge [R23]: 33750 take this path, 7210 only this one; e.g. (if [{:k (let [when 2147483648] :k)} ((fn* [when k] (if (= k 1) 0 (recur -1 1))) false 0)] true -1) => jank 1; Clojure true
+   macro-meta-on-literal [R31]: 27270 take this path, 7737 only this one; e.g. (or (meta (mk-vec (try -1))) (try (var inc))) => jank {:jank/macro-expansion (mk-vec (try -1))}; Clojure #'clojure.core/inc
+   fn-name-shadowed [R28]: 4369 take this path, 558 only this one; e.g. ((fn* [f k] (if (= k 1) ((fn* f [inc k] (if (= k 1) (do (def f (let* [inc 1.5] inc)) f) (recur ((fn* [& when] false) 0) 1))) f 0) (recur nil 1))) 2147483648 0) => jank nil; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+   macro-form-env [R30]: 37340 take this path, 31812 only this one; e.g. (form-of ((fn* ([f] other/secret) ([f q] (if (:k (mk-map :k true)) 0 0))) nil)) => jank ((((fn* ([f] other/secret) ([f q] (if (:k (mk-map :k true)) 0 0))) nil))); Clojure (form-of ((fn* ([f] other/secret) ([f q] (if (:k (mk-map :k true)) 0 0))) nil))
+   case-branch-type [R26]: 14444 take this path, 642 only this one; e.g. (case 1 1 (letfn* [when (fn* when [f] (quote (:k (mk-map :k 1.5))))] (when ((fn* [f k] (if (= k 1) 2147483647 (recur true 1))) 2147483648 0))) 2 false false) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.persistentList)); Clojure (:k (mk-map :k 1.5))
+   bool-arith [R33]: 3564 take this path, 2158 only this one; e.g. ((fn* [& f] (let* [inc 2147483648] ((fn [when k] (if (= k 1) (+ true -1) (recur ((fn* x [& when] x) 0.0) 1))) true 0))) 2147483647) => jank 0; Clojure throws (+ of a non-number)
+   int-arith [R25]: 460 take this path, 38 only this one; e.g. ((fn* [inc k] (if (= k 1) (* (if ((fn f [f k] (if (= k 1) 1.5 (recur 1.5 1))) "s" 0) (let [inc false] 2147483647) 0) 2147483647) (recur 0.0 1))) 2147483648 0) => jank 1; Clojure 4611686014132420609
+   local-macro-name [W5 (macroexpand keeps expanding a local's name as a macro)]: 11 take this path, 11 only this one; e.g. (letfn* [inc (fn* inc [inc] (letfn* [when (fn* when [f] (and (try f) (when "s" f)))] (when -1)))] (inc 0)) => jank -1; Clojure throws (ArityException: Wrong number of args (2))
+   macro-over-fn-name [R29]: 75 take this path, 18 only this one; e.g. (list ((fn* when ([f] (loop [when (when false 0) k 0] (if (= k 1) when (recur (do (def when 0.0) when) 1)))) ([f q] 1.5)) true) 0) => jank (nil 0); Clojure (1.5 0)
+   case-def-order [W4 (case analyzes its default before its clauses)]: 21 take this path, 21 only this one; e.g. (case 3 1 (do (def inc (let* [x ((fn* inc [& inc] "s") 0.0)] true)) inc) 2 0 (var inc)) => jank #'clojure.core/inc; Clojure #'user/inc
+   native-callee [W3 (round 2's tag: a native literal local called)]: 23 take this path, 20 only this one; e.g. (case 3 1 (try (let* [when -1 inc (quote "s")] (when inc nil))) 2 -1 2147483648) => jank compile error (analyze/invalid-case: Values of type `int` are not callable.); Clojure 2147483648
+   str-of-fn [WA3 (a fn object's printed form, implementation-defined)]: 1 take this path, 1 only this one; e.g. (count (str (letfn* [x (fn* x [inc] ((fn when [inc k] (if (= k 1) when (recur 2147483648 1))) 2147483647 0))] (x {:k 2147483647})) 2147483647)) => jank 56; Clojure 57
+  (92 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 0: 4 programs (complete), 4 agree, 0 differ, 0 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: []
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 1: 359656 programs (complete), 307855 agree, 51801 differ, 468 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 39), (jank: unbound, 390), (jank: mul, 39)]
+   outside the models, e.g. (if -1 (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (if -1 (+ false false) -1) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (if -1 (+ false false) 0.0) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (if -1 (+ false false) false) => jank unsupported (add); Clojure throws (+ of a non-number)
+   if-native-merge [R23]: 50418 take this path, 41981 only this one; e.g. (if -1 -1 0.0) => jank -1.0; Clojure -1
+   macro-form-env [R30]: 152 take this path, 132 only this one; e.g. (if -1 -1 (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 56 take this path, 46 only this one; e.g. (if -1 -1 (other/secret-of)) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 591 take this path, 249 only this one; e.g. (if -1 (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 6821 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 104 take this path, 0 only this one; e.g. 
+   loop-native-recur [R24]: 1920 take this path, 856 only this one; e.g. (if -1 (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   macro-meta-on-literal [R31]: 176 take this path, 100 only this one; e.g. (if -1 (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+  (14 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 2: 51384 programs (complete), 50092 agree, 1292 differ, 96 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 8), (jank: unbound, 80), (jank: mul, 8)]
+   outside the models, e.g. (do -1 (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (do -1 (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (do -1 (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (do -1 (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 980 take this path, 376 only this one; e.g. (do -1 (if -1 -1 0.0)) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 160 take this path, 160 only this one; e.g. (do -1 (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   macro-form-env [R30]: 24 take this path, 24 only this one; e.g. (do -1 (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 16 take this path, 16 only this one; e.g. (do -1 (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 8 take this path, 8 only this one; e.g. (do -1 (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 104 take this path, 104 only this one; e.g. (do -1 (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 604 take this path, 0 only this one; e.g. 
+  (2 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 3: 153634 programs (complete), 145483 agree, 8151 differ, 292 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 24), (jank: unbound, 244), (jank: mul, 24)]
+   outside the models, e.g. (let* [x -1] (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (let* [x -1] (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (let* [x -1] (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (let* [x -1] (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 4460 take this path, 1622 only this one; e.g. (let* [x -1] (if -1 -1 0.0)) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 720 take this path, 720 only this one; e.g. (let* [x -1] (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   fn-name-shadowed [R28]: 2560 take this path, 2560 only this one; e.g. (let* [x -1] ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0)) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   macro-form-env [R30]: 66 take this path, 66 only this one; e.g. (let* [x -1] (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 48 take this path, 48 only this one; e.g. (let* [x -1] (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 18 take this path, 18 only this one; e.g. (let* [x -1] (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 279 take this path, 279 only this one; e.g. (let* [x -1] (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 2838 take this path, 0 only this one; e.g. 
+  (6 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 4: 1215090 programs (complete), 590819 agree, 624271 differ, 2400 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 190), (jank: unbound, 2020), (jank: mul, 190)]
+   outside the models, e.g. (loop* [x -1 k 0] (if (= k 1) (+ false false) (recur -1 1))) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (loop* [x -1 k 0] (if (= k 1) (letfn* [x (fn* x [inc] x)] (x -1)) (recur -1 1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (loop* [x -1 k 0] (if (= k 1) (letfn* [x (fn* x [inc] x)] (x 0.0)) (recur -1 1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (loop* [x -1 k 0] (if (= k 1) (letfn* [x (fn* x [inc] x)] (x false)) (recur -1 1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 29244 take this path, 4340 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) (if -1 -1 0.0) (recur -1 1))) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 302371 take this path, 85934 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1))) (recur -1 1))) => jank 0; Clojure 0.0
+   recur-crosses-fn [R27]: 369600 take this path, 97600 only this one; e.g. (loop* [x ((fn* [x k] (if (= k 1) -1 (recur -1 1))) -1 0) k 0] (if (= k 1) -1 (recur -1 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure -1
+   op-equal-object-builtin [R36]: 399000 take this path, 117960 only this one; e.g. (loop* [x (if -1 -1) k 0] (if (= k 1) -1 (recur -1 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   fn-name-shadowed [R28]: 48536 take this path, 3200 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) ((fn* x [& inc] x) -1) (recur -1 1))) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   macro-form-env [R30]: 698 take this path, 238 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) (form-of -1) (recur -1 1))) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 1172 take this path, 108 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) (meta (mk-vec -1)) (recur -1 1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 80 take this path, 30 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) (other/secret-of) (recur -1 1))) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 2103 take this path, 1014 only this one; e.g. (loop* [x -1 k 0] (if (= k 1) (inc false) (recur -1 1))) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 16780 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 144 take this path, 0 only this one; e.g. 
+  (88 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 5: 6793140 programs (complete), 6509560 agree, 283580 differ, 23600 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 596), (jank: unbound, 17128), (jank: mul, 596), (jank: C++, 5280)]
+   outside the models, e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (+ false false) 0) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (letfn* [x (fn* x [inc] x)] (x -1)) 0) => jank unsupported (unbound local 4); Clojure -1
+   outside the models, e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (letfn* [x (fn* x [inc] x)] (x 0.0)) 0) => jank unsupported (unbound local 4); Clojure -1
+   outside the models, e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (letfn* [x (fn* x [inc] x)] (x false)) 0) => jank unsupported (unbound local 4); Clojure -1
+   macro-form-env [R30]: 1852 take this path, 1852 only this one; e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (env-count) 0) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 596 take this path, 596 only this one; e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (other/secret-of) 0) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 7524 take this path, 7524 only this one; e.g. ((fn* [x k] (if (= k 1) -1 (recur -1 1))) (inc false) 0) => jank -1; Clojure throws (inc of a non-number)
+   op-equal-object-builtin [R36]: 58368 take this path, 58368 only this one; e.g. ((fn* [x k] (if (= k 1) -1 (recur (loop* [x x k 0] (if (= k 1) -1 (recur -1 1))) 1))) -1 0) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   loop-native-recur [R24]: 27244 take this path, 27244 only this one; e.g. ((fn* [x k] (if (= k 1) -1 (recur (loop* [inc false k 0] (if (= k 1) -1 (recur x 1))) 1))) -1 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallInteger)); Clojure -1
+   case-branch-type [R26]: 67796 take this path, 3794 only this one; e.g. ((fn* [x k] (if (= k 1) -1 (recur (case 1 1 x 2 false false) 1))) -1 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallInteger)); Clojure -1
+   if-native-merge [R23]: 88866 take this path, 24864 only this one; e.g. ((fn* [x k] (if (= k 1) x (recur x 1))) (if -1 -1 0.0) 0) => jank -1.0; Clojure -1
+   macro-meta-on-literal [R31]: 1256 take this path, 1256 only this one; e.g. ((fn* [x k] (if (= k 1) x (recur x 1))) (meta (mk-vec -1)) 0) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   fn-name-shadowed [R28]: 94080 take this path, 94080 only this one; e.g. ((fn* [x k] (if (= k 1) x (recur ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0) 1))) -1 0) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+  (408 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 6: 70661 programs (complete), 55926 agree, 14735 differ, 108 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 9), (jank: unbound, 90), (jank: mul, 9)]
+   outside the models, e.g. (when -1 (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (when -1 (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (when -1 (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (when -1 (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 2012 take this path, 498 only this one; e.g. (when -1 (if -1 -1 0.0)) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 424 take this path, 184 only this one; e.g. (when -1 (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   macro-form-env [R30]: 6456 take this path, 6446 only this one; e.g. (when -1 (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 6738 take this path, 5697 only this one; e.g. (when -1 (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 21 take this path, 17 only this one; e.g. (when -1 (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 117 take this path, 91 only this one; e.g. (when -1 (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 1150 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 8 take this path, 0 only this one; e.g. 
+  (2 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 7: 1 programs (complete), 1 agree, 0 differ, 0 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: []
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 8: 167002 programs (complete), 158126 agree, 8876 differ, 693 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 407), (jank: unbound, 260), (jank: mul, 26)]
+   outside the models, e.g. (= -1 (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (= -1 (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 2); Clojure false
+   outside the models, e.g. (= -1 (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 2); Clojure false
+   outside the models, e.g. (= -1 (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 2); Clojure false
+   if-native-merge [R23]: 5349 take this path, 1422 only this one; e.g. (= -1 (if -1 -1 0.0)) => jank false; Clojure true
+   loop-native-recur [R24]: 704 take this path, 664 only this one; e.g. (= -1 (loop* [x 0.0 k 0] (if (= k 1) x (recur -1 1)))) => jank false; Clojure true
+   macro-form-env [R30]: 60 take this path, 55 only this one; e.g. (= -1 (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure false
+   private-under-expansion [R32]: 25 take this path, 23 only this one; e.g. (= -1 (other/secret-of)) => jank false; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 3805 take this path, 2641 only this one; e.g. (= -1 (inc false)) => jank false; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 3157 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 440 take this path, 0 only this one; e.g. 
+   macro-meta-on-literal [R31]: 341 take this path, 36 only this one; e.g. (vector -1 (meta (mk-vec -1))) => jank [-1 {:jank/macro-expansion (mk-vec -1)}]; Clojure [-1 nil]
+  (5 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 9: 6425 programs (complete), 6425 agree, 0 differ, 0 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: []
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 10: 3031272 programs (complete), 2327563 agree, 703709 differ, 2640 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 220), (jank: unbound, 2200), (jank: mul, 220)]
+   outside the models, e.g. (case 1 1 (+ false false) -1) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (case 1 1 (+ false false) 2 -1 -1) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (case 1 1 (+ false false) 2 0.0 -1) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (case 1 1 (+ false false) 2 false -1) => jank unsupported (add); Clojure throws (+ of a non-number)
+   if-native-merge [R23]: 660089 take this path, 85758 only this one; e.g. (case 1 1 -1 0.0) => jank -1.0; Clojure -1
+   case-branch-type [R26]: 608847 take this path, 35682 only this one; e.g. (case 1 1 (if -1 -1) 2 0.0 0.0) => jank -1.0; Clojure -1
+   macro-form-env [R30]: 1272 take this path, 770 only this one; e.g. (case 1 1 -1 2 (env-count) -1) => jank compile error (analyze/invalid-case: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 940 take this path, 368 only this one; e.g. (case 1 1 -1 (other/secret-of)) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 4398 take this path, 600 only this one; e.g. (case 1 1 (+ -1 false) -1) => jank -1; Clojure throws (+ of a non-number)
+   loop-native-recur [R24]: 21544 take this path, 3728 only this one; e.g. (case 1 1 (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1))) -1) => jank 0; Clojure 0.0
+   macro-meta-on-literal [R31]: 1508 take this path, 368 only this one; e.g. (case 1 1 (meta (mk-vec -1)) -1) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   int-arith [R25]: 1288 take this path, 0 only this one; e.g. 
+   fn-name-shadowed [R28]: 350 take this path, 0 only this one; e.g. 
+  (226 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 11: 51384 programs (complete), 45369 agree, 6015 differ, 84 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 7), (jank: unbound, 70), (jank: mul, 7)]
+   outside the models, e.g. (and -1 (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (and -1 (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (and -1 (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (and -1 (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 5751 take this path, 4275 only this one; e.g. (and -1 false) => jank 0; Clojure false
+   loop-native-recur [R24]: 168 take this path, 168 only this one; e.g. (and -1 (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   macro-form-env [R30]: 20 take this path, 20 only this one; e.g. (and -1 (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 28 take this path, 28 only this one; e.g. (and -1 (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 8 take this path, 8 only this one; e.g. (and -1 (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 104 take this path, 40 only this one; e.g. (and -1 (+ -1 false)) => jank -1; Clojure throws (+ of a non-number)
+   case-branch-type [R26]: 1388 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 24 take this path, 0 only this one; e.g. 
+  (1 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 12: 51384 programs (complete), 48564 agree, 2820 differ, 60 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 5), (jank: unbound, 50), (jank: mul, 5)]
+   outside the models, e.g. (or false (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (or false (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (or false (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (or false (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 2552 take this path, 1575 only this one; e.g. (or -1 0.0) => jank -1.0; Clojure -1
+   macro-form-env [R30]: 28 take this path, 28 only this one; e.g. (or -1 (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 8 take this path, 8 only this one; e.g. (or -1 (other/secret-of)) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 73 take this path, 20 only this one; e.g. (or (+ -1 false) -1) => jank -1; Clojure throws (+ of a non-number)
+   case-branch-type [R26]: 916 take this path, 0 only this one; e.g. 
+   loop-native-recur [R24]: 192 take this path, 192 only this one; e.g. (or false (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   macro-meta-on-literal [R31]: 20 take this path, 20 only this one; e.g. (or false (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   int-arith [R25]: 8 take this path, 0 only this one; e.g. 
+  (1 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 13: 3276008 programs (complete), 3098996 agree, 177012 differ, 6200 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 516), (jank: unbound, 5168), (jank: mul, 516)]
+   outside the models, e.g. (let* [x -1 x -1] (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (let* [x -1 x -1] (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (let* [x -1 x -1] (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (let* [x -1 x -1] (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 86146 take this path, 29950 only this one; e.g. (let* [x -1 x -1] (if -1 -1 0.0)) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 13520 take this path, 13520 only this one; e.g. (let* [x -1 x -1] (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   fn-name-shadowed [R28]: 70080 take this path, 70080 only this one; e.g. (let* [x -1 x -1] ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0)) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   macro-form-env [R30]: 960 take this path, 960 only this one; e.g. (let* [x -1 x -1] (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 664 take this path, 664 only this one; e.g. (let* [x -1 x -1] (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 296 take this path, 296 only this one; e.g. (let* [x -1 x -1] (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 5346 take this path, 5346 only this one; e.g. (let* [x -1 x -1] (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 56196 take this path, 0 only this one; e.g. 
+  (85 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 14: 626372 programs (complete), 595626 agree, 30746 differ, 58149 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 44), (jank: unbound, 57552), (jank: C++, 506), (jank: mul, 44), (jank: fuel, 3)]
+   outside the models, e.g. (letfn* [x (fn* x [x] -1)] (x (+ false false))) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (letfn* [x (fn* x [x] -1)] (x (letfn* [x (fn* x [inc] x)] (x -1)))) => jank unsupported (unbound local 4); Clojure -1
+   outside the models, e.g. (letfn* [x (fn* x [x] -1)] (x (letfn* [x (fn* x [inc] x)] (x 0.0)))) => jank unsupported (unbound local 4); Clojure -1
+   outside the models, e.g. (letfn* [x (fn* x [x] -1)] (x (letfn* [x (fn* x [inc] x)] (x false)))) => jank unsupported (unbound local 4); Clojure -1
+   op-equal-object-builtin [R36]: 6784 take this path, 5392 only this one; e.g. (letfn* [x (fn* x [x] -1)] (x (loop* [x x k 0] (if (= k 1) -1 (recur -1 1))))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   loop-native-recur [R24]: 3812 take this path, 3716 only this one; e.g. (letfn* [x (fn* x [x] -1)] (x (loop* [inc -1 k 0] (if (= k 1) -1 (recur x 1))))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.jitClosure); Clojure -1
+   macro-form-env [R30]: 194 take this path, 192 only this one; e.g. (letfn* [x (fn* x [x] -1)] (x (env-count))) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 42 take this path, 42 only this one; e.g. (letfn* [x (fn* x [x] -1)] (x (other/secret-of))) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 520 take this path, 520 only this one; e.g. (letfn* [x (fn* x [x] -1)] (x (inc false))) => jank -1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 8268 take this path, 524 only this one; e.g. (letfn* [x (fn* x [x] -1)] (x (case 1 1 x 2 -1 -1))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.jitClosure); Clojure -1
+   if-native-merge [R23]: 10482 take this path, 2762 only this one; e.g. (letfn* [x (fn* x [x] x)] (x (if -1 -1 0.0))) => jank -1.0; Clojure -1
+   macro-meta-on-literal [R31]: 140 take this path, 140 only this one; e.g. (letfn* [x (fn* x [x] x)] (x (meta (mk-vec -1)))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   fn-name-shadowed [R28]: 10178 take this path, 8224 only this one; e.g. (letfn* [x (fn* x [x] ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0))] (x -1)) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+  (19 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 15: 747948 programs (complete), 706778 agree, 41170 differ, 2368 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 76), (jank: unbound, 1728), (jank: mul, 76), (jank: C++, 464), (jank: fuel, 24)]
+   outside the models, e.g. ((fn* [& x] -1) (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. ((fn* [& x] -1) (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 3); Clojure -1
+   outside the models, e.g. ((fn* [& x] -1) (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 3); Clojure -1
+   outside the models, e.g. ((fn* [& x] -1) (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 3); Clojure -1
+   macro-form-env [R30]: 292 take this path, 292 only this one; e.g. ((fn* [& x] -1) (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 76 take this path, 76 only this one; e.g. ((fn* [& x] -1) (other/secret-of)) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 968 take this path, 968 only this one; e.g. ((fn* [& x] -1) (inc false)) => jank -1; Clojure throws (inc of a non-number)
+   if-native-merge [R23]: 14770 take this path, 4188 only this one; e.g. ((fn* [& x] x) (if -1 -1 0.0)) => jank (-1.0); Clojure (-1)
+   loop-native-recur [R24]: 5200 take this path, 5200 only this one; e.g. ((fn* [& x] x) (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank (0); Clojure (0.0)
+   macro-meta-on-literal [R31]: 216 take this path, 216 only this one; e.g. ((fn* [& x] x) (meta (mk-vec -1))) => jank ({:jank/macro-expansion (mk-vec -1)}); Clojure (nil)
+   case-branch-type [R26]: 11158 take this path, 576 only this one; e.g. ((fn* [& x] (case 1 1 x 2 -1 -1)) -1) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.persistentList); Clojure (-1)
+   op-equal-object-builtin [R36]: 5120 take this path, 5120 only this one; e.g. ((fn* [& x] (loop* [x x k 0] (if (= k 1) -1 (recur -1 1)))) -1) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   fn-name-shadowed [R28]: 13952 take this path, 13952 only this one; e.g. ((fn* [& x] ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0)) -1) => jank (-1); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+  (21 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 16: 51384 programs (complete), 48920 agree, 2464 differ, 96 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 8), (jank: unbound, 80), (jank: mul, 8)]
+   outside the models, e.g. [-1 (+ false false)] => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. [-1 (letfn* [x (fn* x [inc] x)] (x -1))] => jank unsupported (unbound local 2); Clojure [-1 #object[Jank.Analyzer.ObjectType.jitFunction 0]]
+   outside the models, e.g. [-1 (letfn* [x (fn* x [inc] x)] (x 0.0))] => jank unsupported (unbound local 2); Clojure [-1 #object[Jank.Analyzer.ObjectType.jitFunction 0]]
+   outside the models, e.g. [-1 (letfn* [x (fn* x [inc] x)] (x false))] => jank unsupported (unbound local 2); Clojure [-1 #object[Jank.Analyzer.ObjectType.jitFunction 0]]
+   if-native-merge [R23]: 1960 take this path, 752 only this one; e.g. [-1 (if -1 -1 0.0)] => jank [-1 -1.0]; Clojure [-1 -1]
+   loop-native-recur [R24]: 320 take this path, 320 only this one; e.g. [-1 (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))] => jank [-1 0]; Clojure [-1 0.0]
+   macro-form-env [R30]: 40 take this path, 40 only this one; e.g. [-1 (form-of -1)] => jank [-1 ((-1))]; Clojure [-1 (form-of -1)]
+   macro-meta-on-literal [R31]: 32 take this path, 32 only this one; e.g. [-1 (meta (mk-vec -1))] => jank [-1 {:jank/macro-expansion (mk-vec -1)}]; Clojure [-1 nil]
+   private-under-expansion [R32]: 8 take this path, 8 only this one; e.g. [-1 (other/secret-of)] => jank [-1 42]; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 104 take this path, 104 only this one; e.g. [-1 (inc false)] => jank [-1 1]; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 1208 take this path, 0 only this one; e.g. 
+  (1 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 17: 6425 programs (complete), 6117 agree, 308 differ, 12 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 1), (jank: unbound, 10), (jank: mul, 1)]
+   outside the models, e.g. {:k (+ false false)} => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. {:k (letfn* [x (fn* x [inc] x)] (x -1))} => jank unsupported (unbound local 2); Clojure {:k #object[Jank.Analyzer.ObjectType.jitFunction 0]}
+   outside the models, e.g. {:k (letfn* [x (fn* x [inc] x)] (x 0.0))} => jank unsupported (unbound local 2); Clojure {:k #object[Jank.Analyzer.ObjectType.jitFunction 0]}
+   outside the models, e.g. {:k (letfn* [x (fn* x [inc] x)] (x false))} => jank unsupported (unbound local 2); Clojure {:k #object[Jank.Analyzer.ObjectType.jitFunction 0]}
+   if-native-merge [R23]: 245 take this path, 94 only this one; e.g. {:k (if -1 -1 0.0)} => jank {:k -1.0}; Clojure {:k -1}
+   loop-native-recur [R24]: 40 take this path, 40 only this one; e.g. {:k (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))} => jank {:k 0}; Clojure {:k 0.0}
+   macro-form-env [R30]: 5 take this path, 5 only this one; e.g. {:k (form-of -1)} => jank {:k ((-1))}; Clojure {:k (form-of -1)}
+   macro-meta-on-literal [R31]: 4 take this path, 4 only this one; e.g. {:k (meta (mk-vec -1))} => jank {:k {:jank/macro-expansion (mk-vec -1)}}; Clojure {:k nil}
+   private-under-expansion [R32]: 1 take this path, 1 only this one; e.g. {:k (other/secret-of)} => jank {:k 42}; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 13 take this path, 13 only this one; e.g. {:k (inc false)} => jank {:k 1}; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 151 take this path, 0 only this one; e.g. 
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 18: 6425 programs (complete), 6117 agree, 308 differ, 12 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 1), (jank: unbound, 10), (jank: mul, 1)]
+   outside the models, e.g. #{(+ false false)} => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. #{(letfn* [x (fn* x [inc] x)] (x -1))} => jank unsupported (unbound local 2); Clojure #{#object[Jank.Analyzer.ObjectType.jitFunction 0]}
+   outside the models, e.g. #{(letfn* [x (fn* x [inc] x)] (x 0.0))} => jank unsupported (unbound local 2); Clojure #{#object[Jank.Analyzer.ObjectType.jitFunction 0]}
+   outside the models, e.g. #{(letfn* [x (fn* x [inc] x)] (x false))} => jank unsupported (unbound local 2); Clojure #{#object[Jank.Analyzer.ObjectType.jitFunction 0]}
+   if-native-merge [R23]: 245 take this path, 94 only this one; e.g. #{(if -1 -1 0.0)} => jank #{-1.0}; Clojure #{-1}
+   loop-native-recur [R24]: 40 take this path, 40 only this one; e.g. #{(loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))} => jank #{0}; Clojure #{0.0}
+   macro-form-env [R30]: 5 take this path, 5 only this one; e.g. #{(form-of -1)} => jank #{((-1))}; Clojure #{(form-of -1)}
+   macro-meta-on-literal [R31]: 4 take this path, 4 only this one; e.g. #{(meta (mk-vec -1))} => jank #{{:jank/macro-expansion (mk-vec -1)}}; Clojure #{nil}
+   private-under-expansion [R32]: 1 take this path, 1 only this one; e.g. #{(other/secret-of)} => jank #{42}; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 13 take this path, 13 only this one; e.g. #{(inc false)} => jank #{1}; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 151 take this path, 0 only this one; e.g. 
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 19: 6425 programs (complete), 6117 agree, 308 differ, 12 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 1), (jank: unbound, 10), (jank: mul, 1)]
+   outside the models, e.g. (try (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (try (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (try (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (try (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 245 take this path, 94 only this one; e.g. (try (if -1 -1 0.0)) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 40 take this path, 40 only this one; e.g. (try (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   macro-form-env [R30]: 5 take this path, 5 only this one; e.g. (try (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 4 take this path, 4 only this one; e.g. (try (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 1 take this path, 1 only this one; e.g. (try (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 13 take this path, 13 only this one; e.g. (try (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 151 take this path, 0 only this one; e.g. 
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 20: 12850 programs (complete), 12235 agree, 615 differ, 24 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 2), (jank: unbound, 20), (jank: mul, 2)]
+   outside the models, e.g. (do (def x (+ false false)) x) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (do (def x (letfn* [x (fn* x [inc] x)] (x -1))) x) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (do (def x (letfn* [x (fn* x [inc] x)] (x 0.0))) x) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (do (def x (letfn* [x (fn* x [inc] x)] (x false))) x) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 490 take this path, 188 only this one; e.g. (do (def x (if -1 -1 0.0)) x) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 80 take this path, 80 only this one; e.g. (do (def x (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) x) => jank 0; Clojure 0.0
+   macro-form-env [R30]: 10 take this path, 10 only this one; e.g. (do (def x (form-of -1)) x) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 8 take this path, 8 only this one; e.g. (do (def x (meta (mk-vec -1))) x) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 2 take this path, 2 only this one; e.g. (do (def x (other/secret-of)) x) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 25 take this path, 25 only this one; e.g. (do (def x (inc false)) x) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 302 take this path, 0 only this one; e.g. 
+  (0 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 21: 153634 programs (complete), 145465 agree, 8169 differ, 292 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 24), (jank: unbound, 244), (jank: mul, 24)]
+   outside the models, e.g. (let [x -1] (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (let [x -1] (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (let [x -1] (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (let [x -1] (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 3); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 4460 take this path, 1622 only this one; e.g. (let [x -1] (if -1 -1 0.0)) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 720 take this path, 720 only this one; e.g. (let [x -1] (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1)))) => jank 0; Clojure 0.0
+   fn-name-shadowed [R28]: 2560 take this path, 2560 only this one; e.g. (let [x -1] ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0)) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   macro-form-env [R30]: 66 take this path, 66 only this one; e.g. (let [x -1] (form-of -1)) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 48 take this path, 48 only this one; e.g. (let [x -1] (meta (mk-vec -1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 36 take this path, 36 only this one; e.g. (let [x -1] (other/secret-of)) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 279 take this path, 279 only this one; e.g. (let [x -1] (inc false)) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 2838 take this path, 0 only this one; e.g. 
+  (4 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 22: 1215090 programs (complete), 590739 agree, 624351 differ, 2400 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 190), (jank: unbound, 2020), (jank: mul, 190)]
+   outside the models, e.g. (loop [x -1 k 0] (if (= k 1) (+ false false) (recur -1 1))) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (loop [x -1 k 0] (if (= k 1) (letfn* [x (fn* x [inc] x)] (x -1)) (recur -1 1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (loop [x -1 k 0] (if (= k 1) (letfn* [x (fn* x [inc] x)] (x 0.0)) (recur -1 1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (loop [x -1 k 0] (if (= k 1) (letfn* [x (fn* x [inc] x)] (x false)) (recur -1 1))) => jank unsupported (unbound local 4); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   if-native-merge [R23]: 29244 take this path, 4340 only this one; e.g. (loop [x -1 k 0] (if (= k 1) (if -1 -1 0.0) (recur -1 1))) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 302421 take this path, 85934 only this one; e.g. (loop [x -1 k 0] (if (= k 1) (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1))) (recur -1 1))) => jank 0; Clojure 0.0
+   recur-crosses-fn [R27]: 369600 take this path, 97600 only this one; e.g. (loop [x ((fn* [x k] (if (= k 1) -1 (recur -1 1))) -1 0) k 0] (if (= k 1) -1 (recur -1 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure -1
+   op-equal-object-builtin [R36]: 399000 take this path, 117960 only this one; e.g. (loop [x (if -1 -1) k 0] (if (= k 1) -1 (recur -1 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   fn-name-shadowed [R28]: 48536 take this path, 3200 only this one; e.g. (loop [x -1 k 0] (if (= k 1) ((fn* x [& inc] x) -1) (recur -1 1))) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   macro-form-env [R30]: 698 take this path, 238 only this one; e.g. (loop [x -1 k 0] (if (= k 1) (form-of -1) (recur -1 1))) => jank ((-1)); Clojure (form-of -1)
+   macro-meta-on-literal [R31]: 1172 take this path, 108 only this one; e.g. (loop [x -1 k 0] (if (= k 1) (meta (mk-vec -1)) (recur -1 1))) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   private-under-expansion [R32]: 160 take this path, 60 only this one; e.g. (loop [x -1 k 0] (if (= k 1) (other/secret-of) (recur -1 1))) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 2103 take this path, 1014 only this one; e.g. (loop [x -1 k 0] (if (= k 1) (inc false) (recur -1 1))) => jank 1; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 16780 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 144 take this path, 0 only this one; e.g. 
+  (53 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 23: 6793140 programs (complete), 6509208 agree, 283932 differ, 23600 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 596), (jank: unbound, 17128), (jank: mul, 596), (jank: C++, 5280)]
+   outside the models, e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (+ false false) 0) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (letfn* [x (fn* x [inc] x)] (x -1)) 0) => jank unsupported (unbound local 4); Clojure -1
+   outside the models, e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (letfn* [x (fn* x [inc] x)] (x 0.0)) 0) => jank unsupported (unbound local 4); Clojure -1
+   outside the models, e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (letfn* [x (fn* x [inc] x)] (x false)) 0) => jank unsupported (unbound local 4); Clojure -1
+   macro-form-env [R30]: 1852 take this path, 1852 only this one; e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (env-count) 0) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 948 take this path, 948 only this one; e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (other/secret-of) 0) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 7524 take this path, 7524 only this one; e.g. ((fn [x k] (if (= k 1) -1 (recur -1 1))) (inc false) 0) => jank -1; Clojure throws (inc of a non-number)
+   op-equal-object-builtin [R36]: 58368 take this path, 58368 only this one; e.g. ((fn [x k] (if (= k 1) -1 (recur (loop* [x x k 0] (if (= k 1) -1 (recur -1 1))) 1))) -1 0) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   loop-native-recur [R24]: 27244 take this path, 27244 only this one; e.g. ((fn [x k] (if (= k 1) -1 (recur (loop* [inc false k 0] (if (= k 1) -1 (recur x 1))) 1))) -1 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallInteger)); Clojure -1
+   case-branch-type [R26]: 67796 take this path, 3794 only this one; e.g. ((fn [x k] (if (= k 1) -1 (recur (case 1 1 x 2 false false) 1))) -1 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallInteger)); Clojure -1
+   if-native-merge [R23]: 88866 take this path, 24864 only this one; e.g. ((fn [x k] (if (= k 1) x (recur x 1))) (if -1 -1 0.0) 0) => jank -1.0; Clojure -1
+   macro-meta-on-literal [R31]: 1256 take this path, 1256 only this one; e.g. ((fn [x k] (if (= k 1) x (recur x 1))) (meta (mk-vec -1)) 0) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   fn-name-shadowed [R28]: 94080 take this path, 94080 only this one; e.g. ((fn [x k] (if (= k 1) x (recur ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0) 1))) -1 0) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+  (352 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 24: 237661 programs (complete), 226848 agree, 10813 differ, 41769 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 37), (jank: unbound, 370), (jank: mul, 418), (jank: C++, 40944)]
+   outside the models, e.g. (< -1 (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (< -1 (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 2); Clojure throws (< of a non-number)
+   outside the models, e.g. (< -1 (letfn* [x (fn* x [inc] x)] (x 0.0))) => jank unsupported (unbound local 2); Clojure throws (< of a non-number)
+   outside the models, e.g. (< -1 (letfn* [x (fn* x [inc] x)] (x false))) => jank unsupported (unbound local 2); Clojure throws (< of a non-number)
+   if-native-merge [R23]: 7159 take this path, 2230 only this one; e.g. (< -1 (if -1 false -1)) => jank true; Clojure throws (< of a non-number)
+   loop-native-recur [R24]: 808 take this path, 808 only this one; e.g. (< -1 (loop* [x -1 k 0] (if (= k 1) x (recur false 1)))) => jank true; Clojure throws (< of a non-number)
+   macro-form-env [R30]: 108 take this path, 108 only this one; e.g. (< -1 (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure true
+   private-under-expansion [R32]: 26 take this path, 26 only this one; e.g. (< -1 (other/secret-of)) => jank true; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 3716 take this path, 2588 only this one; e.g. (< -1 (inc false)) => jank true; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 4253 take this path, 0 only this one; e.g. 
+   int-arith [R25]: 440 take this path, 0 only this one; e.g. 
+   macro-meta-on-literal [R31]: 76 take this path, 76 only this one; e.g. (nil? (meta (mk-vec -1))) => jank false; Clojure true
+  (6 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 25: 17909184 programs (complete), 17259606 agree, 649578 differ, 38144 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 960), (jank: unbound, 28184), (jank: mul, 960), (jank: C++, 7872), (jank: fuel, 168)]
+   outside the models, e.g. ((fn* ([x] -1) ([x q] -1)) (+ false false)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. ((fn* ([x] -1) ([x q] -1)) (+ false false) 7) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. ((fn* ([x] -1) ([x q] -1)) (letfn* [x (fn* x [inc] x)] (x -1))) => jank unsupported (unbound local 5); Clojure -1
+   outside the models, e.g. ((fn* ([x] -1) ([x q] -1)) (letfn* [x (fn* x [inc] x)] (x -1)) 7) => jank unsupported (unbound local 5); Clojure -1
+   macro-form-env [R30]: 4136 take this path, 4136 only this one; e.g. ((fn* ([x] -1) ([x q] -1)) (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure -1
+   private-under-expansion [R32]: 1344 take this path, 1344 only this one; e.g. ((fn* ([x] -1) ([x q] -1)) (other/secret-of)) => jank -1; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 12236 take this path, 12236 only this one; e.g. ((fn* ([x] -1) ([x q] -1)) (inc false)) => jank -1; Clojure throws (inc of a non-number)
+   if-native-merge [R23]: 197146 take this path, 54210 only this one; e.g. ((fn* ([x] -1) ([x q] x)) (if -1 -1 0.0) 7) => jank -1.0; Clojure -1
+   loop-native-recur [R24]: 52116 take this path, 52116 only this one; e.g. ((fn* ([x] -1) ([x q] x)) (loop* [x -1 k 0] (if (= k 1) x (recur 0.0 1))) 7) => jank 0; Clojure 0.0
+   macro-meta-on-literal [R31]: 2792 take this path, 2792 only this one; e.g. ((fn* ([x] -1) ([x q] x)) (meta (mk-vec -1)) 7) => jank {:jank/macro-expansion (mk-vec -1)}; Clojure nil
+   case-branch-type [R26]: 148920 take this path, 5984 only this one; e.g. ((fn* ([x] -1) ([x q] (case 1 1 q 2 0.0 0.0))) -1 7) => jank 7.0; Clojure 7
+   op-equal-object-builtin [R36]: 178176 take this path, 178176 only this one; e.g. ((fn* ([x] -1) ([x q] (loop* [x q k 0] (if (= k 1) -1 (recur -1 1))))) -1) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   fn-name-shadowed [R28]: 195648 take this path, 195648 only this one; e.g. ((fn* ([x] -1) ([x q] ((fn* x [inc k] (if (= k 1) inc (recur x 1))) -1 0))) -1 7) => jank -1; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 1]
+  (680 s)
+== analyzer tally, budget 2, depth 2, tinyc literals, every kind, top kind 26: 12852 programs (complete), 12823 agree, 29 differ, 24 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, by cause: [(jank: add, 2), (jank: unbound, 20), (jank: mul, 2)]
+   outside the models, e.g. (do (def x (+ false false)) (var x)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (do (def x (letfn* [x (fn* x [inc] x)] (x -1))) (var x)) => jank unsupported (unbound local 2); Clojure #'user/x
+   outside the models, e.g. (do (def x (letfn* [x (fn* x [inc] x)] (x 0.0))) (var x)) => jank unsupported (unbound local 2); Clojure #'user/x
+   outside the models, e.g. (do (def x (letfn* [x (fn* x [inc] x)] (x false))) (var x)) => jank unsupported (unbound local 2); Clojure #'user/x
+   macro-form-env [R30]: 2 take this path, 2 only this one; e.g. (do (def x (env-count)) (var x)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure #'user/x
+   private-under-expansion [R32]: 2 take this path, 2 only this one; e.g. (do (def x (other/secret-of)) (var x)) => jank #'user/x; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 25 take this path, 25 only this one; e.g. (do (def x (inc false)) (var x)) => jank #'user/x; Clojure throws (inc of a non-number)
+  (0 s)
+== (budget-2 tallies run earlier, before the 26-kind grammar; outputs kept in .r3-scratch, copied here verbatim)
+== first run of the tiny budget-2 tally (2,584 unexplained: all `str` of a fn object, the WA3 artifact; normalized in the rerun below):
+== analyzer tally, budget 2, depth 2, tiny literals, every kind: 16253007 programs (complete), 14001504 agree, 2251503 differ, 153153 outside the models
+   differing with no tag (unexplained): 2584
+== analyzer tally, budget 2, depth 2, tiny literals, every kind: 16253007 programs (complete), 14004088 agree, 2248919 differ, 153153 outside the models
+   differing with no tag (unexplained): 0
+   outside the models, e.g. (if 0 (+ true true)) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (if 0 (+ true true) 0) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (if 0 (+ true true) 1.5) => jank unsupported (add); Clojure throws (+ of a non-number)
+   outside the models, e.g. (if 0 (+ true true) true) => jank unsupported (add); Clojure throws (+ of a non-number)
+   if-native-merge [R23]: 519658 take this path, 72581 only this one; e.g. (if 0 0 1.5) => jank 0.0; Clojure 0
+   op-equal-object-builtin [R36]: 964794 take this path, 378394 only this one; e.g. (if 0 0 (loop* [x nil k 0] (if (= k 1) 0 (recur 0 1)))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0
+   macro-form-env [R30]: 12279 take this path, 11204 only this one; e.g. (if 0 0 (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure 0
+   private-under-expansion [R32]: 3347 take this path, 2855 only this one; e.g. (if 0 0 (other/secret-of)) => jank 0; Clojure compile error (var: #'other/secret is not public)
+   bool-arith [R33]: 26609 take this path, 21424 only this one; e.g. (if 0 (inc true)) => jank 2; Clojure throws (inc of a non-number)
+   case-branch-type [R26]: 470288 take this path, 29254 only this one; e.g. (if 0 (case 1 1 0 2 nil nil)) => jank throws (invalid object type (expected jank::runtime::obj::nil_ref found Jank.Analyzer.ObjectType.smallInteger)); Clojure 0
+   int-arith [R25]: 680 take this path, 0 only this one; e.g. 
+   loop-native-recur [R24]: 722902 take this path, 346118 only this one; e.g. (if 0 (loop* [x 0 k 0] (if (= k 1) x (recur 1.5 1)))) => jank 1; Clojure 1.5
+   macro-meta-on-literal [R31]: 11945 take this path, 8071 only this one; e.g. (if 0 (meta (mk-vec 0))) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil
+   fn-name-shadowed [R28]: 235548 take this path, 153496 only this one; e.g. (let* [x 0] ((fn* x [when k] (if (= k 1) when (recur x 1))) 0 0)) => jank 0; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   recur-crosses-fn [R27]: 739200 take this path, 195200 only this one; e.g. (loop* [x ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) k 0] (if (= k 1) 0 (recur 0 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 0
+  (719 s)
+== analyzer tally, budget 2, depth 2, tinyb literals, every kind: 16253007 programs (complete), 14211921 agree, 2041086 differ, 156943 outside the models
+   differing with no tag (unexplained): 14
+   outside the models, e.g. (if 2147483647 (letfn* [f (fn* f [inc] f)] (f 2147483647))) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (if 2147483647 (letfn* [f (fn* f [inc] f)] (f 2147483647)) 2147483647) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (if 2147483647 (letfn* [f (fn* f [inc] f)] (f 2147483647)) 2147483648) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   outside the models, e.g. (if 2147483647 (letfn* [f (fn* f [inc] f)] (f 2147483647)) :k) => jank unsupported (unbound local 2); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+     unexplained, e.g. (* 2147483647 (* 2147483647 2147483648)) => jank -9223372034707292160; Clojure throws (integer overflow)
+     unexplained, e.g. (* 2147483647 (* 2147483648 2147483647)) => jank -9223372034707292160; Clojure throws (integer overflow)
+     unexplained, e.g. (* 2147483647 (* 2147483648 2147483648)) => jank -4611686018427387904; Clojure throws (integer overflow)
+     unexplained, e.g. (* 2147483648 (+ 2147483648 2147483648)) => jank -9223372036854775808; Clojure throws (integer overflow)
+     unexplained, e.g. (* 2147483648 (* 2147483647 2147483648)) => jank -4611686018427387904; Clojure throws (integer overflow)
+     unexplained, e.g. (* 2147483648 (* 2147483648 2147483647)) => jank -4611686018427387904; Clojure throws (integer overflow)
+     unexplained, e.g. (* 2147483648 (* 2147483648 2147483648)) => jank 0; Clojure throws (integer overflow)
+     unexplained, e.g. (* (+ 2147483648 2147483648) 2147483648) => jank -9223372036854775808; Clojure throws (integer overflow)
+     unexplained, e.g. (* (* 2147483647 2147483648) 2147483647) => jank -9223372034707292160; Clojure throws (integer overflow)
+     unexplained, e.g. (* (* 2147483647 2147483648) 2147483648) => jank -4611686018427387904; Clojure throws (integer overflow)
+     unexplained, e.g. (* (* 2147483648 2147483647) 2147483647) => jank -9223372034707292160; Clojure throws (integer overflow)
+     unexplained, e.g. (* (* 2147483648 2147483647) 2147483648) => jank -4611686018427387904; Clojure throws (integer overflow)
+     unexplained, e.g. (* (* 2147483648 2147483648) 2147483647) => jank -4611686018427387904; Clojure throws (integer overflow)
+     unexplained, e.g. (* (* 2147483648 2147483648) 2147483648) => jank 0; Clojure throws (integer overflow)
+   loop-native-recur [R24]: 611020 take this path, 369600 only this one; e.g. (if 2147483647 2147483647 (loop* [f 2147483647 k 0] (if (= k 1) 2147483647 (recur "s" 1)))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `int` and `char const[2]`.); Clojure 2147483647
+   op-equal-object-builtin [R36]: 1196124 take this path, 631488 only this one; e.g. (if 2147483647 2147483647 (loop* [f :k k 0] (if (= k 1) 2147483647 (recur 2147483647 1)))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 2147483647
+   macro-form-env [R30]: 12051 take this path, 11285 only this one; e.g. (if 2147483647 2147483647 (env-count)) => jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol); Clojure 2147483647
+   private-under-expansion [R32]: 3355 take this path, 3032 only this one; e.g. (if 2147483647 2147483647 (other/secret-of)) => jank 2147483647; Clojure compile error (var: #'other/secret is not public)
+   if-native-merge [R23]: 58210 take this path, 386 only this one; e.g. (if 2147483647 "s" (pos? 2147483647)) => jank true; Clojure "s"
+   macro-meta-on-literal [R31]: 11204 take this path, 8281 only this one; e.g. (if 2147483647 (meta (mk-vec 2147483647))) => jank {:jank/macro-expansion (mk-vec 2147483647)}; Clojure nil
+   int-arith [R25]: 3421 take this path, 2827 only this one; e.g. (if 2147483647 (+ 2147483647 2147483647)) => jank -2; Clojure 4294967294
+   case-branch-type [R26]: 84576 take this path, 29181 only this one; e.g. (if 2147483647 (case 1 1 2147483647 2 :k :k)) => jank throws (invalid object type (expected jank::runtime::obj::keyword_ref found Jank.Analyzer.ObjectType.smallInteger)); Clojure 2147483647
+   fn-name-shadowed [R28]: 235622 take this path, 153536 only this one; e.g. (let* [f 2147483647] ((fn* f [inc k] (if (= k 1) inc (recur f 1))) 2147483647 0)) => jank 2147483647; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   recur-crosses-fn [R27]: 739200 take this path, 195200 only this one; e.g. (loop* [f ((fn* [f k] (if (= k 1) 2147483647 (recur 2147483647 1))) 2147483647 0) k 0] (if (= k 1) 2147483647 (recur 2147483647 1))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 2147483647
+   native-callee [round 2 tag (R23/R24 family: a native literal local called)]: 20 take this path, 20 only this one; e.g. (loop* [inc 2147483647 k 0] (if (= k 1) (inc 2147483647) (recur :k 1))) => jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure nil
+   bool-arith [R33]: 18 take this path, 18 only this one; e.g. (inc (pos? 2147483647)) => jank 2; Clojure throws (inc of a non-number)
+  (882 s)

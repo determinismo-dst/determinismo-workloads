@@ -1,0 +1,2620 @@
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/CONTRIBUTING.md upstream-main/CONTRIBUTING.md
+--- upstream/CONTRIBUTING.md	2026-11-24 15:55:46
++++ upstream-main/CONTRIBUTING.md	2026-11-24 18:32:07
+@@ -29,12 +29,12 @@
+ ## How to get support or ask questions
+ Overall, the [#jank Slack channel](https://clojurians.slack.com/archives/C03SRH97FDK) is the
+ best place to ask questions to the community. If you can't/won't use Slack,
+-[Github Discussions](https://github.com/jank-lang/jank/discussions) is the next best place to ask.
++consider using [Discord](https://discord.gg/7sSMfKDBU3) or [Github Issues](https://github.com/jank-lang/jank/issues).
+ 
+ ## How to report bugs
+-Please use jank's Github [Discussions forum](https://github.com/jank-lang/jank/discussions/new/choose) for reporting
+-bugs. Before creating a new discussion, please search for an existing discussion on your
+-topic and use that if it exists. **Do not just create an issue.**
++Please use jank's [Github Issues](https://github.com/jank-lang/jank/issues) for reporting
++bugs. Before creating a new issue, please search for an existing issue on your
++topic and use that if it exists.
+ 
+ ## Pull request process
+ Once you're ready to share your changes with use for review and merge
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/book/src/SUMMARY.md upstream-main/book/src/SUMMARY.md
+--- upstream/book/src/SUMMARY.md	2026-11-24 15:55:46
++++ upstream-main/book/src/SUMMARY.md	2026-11-24 18:32:07
+@@ -46,6 +46,7 @@
+   * [Guide: Packaging a source library](jank-build/packaging-source-lib.md)
+ 
+ * [Differences from Clojure](differences-from-clojure.md)
++* [Differences from C++](differences-from-cpp.md)
+ 
+ * [Troubleshooting](troubleshooting/index.md)
+   * [Checking jank's health](troubleshooting/health-check.md)
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/book/src/differences-from-clojure.md upstream-main/book/src/differences-from-clojure.md
+--- upstream/book/src/differences-from-clojure.md	2026-11-24 15:55:46
++++ upstream-main/book/src/differences-from-clojure.md	2026-11-24 18:32:07
+@@ -53,7 +53,7 @@
+     optionally with a `.o` file cached for quick loading
+ 
+ ## Math
+-* Signed integer overflow is well defined
+-* Unsigned integer overflow is well defined
++* Signed integer overflow is well defined and will wrap
++* Unsigned integer overflow is well defined and will wrap
+ * Division by integer `0` is undefined behavior
+-* Division by floating point `0.0` is well defined
++* Division by floating point `0.0` is well defined and will return `##Inf`
+Only in upstream-main/book/src: differences-from-cpp.md
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/book/src/getting-started/01-installation.md upstream-main/book/src/getting-started/01-installation.md
+--- upstream/book/src/getting-started/01-installation.md	2026-11-24 15:55:47
++++ upstream-main/book/src/getting-started/01-installation.md	2026-11-24 18:32:07
+@@ -29,7 +29,7 @@
+ We have a binary jank package in our own repo, so installation is quick and easy.
+ 
+ ```bash
+-sudo apt install -y sudo curl gnupg lsb-release
++sudo apt install -y sudo curl gnupg lsb-release ca-certificates
+ curl -s "https://ppa.jank-lang.org/KEY.gpg" | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/jank.gpg >/dev/null
+ echo "deb [signed-by=/etc/apt/trusted.gpg.d/jank.gpg] https://ppa.jank-lang.org $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/jank.list >/dev/null
+ sudo apt update
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/book/src/getting-started/03-hello-leiningen.md upstream-main/book/src/getting-started/03-hello-leiningen.md
+--- upstream/book/src/getting-started/03-hello-leiningen.md	2026-11-24 15:55:46
++++ upstream-main/book/src/getting-started/03-hello-leiningen.md	2026-11-24 18:32:07
+@@ -61,7 +61,7 @@
+   :license {:name "MPL 2.0"
+             :url "https://www.mozilla.org/en-US/MPL/2.0/"}
+   :dependencies []
+-  :plugins [[org.jank-lang/lein-jank "2026.10-1"]]
++  :plugins [[org.jank-lang/lein-jank "2026.11-1"]]
+   :middleware [leiningen.jank/middleware]
+   :main hello-lein.main
+   :profiles {:debug {:target-dir "target/debug"
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/book/src/jank-build/packaging-source-lib.md upstream-main/book/src/jank-build/packaging-source-lib.md
+--- upstream/book/src/jank-build/packaging-source-lib.md	2026-11-24 15:55:46
++++ upstream-main/book/src/jank-build/packaging-source-lib.md	2026-11-24 18:32:07
+@@ -69,7 +69,7 @@
+   :description "Raw package for raylib."
+   :license {:name "MPL 2.0"
+             :url "https://www.mozilla.org/en-US/MPL/2.0/"}
+-  :plugins [[org.jank-lang/lein-jank "2026.10-1"]]
++  :plugins [[org.jank-lang/lein-jank "2026.11-1"]]
+   :middleware [leiningen.jank/middleware]
+   :build-dependencies [[org.jank-lang.commons/jank-build "2026.10-1"]]
+   :verbatim-paths ["raylib"])
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/book/src/jank-build/packaging-system-lib.md upstream-main/book/src/jank-build/packaging-system-lib.md
+--- upstream/book/src/jank-build/packaging-system-lib.md	2026-11-24 15:55:46
++++ upstream-main/book/src/jank-build/packaging-system-lib.md	2026-11-24 18:32:07
+@@ -52,7 +52,7 @@
+   :description "Raw package for sqlite3."
+   :license {:name "MPL 2.0"
+             :url "https://www.mozilla.org/en-US/MPL/2.0/"}
+-  :plugins [[org.jank-lang/lein-jank "2026.10-1"]]
++  :plugins [[org.jank-lang/lein-jank "2026.11-1"]]
+   :middleware [leiningen.jank/middleware]
+   :build-dependencies [[org.jank-lang.commons/jank-build "2026.10-1"]])
+ ```
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/analyze/cpp_util.hpp upstream-main/compiler+runtime/include/cpp/jank/analyze/cpp_util.hpp
+--- upstream/compiler+runtime/include/cpp/jank/analyze/cpp_util.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/analyze/cpp_util.hpp	2026-11-24 18:32:07
+@@ -67,8 +67,9 @@
+ 
+   bool is_trait_convertible(jtl::ptr<void> type);
+   bool is_untyped_object(jtl::ptr<void> type);
+-  bool is_typed_object(jtl::ptr<void> type);
++  bool is_typed_object_ref(jtl::ptr<void> type);
+   bool is_any_object(jtl::ptr<void> type);
++  bool is_any_object_ref(jtl::ptr<void> type);
+   bool is_primitive(jtl::ptr<void> type);
+   bool is_constructible(jtl::ptr<void> to_type, jtl::ptr<void> from_type);
+   bool is_member_function(jtl::ptr<void> scope);
+@@ -76,6 +77,7 @@
+   bool is_nullptr(jtl::ptr<void> type);
+   bool is_bool(jtl::ptr<void> type);
+   bool is_implicitly_convertible(jtl::ptr<void> from, jtl::ptr<void> to);
++  bool is_implicitly_assignable(jtl::ptr<void> from, jtl::ptr<void> to);
+   bool is_pointer_to_void_conversion(jtl::ptr<void> from, jtl::ptr<void> to);
+ 
+   jtl::ptr<void> base_type(jtl::ptr<void> type);
+@@ -109,6 +111,18 @@
+   jtl::result<void, error_ref> ensure_convertible(expression_ref const expr);
+ 
+   std::vector<jtl::ptr<void>> aggregate_initialization_types(jtl::ptr<void> scope);
++
++  struct branch_common_type
++  {
++    cppinterop::clang_type type;
++    bool then_needs_conversion{};
++    bool else_needs_conversion{};
++  };
++
++  jtl::string_result<branch_common_type>
++  find_branch_common_type(expression_ref const then_expr_,
++                          jtl::option<expression_ref> const &else_expr_opt_,
++                          bool const has_recur);
+ 
+   enum class implicit_conversion_action : u8
+   {
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/analyze/cppinterop.hpp upstream-main/compiler+runtime/include/cpp/jank/analyze/cppinterop.hpp
+--- upstream/compiler+runtime/include/cpp/jank/analyze/cppinterop.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/analyze/cppinterop.hpp	2026-11-24 18:32:07
+@@ -42,6 +42,7 @@
+   void dump(clang_decl scope);
+ 
+   bool is_namespace(clang_decl scope);
++  bool is_union(clang_decl scope);
+   bool is_class(clang_decl scope);
+   bool is_class_template(clang_decl handle);
+   bool is_function(clang_decl scope);
+@@ -60,6 +61,7 @@
+   bool is_implicitly_convertible(clang_type from_type, clang_type to_type);
+   bool is_c_style_convertible(clang_type from_type, clang_type to_type);
+   bool is_constructible(clang_type to_type, clang_type from_type);
++  bool is_assignable(clang_type to_type, clang_type from_type);
+   bool is_trivially_destructible(clang_type type);
+   bool is_enum_scope(clang_decl handle);
+   bool is_enum_constant(clang_decl handle);
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/analyze/expr/case.hpp upstream-main/compiler+runtime/include/cpp/jank/analyze/expr/case.hpp
+--- upstream/compiler+runtime/include/cpp/jank/analyze/expr/case.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/analyze/expr/case.hpp	2026-11-24 18:32:07
+@@ -16,6 +16,7 @@
+           local_frame_ptr frame,
+           bool needs_box,
+           runtime::object_ref form,
++          jtl::ptr<void> const type,
+           expression_ref value_expr,
+           i64 shift,
+           i64 mask,
+@@ -26,7 +27,9 @@
+     void propagate_position(expression_position const pos) override;
+     runtime::object_ref to_runtime_data() const override;
+     void walk(std::function<void(jtl::ref<expression>)> const &f) override;
++    jtl::ptr<void> get_type() const override;
+ 
++    jtl::ptr<void> type;
+     expression_ref value_expr;
+     i64 shift{};
+     i64 mask{};
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/compiler_native.hpp upstream-main/compiler+runtime/include/cpp/jank/compiler_native.hpp
+--- upstream/compiler+runtime/include/cpp/jank/compiler_native.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/compiler_native.hpp	2026-11-24 18:32:07
+@@ -1,3 +1,8 @@
+ #pragma once
+ 
+-extern "C" void jank_load_jank_compiler_native();
++#include <jank/runtime/object.hpp>
++
++namespace jank::compiler_native
++{
++  runtime::object_ref native_source(runtime::object_ref const form);
++}
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/jit/processor.hpp upstream-main/compiler+runtime/include/cpp/jank/jit/processor.hpp
+--- upstream/compiler+runtime/include/cpp/jank/jit/processor.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/jit/processor.hpp	2026-11-24 18:32:07
+@@ -89,7 +89,6 @@
+     util::scope_exit push_diagnostics_consumer(jtl::ref<clang::DiagnosticConsumer> const d);
+ 
+     /*** XXX: Everything here is immutable after initialization. ***/
+-    native_vector<std::filesystem::path> library_dirs;
+ 
+     /* The files within this map will get added into Clang's VFS prior to the creation of
+      * the `clang::Interpreter`. This allows us to embed the PCH into AOT compiled programs
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/nrepl/server.hpp upstream-main/compiler+runtime/include/cpp/jank/nrepl/server.hpp
+--- upstream/compiler+runtime/include/cpp/jank/nrepl/server.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/nrepl/server.hpp	2026-11-24 18:32:07
+@@ -19,8 +19,8 @@
+     /* Block until one or more bytes of data is read from the client. */
+     std::string read_some() const;
+ 
+-    /* Write some data to the client. */
+-    void write_some(std::string const &data) const;
++    /* Write data to the client. */
++    void write(std::string const &data) const;
+ 
+     std::unique_ptr<impl> impl_;
+   };
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/runtime/convert/builtin.hpp upstream-main/compiler+runtime/include/cpp/jank/runtime/convert/builtin.hpp
+--- upstream/compiler+runtime/include/cpp/jank/runtime/convert/builtin.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/runtime/convert/builtin.hpp	2026-11-24 18:32:07
+@@ -235,7 +235,7 @@
+       {
+         return static_cast<T>(detail::as_integer(o.raw()));
+       }
+-      return static_cast<T>(try_object<obj::integer>(o)->data);
++      return static_cast<T>(o.to_integer());
+     }
+ 
+     static T from_object(obj::integer_ref const o)
+@@ -285,7 +285,7 @@
+       {
+         return static_cast<T>(detail::as_real(o.raw()));
+       }
+-      return static_cast<T>(try_object<obj::real>(o)->data);
++      return static_cast<T>(o.to_real());
+     }
+ 
+     static T from_object(obj::real_ref const o)
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/runtime/core/seq_ext.hpp upstream-main/compiler+runtime/include/cpp/jank/runtime/core/seq_ext.hpp
+--- upstream/compiler+runtime/include/cpp/jank/runtime/core/seq_ext.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/runtime/core/seq_ext.hpp	2026-11-24 18:32:07
+@@ -3,6 +3,7 @@
+ #include <jank/runtime/object.hpp>
+ #include <jank/runtime/behavior/seqable.hpp>
+ #include <jank/runtime/core/equal.hpp>
++#include <jank/runtime/core/seq.hpp>
+ #include <jank/runtime/sequence_range.hpp>
+ 
+ /* TODO: Why does this not live in seq.hpp again? Document if you find out. */
+@@ -11,9 +12,9 @@
+   template <typename It>
+   bool equal(object const &o, It const &begin, It const &end)
+   {
+-    /* nil is seqable, but we don't want it to be equal to an empty collection.
+-     * An empty seq itself is nil, but that's different. */
+-    if(o.type == object_type::nil || !o.has_behavior(object_behavior::seqable))
++    /* Only sequential collections can be equal to one another. nil, sets, maps, and strings
++     * are seqable, but must never equal an ordered collection. */
++    if(!is_sequential(detail::untagged(&o)))
+     {
+       return false;
+     }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/runtime/obj/lazy_sequence.hpp upstream-main/compiler+runtime/include/cpp/jank/runtime/obj/lazy_sequence.hpp
+--- upstream/compiler+runtime/include/cpp/jank/runtime/obj/lazy_sequence.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/runtime/obj/lazy_sequence.hpp	2026-11-24 18:32:07
+@@ -12,6 +12,7 @@
+ {
+   using cons_ref = oref<struct cons>;
+   using lazy_sequence_ref = oref<struct lazy_sequence>;
++  using persistent_list_ref = oref<struct persistent_list>;
+ 
+   /* TODO: IPending analog, to implement `realized?`. */
+   struct lazy_sequence : object
+@@ -43,6 +44,9 @@
+ 
+     /* behavior::conjable */
+     obj::cons_ref conj(object_ref const head) const;
++
++    /* behavior::collection_like */
++    static persistent_list_ref empty();
+ 
+     /* behavior::sequence_like_in_place */
+     //object_ref next_in_place() override;
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string_sequence.hpp upstream-main/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string_sequence.hpp
+--- upstream/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string_sequence.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string_sequence.hpp	2026-11-24 18:32:07
+@@ -6,6 +6,7 @@
+ namespace jank::runtime::obj
+ {
+   using cons_ref = oref<struct cons>;
++  using persistent_list_ref = oref<struct persistent_list>;
+   using persistent_string_ref = oref<struct persistent_string>;
+   using persistent_string_sequence_ref = oref<struct persistent_string_sequence>;
+ 
+@@ -49,6 +50,9 @@
+ 
+     /* behavior::conjable */
+     obj::cons_ref conj(object_ref const head);
++
++    /* behavior::collection_like */
++    static persistent_list_ref empty();
+ 
+     /* behavior::sequence_like_in_place */
+     object_ref next_in_place() override;
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/util/clang.hpp upstream-main/compiler+runtime/include/cpp/jank/util/clang.hpp
+--- upstream/compiler+runtime/include/cpp/jank/util/clang.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/util/clang.hpp	2026-11-24 18:32:07
+@@ -1,5 +1,8 @@
+ #pragma once
+ 
++#include <string>
++#include <vector>
++
+ #include <jtl/immutable_string.hpp>
+ #include <jtl/option.hpp>
+ #include <jtl/result.hpp>
+@@ -10,6 +13,8 @@
+ {
+   jtl::option<jtl::immutable_string> find_clang();
+   jtl::option<jtl::immutable_string> find_clang_resource_dir();
++  /* The library search paths which Clang would implicitly pass to the linker. */
++  std::vector<std::string> default_library_dirs();
+   jtl::result<void, error_ref> invoke_clang(std::vector<char const *> args);
+ 
+   jtl::option<jtl::immutable_string> find_pch(jtl::immutable_string const &binary_version);
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/include/cpp/jank/util/environment.hpp upstream-main/compiler+runtime/include/cpp/jank/util/environment.hpp
+--- upstream/compiler+runtime/include/cpp/jank/util/environment.hpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/include/cpp/jank/util/environment.hpp	2026-11-24 18:32:07
+@@ -22,7 +22,6 @@
+   jtl::immutable_string resource_dir();
+   jtl::result<jtl::immutable_string, error_ref> prelude_hpp_path();
+ 
+-  jtl::immutable_string multi_arch_lib_path();
+   void add_system_flags(std::vector<char const *> &args);
+ 
+   bool is_dynamic_runtime();
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp upstream-main/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
+--- upstream/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp	2026-11-24 18:32:07
+@@ -385,8 +385,16 @@
+          llvm::dyn_cast_or_null<clang::TypedefType>(qual_type.getTypePtrOrNull()) };
+        alias)
+     {
++      /* Printing an alias nested in a class template specialization, like
++       * `std::vector<int>::size_type`, omits the template arguments of its parent. Such
++       * aliases are spelled using their canonical type instead. */
+       if(auto const *alias_decl{ alias->getDecl() }; alias_decl)
+       {
++        if(llvm::isa<clang::RecordDecl>(alias_decl->getDeclContext()))
++        {
++          return get_qualified_type_name_helper(qual_type.getCanonicalType().getAsOpaquePtr(),
++                                                truncated);
++        }
+         return get_qualified_name_helper(alias_decl, truncated);
+       }
+     }
+@@ -930,6 +938,27 @@
+     return cppinterop::is_implicitly_convertible(from, to);
+   }
+ 
++  /* Implicit convertibility isn't enough for class types, since `to = from` can still be
++   * ambiguous across multiple operator= overloads. */
++  bool is_implicitly_assignable(jtl::ptr<void> const from, jtl::ptr<void> const to)
++  {
++    if(!is_implicitly_convertible(from, to))
++    {
++      return false;
++    }
++
++    auto const to_no_ref{ cppinterop::get_canonical_type(cppinterop::get_non_reference_type(to)) };
++    auto const to_scope{ cppinterop::get_scope_from_type(to_no_ref) };
++    /* Only class types can have multiple competing operator= overloads. jank objects and
++     * primitives are handled by the convertibility check above. */
++    if(is_any_object(to) || !to_scope || !cppinterop::is_class(to_scope))
++    {
++      return true;
++    }
++
++    return cppinterop::is_assignable(to_no_ref, from);
++  }
++
+   bool is_pointer_to_void_conversion(jtl::ptr<void> const from, jtl::ptr<void> const to)
+   {
+     return (cppinterop::is_pointer_type(from) && cppinterop::is_pointer_type(to))
+@@ -945,6 +974,13 @@
+       || can_type == cppinterop::get_canonical_type(untyped_object_ref_type());
+   }
+ 
++  bool is_untyped_object_ref(jtl::ptr<void> const type)
++  {
++    auto const can_type{ cppinterop::get_canonical_type(
++      cppinterop::get_type_without_cv(cppinterop::get_non_reference_type(type))) };
++    return can_type == cppinterop::get_canonical_type(untyped_object_ref_type());
++  }
++
+   jtl::ptr<void> base_type(jtl::ptr<void> type)
+   {
+     type = cppinterop::get_non_reference_type(type);
+@@ -963,7 +999,7 @@
+   }
+ 
+   /* TODO: Support for typed object raw pointers. */
+-  bool is_typed_object(jtl::ptr<void> const type)
++  bool is_typed_object_ref(jtl::ptr<void> const type)
+   {
+     auto const can_type{ cppinterop::get_canonical_type(
+       cppinterop::get_type_without_cv(cppinterop::get_non_reference_type(type))) };
+@@ -975,9 +1011,14 @@
+ 
+   bool is_any_object(jtl::ptr<void> type)
+   {
+-    return is_untyped_object(type) || is_typed_object(type);
++    return is_untyped_object(type) || is_typed_object_ref(type);
+   }
+ 
++  bool is_any_object_ref(jtl::ptr<void> type)
++  {
++    return is_untyped_object_ref(type) || is_typed_object_ref(type);
++  }
++
+   /* Clang treats int, long, float, etc as built-in, but not pointers. I consider
+    * all of them built-in, but to not confuse the nomenclature, I'm calling them
+    * primitives instead. */
+@@ -1023,7 +1064,7 @@
+   jtl::ptr<void> mutable_type(jtl::ptr<void> const type)
+   {
+     /* foo_ref => object_ref */
+-    if(is_typed_object(type))
++    if(is_typed_object_ref(type))
+     {
+       return untyped_object_ref_type();
+     }
+@@ -1058,10 +1099,10 @@
+   std::pair<jtl::ptr<void>, jtl::ptr<void>>
+   select_most_native_type(jtl::ptr<void> const left, jtl::ptr<void> const right)
+   {
+-    auto const is_left_any_object{ cpp_util::is_any_object(left) };
+-    auto const is_right_any_object{ cpp_util::is_any_object(right) };
+-    auto const is_left_typed_object{ cpp_util::is_typed_object(left) };
+-    auto const is_right_typed_object{ cpp_util::is_typed_object(right) };
++    auto const is_left_any_object{ is_any_object(left) };
++    auto const is_right_any_object{ is_any_object(right) };
++    auto const is_left_typed_object{ is_typed_object_ref(left) };
++    auto const is_right_typed_object{ is_typed_object_ref(right) };
+ 
+     if(!is_left_any_object)
+     {
+@@ -1130,13 +1171,17 @@
+     auto const member_offset{ (is_member_call ? 1 : 0) };
+     auto const arg_count{ arg_types.size() - member_offset };
+     usize max_arg_count{};
+-    std::vector<void *> matching_fns;
++    std::vector<cppinterop::clang_decl> matching_fns;
+ 
+     /* First rule out any fns not matching the arity we've specified. However, note that C++
+      * fns can have default arguments which needn't be specified. */
+     for(auto const fn : fns)
+     {
+       auto const num_args{ cppinterop::get_function_num_args(fn) };
++      if(cppinterop::is_function_deleted(fn))
++      {
++        continue;
++      }
+       if(cppinterop::get_function_required_args(fn) <= arg_count && arg_count <= num_args)
+       {
+         matching_fns.emplace_back(fn);
+@@ -1154,19 +1199,12 @@
+        * we're going to consider. Skip to the next argument. */
+       auto const arg_type{ cppinterop::get_non_reference_type(arg_types[arg_idx + member_offset]) };
+       auto const is_arg_untyped_obj{ is_untyped_object(arg_type) };
+-      auto const is_arg_typed_obj{ is_typed_object(arg_type) };
++      auto const is_arg_typed_obj{ is_typed_object_ref(arg_type) };
+       auto const is_arg_obj{ is_arg_untyped_obj || is_arg_typed_obj };
+ 
+       jtl::option<usize> needed_conversion;
+       for(usize fn_idx{}; fn_idx < matching_fns.size(); ++fn_idx)
+       {
+-        /* Function templates have dependent parameter types until they are instantiated, so
+-         * they cannot be considered for implicit or trait conversions here. */
+-        if(cppinterop::is_templated_function(matching_fns[fn_idx]))
+-        {
+-          continue;
+-        }
+-
+         auto const param_type{ cppinterop::get_function_arg_type(matching_fns[fn_idx], arg_idx) };
+         if(!param_type)
+         {
+@@ -1176,7 +1214,7 @@
+         {
+           continue;
+         }
+-        auto const is_param_obj{ is_untyped_object(param_type) || is_typed_object(param_type) };
++        auto const is_param_obj{ is_untyped_object(param_type) || is_typed_object_ref(param_type) };
+         if(!is_arg_obj && !is_param_obj)
+         {
+           continue;
+@@ -1185,12 +1223,53 @@
+         auto const trait_type{ is_arg_obj ? param_type : arg_type };
+         if(is_trait_convertible(trait_type))
+         {
++          /* If we're handling trait conversion for a parameter which can be T&& and also a
++           * T const& in another overload, we detect this case and prefer the T&&. Any other
++           * scenarios where this parameter is trait convertible for both fns is considered
++           * ambiguous. */
++          bool apply{ true };
+           if(needed_conversion.is_some())
+           {
+-            return err("No matching overload was found. When considering automatic trait "
+-                       "conversions, this call is ambiguous.");
++            auto const prev_param_type{
++              cppinterop::get_function_arg_type(matching_fns[needed_conversion.unwrap()], arg_idx)
++            };
++            auto const same_type{ cppinterop::get_canonical_type(param_type)
++                                  == cppinterop::get_canonical_type(prev_param_type) };
++            auto const same_type_without_ref{
++              cppinterop::get_canonical_type(
++                cppinterop::get_type_without_cv(cppinterop::get_non_reference_type(param_type)))
++              == cppinterop::get_type_without_cv(
++                cppinterop::get_canonical_type(cppinterop::get_non_reference_type(prev_param_type)))
++            };
++            if(same_type
++               || (same_type_without_ref && cppinterop::is_rvalue_reference_type(param_type)
++                   && cppinterop::get_value_category(prev_param_type)
++                     == cppinterop::value_category::lvalue))
++            {
++              /* Overloads, including templates, which all accept the same type for this param
++               * require the same conversion, so there's nothing ambiguous about it. The final
++               * overload resolution will pick between them.
++               *
++               * Or, if we're comparing against lvalue ref vs rvalue ref, we'll also rely
++               * on the final overload resolution. */
++            }
++            else if(same_type_without_ref && cppinterop::is_rvalue_reference_type(prev_param_type)
++                    && cppinterop::get_value_category(param_type)
++                      == cppinterop::value_category::lvalue)
++            {
++              apply = false;
++            }
++            else
++            {
++              return err("No matching overload was found. When considering automatic trait "
++                         "conversions, this call is ambiguous.");
++            }
+           }
+-          needed_conversion = fn_idx;
++
++          if(apply)
++          {
++            needed_conversion = fn_idx;
++          }
+           converted_args[arg_idx + member_offset] = param_type;
+         }
+       }
+@@ -1434,7 +1513,7 @@
+       if(is_member_call)
+       {
+         if(cppinterop::is_method(ranked.fn) && !arg_types.empty()
+-           && !cppinterop::is_const_method(ranked.fn) && !cppinterop::is_const_type(arg_types[0]))
++           && !cppinterop::is_const_method(ranked.fn) && cppinterop::is_const_type(arg_types[0]))
+         {
+           return resolve_candidate(
+             ranked.fn,
+@@ -1637,9 +1716,9 @@
+   /* TODO: Cache result. */
+   bool is_trait_convertible(jtl::ptr<void> const type)
+   {
++    auto const locked_interpreter{ runtime::__rt_ctx->jit_prc.interpreter.lock() };
+     static auto const convert_template{ cppinterop::get_scope_from_complete_name(
+       "jank::runtime::convert") };
+-    auto const locked_interpreter{ runtime::__rt_ctx->jit_prc.interpreter.lock() };
+     Cpp::TemplateArgInfo const arg{ cppinterop::get_canonical_type(
+       cppinterop::get_type_without_cv(cppinterop::get_non_reference_type(type))) };
+     clang::Sema::SFINAETrap const trap{ (*locked_interpreter)->getSema(), true };
+@@ -1656,7 +1735,7 @@
+ 
+   usize offset_to_typed_object_base(jtl::ptr<void> const type)
+   {
+-    jank_debug_assert(is_typed_object(type));
++    jank_debug_assert(is_typed_object_ref(type));
+     auto const can_type{ cppinterop::get_canonical_type(type) };
+     auto const scope{ cppinterop::get_underlying_scope(
+       cppinterop::get_named("value_type", cppinterop::get_scope_from_type(can_type))) };
+@@ -1792,8 +1871,25 @@
+ 
+     std::vector<cppinterop::clang_type> members;
+     cppinterop::get_datamembers(scope, members);
++    /* Clang flattens the members of anonymous unions and structs into the enclosing record, but
++     * an anonymous union only takes a single initializer, which goes to its first member. */
++    jtl::ptr<void> last_union{};
+     for(auto const member : members)
+     {
++      auto const parent{ cppinterop::get_parent_scope(member) };
++      if(parent && parent != scope && cppinterop::is_union(parent))
++      {
++        if(parent == last_union)
++        {
++          continue;
++        }
++        last_union = parent;
++      }
++      else
++      {
++        last_union = nullptr;
++      }
++
+       auto const member_type{ cppinterop::get_type_from_scope(member) };
+       member_types.emplace_back(member_type);
+     }
+@@ -1808,6 +1904,96 @@
+     return member_types;
+   }
+ 
++  jtl::string_result<branch_common_type>
++  find_branch_common_type(expression_ref const then_expr,
++                          jtl::option<expression_ref> const &else_expr_opt,
++                          bool const has_recur)
++  {
++    auto const then_type{ cpp_util::expression_type(then_expr) };
++    auto const else_type{ else_expr_opt.is_some()
++                            ? cpp_util::expression_type(else_expr_opt.unwrap())
++                            : cpp_util::untyped_object_ref_type() };
++    auto const is_then_object{ cpp_util::is_any_object(then_type) };
++    auto const is_else_object{ cpp_util::is_any_object(else_type) };
++    auto const is_then_convertible{ cpp_util::is_trait_convertible(then_type) };
++    auto const is_else_convertible{ cpp_util::is_trait_convertible(else_type) };
++    auto const common_type{ cppinterop::get_common_type(then_type, else_type) };
++    auto const is_same_type{ cppinterop::get_canonical_type(then_type)
++                             == cppinterop::get_canonical_type(else_type) };
++    auto const is_compatible{ cpp_util::is_implicitly_assignable(then_type, else_type)
++                              || cpp_util::is_implicitly_assignable(else_type, then_type)
++                              || common_type };
++
++    /* If one of the branches has a native type, we need to match one of these scenarios.
++     *
++     * 1. The other branch has the same native type.
++     * 2. The other branch has a native type and the two native types are compatible.
++     * 3. The other branch has an object type and the native branch is trait convertible.
++     * 4. Both branches are trait convertible.
++     * 5. One of the branches recurs, meaning we have no comparison to do.
++     *
++     * If neither of these are the case, we have an error. */
++    if(is_same_type || is_compatible
++       || ((is_else_object && is_then_convertible) || (is_then_object && is_else_convertible))
++       || (is_then_convertible && is_else_convertible) || has_recur)
++    {
++      auto const then_needs_conversion{ !is_same_type && (is_else_object || !is_compatible)
++                                        && is_then_convertible && is_else_convertible };
++      auto const else_needs_conversion{ !is_same_type && (is_then_object || !is_compatible)
++                                        && is_else_convertible && is_then_convertible };
++      auto const final_then_type{ then_needs_conversion ? cpp_util::untyped_object_ref_type()
++                                                        : then_expr->get_type() };
++      auto const final_else_type{ else_expr_opt.is_some() && !else_needs_conversion
++                                    ? else_expr_opt.unwrap()->get_type()
++                                    : cpp_util::untyped_object_ref_type() };
++      auto [chosen_type, other_type]{ cpp_util::select_most_native_type(
++        cpp_util::non_void_type(final_else_type),
++        cpp_util::non_void_type(final_then_type)) };
++      auto const final_is_same_type{
++        (cppinterop::get_canonical_type(final_then_type)
++         == cppinterop::get_canonical_type(final_else_type))
++        /* Arrays are pushed to use the common type instead, since they can't be assigned. */
++        && !cppinterop::is_array_type(final_then_type)
++      };
++      auto const final_common_type{ cppinterop::get_common_type(final_then_type, final_else_type) };
++
++      /* If we have a typed object on one side, and anything other than that same typed object
++       * on the other side, we need to type-erase to find the common type.
++       *
++       * We also calculate the types again, since they may have changed due to the implicit
++       * conversions above. */
++      if(cpp_util::is_typed_object_ref(chosen_type) && cpp_util::is_any_object(other_type)
++         && cppinterop::get_canonical_type(chosen_type)
++           != cppinterop::get_canonical_type(other_type))
++      {
++        chosen_type = cpp_util::untyped_object_ref_type();
++      }
++      else if(!final_is_same_type && final_common_type)
++      {
++        chosen_type = final_common_type;
++      }
++      /* If the chosen type is implicitly convertible to the other type, and both are native types,
++       * we fall into option 2 from above. In that case, we actually want the other type.
++       *
++       * Example: if branch returning std::string and C string literal. Regardless of which branch
++       * it's in, we want to take the std::string as our chosen type. */
++      else if(!cpp_util::is_any_object(chosen_type) && !cpp_util::is_any_object(other_type)
++              && is_compatible && cpp_util::is_implicitly_convertible(chosen_type, other_type))
++      {
++        std::swap(chosen_type, other_type);
++      }
++
++      return branch_common_type{ chosen_type, then_needs_conversion, else_needs_conversion };
++    }
++    else
++    {
++      return err(util::format("Mismatched branch types `{}` and `{}`. Each branch must have the "
++                              "same type, a common type, or a trait conversion.",
++                              cpp_util::get_qualified_type_name(then_type),
++                              cpp_util::get_qualified_type_name(else_type)));
++    }
++  }
++
+   /* By the time we get here, we know that the types are compatible in *some* fashion. This
+    * is because we only apply this after using Clang to match types in the first place.
+    * However, Clang doesn't tell us what needs to happen, so we then need to figure that
+@@ -1835,27 +2021,27 @@
+            == cppinterop::get_canonical_type(cppinterop::get_non_reference_type(expected_type)))
+        || cppinterop::is_type_derived_from(cppinterop::get_canonical_type(expr_type),
+                                            cppinterop::get_canonical_type(expected_type))
+-       || (cpp_util::is_untyped_object(expr_type) && cpp_util::is_untyped_object(expected_type)))
++       || (is_untyped_object(expr_type) && is_untyped_object(expected_type)))
+     {
+       return implicit_conversion_action::none;
+     }
+ 
+-    if(cpp_util::is_untyped_object(expected_type) && cpp_util::is_typed_object(expr_type))
++    if(is_untyped_object(expected_type) && is_typed_object_ref(expr_type))
+     {
+       return implicit_conversion_action::none;
+     }
+ 
+-    if(cpp_util::is_typed_object(expected_type) && cpp_util::is_untyped_object(expr_type))
++    if(is_typed_object_ref(expected_type) && is_untyped_object(expr_type))
+     {
+       return implicit_conversion_action::from_object;
+     }
+ 
+-    if(cpp_util::is_any_object(expected_type) && cpp_util::is_trait_convertible(expr_type))
++    if(is_any_object(expected_type) && is_trait_convertible(expr_type))
+     {
+       return implicit_conversion_action::into_object;
+     }
+ 
+-    if(cpp_util::is_any_object(expr_type) && cpp_util::is_trait_convertible(expected_type))
++    if(is_any_object(expr_type) && is_trait_convertible(expected_type))
+     {
+       return implicit_conversion_action::from_object;
+     }
+@@ -1869,7 +2055,7 @@
+            && !cppinterop::is_reference_type(expr_type)
+            && cppinterop::is_reference_type(expected_type))
+        /* Matching nullptr to any pointer type or array parameter, which adjusts to a pointer. */
+-       || (cpp_util::is_nullptr(expr_type)
++       || (is_nullptr(expr_type)
+            && (cppinterop::is_pointer_type(expected_type)
+                || cppinterop::is_array_type(expected_type)))
+        /* TODO: Array size. */
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/analyze/cppinterop.cpp upstream-main/compiler+runtime/src/cpp/jank/analyze/cppinterop.cpp
+--- upstream/compiler+runtime/src/cpp/jank/analyze/cppinterop.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/analyze/cppinterop.cpp	2026-11-24 18:32:07
+@@ -52,6 +52,12 @@
+     Cpp::DumpScope(scope);
+   }
+ 
++  bool is_union(clang_decl scope)
++  {
++    auto const lock{ runtime::__rt_ctx->jit_prc.interpreter.lock() };
++    return Cpp::IsUnion(scope);
++  }
++
+   bool is_namespace(clang_decl scope)
+   {
+     auto const lock{ runtime::__rt_ctx->jit_prc.interpreter.lock() };
+@@ -164,6 +170,12 @@
+   {
+     auto const lock{ runtime::__rt_ctx->jit_prc.interpreter.lock() };
+     return Cpp::IsConstructible(to_type, from_type);
++  }
++
++  bool is_assignable(clang_type to_type, clang_type from_type)
++  {
++    auto const lock{ runtime::__rt_ctx->jit_prc.interpreter.lock() };
++    return Cpp::IsAssignable(to_type, from_type);
+   }
+ 
+   bool is_trivially_destructible(clang_type type)
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/analyze/expr/case.cpp upstream-main/compiler+runtime/src/cpp/jank/analyze/expr/case.cpp
+--- upstream/compiler+runtime/src/cpp/jank/analyze/expr/case.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/analyze/expr/case.cpp	2026-11-24 18:32:07
+@@ -10,6 +10,7 @@
+                local_frame_ptr const frame,
+                bool const needs_box,
+                object_ref const form,
++               jtl::ptr<void> const type,
+                expression_ref const value_expr,
+                i64 const shift,
+                i64 const mask,
+@@ -17,6 +18,7 @@
+                native_vector<i64> &&keys,
+                native_vector<expression_ref> &&exprs)
+     : expression{ expr_kind, position, frame, needs_box, form }
++    , type{ type }
+     , value_expr{ value_expr }
+     , shift{ shift }
+     , mask{ mask }
+@@ -64,5 +66,10 @@
+       f(expr);
+     }
+     expression::walk(f);
++  }
++
++  jtl::ptr<void> case_::get_type() const
++  {
++    return type;
+   }
+ }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/analyze/processor.cpp upstream-main/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+--- upstream/compiler+runtime/src/cpp/jank/analyze/processor.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/analyze/processor.cpp	2026-11-24 18:32:07
+@@ -368,6 +368,8 @@
+     auto const is_operator_call{ val->val_kind == expr::cpp_value::value_kind::operator_call };
+     if(is_operator_call)
+     {
++      auto const op_name{ try_object<obj::symbol>(val->form)->name };
++      auto const op{ cpp_util::match_operator(op_name).unwrap() };
+       auto const arg_count{ arg_exprs.size() };
+       if(arg_count == 0)
+       {
+@@ -376,7 +378,8 @@
+           object_source(val->form),
+           latest_expansion(macro_expansions));
+       }
+-      else if(arg_count > 2)
++      /* Call operators can have any number of arguments. */
++      else if(op != Cpp::OP_Call && arg_count > 2)
+       {
+         return error::analyze_invalid_cpp_operator_call(
+                  "Operator calls may only take one or two arguments.",
+@@ -386,8 +389,6 @@
+       }
+ 
+       auto const obj_type{ cppinterop::get_non_reference_type(arg_types[0]) };
+-      auto const op_name{ try_object<obj::symbol>(val->form)->name };
+-      auto const op{ cpp_util::match_operator(op_name).unwrap() };
+       auto const is_addressof{ op == Cpp::OP_Amp && arg_types.size() == 1 };
+       auto const always_use_builtin{ is_addressof };
+ 
+@@ -460,6 +461,55 @@
+       auto const arity{ arg_count == 1 ? Cpp::kUnary : Cpp::kBinary };
+       cppinterop::get_operator(op, arg_types, fns, arity);
+ 
++      /* Logical operators contextually convert their operands to bool, so class types which
++       * are convertible to bool, but which have no overloaded operator, are still valid. */
++      auto const is_logical_op{ op == Cpp::OP_Exclaim || op == Cpp::OP_AmpAmp
++                                || op == Cpp::OP_PipePipe };
++      if(fns.empty() && is_logical_op)
++      {
++        auto const bool_type{ cpp_util::bool_type() };
++        auto convertible{ true };
++        for(usize i{}; i < arg_exprs.size(); ++i)
++        {
++          auto const arg_type{ cppinterop::get_non_reference_type(arg_types[i]) };
++          if(!cpp_util::is_primitive(arg_type)
++             && !cppinterop::is_constructible(bool_type, arg_types[i]))
++          {
++            convertible = false;
++            break;
++          }
++        }
++
++        if(convertible)
++        {
++          for(usize i{}; i < arg_exprs.size(); ++i)
++          {
++            if(cpp_util::is_primitive(cppinterop::get_non_reference_type(arg_types[i])))
++            {
++              continue;
++            }
++            auto const conversion_res{
++              apply_implicit_conversion(arg_exprs[i], arg_types[i], bool_type, macro_expansions)
++            };
++            if(conversion_res.is_err())
++            {
++              return conversion_res.expect_err();
++            }
++            arg_exprs[i] = conversion_res.expect_ok();
++            arg_types[i] = bool_type;
++          }
++          return build_builtin_operator_call(val,
++                                             op,
++                                             std::move(arg_exprs),
++                                             arg_types,
++                                             current_frame,
++                                             position,
++                                             needs_box,
++                                             form,
++                                             macro_expansions);
++        }
++      }
++
+       if(fns.empty())
+       {
+         /* TODO: Show arg types. */
+@@ -557,7 +607,7 @@
+         is_member_call = true;
+       }
+ 
+-      if(auto const res = cpp_util::instantiate_if_needed(match); res.is_err())
++      if(auto const res{ cpp_util::instantiate_if_needed(match) }; res.is_err())
+       {
+         return error::analyze_invalid_cpp_call(res.expect_err(),
+                                                object_source(val->form),
+@@ -587,14 +637,6 @@
+         }
+       }
+ 
+-      if(auto const res = cpp_util::instantiate_if_needed(match); res.is_err())
+-      {
+-        return error::analyze_invalid_cpp_call(res.expect_err(),
+-                                               object_source(val->form),
+-                                               latest_expansion(macro_expansions))
+-          ->add_usage(object_source(form));
+-      }
+-
+       if(allow_implicit_conversions)
+       {
+         auto const conversion_res{
+@@ -654,7 +696,7 @@
+     }
+ 
+     //util::println("looking for conversion match");
+-    auto const new_types_res{
++    auto new_types_res{
+       cpp_util::find_best_arg_types_with_conversions(fns, arg_types, is_member_call)
+     };
+     if(new_types_res.is_err())
+@@ -667,6 +709,24 @@
+         ->add_usage(object_source(form));
+     }
+ 
++    /* If we're doing an operator call on a non-primitive type, we also need to consider
++     * member functions. However, `is_member_call` will be false because this isn't an explicit
++     * member call. Operators can be free fns as well, so that's why we check this last. */
++    if(is_operator_call
++       && !cpp_util::is_primitive(cppinterop::get_non_reference_type(arg_types[0])))
++    {
++      new_types_res = cpp_util::find_best_arg_types_with_conversions(fns, arg_types, true);
++      if(new_types_res.is_err())
++      {
++        return error::analyze_invalid_cpp_call(
++                 new_types_res.expect_err(),
++                 cpp_util::resolve_candidates(fns, arg_types, arg_scopes, is_member_call),
++                 object_source(val->form),
++                 latest_expansion(macro_expansions))
++          ->add_usage(object_source(form));
++      }
++    }
++
+     /* TODO: We don't actually use this. Is it needed? */
+     auto new_types{ new_types_res.expect_ok() };
+     /* We don't bother with figuring out scopes for conversion calls. They need to match up
+@@ -690,6 +750,14 @@
+         is_member_call = true;
+       }
+ 
++      if(auto const res{ cpp_util::instantiate_if_needed(match) }; res.is_err())
++      {
++        return error::analyze_invalid_cpp_call(res.expect_err(),
++                                               object_source(val->form),
++                                               latest_expansion(macro_expansions))
++          ->add_usage(object_source(form));
++      }
++
+       //util::println("\tconversion match found with new arg types");
+       //for(auto const arg : new_types_res.expect_ok())
+       //{
+@@ -771,7 +839,8 @@
+         };
+         if(conversion_res.is_err())
+         {
+-          return conversion_res.expect_err();
++          /* TODO: Identify the exact member. */
++          return conversion_res.expect_err()->add_usage(object_source(form));
+         }
+ 
+         //util::println("using aggregate initialization");
+@@ -1223,6 +1292,14 @@
+         ->add_usage(read::parse::reparse_nth(l, 1));
+     }
+ 
++    /* Symbols starting with a dot are C++ member syntax, which only has meaning in call position. */
++    if(sym->name.starts_with('.'))
++    {
++      return error::analyze_invalid_cpp_position(sym->to_string(),
++                                                 object_source(sym_obj),
++                                                 latest_expansion(macro_expansions));
++    }
++
+     auto qualified_sym(runtime::__rt_ctx->qualify_symbol(sym));
+     qualified_sym->set_meta(sym->get_meta());
+     /* We always def in the current ns, so we want an owned var. */
+@@ -1279,6 +1356,32 @@
+     return jtl::make_ref<expr::def>(position, current_frame, true, l, qualified_sym, value_expr);
+   }
+ 
++  /* We use this to find `recur` expressions. We need to recursively dig into `do` and `let`
++   * expressions to see if their tail expression is a `recur`. Every other expression is
++   * just returned as is. */
++  static expression_ref resolve_tail_expression(expression_ref const expr)
++  {
++    if(expr->kind == expression_kind::do_)
++    {
++      auto const do_{ static_box_cast<expr::do_>(expr) };
++      if(!do_->values.empty())
++      {
++        return resolve_tail_expression(do_->values.back());
++      }
++      return expr;
++    }
++    if(expr->kind == expression_kind::let)
++    {
++      auto const let{ static_box_cast<expr::let>(expr) };
++      if(!let->body->values.empty())
++      {
++        return resolve_tail_expression(let->body->values.back());
++      }
++      return expr;
++    }
++    return expr;
++  }
++
+   processor::expression_result
+   processor::analyze_case(obj::persistent_list_ref const o,
+                           local_frame_ptr const current_frame,
+@@ -1360,9 +1463,7 @@
+                                          latest_expansion(macro_expansions));
+     }
+     auto const default_expr_obj{ it.first().unwrap() };
+-    auto const default_expr{
+-      analyze(default_expr_obj, current_frame, position, fn_ctx, needs_box)
+-    };
++    auto default_expr{ analyze(default_expr_obj, current_frame, position, fn_ctx, needs_box) };
+ 
+     it = it.rest();
+     if(it.first().is_none())
+@@ -1379,6 +1480,10 @@
+       native_vector<expression_ref> exprs{};
+     };
+ 
++    auto needs_conversion{ false };
++    auto chosen_type{ cpp_util::expression_type(default_expr.expect_ok()) };
++    auto has_recur{ resolve_tail_expression(default_expr.expect_ok())->kind
++                    == expression_kind::recur };
+     auto keys_exprs{ visit_map_like(
+       [&](auto const typed_imap_obj) -> jtl::string_result<keys_and_exprs> {
+         keys_and_exprs ret{};
+@@ -1392,11 +1497,28 @@
+             return err("Each key in a `case*` map must be an integer.");
+           }
+           auto const key{ runtime::to_i64(k_obj) };
+-          auto const expr{ analyze(v_obj, current_frame, position, fn_ctx, needs_box) };
++          auto expr{ analyze(v_obj, current_frame, position, fn_ctx, needs_box) };
+           if(expr.is_err())
+           {
+             return err(expr.expect_err()->message);
+           }
++
++          has_recur = has_recur
++            || resolve_tail_expression(expr.expect_ok())->kind == expression_kind::recur;
++          auto const branch_common_type_result{
++            cpp_util::find_branch_common_type(expr.expect_ok(), default_expr.expect_ok(), has_recur)
++          };
++
++          if(branch_common_type_result.is_err())
++          {
++            return branch_common_type_result.expect_err();
++          }
++
++          auto const branch_common_type{ branch_common_type_result.expect_ok() };
++
++          needs_conversion = needs_conversion || branch_common_type.then_needs_conversion
++            || branch_common_type.else_needs_conversion;
++          chosen_type = branch_common_type.type;
+           ret.keys.push_back(key);
+           ret.exprs.push_back(expr.expect_ok());
+         }
+@@ -1415,17 +1537,46 @@
+     }
+ 
+     auto pairs{ keys_exprs.expect_ok() };
++    native_vector<expression_ref> converted_exprs{};
++    converted_exprs.reserve(pairs.exprs.size());
+ 
++    if(needs_conversion)
++    {
++      auto const converted_default_expr{
++        apply_implicit_conversion(default_expr.expect_ok(), chosen_type, macro_expansions)
++      };
++
++      if(converted_default_expr.is_err())
++      {
++        return converted_default_expr.expect_err();
++      }
++
++      default_expr = converted_default_expr.expect_ok();
++
++      for(auto const expr : pairs.exprs)
++      {
++        auto const converted_expr{ apply_implicit_conversion(expr, chosen_type, macro_expansions) };
++
++        if(converted_expr.is_err())
++        {
++          return converted_expr.expect_err();
++        }
++
++        converted_exprs.push_back(converted_expr.expect_ok());
++      }
++    }
++
+     return jtl::make_ref<expr::case_>(position,
+                                       current_frame,
+                                       needs_box,
+                                       o,
++                                      chosen_type,
+                                       value_expr.expect_ok(),
+                                       shift,
+                                       mask,
+                                       default_expr.expect_ok(),
+                                       std::move(pairs.keys),
+-                                      std::move(pairs.exprs));
++                                      std::move(needs_conversion ? converted_exprs : pairs.exprs));
+   }
+ 
+   processor::expression_result
+@@ -1615,6 +1766,12 @@
+           object_source(p),
+           latest_expansion(macro_expansions));
+       }
++      else if(sym->name.starts_with('.'))
++      {
++        return error::analyze_invalid_cpp_position(sym->to_string(),
++                                                   object_source(p),
++                                                   latest_expansion(macro_expansions));
++      }
+       else if(sym->name == "&")
+       {
+         if(it + 1 == params->data.end())
+@@ -1803,6 +1960,12 @@
+     if(first_elem.get_type() == runtime::object_type::symbol)
+     {
+       auto const s(runtime::expect_object<runtime::obj::symbol>(first_elem));
++      if(s->name.starts_with('.'))
++      {
++        return error::analyze_invalid_cpp_position(s->to_string(),
++                                                   object_source(first_elem),
++                                                   latest_expansion(macro_expansions));
++      }
+       name = s->name;
+       unique_name = __rt_ctx->unique_namespaced_string(name);
+       if(length < 3)
+@@ -2198,6 +2361,12 @@
+                                           object_source(sym_obj),
+                                           latest_expansion(macro_expansions));
+       }
++      if(sym->name.starts_with('.'))
++      {
++        return error::analyze_invalid_cpp_position(sym->to_string(),
++                                                   object_source(sym_obj),
++                                                   latest_expansion(macro_expansions));
++      }
+ 
+       auto const value_res(analyze(val, ret->frame, expression_position::value, fn_ctx, false));
+       if(value_res.is_err())
+@@ -2356,6 +2525,12 @@
+                                             latest_expansion(macro_expansions))
+           ->add_fallback_usage(read::parse::reparse_nth(bindings, i));
+       }
++      if(sym->name.starts_with('.'))
++      {
++        return error::analyze_invalid_cpp_position(sym->to_string(),
++                                                   object_source(sym_obj),
++                                                   latest_expansion(macro_expansions));
++      }
+       ret->frame->locals[sym].emplace_back(sym, sym->name, none, current_frame);
+     }
+ 
+@@ -2465,32 +2640,6 @@
+     return let;
+   }
+ 
+-  /* We use this to find `recur` expressions. We need to recursively dig into `do` and `let`
+-   * expressions to see if their tail expression is a `recur`. Every other expression is
+-   * just returned as is. */
+-  static expression_ref resolve_tail_expression(expression_ref const expr)
+-  {
+-    if(expr->kind == expression_kind::do_)
+-    {
+-      auto const do_{ static_box_cast<expr::do_>(expr) };
+-      if(!do_->values.empty())
+-      {
+-        return resolve_tail_expression(do_->values.back());
+-      }
+-      return expr;
+-    }
+-    if(expr->kind == expression_kind::let)
+-    {
+-      auto const let{ static_box_cast<expr::let>(expr) };
+-      if(!let->body->values.empty())
+-      {
+-        return resolve_tail_expression(let->body->values.back());
+-      }
+-      return expr;
+-    }
+-    return expr;
+-  }
+-
+   processor::expression_result
+   processor::analyze_if(runtime::obj::persistent_list_ref const o,
+                         local_frame_ptr const current_frame,
+@@ -2564,7 +2713,6 @@
+     {
+       return then_expr.expect_err();
+     }
+-    auto const then_type{ cpp_util::non_void_expression_type(then_expr.expect_ok()) };
+ 
+     if(resolve_tail_expression(then_expr.expect_ok())->kind == expression_kind::recur)
+     {
+@@ -2589,111 +2737,47 @@
+       else_expr_opt = else_expr.expect_ok();
+     }
+ 
+-    auto const else_type{ else_expr_opt.is_some()
+-                            ? cpp_util::expression_type(else_expr_opt.unwrap())
+-                            : cpp_util::untyped_object_ref_type() };
+-    auto const is_then_object{ cpp_util::is_any_object(then_type) };
+-    auto const is_else_object{ cpp_util::is_any_object(else_type) };
+-    auto const is_then_convertible{ cpp_util::is_trait_convertible(then_type) };
+-    auto const is_else_convertible{ cpp_util::is_trait_convertible(else_type) };
+-    auto const common_type{ cppinterop::get_common_type(then_type, else_type) };
+-    auto const is_same_type{ cppinterop::get_canonical_type(then_type)
+-                             == cppinterop::get_canonical_type(else_type) };
+-    auto const is_compatible{ cpp_util::is_implicitly_convertible(then_type, else_type)
+-                              || cpp_util::is_implicitly_convertible(else_type, then_type)
+-                              || common_type };
++    auto const branch_common_type_result{
++      cpp_util::find_branch_common_type(then_expr.expect_ok(), else_expr_opt, has_recur)
++    };
+ 
+-    /* If one of the branches has a native type, we need to match one of these scenarios.
+-     *
+-     * 1. The other branch has the same native type.
+-     * 2. The other branch has a native type and the two native types are compatible.
+-     * 3. The other branch has an object type and the native branch is trait convertible.
+-     * 4. Both branches are trait convertible.
+-     * 5. One of the branches recurs, meaning we have no comparison to do.
+-     *
+-     * If neither of these are the case, we have an error. */
+-    if(is_same_type || is_compatible
+-       || ((is_else_object && is_then_convertible) || (is_then_object && is_else_convertible))
+-       || (is_then_convertible && is_else_convertible) || has_recur)
++    if(branch_common_type_result.is_err())
+     {
+-      auto const then_needs_conversion{ !is_same_type && !is_compatible && is_then_convertible
+-                                        && (is_else_object || is_else_convertible) };
+-      auto const else_needs_conversion{ !is_same_type && !is_compatible && is_else_convertible
+-                                        && (is_then_object || is_then_convertible) };
++      return error::analyze_mismatched_if_types(branch_common_type_result.expect_err(),
++                                                object_source(o->first()),
++                                                latest_expansion(macro_expansions));
++    }
+ 
+-      if(then_needs_conversion)
+-      {
+-        then_expr = apply_implicit_conversion(then_expr.expect_ok(),
+-                                              cpp_util::untyped_object_ref_type(),
+-                                              macro_expansions);
+-      }
+-      if(else_expr_opt.is_some() && else_needs_conversion)
+-      {
+-        else_expr_opt = apply_implicit_conversion(else_expr_opt.unwrap(),
+-                                                  cpp_util::untyped_object_ref_type(),
+-                                                  macro_expansions)
+-                          .expect_ok();
+-      }
++    auto const branch_common_type{ branch_common_type_result.expect_ok() };
+ 
+-      auto const final_then_type{ then_expr.expect_ok()->get_type() };
+-      auto const final_else_type{ else_expr_opt.is_some() ? else_expr_opt.unwrap()->get_type()
+-                                                          : cpp_util::untyped_object_ref_type() };
+-      auto [chosen_type, other_type]{ cpp_util::select_most_native_type(
+-        cpp_util::non_void_type(final_else_type),
+-        cpp_util::non_void_type(final_then_type)) };
+-      auto const final_is_same_type{
+-        (cppinterop::get_canonical_type(final_then_type)
+-         == cppinterop::get_canonical_type(final_else_type))
+-        /* Arrays are pushed to use the common type instead, since they can't be assigned. */
+-        && !cppinterop::is_array_type(final_then_type)
+-      };
+-      auto const final_common_type{ cppinterop::get_common_type(final_then_type, final_else_type) };
++    if(branch_common_type.then_needs_conversion)
++    {
++      then_expr = apply_implicit_conversion(then_expr.expect_ok(),
++                                            cpp_util::untyped_object_ref_type(),
++                                            macro_expansions);
++    }
++    if(else_expr_opt.is_some() && branch_common_type.else_needs_conversion)
++    {
++      auto const converted_else_expr{ apply_implicit_conversion(else_expr_opt.unwrap(),
++                                                                cpp_util::untyped_object_ref_type(),
++                                                                macro_expansions) };
+ 
+-      /* If we have a typed object on one side, and anything other than that same typed object
+-       * on the other side, we need to type-erase to find the common type.
+-       *
+-       * We also calculate the types again, since they may have changed due to the implicit
+-       * conversions above. */
+-      if(cpp_util::is_typed_object(chosen_type) && cpp_util::is_any_object(other_type)
+-         && cppinterop::get_canonical_type(chosen_type)
+-           != cppinterop::get_canonical_type(other_type))
++      if(converted_else_expr.is_err())
+       {
+-        chosen_type = cpp_util::untyped_object_ref_type();
++        return converted_else_expr.expect_err();
+       }
+-      else if(!final_is_same_type && final_common_type)
+-      {
+-        chosen_type = final_common_type;
+-      }
+-      /* If the chosen type is implicitly convertible to the other type, and both are native types,
+-       * we fall into option 2 from above. In that case, we actually want the other type.
+-       *
+-       * Example: if branch returning std::string and C string literal. Regardless of which branch
+-       * it's in, we want to take the std::string as our chosen type. */
+-      else if(!cpp_util::is_any_object(chosen_type) && !cpp_util::is_any_object(other_type)
+-              && is_compatible && cpp_util::is_implicitly_convertible(chosen_type, other_type))
+-      {
+-        std::swap(chosen_type, other_type);
+-      }
+ 
+-      return jtl::make_ref<expr::if_>(position,
+-                                      current_frame,
+-                                      needs_box,
+-                                      o,
+-                                      chosen_type,
+-                                      condition_expr.expect_ok(),
+-                                      then_expr.expect_ok(),
+-                                      else_expr_opt);
++      else_expr_opt = converted_else_expr.expect_ok();
+     }
+-    else
+-    {
+-      return error::analyze_mismatched_if_types(
+-        util::format("Mismatched 'if' branch types `{}` and `{}`. Each branch of an 'if' must have "
+-                     "the same type, a common type, or a trait conversion.",
+-                     cpp_util::get_qualified_type_name(then_type),
+-                     cpp_util::get_qualified_type_name(else_type)),
+-        object_source(o->first()),
+-        latest_expansion(macro_expansions));
+-    }
++
++    return jtl::make_ref<expr::if_>(position,
++                                    current_frame,
++                                    needs_box,
++                                    o,
++                                    branch_common_type.type,
++                                    condition_expr.expect_ok(),
++                                    then_expr.expect_ok(),
++                                    else_expr_opt);
+   }
+ 
+   processor::expression_result
+@@ -3018,6 +3102,13 @@
+                 ->add_usage(read::parse::reparse_nth(item, 2));
+             }
+ 
++            if(catch_sym->name.starts_with('.'))
++            {
++              return error::analyze_invalid_cpp_position(catch_sym->to_string(),
++                                                         object_source(catch_sym_form),
++                                                         latest_expansion(macro_expansions));
++            }
++
+             /* Check for duplicate catch types. */
+             for(auto const &existing_catch : ret->catch_bodies)
+             {
+@@ -3465,7 +3556,11 @@
+             /* Forward metadata from the original call to the inline result. This allows us
+              * to keep source info for inline calls sanely. */
+             auto expanded{ apply_to(inline_fn, o->next()) };
+-            expanded = runtime::with_meta_graceful(expanded, runtime::meta(o));
++            /* The inline fn may have attached its own meta to the result, so we merge rather
++             * than replace. The call's meta wins on conflicts, so source info stays accurate. */
++            expanded = runtime::with_meta_graceful(
++              expanded,
++              runtime::merge(runtime::meta(expanded), runtime::meta(o)));
+             return analyze(expanded, current_frame, position, fn_ctx, needs_box);
+           }
+         }
+@@ -4229,7 +4324,7 @@
+       return analyze_cpp_call(call_l, cpp_value, current_frame, position, fn_ctx, needs_box);
+     }
+ 
+-    if((cpp_util::is_typed_object(type) && cpp_util::is_untyped_object(value_type))
++    if((cpp_util::is_typed_object_ref(type) && cpp_util::is_untyped_object(value_type))
+        || (cpp_util::is_any_object(value_type) && cpp_util::is_trait_convertible(type)))
+     {
+       return jtl::make_ref<expr::cpp_conversion>(position,
+@@ -5542,6 +5637,15 @@
+         native_vector<Cpp::TemplateArgInfo> args;
+         for(auto const arg : make_sequence_range(rest(o)))
+         {
++          if(runtime::is_boolean(arg))
++          {
++            static auto const bool_type{ cpp_util::bool_type() };
++            /* CppInterOp parses the value as a number. */
++            auto const * const text{ expect_object<obj::boolean>(arg)->data ? "1" : "0" };
++            args.emplace_back(bool_type.data, text);
++            continue;
++          }
++
+           if(runtime::is_integral(arg))
+           {
+             auto const int_arg{ runtime::to_i64(arg) };
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/aot/processor.cpp upstream-main/compiler+runtime/src/cpp/jank/aot/processor.cpp
+--- upstream/compiler+runtime/src/cpp/jank/aot/processor.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/aot/processor.cpp	2026-11-24 18:32:07
+@@ -51,7 +51,6 @@
+                          jank_bool const init_default_ctx,
+                          int (*fn)(int const, char const ** const));
+ extern "C" void jank_load_clojure_core();
+-extern "C" void jank_load_jank_compiler_native();
+ extern "C" jank_object_ref jank_var_intern_c(char const *, char const *);
+ extern "C" jank_object_ref jank_deref(jank_object_ref);
+ extern "C" jank_object_ref jank_call2(jank_object_ref, jank_object_ref, jank_object_ref);
+@@ -357,6 +356,13 @@
+     for(auto const &library_dir : util::cli::opts.library_dirs)
+     {
+       linker_args.push_back(strdup(util::format("-Wl,-rpath,{}", library_dir).c_str()));
++    }
++
++    /* These are the paths Clang itself would pass to the linker (GCC install dirs, multiarch
++     * dirs, etc.), which we need to replicate so the same libs are found as during JIT. */
++    for(auto const &dir : util::default_library_dirs())
++    {
++      linker_args.push_back(strdup(util::format("-L{}", dir).c_str()));
+     }
+ 
+     if constexpr(jtl::current_platform == jtl::platform::macos_like)
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/c_api_dynamic.cpp upstream-main/compiler+runtime/src/cpp/jank/c_api_dynamic.cpp
+--- upstream/compiler+runtime/src/cpp/jank/c_api_dynamic.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/c_api_dynamic.cpp	2026-11-24 18:32:07
+@@ -34,12 +34,6 @@
+     jank::util::cli::opts.include_dirs.emplace_back(path);
+   }
+ 
+-  void jank_init_core_libs_phase_1()
+-  {
+-    jank::runtime::__rt_ctx->module_loader.add_load_fn("jank.compiler-native",
+-                                                       &jank_load_jank_compiler_native);
+-  }
+-
+   int jank_init_dynamic_embedded(jank_bool const init_default_ctx,
+                                  char const * const pch_data,
+                                  jank_usize pch_size)
+@@ -64,8 +58,6 @@
+         {
+           jank::runtime::__rt_ctx = new(UseGC) jank::runtime::context{};
+         }
+-
+-        jank_init_core_libs_phase_1();
+       },
+       [&](std::exception const &e) {
+         ret = 1;
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp upstream-main/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+--- upstream/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp	2026-11-24 18:32:07
+@@ -169,7 +169,7 @@
+       {
+         fmt_str = "jank::runtime::jank_nil";
+       }
+-      else if(is_typed_object(type))
++      else if(is_typed_object_ref(type))
+       {
+         if(runtime::detail::is_tagged_pointer(ptr))
+         {
+@@ -1318,7 +1318,7 @@
+     {
+       util::format_to(
+         b.body_buffer,
+-        "auto const {}(jank::runtime::convert<{}>::{}({}));\n",
++        "auto &&{}(jank::runtime::convert<{}>::{}({}));\n",
+         inst->name,
+         get_qualified_type_name(
+           analyze::cppinterop::get_canonical_type(analyze::cppinterop::get_type_without_cv(
+@@ -1402,7 +1402,7 @@
+         }
+ 
+         if(param_type && analyze::cppinterop::is_pointer_type(param_type)
+-           && is_any_object(arg_type))
++           && is_any_object_ref(arg_type))
+         {
+           util::format_to(b.body_buffer, "static_cast<jank::runtime::object*>(");
+         }
+@@ -1417,7 +1417,7 @@
+         }
+ 
+         if(param_type && analyze::cppinterop::is_pointer_type(param_type)
+-           && is_any_object(arg_type))
++           && is_any_object_ref(arg_type))
+         {
+           util::format_to(b.body_buffer, ".erase().raw())");
+         }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/compiler_native.cpp upstream-main/compiler+runtime/src/cpp/jank/compiler_native.cpp
+--- upstream/compiler+runtime/src/cpp/jank/compiler_native.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/compiler_native.cpp	2026-11-24 18:32:07
+@@ -19,7 +19,7 @@
+   using namespace jank;
+   using namespace jank::runtime;
+ 
+-  static object_ref native_source(object_ref const form)
++  object_ref native_source(object_ref const form)
+   {
+     /* We use a clean analyze::processor so we don't share lifted items from other REPL
+      * evaluations. */
+@@ -33,30 +33,6 @@
+     auto const ir_mod{ ir::create(wrapped_expr, module, codegen::compilation_target::eval) };
+     auto const generated{ codegen::gen_cpp(ir_mod) };
+ 
+-    util::println("{}\n", util::format_cpp_source(generated.declaration).expect_ok());
+-
+-    return {};
++    return make_box(util::format_cpp_source(generated.declaration).expect_ok());
+   }
+-}
+-
+-extern "C" void jank_load_jank_compiler_native()
+-{
+-  using namespace jank;
+-  using namespace jank::runtime;
+-
+-  auto const ns_name{ "jank.compiler-native" };
+-  auto const ns(__rt_ctx->intern_ns(ns_name));
+-
+-  /* Will not be required, once we implement this module in jank with
+-   * cpp interop. */
+-  __rt_ctx->module_loader.set_is_loaded(ns_name);
+-
+-  auto const intern_fn([=](jtl::immutable_string const &name, auto const fn) {
+-    ns->intern_var(name)->bind_root(
+-      make_box<obj::native_function_wrapper>(convert_function(fn))
+-        ->with_meta(obj::persistent_hash_map::create_unique(std::make_pair(
+-          __rt_ctx->intern_keyword("name").expect_ok(),
+-          make_box(obj::symbol{ __rt_ctx->current_ns()->to_string(), name }.to_string())))));
+-  });
+-  intern_fn("native-source", &compiler_native::native_source);
+ }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/evaluate.cpp upstream-main/compiler+runtime/src/cpp/jank/evaluate.cpp
+--- upstream/compiler+runtime/src/cpp/jank/evaluate.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/evaluate.cpp	2026-11-24 18:32:07
+@@ -25,6 +25,28 @@
+   using namespace jank::runtime;
+   using namespace jank::analyze;
+ 
++  /* Forms are usually the result of a macro expansion, so errors should point at the
++   * original macro call site instead of the macro's internals. */
++  static read::source original_source(object_ref const form)
++  {
++    auto source{ object_source(form) };
++    auto expansion{ source.macro_expansion };
++    while(expansion.is_some())
++    {
++      auto const original{ runtime::second(expansion) };
++      auto const expanded_from{ object_source(original) };
++      if(expanded_from == read::source::unknown())
++      {
++        break;
++      }
++      source = expanded_from;
++      expansion = expanded_from.macro_expansion;
++    }
++    /* We trim things down to just the start of the form, rather than underline the whole thing. */
++    source.end = source.start;
++    return source;
++  }
++
+   /* TODO: Move postwalk into the nodes. */
+   template <typename T, typename F>
+   requires std::is_base_of_v<expression, T>
+@@ -183,7 +205,17 @@
+     expression_ref expr_to_add{ expr };
+     if(!cpp_util::is_any_object(expr_type))
+     {
+-      jank_debug_assert(cpp_util::is_trait_convertible(expr_type));
++      if(!cpp_util::is_trait_convertible(expr_type))
++      {
++        auto const source{ original_source(orig_expr->form) };
++        throw error::analyze_invalid_cpp_type(
++          util::format("This top-level form was wrapped in a function in order to be evaluated, "
++                       "but it returns a '{}', which is not trait convertible. Either convert the "
++                       "value or return something else.",
++                       analyze::cpp_util::get_qualified_type_name(expr_type)),
++          source,
++          {});
++      }
+       expr_to_add = jtl::make_ref<expr::cpp_conversion>(expr->position,
+                                                         expr->frame,
+                                                         expr->needs_box,
+@@ -274,7 +306,21 @@
+     profile::timer const timer{ util::format("eval ast node {}",
+                                              analyze::expression_kind_str(ex->kind)) };
+     object_ref ret{};
+-    visit_expr([&ret](auto const typed_ex) { ret = eval(typed_ex); }, ex);
++    visit_expr(
++      [&ret, ex](auto const typed_ex) {
++        try
++        {
++          ret = eval(typed_ex);
++        }
++        catch(error_ref const e)
++        {
++          /* We keep the original form from the call expression so we can point
++           * back to it if an exception is thrown during eval. */
++          e->add_usage(original_source(ex->form));
++          throw e;
++        }
++      },
++      ex);
+     return ret;
+   }
+ 
+@@ -335,30 +381,20 @@
+       source = deref(source);
+     }
+ 
+-    try
++    if(expr->arg_exprs.empty())
+     {
+-      if(expr->arg_exprs.empty())
++      return source.call();
++    }
++    else
++    {
++      native_vector<object_ref> arg_vals;
++      arg_vals.reserve(expr->arg_exprs.size());
++      for(auto const &arg_expr : expr->arg_exprs)
+       {
+-        return source.call();
++        arg_vals.emplace_back(eval(arg_expr));
+       }
+-      else
+-      {
+-        native_vector<object_ref> arg_vals;
+-        arg_vals.reserve(expr->arg_exprs.size());
+-        for(auto const &arg_expr : expr->arg_exprs)
+-        {
+-          arg_vals.emplace_back(eval(arg_expr));
+-        }
+ 
+-        return apply_to(source, make_box<obj::native_vector_sequence>(jtl::move(arg_vals)), true);
+-      }
+-    }
+-    catch(error_ref const e)
+-    {
+-      /* We keep the original form from the call expression so we can point
+-       * back to it if an exception is thrown during eval. */
+-      e->add_usage(object_source(expr->form));
+-      throw e;
++      return apply_to(source, make_box<obj::native_vector_sequence>(jtl::move(arg_vals)), true);
+     }
+   }
+ 
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/ir/processor.cpp upstream-main/compiler+runtime/src/cpp/jank/ir/processor.cpp
+--- upstream/compiler+runtime/src/cpp/jank/ir/processor.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/ir/processor.cpp	2026-11-24 18:32:07
+@@ -391,7 +391,7 @@
+                                                         capture.first,
+                                                         capture.second };
+         captured_idents[name] = { gen(analyze::expr::local_reference_ref{ &local_ref }, b).unwrap(),
+-                                  mutable_type(capture.second->type) };
++                                  capture.second->type };
+       }
+       return b.closure(expr->position,
+                        runtime::munge(expr->unique_name + "_ctx"),
+@@ -520,7 +520,8 @@
+       b.locals[name] = gen(pair.second, b).unwrap();
+ 
+       auto const local_type{ pair.second->get_type() };
+-      if(expr->loop_kind != analyze::expr::let::loop_kind::normal && is_typed_object(local_type))
++      if(expr->loop_kind != analyze::expr::let::loop_kind::normal
++         && is_typed_object_ref(local_type))
+       {
+         auto &local{ b.locals[name] };
+         local = b.type_erase(analyze::expression_position::value, local);
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/jit/processor_dynamic.cpp upstream-main/compiler+runtime/src/cpp/jank/jit/processor_dynamic.cpp
+--- upstream/compiler+runtime/src/cpp/jank/jit/processor_dynamic.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/jit/processor_dynamic.cpp	2026-11-24 18:32:07
+@@ -105,7 +105,10 @@
+       library_dirs.emplace_back(std::filesystem::absolute(library_dir.c_str()));
+     }
+ 
+-    library_dirs.emplace_back(util::multi_arch_lib_path().c_str());
++    for(auto const &dir : util::default_library_dirs())
++    {
++      library_dirs.emplace_back(dir);
++    }
+ 
+     /* JANK_JIT_FLAGS come from how jank was configured with CMake.
+      * JANK_EXTRA_FLAGS comes from the environment. Any `-L` flags in these need
+@@ -133,6 +136,7 @@
+       library_dirs.emplace_back("/opt/homebrew/lib");
+       /* Macports. */
+       library_dirs.emplace_back("/opt/local/lib");
++      library_dirs.emplace_back("/usr/lib");
+     }
+ 
+     return library_dirs;
+@@ -142,8 +146,6 @@
+   {
+     profile::timer const timer{ "jit ctor" };
+ 
+-    library_dirs = build_library_dirs();
+-
+     /* When we AOT compile the jank compiler/runtime, we keep track of the compiler
+      * flags used so we can use the same set during JIT compilation. Here we parse these
+      * into a vector for Clang. Since Clang wants a vector<char const*>, we need to
+@@ -248,6 +250,11 @@
+     args.emplace_back("-Wno-c++11-narrowing");
+ 
+     util::add_system_flags(args);
++
++    for(auto const &dir : build_library_dirs())
++    {
++      args.emplace_back(strdup(util::format("-L{}", dir.string()).c_str()));
++    }
+ 
+     /********* Every flag after this line is user-provided. *********/
+ 
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/nrepl/server.cpp upstream-main/compiler+runtime/src/cpp/jank/nrepl/server.cpp
+--- upstream/compiler+runtime/src/cpp/jank/nrepl/server.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/nrepl/server.cpp	2026-11-24 18:32:07
+@@ -34,7 +34,7 @@
+       boost::system::error_code error;
+ 
+       auto const length{ socket_.read_some(buffer(rx_buf_, rx_capacity), error) };
+-      if(error == boost::asio::error::eof || error == boost::asio::error::connection_reset)
++      if(error)
+       {
+         connected_ = false;
+         return "";
+@@ -43,10 +43,15 @@
+       return { rx_buf_, length };
+     }
+ 
+-    void write_some(std::string const &message)
++    void write(std::string const &message)
+     {
+-      boost::system::error_code error_code;
+-      socket_.write_some(buffer(message), error_code);
++      boost::system::error_code error;
++      boost::asio::write(socket_, buffer(message), error);
++
++      if(error)
++      {
++        connected_ = false;
++      }
+     }
+ 
+     tcp::socket socket_;
+@@ -71,9 +76,9 @@
+     return impl_->read_some();
+   }
+ 
+-  void native_client::write_some(std::string const &data) const
++  void native_client::write(std::string const &data) const
+   {
+-    impl_->write_some(data);
++    impl_->write(data);
+   }
+ 
+   // server
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/read/lex.cpp upstream-main/compiler+runtime/src/cpp/jank/read/lex.cpp
+--- upstream/compiler+runtime/src/cpp/jank/read/lex.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/read/lex.cpp	2026-11-24 18:32:07
+@@ -825,9 +825,23 @@
+                 found_exponent_sign = true;
+               }
+             }
++            /* Clojure only allows decimal denominators, so we report radix prefixes directly
++             * instead of falling through to a confusing base-10 digit error. */
++            else if(found_slash_after_number && (c == 'x' || c == 'X') && pos == token_start
++                    && file[token_start] == '0')
++            {
++              ++pos;
++              return error::lex_invalid_ratio("A ratio denominator must be a base-10 integer.",
++                                              { token_start, pos });
++            }
+             else if(c == 'r' || c == 'R')
+             {
+               ++pos;
++              if(found_slash_after_number)
++              {
++                return error::lex_invalid_ratio("A ratio denominator must be a base-10 integer.",
++                                                { token_start, pos });
++              }
+               if(found_r)
+               {
+                 continue;
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp	2026-11-24 18:32:07
+@@ -534,6 +534,15 @@
+ 
+   object_ref merge(object_ref const m, object_ref const other)
+   {
++    if(m.is_nil())
++    {
++      return other;
++    }
++    else if(other.is_nil())
++    {
++      return m;
++    }
++
+     /* TODO: Port visit_object: associatively_writable. */
+     return visit_object(
+       [](auto const typed_m, object_ref const other) -> object_ref {
+@@ -541,7 +550,7 @@
+ 
+         if constexpr(jtl::is_same<T, obj::nil>)
+         {
+-          return typed_m;
++          return other;
+         }
+         else if constexpr(behavior::associatively_writable<T>)
+         {
+@@ -876,14 +885,12 @@
+       return true;
+     }
+ 
+-    if(!l.has_behavior(object_behavior::seqable))
++    /* Only sequential collections can be equal to one another. nil, sets, maps, and strings
++     * are seqable, but must never equal an ordered collection. */
++    if(!is_sequential(l) || !is_sequential(r))
+     {
+       return false;
+     }
+-    if(!r.has_behavior(object_behavior::seqable))
+-    {
+-      return false;
+-    }
+ 
+     auto const l_range{ make_sequence_range(l) };
+     auto const r_range{ make_sequence_range(r) };
+@@ -1090,11 +1097,6 @@
+ 
+   object_ref sort(object_ref const coll)
+   {
+-    if(coll.is_nil())
+-    {
+-      return obj::persistent_list::empty();
+-    }
+-
+     return visit_seqable(
+       [](auto const typed_coll) -> object_ref {
+         native_vector<object_ref> vec;
+@@ -1103,6 +1105,11 @@
+           vec.push_back(e);
+         }
+ 
++        if(vec.empty())
++        {
++          return obj::persistent_list::empty();
++        }
++
+         std::stable_sort(vec.begin(), vec.end(), [](object_ref const a, object_ref const b) {
+           return runtime::compare(a, b) < 0;
+         });
+@@ -1123,17 +1130,17 @@
+ 
+   object_ref sort(object_ref const comp, object_ref const coll)
+   {
+-    if(coll.is_nil())
+-    {
+-      return obj::persistent_list::empty();
+-    }
+-
+     return visit_seqable(
+       [=](auto const typed_coll) -> object_ref {
+         native_vector<object_ref> vec;
+         for(auto const e : make_sequence_range(typed_coll))
+         {
+           vec.push_back(e);
++        }
++
++        if(vec.empty())
++        {
++          return obj::persistent_list::empty();
+         }
+ 
+         std::stable_sort(vec.begin(), vec.end(), [=](object_ref const a, object_ref const b) {
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp	2026-11-24 18:32:07
+@@ -110,6 +110,11 @@
+     return make_box<cons>(head, seq());
+   }
+ 
++  persistent_list_ref lazy_sequence::empty()
++  {
++    return persistent_list::empty();
++  }
++
+   object_ref lazy_sequence::realize() const
+   {
+     std::lock_guard<std::recursive_mutex> const lock{ mutex };
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/obj/native_vector_sequence.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/native_vector_sequence.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/obj/native_vector_sequence.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/native_vector_sequence.cpp	2026-11-24 18:32:07
+@@ -43,31 +43,46 @@
+   /* behavior::object_like */
+   bool native_vector_sequence::equal(object const &o) const
+   {
+-    return runtime::equal(o, data.begin(), data.end());
++    return runtime::equal(o,
++                          data.begin() + static_cast<decltype(data)::difference_type>(index),
++                          data.end());
+   }
+ 
+   void native_vector_sequence::to_string(jtl::string_builder &buff) const
+   {
+-    runtime::to_string(data.begin(), data.end(), "(", ')', buff);
++    runtime::to_string(data.begin() + static_cast<decltype(data)::difference_type>(index),
++                       data.end(),
++                       "(",
++                       ')',
++                       buff);
+   }
+ 
+   jtl::immutable_string native_vector_sequence::to_string() const
+   {
+     jtl::string_builder buff;
+-    runtime::to_string(data.begin(), data.end(), "(", ')', buff);
++    runtime::to_string(data.begin() + static_cast<decltype(data)::difference_type>(index),
++                       data.end(),
++                       "(",
++                       ')',
++                       buff);
+     return buff.release();
+   }
+ 
+   jtl::immutable_string native_vector_sequence::to_code_string() const
+   {
+     jtl::string_builder buff;
+-    runtime::to_code_string(data.begin(), data.end(), "(", ')', buff);
++    runtime::to_code_string(data.begin() + static_cast<decltype(data)::difference_type>(index),
++                            data.end(),
++                            "(",
++                            ')',
++                            buff);
+     return buff.release();
+   }
+ 
+   uhash native_vector_sequence::to_hash() const
+   {
+-    return hash::ordered(data.begin(), data.end());
++    return hash::ordered(data.begin() + static_cast<decltype(data)::difference_type>(index),
++                         data.end());
+   }
+ 
+   /* behavior::seqable */
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp	2026-11-24 18:32:07
+@@ -1,6 +1,7 @@
+ #include <jtl/utf8.hpp>
+ 
+ #include <jank/runtime/obj/persistent_string_sequence.hpp>
++#include <jank/runtime/obj/persistent_list.hpp>
+ #include <jank/runtime/obj/persistent_string.hpp>
+ #include <jank/runtime/obj/character.hpp>
+ #include <jank/runtime/core/seq_ext.hpp>
+@@ -151,5 +152,10 @@
+   cons_ref persistent_string_sequence::conj(object_ref const head)
+   {
+     return make_box<cons>(head, runtime::detail::untagged(this));
++  }
++
++  persistent_list_ref persistent_string_sequence::empty()
++  {
++    return persistent_list::empty();
+   }
+ }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/obj/promise.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/promise.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/obj/promise.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/promise.cpp	2026-11-24 18:32:07
+@@ -29,7 +29,10 @@
+       locked_state->val = o;
+       locked_state->status = promise_status::ready;
+       sync.notify_all();
++      return runtime::detail::untagged(this);
+     }
+-    return runtime::detail::untagged(this);
++
++    /* Clojure returns nil for deliveries to an already-realized promise. */
++    return jank_nil;
+   }
+ }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp	2026-11-24 18:32:07
+@@ -23,7 +23,7 @@
+ 
+   transient_array_map::transient_array_map(runtime::detail::native_array_map const &d)
+     : object{ obj_type, obj_behaviors }
+-    , data{ d }
++    , data{ d.clone() }
+   {
+   }
+ 
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/runtime/obj/transient_vector.cpp upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/transient_vector.cpp
+--- upstream/compiler+runtime/src/cpp/jank/runtime/obj/transient_vector.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/runtime/obj/transient_vector.cpp	2026-11-24 18:32:07
+@@ -52,6 +52,7 @@
+ 
+   object_ref transient_vector::nth(object_ref const index) const
+   {
++    assert_active();
+     if(is_integral(index))
+     {
+       auto const i(to_i64(index));
+@@ -197,6 +198,7 @@
+ 
+   object_ref transient_vector::find(object_ref const idx) const
+   {
++    assert_active();
+     if(is_integral(idx))
+     {
+       auto const i(to_i64(idx));
+@@ -217,6 +219,7 @@
+ 
+   bool transient_vector::contains(object_ref const elem) const
+   {
++    assert_active();
+     if(is_integral(elem))
+     {
+       auto const i(to_i64(elem));
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/terminal_repl_client.cpp upstream-main/compiler+runtime/src/cpp/jank/terminal_repl_client.cpp
+--- upstream/compiler+runtime/src/cpp/jank/terminal_repl_client.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/terminal_repl_client.cpp	2026-11-24 18:32:07
+@@ -1,11 +1,13 @@
+ #include <cctype>
++#include <cstdio>
+ #include <filesystem>
+ #include <fstream>
++#include <random>
+ #include <set>
++#include <stdexcept>
+ #include <string>
++#include <string_view>
+ 
+-#include <unistd.h>
+-
+ #include <isocline.h>
+ 
+ #include <jtl/terminal.hpp>
+@@ -34,6 +36,37 @@
+ 
+ namespace jank::terminal_repl
+ {
++  /* mkstemp can't preserve a suffix and doesn't exist on Windows. Instead, we pick random
++   * names and create them with the "x" (exclusive) fopen mode, which atomically fails if the
++   * file already exists, so we never reuse someone else's file. */
++  static std::string make_temp_file(std::filesystem::path const &dir,
++                                    std::string const &prefix,
++                                    std::string const &suffix)
++  {
++    static constexpr std::string_view chars{ "abcdefghijklmnopqrstuvwxyz0123456789" };
++    std::random_device rd;
++    std::uniform_int_distribution<size_t> dist{ 0, chars.size() - 1 };
++
++    for(size_t attempt{}; attempt < 100; ++attempt)
++    {
++      std::string name{ prefix };
++      for(size_t i{}; i < 8; ++i)
++      {
++        name += chars[dist(rd)];
++      }
++      name += suffix;
++
++      auto const path{ dir / name };
++      /* NOLINTNEXTLINE(cppcoreguidelines-owning-memory) */
++      if(auto const f{ std::fopen(path.string().c_str(), "wx") }; f != nullptr)
++      {
++        std::fclose(f);
++        return path.string();
++      }
++    }
++    throw std::runtime_error{ "Unable to create a temporary file for the REPL." };
++  }
++
+   static bool is_clj_word_char(char const * const s, long const len)
+   {
+     if(s == nullptr || len <= 0)
+@@ -279,9 +312,7 @@
+     }
+ 
+     auto const tmp{ std::filesystem::temp_directory_path() };
+-    std::string path_tmp{ (tmp / "jank-repl-XXXXXX").string() };
+-    int const fd{ mkstemp(path_tmp.data()) };
+-    close(fd);
++    auto const path_tmp{ make_temp_file(tmp, "jank-repl-", ".jank") };
+ 
+     auto const first_res_var{ __rt_ctx->find_var("clojure.core", "*1") };
+     auto const second_res_var{ __rt_ctx->find_var("clojure.core", "*2") };
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/util/clang.cpp upstream-main/compiler+runtime/src/cpp/jank/util/clang.cpp
+--- upstream/compiler+runtime/src/cpp/jank/util/clang.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/util/clang.cpp	2026-11-24 18:32:07
+@@ -219,6 +219,54 @@
+     return ok();
+   }
+ 
++  std::vector<std::string> default_library_dirs()
++  {
++    static auto const result{ []() -> std::vector<std::string> {
++      auto const clang_path_res{ find_clang() };
++      if(clang_path_res.is_none())
++      {
++        return {};
++      }
++
++      std::string buffer;
++      llvm::raw_string_ostream diag_stream{ buffer };
++      clang::DiagnosticOptions diag_opts{};
++      auto * const diag_client{
++        new clang::TextDiagnosticPrinter{ diag_stream, diag_opts }
++      };
++      clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> const diag_id{ new clang::DiagnosticIDs() };
++      clang::DiagnosticsEngine diags{ diag_id, diag_opts, diag_client, true };
++      auto const &clang_path{ clang_path_res.unwrap() };
++      clang::driver::Driver driver{ clang_path.c_str(),
++                                    llvm::sys::getDefaultTargetTriple(),
++                                    diags,
++                                    "jank",
++                                    llvm::vfs::getRealFileSystem() };
++      driver.setCheckInputsExist(false);
++
++      /* Clang derives its implicit -L paths (GCC install dirs, multiarch dirs, /usr/lib, etc.)
++       * from the toolchain it selects for the target, so we ask the same toolchain rather than
++       * trying to replicate its logic. The input is just a placeholder to force a link job. */
++      std::vector<char const *> args{ clang_path.c_str(), "jank-placeholder.o" };
++      util::add_system_flags(args);
++      std::unique_ptr<clang::driver::Compilation> const compilation{ driver.BuildCompilation(
++        args) };
++      if(!compilation)
++      {
++        return {};
++      }
++
++      std::vector<std::string> dirs;
++      for(auto const &path : compilation->getDefaultToolChain().getFilePaths())
++      {
++        dirs.emplace_back(path);
++      }
++      return dirs;
++    }() };
++
++    return result;
++  }
++
+   jtl::option<jtl::immutable_string> find_pch(jtl::immutable_string const &binary_version)
+   {
+     std::filesystem::path const jank_path{ process_dir().c_str() };
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/util/environment_dynamic.cpp upstream-main/compiler+runtime/src/cpp/jank/util/environment_dynamic.cpp
+--- upstream/compiler+runtime/src/cpp/jank/util/environment_dynamic.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/util/environment_dynamic.cpp	2026-11-24 18:32:07
+@@ -16,98 +16,6 @@
+ 
+ namespace jank::util
+ {
+-  /* This is a reduced version of Clang's Linux::getMultiarchTriple from
+-   * clang/lib/Driver/ToolChains/Linux.cpp. The original is private to Clang's
+-   * Linux toolchain, so keep this mapping in sync for the host architectures
+-   * supported by jank. */
+-  [[maybe_unused]]
+-  static std::string linux_multiarch_triple(llvm::Triple const &target_triple)
+-  {
+-    auto const arch{ target_triple.getArch() };
+-    auto const environment{ target_triple.getEnvironment() };
+-
+-    if(arch == llvm::Triple::arm || arch == llvm::Triple::thumb)
+-    {
+-      if(environment == llvm::Triple::GNUEABIHF || environment == llvm::Triple::MuslEABIHF
+-         || environment == llvm::Triple::EABIHF)
+-      {
+-        return "arm-linux-gnueabihf";
+-      }
+-      return "arm-linux-gnueabi";
+-    }
+-
+-    if(arch == llvm::Triple::armeb || arch == llvm::Triple::thumbeb)
+-    {
+-      if(environment == llvm::Triple::GNUEABIHF || environment == llvm::Triple::MuslEABIHF
+-         || environment == llvm::Triple::EABIHF)
+-      {
+-        return "armeb-linux-gnueabihf";
+-      }
+-      return "armeb-linux-gnueabi";
+-    }
+-
+-    if(arch == llvm::Triple::x86)
+-    {
+-      return "i386-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::x86_64)
+-    {
+-      if(environment == llvm::Triple::GNUX32)
+-      {
+-        return "x86_64-linux-gnux32";
+-      }
+-      return "x86_64-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::aarch64)
+-    {
+-      return "aarch64-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::aarch64_be)
+-    {
+-      return "aarch64_be-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::ppc64)
+-    {
+-      return "powerpc64-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::ppc64le)
+-    {
+-      return "powerpc64le-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::riscv64)
+-    {
+-      return "riscv64-linux-gnu";
+-    }
+-
+-    if(arch == llvm::Triple::systemz)
+-    {
+-      return "s390x-linux-gnu";
+-    }
+-
+-    return target_triple.str();
+-  }
+-
+-  jtl::immutable_string multi_arch_lib_path()
+-  {
+-    if constexpr(jtl::current_platform == jtl::platform::linux_like)
+-    {
+-      llvm::Triple const target_triple{ llvm::sys::getDefaultTargetTriple() };
+-      auto const multiarch_lib_path{ std::filesystem::path{ "/usr/lib" }
+-                                     / linux_multiarch_triple(target_triple) };
+-      return multiarch_lib_path.string();
+-    }
+-    else
+-    {
+-      return "/usr/lib";
+-    }
+-  }
+-
+   /* The binary version is composed of two things:
+    *
+    * 1. The LLVM target triplet
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/util/environment_static.cpp upstream-main/compiler+runtime/src/cpp/jank/util/environment_static.cpp
+--- upstream/compiler+runtime/src/cpp/jank/util/environment_static.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/util/environment_static.cpp	2026-11-24 18:32:07
+@@ -23,9 +23,4 @@
+   {
+     throw error::runtime_static_feature_disabled("prelude_hpp_path");
+   }
+-
+-  jtl::immutable_string multi_arch_lib_path()
+-  {
+-    return "/usr/lib";
+-  }
+ }
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/jank/util/try.cpp upstream-main/compiler+runtime/src/cpp/jank/util/try.cpp
+--- upstream/compiler+runtime/src/cpp/jank/util/try.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/jank/util/try.cpp	2026-11-24 18:32:07
+@@ -40,7 +40,8 @@
+   {
+     /* Clojure functions get turned from `clojure_core$subs_XXX_2`
+      * into `clojure.core/subs (arity 2)`. */
+-    if(frame.filename.ends_with(".jank") || frame.filename.ends_with(".cljc"))
++    if(frame.filename.ends_with(".jank") || frame.filename.ends_with(".cljc")
++       || frame.filename.starts_with("jank-repl"))
+     {
+ #ifdef JANK_WINDOWS_LIKE
+       static std::regex const clojure_fn_name{ R"((\S+)_JJJ_(\S+)_\d+_(\d+))" };
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/cpp/main.cpp upstream-main/compiler+runtime/src/cpp/main.cpp
+--- upstream/compiler+runtime/src/cpp/main.cpp	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/cpp/main.cpp	2026-11-24 18:32:07
+@@ -35,8 +35,6 @@
+ #include <jank/runtime/convert/builtin.hpp>
+ #include <jank/terminal_repl_client.hpp>
+ 
+-extern "C" void jank_init_core_libs_phase_1();
+-
+ #ifdef JANK_PHASE_2
+ extern "C" void jank_init_core_libs();
+ #endif
+@@ -255,8 +253,6 @@
+       }
+ 
+       __rt_ctx = new(UseGC) runtime::context{};
+-
+-      jank_init_core_libs_phase_1();
+ 
+ #ifdef JANK_PHASE_2
+       jank_init_core_libs();
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/clojure/string.jank upstream-main/compiler+runtime/src/jank/clojure/string.jank
+--- upstream/compiler+runtime/src/jank/clojure/string.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/clojure/string.jank	2026-11-24 18:32:07
+@@ -267,4 +267,6 @@
+ (defn includes?
+   "True if s includes substr."
+   [s substr]
++  (when (nil? s)
++    (throw (ex-info "includes? does not support nil"  {})))
+   (cpp/clojure.string_native.includes (.to_string s) substr))
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/compiler.jank upstream-main/compiler+runtime/src/jank/jank/compiler.jank
+--- upstream/compiler+runtime/src/jank/jank/compiler.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/compiler.jank	2026-11-24 18:32:07
+@@ -1,4 +1,9 @@
+ (ns jank.compiler
+-  (:require [jank.compiler-native]))
++  (:include "jank/compiler_native.hpp"))
+ 
+-(def native-source jank.compiler-native/native-source)
++(defmacro native-source
++  "Returns a formatted C++ string of the generated C++ code for a
++   particular Clojure form. Note that the form will be automatically wrapped
++   in a function. Also, the form should not be quoted."
++  [form]
++  (cpp/jank.compiler_native.native_source form))
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/bencode.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/bencode.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/bencode.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/bencode.jank	2026-11-24 18:32:07
+@@ -70,6 +70,11 @@
+ 
+     nil))
+ 
++(defn named>string [x]
++  (if-let [ns (namespace x)]
++    (str ns "/" (name x))
++    (name x)))
++
+ (defn parse
+   "Parse a bencode value from a string, returning jank data."
+   [s]
+@@ -97,12 +102,16 @@
+ 
+     (or (symbol? x)
+         (keyword? x))
+-    (if-let [ns (namespace x)]
+-      (write (str ns "/" (name x)))
+-      (write (name x)))
++    (write (named>string x))
+ 
+     (map? x)
+-    (str "d" (reduce-kv (fn [s k v] (str s (write k) (write v))) "" x) "e")
++    (str "d"
++         (->> (update-keys x #(if (or (symbol? %) (keyword? %))
++                                (named>string %)
++                                (str %)))
++              (into (sorted-map))
++              (reduce-kv (fn [s k v] (str s (write k) (write v))) ""))
++         "e")
+ 
+     (coll? x)
+     (str "l" (apply str (map write x)) "e")
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/core.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/core.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/core.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/core.jank	2026-11-24 18:32:07
+@@ -73,7 +73,7 @@
+   "Encode the given message and write it to the client socket."
+   [^(:* jank.nrepl.server.native_client) client msg]
+   (let [msg-str (bencode/write msg)]
+-    (.write_some client (cpp/cast std.string msg-str))
++    (.write client (cpp/cast std.string msg-str))
+     nil))
+ 
+ (defn handle-client
+@@ -82,11 +82,27 @@
+   (loop [[req remainder] nil]
+     (when (connected? client*)
+       (when req
+-        (log "<-" (pr-str (abbreviate req 20)))
+-        (let [resps (responses-for req (handle-message req))]
+-          (doseq [resp resps]
+-            (log "->" (pr-str (abbreviate resp 20)))
+-            (write-message client* resp))))
++        (try
++          (log "<-" (pr-str (abbreviate req 20)))
++          (let [resps (responses-for req (handle-message req))]
++            (doseq [resp resps]
++              (log "->" (pr-str (abbreviate resp 20)))
++              (write-message client* resp)))
++          (catch std.exception e
++            (write-message
++             client*
++             (response-for req {:status [:error :done]
++                                :err    (str "An exception was thrown from the nREPL handler:" (.what e))})))
++          (catch jank.runtime.object_ref e
++            (write-message
++             client*
++             (response-for req {:status [:error :done]
++                                :err    (str "An exception was thrown from the nREPL handler:" (pr-str e))})))
++          (catch jank.error_ref e
++            (write-message
++             client*
++             (response-for req {:status [:error :done]
++                                :err    (str "An exception was thrown from the nREPL handler:" (.-message (cpp/* e)))})))))
+       (recur (read-message client* remainder)))))
+ 
+ (defn -main [& args]
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/close.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/close.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/close.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/close.jank	2026-11-24 18:32:07
+@@ -3,4 +3,4 @@
+    [jank.nrepl.server.handler :refer [handle-message]]))
+ 
+ (defmethod handle-message :close [_]
+-  {:status [:done]})
++  {:status [:session-closed :done]})
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank	2026-11-24 18:32:07
+@@ -63,12 +63,18 @@
+               :type      (candidate-type v)
+               :candidate (str k)})))))
+ 
+-(defmethod handle-message :completions [msg]
++(defn handle [msg]
+   (let [ns     (find-str-ns (get msg "ns"))
+-        prefix (get msg "prefix")]
++        prefix (or (get msg "prefix") (get msg "symbol"))]
+     (if ns
+       ;; TODO: support namespace candidates, interop candidates, etc.
+       {:completions (vec (concat (vars-candidates ns prefix)
+                                  (special-candidates prefix)))
+        :status      [:done]}
+       {:status [:done :namespace-not-found]})))
++
++(defmethod handle-message :completions [msg]
++  (handle msg))
++
++(defmethod handle-message :complete [msg]
++  (handle msg))
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/describe.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/describe.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/describe.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/describe.jank	2026-11-24 18:32:07
+@@ -9,6 +9,9 @@
+               :eval        {}
+               :load-file   {}
+               :lookup      {}
+-              :completions {}}
++              :info        {}
++              :completions {}
++              :complete    {}
++              :close       {}}
+    :versions {:jank {:version-string cpp/JANK_VERSION}}
+    :status   [:done]})
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/eval.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/eval.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/eval.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/eval.jank	2026-11-24 18:32:07
+@@ -20,44 +20,48 @@
+ ;; eval helps preserve correct source information relative to the entire file,
+ ;; which is useful for things such as error reporting and logging.
+ (defn- do-eval [ns code file-path line col inspect?]
+-  ;; TODO: Once we have threads, we can spawn a background thread to capture and
+-  ;; send interleaved output during a long eval.
+-  (let [target-ns        (or (some-> ns symbol find-ns) default-ns)
++  (if (empty? code)
++    {:status [:no-code :done]}
++    ;; TODO: Once we have threads, we can spawn a background thread to capture and
++    ;; send interleaved output during a long eval.
++    (let [target-ns (if ns (-> ns symbol find-ns) default-ns)]
++      (if-not target-ns
++        {:status [:namespace-not-found :done]}
+         ;; do the eval, capturing anything on stdout
+-        {:keys [ret stdout stderr]} (with-capture
+-                                      (fn []
+-                                        (binding [*ns* target-ns
+-                                                  *file* file-path]
+-                                          ;; the evaluation may change the namespace
+-                                          [(safe-eval code line col) *ns*])))
+-        [success res-ns] ret]
+-    (cond
+-      ;; Eval results in error.
+-      (not success)
+-      [(when-not (blank? stdout) {:out stdout})
+-       (when-not (blank? stderr) {:err stderr})
+-       ;; The error contents will be in :ex for CIDER, but also
+-       ;; populate :err for clients which don't specially handle :ex
+-       ;; responses.
+-       {:err (str *e)}
+-       {:ex     (str *e)
+-        :status [:done :eval-error]}]
++        (let [{:keys [ret stdout stderr]} (with-capture
++                                            (fn []
++                                              (binding [*ns*   target-ns
++                                                        *file* file-path]
++                                                ;; the evaluation may change the namespace
++                                                [(safe-eval code line col) *ns*])))
++              [success res-ns]            ret]
++          (cond
++            ;; Eval results in error.
++            (not success)
++            [(when-not (blank? stdout) {:out stdout})
++             (when-not (blank? stderr) {:err stderr})
++             ;; The error contents will be in :ex for CIDER, but also
++             ;; populate :err for clients which don't specially handle :ex
++             ;; responses.
++             {:err (str *e)}
++             {:ex     (str *e)
++              :status [:done :eval-error]}]
+ 
+-      ;; Client requests an inspection of the last result.
+-      inspect?
+-      {:value  (inspect-str *1)
+-       :status [:done]}
++            ;; Client requests an inspection of the last result.
++            inspect?
++            {:value  (inspect-str *1)
++             :status [:done]}
+ 
+-      ;; Normal eval result.
+-      :else
+-      [(when-not (blank? stdout) {:out stdout})
+-       (when-not (blank? stderr) {:err stderr})
+-       {:value  (pr-str *1)
+-        :ns     (str res-ns)}
+-       ;; CIDER expects :status in a separate response message
+-       ;; from :value.
+-       ;; see: https://github.com/clojure-emacs/cider/issues/3869
+-       {:status [:done]}])))
++            ;; Normal eval result.
++            :else
++            [(when-not (blank? stdout) {:out stdout})
++             (when-not (blank? stderr) {:err stderr})
++             {:value (pr-str *1)
++              :ns    (str res-ns)}
++             ;; CIDER expects :status in a separate response message
++             ;; from :value.
++             ;; see: https://github.com/clojure-emacs/cider/issues/3869
++             {:status [:done]}]))))))
+ 
+ (defmethod handle-message :eval [msg]
+   (do-eval (get msg "ns")
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/lookup.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/lookup.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/handler/lookup.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler/lookup.jank	2026-11-24 18:32:07
+@@ -1,26 +1,41 @@
+ (ns jank.nrepl.server.handler.lookup
+-  (:require [jank.nrepl.server.handler :refer [handle-message]]))
++  (:require [jank.nrepl.server.handler :refer [handle-message]]
++            [jank.nrepl.server.handler.eval :refer [default-ns]]))
+ 
+ (defn lookup
+   "Lookup meta for the a symbol defined in a namespace, or return nil if either
+   is not defined."
+   [ns sym]
+-  (let [ns'  (some-> ns symbol find-ns)
++  ;; TODO: Don't fall back to default-ns here. We should look up the session's
++  ;; current ns, once we do session bookkeeping.
++  (let [ns'  (or (some-> ns symbol find-ns) default-ns)
+         sym' (some-> sym symbol)]
+     (when (and ns' sym')
+-      (some-> (ns-resolve ns' sym') meta))))
++      (some->>
++       (ns-resolve ns' sym')
++       (meta)))))
+ 
+-(defmethod handle-message :lookup [msg]
++(defn handle [msg]
+   (let [ns  (get msg "ns")
+-        sym (get msg "sym")]
++        sym (or (get msg "sym") (get msg "symbol"))]
+     (if-let [m (lookup ns sym)]
+-      {:info (merge
+-              {:ns ns
+-               :name sym}
+-              (when-let [doc (:doc m)]
+-                {:doc (str doc)})
+-              (when-let [arglists (:arglists m)]
+-                {:arglists arglists
+-                 :arglists-str (str arglists)}))
+-       :status [:done]}
+-      {:status [:error :done]})))
++      (let [info (merge
++                  {:ns   (get-in m [:jank/source :module])
++                   :name sym}
++                  (when-let [doc (:doc m)]
++                    {:doc (str doc)})
++                  (when-let [arglists (:arglists m)]
++                    {:arglists     arglists
++                     :arglists-str (str arglists)}))]
++        (merge
++         (case (get msg "op")
++           "lookup" {:info info}
++           "info"   info)
++         {:status [:done]}))
++      {:status [:no-info :done]})))
++
++(defmethod handle-message :lookup [msg]
++  (handle msg))
++
++(defmethod handle-message :info [msg]
++  (handle msg))
+diff -ru -x .git -x third-party -x test -x .github -x lein-jank -x lein-jank-template -x example -x flake.nix -x test-proof upstream/compiler+runtime/src/jank/jank/nrepl/server/handler.jank upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler.jank
+--- upstream/compiler+runtime/src/jank/jank/nrepl/server/handler.jank	2026-11-24 15:55:47
++++ upstream-main/compiler+runtime/src/jank/jank/nrepl/server/handler.jank	2026-11-24 18:32:07
+@@ -2,6 +2,7 @@
+ 
+ (defmulti handle-message #(some-> (get % "op") keyword))
+ 
+-(defmethod handle-message :default [_]
++(defmethod handle-message :default [msg]
+   ;; Behavior from: https://github.com/nrepl/nrepl/blob/3cc751a/src/clojure/nrepl/server.clj#L111
+-  {:status [:error :unknown-op :done]})
++  {:status [:error :unknown-op :done]
++   :op     (get msg "op")})

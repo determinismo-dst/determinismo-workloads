@@ -1,0 +1,997 @@
+== examples (jank: the replica's analysis, then the IR's meaning; Clojure: Compiler.java's rules)
+DIFFER A1 if, int/double: (if true 1 2.5)
+         jank 1.0
+         clj  1
+DIFFER A1 if, int/bool: (if false 0 false)
+         jank 0
+         clj  false
+DIFFER A1 if, as a test: (if (if false 0 false) :yes :no)
+         jank :yes
+         clj  :no
+DIFFER A1 (or true 0): (or true 0)
+         jank 1
+         clj  true
+DIFFER A1 (and false 5): (and false 5)
+         jank 0
+         clj  false
+DIFFER A1 (and false 5) as a test: (if (and false 5) :yes :no)
+         jank :yes
+         clj  :no
+agree  A1 (or false 1.5): (or false 1.5)
+         jank 1.5
+         clj  1.5
+DIFFER A1 (and (pos? x) 5) as a test: ((fn* [x] (if (and (pos? x) 5) :pos :non-pos)) -1)
+         jank :pos
+         clj  :non-pos
+DIFFER A2 loop int, recur double: (loop* [x 0 n 0] (if (= n 1) x (recur 1.5 1)))
+         jank 1
+         clj  1.5
+DIFFER A2 loop int, (+ x 0.5): (loop* [x 0 n 0] (if (= n 3) x (recur (+ x 0.5) (inc n))))
+         jank 0
+         clj  1.5
+DIFFER A2 loop int, inc past 2^31: (loop* [x 2147483647 n 0] (if (= n 1) x (recur (inc x) 1)))
+         jank -2147483648
+         clj  2147483648
+DIFFER A2 loop int, sum of doubles: (loop* [acc 0 xs [1.5 2.5]] (if (first xs) (recur (+ acc (first xs)) (rest xs)) acc))
+         jank 3
+         clj  4.0
+DIFFER A2 loop bool, recur nil: (loop* [x true n 0] (if (= n 1) x (recur nil 1)))
+         jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.nil))
+         clj  nil
+DIFFER A2 loop int, recur string: (loop* [x 0 n 0] (if (= n 1) x (recur "s" 1)))
+         jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `int` and `char const[2]`.)
+         clj  "s"
+DIFFER A2 loop int, recur a boolean object: (loop* [x 0 n 0] (if (= n 1) x (recur (= 1 1) 1)))
+         jank 1
+         clj  true
+DIFFER A2 loop double, recur a long object: (loop* [x 0.5 n 0] (if (= n 1) x (recur (count [1 2]) 1)))
+         jank 2.0
+         clj  2
+DIFFER A3 recur in fn in loop: ((loop* [a 1 b 2] (fn* [y] (if y (recur nil) :done))) 5)
+         jank compile error (analyze/invalid-recur-args: `recur` received 1 argument(s), but it requires exactly 2 here.)
+         clj  :done
+DIFFER A3 recur in fn in loop init: (loop* [f (fn* [n] (if (= n 0) n (recur 0)))] (f 5))
+         jank compile error (analyze/invalid-recur-args: `recur` received 1 argument(s), but it requires exactly 0 here.)
+         clj  0
+DIFFER A4 fn name vs outer local: ((fn* [f] ((fn* f [n] (if (= n 0) :done (f 0))) 1)) 7)
+         jank throws (7 is not callable)
+         clj  :done
+DIFFER A5 fn name vs macro: ((fn* when [n] (if (= n 0) :done (when 0))) 1)
+         jank nil
+         clj  :done
+DIFFER A6 &form: (form-of 1 2)
+         jank ((1 2))
+         clj  (form-of 1 2)
+DIFFER A6 &env: (let* [a 1] (env-count))
+         jank compile error (analyze/macro-expansion-exception: count not supported on this type: Jank.Analyzer.ObjectType.symbol)
+         clj  1
+DIFFER A7 macro-made vector's meta: (meta (mk-vec 1 2))
+         jank {:jank/macro-expansion (mk-vec 1 2)}
+         clj  nil
+DIFFER A7 macro-made map's meta: (meta (mk-map :a 1))
+         jank {:jank/macro-expansion (mk-map :a 1)}
+         clj  nil
+DIFFER A8 private var in a macro's argument: (when true other/secret)
+         jank 42
+         clj  compile error (var: #'other/secret is not public)
+DIFFER A8 private var from a macro: (other/secret-of)
+         jank 42
+         clj  compile error (var: #'other/secret is not public)
+DIFFER A9 (+ true 1): (+ true 1)
+         jank 2
+         clj  throws (+ of a non-number)
+DIFFER A9 (inc true): (inc true)
+         jank 2
+         clj  throws (inc of a non-number)
+DIFFER A10 (:k): (:k)
+         jank nil
+         clj  throws (ArityException: keyword)
+DIFFER A11 catch without binding: (try 1 (catch :default))
+         jank undefined behaviour ((catch T) without a binding symbol: jtl::option::unwrap() on none (processor.cpp:3048))
+         clj  compile error (Unable to resolve symbol: catch in this context)
+DIFFER A12 object loop local, recur int (oracle): (loop* [x nil n 0] (if (= n 1) x (recur 5 1)))
+         jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.)
+         clj  5
+DIFFER A14 (+ 2147483647 1): (+ 2147483647 1)
+         jank -2147483648
+         clj  2147483648
+DIFFER A14 (* 100000 100000): (* 100000 100000)
+         jank 1410065408
+         clj  10000000000
+agree  A14 (+ 2147483648 1), a long literal: (+ 2147483648 1)
+         jank 2147483649
+         clj  2147483649
+DIFFER A13 case with a nil default: (case 1 1 0 2 nil nil)
+         jank throws (invalid object type (expected jank::runtime::obj::nil_ref found Jank.Analyzer.ObjectType.smallInteger))
+         clj  0
+DIFFER A13 case, default int, branch double: (case 5 1 1.5 0)
+         jank 0.0
+         clj  0
+DIFFER A13 case, branch then default: (case 1 1 2 3.5)
+         jank 2.0
+         clj  2
+DIFFER A13 case, double branch then int branch: (case 1 1 1.5 2 7 0)
+         jank 1
+         clj  1.5
+DIFFER A13 case, keyword branch then double branch: (case 1 1 :a 2 1.5 0)
+         jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.keyword)
+         clj  :a
+DIFFER A13 case, keyword branch then double branch, default taken: (case 3 1 :a 2 1.5 0)
+         jank 0.0
+         clj  0
+agree  control: case of keywords: (case 2 1 :a 2 :b :c)
+         jank :b
+         clj  :b
+agree  control: case of ints: (case 2 1 10 2 20 30)
+         jank 20
+         clj  20
+agree  control: closure capture: (let* [x 1 f (fn* [] x) x 2] (f))
+         jank 1
+         clj  1
+agree  control: local shadows inline: (let* [inc (fn* [a] a)] (inc 5))
+         jank 5
+         clj  5
+agree  control: def then call: (def g (fn* [n] (+ n 1))) (g 41)
+         jank 42
+         clj  42
+agree  control: loop of objects: (loop* [xs [1 2] acc []] (if (first xs) (recur (rest xs) (vector acc)) acc))
+         jank [[[]]]
+         clj  [[[]]]
+== all forms round 0: found after 3 timelines; shrunk to 5 decisions: (meta (mk-vec 0)) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil; tags [macro-meta-on-literal]
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 1: found after 4 timelines; shrunk to 9 decisions: (do 0 (form-of 0)) => jank ((0)); Clojure (form-of 0); tags [macro-form-env]
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 2: found after 12 timelines; shrunk to 31 decisions: (let* [x 0] (if (do x (let* [x 0] 0)) (do (do x x) (if 0 0)) (do (other/secret-of) x))) => jank 0; Clojure compile error (var: #'other/secret is not public); tags [private-under-expansion]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.if.else","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":5}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+== all forms round 3: found after 117 timelines; shrunk to 39 decisions: (if (if (loop* [x 0 k 0] (if (= k 1) (do 0 0) (recur 0 1))) (let* [x ((fn* [x k] (if (= k 1) 0 (recur x 1))) 0 0)] (loop* [x :k k 0] (if (= k 1) 0 (recur 0 1))))) 0) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0; tags [op-equal-object-builtin]
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":10}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+== all forms round 4: found after 485 timelines; shrunk to 30 decisions: (let* [x 0] (let* [x (if 0 0)] (if (do 0 0) (loop* [x 0 k 0] (if (= k 1) 0 (recur nil 1)))))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure 0; tags [loop-native-recur]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":9}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+== all forms round 5: found after 745 timelines; shrunk to 8 decisions: (+ false 0) => jank 0; Clojure throws (+ of a non-number); tags [bool-arith]
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 6: found after 998 timelines; shrunk to 25 decisions: (= (do 0 (case 1 1 (case 1 1 false 0) 0)) 0) => jank true; Clojure false; tags [if-native-merge]
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":1}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 7: found after 1233 timelines; shrunk to 32 decisions: (let* [x (quote (quote (loop* [x 0 k 0] (if (= k 1) x (recur 0 1)))))] (do (quote 0) ((fn* [x k] (if (= k 1) (+ 2147483647 2147483647) (recur 0 1))) 0 0))) => jank -2; Clojure 4294967294; tags [int-arith]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":3}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 8: found after 1497 timelines; shrunk to 36 decisions: (let* [x (quote (let* [x (loop* [x 0 k 0] (if (= k 1) 0 (recur 0 1)))] x))] (loop* [x ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) k 0] (if (= k 1) 0 (recur 0 1)))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 0; tags [recur-crosses-fn]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 9: found after 3697 timelines; shrunk to 70 decisions: (let* [x 0] (case (do ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) x) 1 ((fn* [x k] (if (= k 1) ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) (recur 0 1))) 0 0) 2 (loop* [when 0 k 0] (if (= k 1) (when 0 0) (recur (do 0 0) 1))) ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0))) => jank compile error (analyze/invalid-case: Values of type `int` are not callable.); Clojure 0; tags [native-callee]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":3}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.case.clauses","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== all forms round 10: found after 7563 timelines; shrunk to 56 decisions: ((fn* [x k] (if (= k 1) x (recur (if (= (case 0 1 false true) (do 0 0)) (if 0 (do 0 0)) 0) 1))) (= (quote other/secret) (case 1 1 (if 0 0) 2 true false)) 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallInteger)); Clojure 0; tags [case-branch-type]
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":0}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":3}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":7}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.if.else","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":0}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":7}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.case.clauses","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":7}
+== all forms round 11: explore 20000 seeds, depth 4: nothing new (set aside: [macro-meta-on-literal, macro-form-env, private-under-expansion, op-equal-object-builtin, loop-native-recur, bool-arith, if-native-merge, int-arith, recur-crosses-fn, native-callee, case-branch-type])
+== fns, lets, macros round 0: found after 3 timelines; shrunk to 5 decisions: (meta (mk-vec 0)) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil; tags [macro-meta-on-literal]
+     {"name":"gen.kind","options":8,"value":5}
+     {"name":"gen.macro","options":6,"value":3}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== fns, lets, macros round 1: found after 4 timelines; shrunk to 22 decisions: (let* [x 0] (let* [x 0] (if (case 3 1 0 false) 0))) => jank 0; Clojure nil; tags [if-native-merge, case-branch-type]
+     {"name":"gen.kind","options":8,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":7}
+     {"name":"gen.case.value","options":4,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+== fns, lets, macros round 2: found after 17 timelines; shrunk to 17 decisions: (if (if (if (other/secret-of) 0) 0) 0) => jank 0; Clojure compile error (var: #'other/secret is not public); tags [private-under-expansion]
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":5}
+     {"name":"gen.macro","options":6,"value":5}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+== fns, lets, macros round 3: found after 21 timelines; shrunk to 10 decisions: (if 0 (form-of 0)) => jank ((0)); Clojure (form-of 0); tags [macro-form-env]
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":5}
+     {"name":"gen.macro","options":6,"value":1}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+== fns, lets, macros round 4: found after 2304 timelines; shrunk to 29 decisions: (let* [x (quote (quote (let* [x 0] x)))] ((fn* x [inc k] (if (= k 1) (do (if 0 0) x) (recur 0 1))) 0 0)) => jank (quote (let* [x 0] x)); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]; tags [fn-name-shadowed]
+     {"name":"gen.kind","options":8,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":8,"value":6}
+     {"name":"gen.kind","options":8,"value":6}
+     {"name":"gen.kind","options":8,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":8,"value":4}
+     {"name":"gen.fn.named","options":2,"value":1}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":3}
+     {"name":"gen.kind","options":8,"value":2}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.local","options":3,"value":2}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== fns, lets, macros round 5: found after 5692 timelines; shrunk to 40 decisions: (let* [when (quote 0)] (if (if 0 (if 0 0) 0) 0 ((fn* [x k] (if (= k 1) 0 (recur 0 1))) (when 0 when) 0))) => jank compile error (analyze/invalid-cpp-call: Values of type `int` are not callable.); Clojure 0; tags [native-callee]
+     {"name":"gen.kind","options":8,"value":3}
+     {"name":"gen.let.name","options":4,"value":2}
+     {"name":"gen.kind","options":8,"value":6}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":1}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.if.else","options":2,"value":1}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":1}
+     {"name":"gen.kind","options":8,"value":4}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":8,"value":5}
+     {"name":"gen.macro","options":6,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+== fns, lets, macros round 6: explore 20000 seeds, depth 4: nothing new (set aside: [macro-meta-on-literal, if-native-merge, case-branch-type, private-under-expansion, macro-form-env, fn-name-shadowed, native-callee])
+== oracle: builtin = on objects round 0: found after 3 timelines; shrunk to 5 decisions: (meta (mk-vec 0)) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil; tags [macro-meta-on-literal]
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 1: found after 4 timelines; shrunk to 9 decisions: (do 0 (form-of 0)) => jank ((0)); Clojure (form-of 0); tags [macro-form-env]
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 2: found after 12 timelines; shrunk to 31 decisions: (let* [x 0] (if (do x (let* [x 0] 0)) (do (do x x) (if 0 0)) (do (other/secret-of) x))) => jank 0; Clojure compile error (var: #'other/secret is not public); tags [private-under-expansion]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.if.else","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":5}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+== oracle: builtin = on objects round 3: found after 485 timelines; shrunk to 30 decisions: (let* [x 0] (let* [x (if 0 0)] (if (do 0 0) (loop* [x 0 k 0] (if (= k 1) 0 (recur nil 1)))))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure 0; tags [loop-native-recur]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":9}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+== oracle: builtin = on objects round 4: found after 745 timelines; shrunk to 8 decisions: (+ false 0) => jank 0; Clojure throws (+ of a non-number); tags [bool-arith]
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 5: found after 998 timelines; shrunk to 25 decisions: (= (do 0 (case 1 1 (case 1 1 false 0) 0)) 0) => jank true; Clojure false; tags [if-native-merge]
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":1}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 6: found after 1233 timelines; shrunk to 32 decisions: (let* [x (quote (quote (loop* [x 0 k 0] (if (= k 1) x (recur 0 1)))))] (do (quote 0) ((fn* [x k] (if (= k 1) (+ 2147483647 2147483647) (recur 0 1))) 0 0))) => jank -2; Clojure 4294967294; tags [int-arith]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":3}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 7: found after 1497 timelines; shrunk to 36 decisions: (let* [x (quote (let* [x (loop* [x 0 k 0] (if (= k 1) 0 (recur 0 1)))] x))] (loop* [x ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) k 0] (if (= k 1) 0 (recur 0 1)))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure 0; tags [recur-crosses-fn]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 8: found after 3697 timelines; shrunk to 70 decisions: (let* [x 0] (case (do ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) x) 1 ((fn* [x k] (if (= k 1) ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0) (recur 0 1))) 0 0) 2 (loop* [when 0 k 0] (if (= k 1) (when 0 0) (recur (do 0 0) 1))) ((fn* [x k] (if (= k 1) 0 (recur 0 1))) 0 0))) => jank compile error (analyze/invalid-case: Values of type `int` are not callable.); Clojure 0; tags [native-callee]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":3}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.case.clauses","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":4}
+     {"name":"gen.loop.name","options":4,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":6}
+     {"name":"gen.macro","options":6,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 9: found after 7563 timelines; shrunk to 56 decisions: ((fn* [x k] (if (= k 1) x (recur (if (= (case 0 1 false true) (do 0 0)) (if 0 (do 0 0)) 0) 1))) (= (quote other/secret) (case 1 1 (if 0 0) 2 true false)) 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallInteger)); Clojure 0; tags [case-branch-type]
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":0}
+     {"name":"gen.fn.name","options":4,"value":0}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":0}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":3}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":7}
+     {"name":"gen.case.clauses","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":2}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.if.else","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":8}
+     {"name":"gen.call","options":5,"value":0}
+     {"name":"gen.kind","options":11,"value":9}
+     {"name":"gen.kind","options":11,"value":7}
+     {"name":"gen.kind","options":11,"value":10}
+     {"name":"gen.case.value","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":1}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.if.else","options":2,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":8}
+     {"name":"gen.case.clauses","options":2,"value":1}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":7}
+== oracle: builtin = on objects round 10: found after 15522 timelines; shrunk to 18 decisions: (let* [inc 0] ((fn* inc [x k] (if (= k 1) inc (recur 0 1))) 0 0)) => jank 0; Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]; tags [fn-name-shadowed]
+     {"name":"gen.kind","options":11,"value":3}
+     {"name":"gen.let.name","options":4,"value":3}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":2,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":5}
+     {"name":"gen.fn.named","options":2,"value":1}
+     {"name":"gen.fn.name","options":4,"value":3}
+     {"name":"gen.fn.param","options":4,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":2}
+     {"name":"gen.local","options":3,"value":2}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+     {"name":"gen.kind","options":11,"value":0}
+     {"name":"gen.leaf","options":3,"value":0}
+     {"name":"gen.literal","options":12,"value":0}
+== oracle: builtin = on objects round 11: explore 20000 seeds, depth 4: nothing new (set aside: [macro-meta-on-literal, macro-form-env, private-under-expansion, loop-native-recur, bool-arith, if-native-merge, int-arith, recur-crosses-fn, native-callee, case-branch-type, fn-name-shadowed])
+== tally, 20000 seeds, depth 4: 20000 programs, 15781 agree, 4219 differ
+   differing programs with no tag (unexplained): 0
+   macro-meta-on-literal: 1671 differing programs take this path, 118 take only this one; e.g. (meta (mk-vec (if ((fn* inc [x k] (if (= k 1) (let* [inc 0.0] true) (recur (= -1 0.0) 1))) (if 0.0 1 1) 0) (quote other/secret)))) => jank {:jank/macro-expansion (mk-vec (if ((fn* inc [x k] (if (= k 1) (let* [inc 0.0] true) (recur (= -1 0.0) 1))) (if 0.0 1 1) 0) (quote other/secret)))}; Clojure nil
+   private-under-expansion: 2126 differing programs take this path, 700 take only this one; e.g. (let* [inc 0] (if (do inc (let* [x 1] 2147483647)) (do (do inc inc) (if -1 1.5)) (do (other/secret-of) inc))) => jank 1.5; Clojure compile error (var: #'other/secret is not public)
+   macro-form-env: 1686 differing programs take this path, 898 take only this one; e.g. (do nil (form-of (if (quote 0) (quote 0.0) (do false 1.5)))) => jank (((if (quote 0) (quote 0.0) (do false 1.5)))); Clojure (form-of (if (quote 0) (quote 0.0) (do false 1.5)))
+   if-native-merge: 707 differing programs take this path, 5 take only this one; e.g. (do (quote (if ((fn* when [x k] (if (= k 1) -1 (recur when 1))) :k 0) (let* [x "s"] 2147483647))) (let* [f (quote (if -1 :k 2147483648))] (case (= true f) 1 "s" 2 (do f nil) (case 1 1 true 2 1 2147483647)))) => jank 1; Clojure true
+   case-branch-type: 477 differing programs take this path, 1 take only this one; e.g. ((fn* when [f k] (if (= k 1) when (recur (= (case (loop* [when false k 0] (if (= k 1) when (recur true 1))) 1 (if 0.0 when) (quote -1)) (if (quote when) (quote 1))) 1))) (= (quote other/secret) (case 1 1 (if true 0.0) 2 true (quote false))) 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallReal)); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   loop-native-recur: 644 differing programs take this path, 34 take only this one; e.g. (let* [when 1] (let* [x (if (quote nil) (loop* [f 2147483648 k 0] (if (= k 1) 0.0 (recur -1 1))))] (do (loop* [f 0 k 0] (if (= k 1) f (recur nil 1))) (case 3 1 1 x)))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure nil
+   op-equal-object-builtin: 418 differing programs take this path, 70 take only this one; e.g. (if (if (loop* [inc "s" k 0] (if (= k 1) (quote 2147483647) (recur (case 1 1 inc inc) 1))) (let* [x ((fn* [x k] (if (= k 1) :k (recur x 1))) :k 0)] (loop* [when :k k 0] (if (= k 1) 2147483647 (recur false 1))))) -1) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure -1
+   recur-crosses-fn: 320 differing programs take this path, 37 take only this one; e.g. (let* [f (quote (let* [when (loop* [inc false k 0] (if (= k 1) nil (recur false 1)))] other/secret))] (do (loop* [x ((fn* when [when k] (if (= k 1) "s" (recur when 1))) f 0) k 0] (if (= k 1) ((fn* x [x k] (if (= k 1) x (recur 2147483648 1))) 2147483647 0) (recur (loop* [when -1 k 0] (if (= k 1) x (recur when 1))) 1))) ((fn* [inc k] (if (= k 1) (if "s" false f) (recur (loop* [inc inc k 0] (if (= k 1) inc (recur 2147483648 1))) 1))) (case 1 1 :k 2 f "s") 0))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure false
+   fn-name-shadowed: 45 differing programs take this path, 0 take only this one; e.g. 
+   bool-arith: 137 differing programs take this path, 14 take only this one; e.g. (+ false -1) => jank -1; Clojure throws (+ of a non-number)
+   int-arith: 25 differing programs take this path, 1 take only this one; e.g. (let* [x (quote (quote (loop* [when nil k 0] (if (= k 1) when (recur 2147483647 1)))))] (do (quote 2147483647) ((fn* when [when k] (if (= k 1) (+ 2147483647 2147483647) (recur (do -1 x) 1))) (if 0.0 2147483647) 0))) => jank -2; Clojure 4294967294
+   native-callee: 5 differing programs take this path, 1 take only this one; e.g. (let* [f 2147483648] (case (do ((fn* x [when k] (if (= k 1) f (recur nil 1))) 2147483647 0) (quote f)) 1 ((fn* [x k] (if (= k 1) ((fn* [x k] (if (= k 1) x (recur x 1))) nil 0) (recur (if true x) 1))) ((fn* [when k] (if (= k 1) 0.0 (recur nil 1))) 1.5 0) 0) 2 (loop* [when f k 0] (if (= k 1) (when 1 1) (recur (if f :k) 1))) -1)) => jank compile error (analyze/invalid-case: Values of type `long` are not callable.); Clojure -1
+   macro-over-fn-name: 4 differing programs take this path, 0 take only this one; e.g. 
+== tally, 20000 seeds, depth 4, oracle builtin = on objects: 20000 programs, 15525 agree, 4475 differ
+   differing programs with no tag (unexplained): 0
+   macro-meta-on-literal: 1888 differing programs take this path, 118 take only this one; e.g. (meta (mk-vec (if ((fn* inc [x k] (if (= k 1) (let* [inc 0.0] true) (recur (= -1 0.0) 1))) (if 0.0 1 1) 0) (quote other/secret)))) => jank {:jank/macro-expansion (mk-vec (if ((fn* inc [x k] (if (= k 1) (let* [inc 0.0] true) (recur (= -1 0.0) 1))) (if 0.0 1 1) 0) (quote other/secret)))}; Clojure nil
+   private-under-expansion: 2627 differing programs take this path, 700 take only this one; e.g. (let* [inc 0] (if (do inc (let* [x 1] 2147483647)) (do (do inc inc) (if -1 1.5)) (do (other/secret-of) inc))) => jank 1.5; Clojure compile error (var: #'other/secret is not public)
+   macro-form-env: 1747 differing programs take this path, 898 take only this one; e.g. (do nil (form-of (if (quote 0) (quote 0.0) (do false 1.5)))) => jank (((if (quote 0) (quote 0.0) (do false 1.5)))); Clojure (form-of (if (quote 0) (quote 0.0) (do false 1.5)))
+   op-equal-object-builtin: 674 differing programs take this path, 0 take only this one; e.g. 
+   loop-native-recur: 815 differing programs take this path, 34 take only this one; e.g. (let* [when 1] (let* [x (if (quote nil) (loop* [f 2147483648 k 0] (if (= k 1) 0.0 (recur -1 1))))] (do (loop* [f 0 k 0] (if (= k 1) f (recur nil 1))) (case 3 1 1 x)))) => jank throws (unsupported behavior number_like on Jank.Analyzer.ObjectType.nil); Clojure nil
+   if-native-merge: 879 differing programs take this path, 5 take only this one; e.g. (do (quote (if ((fn* when [x k] (if (= k 1) -1 (recur when 1))) :k 0) (let* [x "s"] 2147483647))) (let* [f (quote (if -1 :k 2147483648))] (case (= true f) 1 "s" 2 (do f nil) (case 1 1 true 2 1 2147483647)))) => jank 1; Clojure true
+   case-branch-type: 579 differing programs take this path, 1 take only this one; e.g. ((fn* when [f k] (if (= k 1) when (recur (= (case (loop* [when false k 0] (if (= k 1) when (recur true 1))) 1 (if 0.0 when) (quote -1)) (if (quote when) (quote 1))) 1))) (= (quote other/secret) (case 1 1 (if true 0.0) 2 true (quote false))) 0) => jank throws (invalid object type (expected boolean found Jank.Analyzer.ObjectType.smallReal)); Clojure #object[Jank.Analyzer.ObjectType.jitFunction 0]
+   recur-crosses-fn: 481 differing programs take this path, 37 take only this one; e.g. (let* [f (quote (let* [when (loop* [inc false k 0] (if (= k 1) nil (recur false 1)))] other/secret))] (do (loop* [x ((fn* when [when k] (if (= k 1) "s" (recur when 1))) f 0) k 0] (if (= k 1) ((fn* x [x k] (if (= k 1) x (recur 2147483648 1))) 2147483647 0) (recur (loop* [when -1 k 0] (if (= k 1) x (recur when 1))) 1))) ((fn* [inc k] (if (= k 1) (if "s" false f) (recur (loop* [inc inc k 0] (if (= k 1) inc (recur 2147483648 1))) 1))) (case 1 1 :k 2 f "s") 0))) => jank compile error (analyze/invalid-recur-args: `recur` received 2 argument(s), but it requires exactly 0 here.); Clojure false
+   int-arith: 31 differing programs take this path, 1 take only this one; e.g. (let* [x (quote (quote (loop* [when nil k 0] (if (= k 1) when (recur 2147483647 1)))))] (do (quote 2147483647) ((fn* when [when k] (if (= k 1) (+ 2147483647 2147483647) (recur (do -1 x) 1))) (if 0.0 2147483647) 0))) => jank -2; Clojure 4294967294
+   fn-name-shadowed: 94 differing programs take this path, 0 take only this one; e.g. 
+   bool-arith: 180 differing programs take this path, 14 take only this one; e.g. (+ false -1) => jank -1; Clojure throws (+ of a non-number)
+   native-callee: 6 differing programs take this path, 1 take only this one; e.g. (let* [f 2147483648] (case (do ((fn* x [when k] (if (= k 1) f (recur nil 1))) 2147483647 0) (quote f)) 1 ((fn* [x k] (if (= k 1) ((fn* [x k] (if (= k 1) x (recur x 1))) nil 0) (recur (if true x) 1))) ((fn* [when k] (if (= k 1) 0.0 (recur nil 1))) 1.5 0) 0) 2 (loop* [when f k 0] (if (= k 1) (when 1 1) (recur (if f :k) 1))) -1)) => jank compile error (analyze/invalid-case: Values of type `long` are not callable.); Clojure -1
+   macro-over-fn-name: 6 differing programs take this path, 0 take only this one; e.g. 
+== exhaustive, reduced grammar, depth 1: 76731 programs (complete), 68243 agree, 8488 differ
+   differing programs with no tag (unexplained): 0
+   if-native-merge: 5400 differing programs take this path, 616 take only this one; e.g. (if 0 0 1.5) => jank 0.0; Clojure 0
+   loop-native-recur: 1380 differing programs take this path, 1380 take only this one; e.g. (loop* [x 0 k 0] (if (= k 1) x (recur 2147483648 1))) => jank -2147483648; Clojure 2147483648
+   op-equal-object-builtin: 1560 differing programs take this path, 1560 take only this one; e.g. (loop* [x nil k 0] (if (= k 1) 0 (recur 0 1))) => jank compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); Clojure 0
+   macro-form-env: 13 differing programs take this path, 13 take only this one; e.g. (form-of 0) => jank ((0)); Clojure (form-of 0)
+   macro-meta-on-literal: 12 differing programs take this path, 12 take only this one; e.g. (meta (mk-vec 0)) => jank {:jank/macro-expansion (mk-vec 0)}; Clojure nil
+   private-under-expansion: 1 differing programs take this path, 1 take only this one; e.g. (other/secret-of) => jank 42; Clojure compile error (var: #'other/secret is not public)
+   bool-arith: 26 differing programs take this path, 26 take only this one; e.g. (inc true) => jank 2; Clojure throws (inc of a non-number)
+   case-branch-type: 4880 differing programs take this path, 96 take only this one; e.g. (case 1 1 0 2 nil nil) => jank throws (invalid object type (expected jank::runtime::obj::nil_ref found Jank.Analyzer.ObjectType.smallInteger)); Clojure 0
+== exhaust, reduced grammar, depth 1, known classes set aside: complete, 76731 timelines, nothing
+== exhaust, tiny grammar, depth 2, known set aside: stopped at 1500000, nothing
+runtime 56612 ms

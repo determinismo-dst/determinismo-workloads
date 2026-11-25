@@ -1,0 +1,374 @@
+# Round 3, Codegen (exe jank3-codegen): driver output. jank 7135b7708.
+# Sections, each its own run: jank3-codegen hand | flags | native | variadic | literals | residual | exhaust | round2
+# Bounds: native depth 3, 2000 mixed seeds per mode and property; residual 20000 seeds (100000..119999) at depth 3; exhaust: depth 1 with the small pools, every timeline (partitioned by the first decision); variadic: fixed arities ⊆ [0,12], one optional variadic arity (required 0..12), 0..16 arguments, every combination; literals: every key list of length 1..9 over 3 values; round2: round 2's seeds 0..1999 per mode, control depth-2 exhaust partitioned, at most 20000 timelines per partition.
+
+######## hand
+== native world: minimal programs
+  R24 loop local int, recur 0.5 steps: (loop [x 0] (if (< x 10) (recur (+ x 0.5)) x))
+    Clojure: 10.0
+    jank JIT -O0: never ends  [DEVIATES]
+    jank JIT -O1: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+    jank JIT -O3: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+    jank AOT -O0: never ends  [DEVIATES]
+    jank AOT -O1: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+    jank AOT -O3: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+  infinite side-effect-free loop on a param: ((fn [x] (loop [] (if x (recur) :done))) true)
+    Clojure: never ends
+    jank JIT -O0: never ends  [agree]
+    jank JIT -O1: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+    jank JIT -O3: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+    jank AOT -O0: never ends  [agree]
+    jank AOT -O1: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+    jank AOT -O3: undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)  [DEVIATES]
+  recur of an out-of-range double into an int local: (loop [x 0 n 0] (if (< n 1) (recur 1.0E10 (+ n 1)) x))
+    Clojure: 1.0E10
+    jank JIT -O0: -2147483648  [DEVIATES]
+    jank JIT -O1: undefined: double out of int range (cast: fptosi poison)  [DEVIATES]
+    jank JIT -O3: undefined: double out of int range (cast: fptosi poison)  [DEVIATES]
+    jank AOT -O0: -2147483648  [DEVIATES]
+    jank AOT -O1: undefined: double out of int range (cast: fptosi poison)  [DEVIATES]
+    jank AOT -O3: undefined: double out of int range (cast: fptosi poison)  [DEVIATES]
+  (int 1e20): (int 1.0E20)
+    Clojure: throws (IllegalArgumentException: Value out of range for int: 1.0E20)
+    jank JIT -O0: -9223372036854775808  [DEVIATES]
+    jank JIT -O1: undefined: double out of long range (to_int: static_cast<i64> is poison)  [DEVIATES]
+    jank JIT -O3: undefined: double out of long range (to_int: static_cast<i64> is poison)  [DEVIATES]
+    jank AOT -O0: -9223372036854775808  [DEVIATES]
+    jank AOT -O1: undefined: double out of long range (to_int: static_cast<i64> is poison)  [DEVIATES]
+    jank AOT -O3: undefined: double out of long range (to_int: static_cast<i64> is poison)  [DEVIATES]
+  (int 3000000000): (int 3000000000)
+    Clojure: throws (IllegalArgumentException: Value out of range for int: 3000000000)
+    jank JIT -O0: 3000000000  [DEVIATES]
+    jank JIT -O1: 3000000000  [DEVIATES]
+    jank JIT -O3: 3000000000  [DEVIATES]
+    jank AOT -O0: 3000000000  [DEVIATES]
+    jank AOT -O1: 3000000000  [DEVIATES]
+    jank AOT -O3: 3000000000  [DEVIATES]
+  int division overflow: (let [x (- -2147483647 1)] (/ x -1))
+    Clojure: 2147483648
+    jank JIT -O0: crash (SIGFPE: integer division overflow)  [DEVIATES]
+    jank JIT -O1: undefined: integer division overflow (sdiv INT_MIN / -1: immediate UB)  [DEVIATES]
+    jank JIT -O3: undefined: integer division overflow (sdiv INT_MIN / -1: immediate UB)  [DEVIATES]
+    jank AOT -O0: crash (SIGFPE: integer division overflow)  [DEVIATES]
+    jank AOT -O1: undefined: integer division overflow (sdiv INT_MIN / -1: immediate UB)  [DEVIATES]
+    jank AOT -O3: undefined: integer division overflow (sdiv INT_MIN / -1: immediate UB)  [DEVIATES]
+  (/ 1 0) (documented UB): (/ 1 0)
+    Clojure: throws (ArithmeticException: Divide by zero)
+    jank JIT -O0: crash (SIGFPE: integer division by zero)  [DEVIATES]
+    jank JIT -O1: undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))  [DEVIATES]
+    jank JIT -O3: undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))  [DEVIATES]
+    jank AOT -O0: crash (SIGFPE: integer division by zero)  [DEVIATES]
+    jank AOT -O1: undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))  [DEVIATES]
+    jank AOT -O3: undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))  [DEVIATES]
+  top-level if merge (R23 example 1): (if true 1 2.5)
+    Clojure: 1
+    jank JIT -O0: 1  [agree]
+    jank JIT -O1: 1  [agree]
+    jank JIT -O3: 1  [agree]
+    jank AOT -O0: 1.0  [DEVIATES]
+    jank AOT -O1: 1.0  [DEVIATES]
+    jank AOT -O3: 1.0  [DEVIATES]
+  if merge in a let: (let [u 0] (if true 1 2.5))
+    Clojure: 1
+    jank JIT -O0: 1.0  [DEVIATES]
+    jank JIT -O1: 1.0  [DEVIATES]
+    jank JIT -O3: 1.0  [DEVIATES]
+    jank AOT -O0: 1.0  [DEVIATES]
+    jank AOT -O1: 1.0  [DEVIATES]
+    jank AOT -O3: 1.0  [DEVIATES]
+  -2147483648 literal is long in C++: (< (- -2147483648 1) 0)
+    Clojure: true
+    jank JIT -O0: true  [agree]
+    jank JIT -O1: true  [agree]
+    jank JIT -O3: true  [agree]
+    jank AOT -O0: true  [agree]
+    jank AOT -O1: true  [agree]
+    jank AOT -O3: true  [agree]
+    (< (- -2147483648 1) 0): jank -O0 true; round 2's model (the literal as an int) false; Clojure true
+    (+ (- -2147483648 1) 0.5): jank -O0 -2.147484E9; round 2's model (the literal as an int) 2.147484E9; Clojure -2.147484E9
+    (let [u 0] (/ -2147483648 -1)): jank -O0 -2147483648; round 2's model (the literal as an int) crash (SIGFPE: integer division overflow); Clojure 2147483648
+  typed param + fn recur: ((fn [^cpp/long n] (if (< n 3) (recur (+ n 1)) n)) 0)
+    Clojure: 3
+    jank JIT -O0: compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))  [DEVIATES]
+    jank JIT -O1: compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))  [DEVIATES]
+    jank JIT -O3: compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))  [DEVIATES]
+    jank AOT -O0: compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))  [DEVIATES]
+    jank AOT -O1: compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))  [DEVIATES]
+    jank AOT -O3: compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))  [DEVIATES]
+  R25 (+ 2147483647 1): (+ 2147483647 1)
+    Clojure: 2147483648
+    jank JIT -O0: -2147483648  [DEVIATES]
+    jank JIT -O1: -2147483648  [DEVIATES]
+    jank JIT -O3: -2147483648  [DEVIATES]
+    jank AOT -O0: -2147483648  [DEVIATES]
+    jank AOT -O1: -2147483648  [DEVIATES]
+    jank AOT -O3: -2147483648  [DEVIATES]
+  closure over a native local: (let [u 2147483647] ((fn [p] (+ u 1)) 0))
+    Clojure: 2147483648
+    jank JIT -O0: -2147483648  [DEVIATES]
+    jank JIT -O1: -2147483648  [DEVIATES]
+    jank JIT -O3: -2147483648  [DEVIATES]
+    jank AOT -O0: -2147483648  [DEVIATES]
+    jank AOT -O1: -2147483648  [DEVIATES]
+    jank AOT -O3: -2147483648  [DEVIATES]
+  fn recur on an object param, no side effect, never ends: ((fn [p] (if (< p 10) (recur p) p)) 0)
+    Clojure: never ends
+    jank JIT -O0: never ends  [agree]
+    jank JIT -O1: never ends  [agree]
+    jank JIT -O3: never ends  [agree]
+    jank AOT -O0: never ends  [agree]
+    jank AOT -O1: never ends  [agree]
+    jank AOT -O3: never ends  [agree]
+  loop that never ends but logs (a side effect): (loop [x 0] (if (< x 10) (recur (log x)) x))
+    Clojure: never ends (printing [0])
+    jank JIT -O0: never ends (printing [0])  [agree]
+    jank JIT -O1: never ends (printing [0])  [agree]
+    jank JIT -O3: never ends (printing [0])  [agree]
+    jank AOT -O0: never ends (printing [0])  [agree]
+    jank AOT -O1: never ends (printing [0])  [agree]
+    jank AOT -O3: never ends (printing [0])  [agree]
+  object small integers wrap (round 1 D1): ((fn [a] (+ a 1)) 2147483647)
+    Clojure: 2147483648
+    jank JIT -O0: -2147483648  [DEVIATES]
+    jank JIT -O1: -2147483648  [DEVIATES]
+    jank JIT -O3: -2147483648  [DEVIATES]
+    jank AOT -O0: -2147483648  [DEVIATES]
+    jank AOT -O1: -2147483648  [DEVIATES]
+    jank AOT -O3: -2147483648  [DEVIATES]
+(ran in 0.0 s)
+
+######## flags
+== optimizer configuration (Flags): effective clang level, -fwrapv, mustprogress, per mode
+  Jank.R3.Codegen.BuildType.debug run -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug run -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug run -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug run -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug run -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug repl -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug repl -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug repl -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug repl -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug repl -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug compile -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug compile -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug compile -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug compile -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.debug compile -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release run -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release run -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release run -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release run -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release run -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release repl -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release repl -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release repl -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release repl -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release repl -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release compile -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release compile -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release compile -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release compile -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.release compile -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo run -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo run -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo run -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo run -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo run -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo repl -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo repl -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo repl -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo repl -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo repl -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo compile -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo compile -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo compile -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo compile -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.relWithDebInfo compile -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none run -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none run -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none run -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none run -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none run -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none repl -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none repl -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none repl -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 1 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none repl -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 2 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none repl -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 3 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none compile -O none: IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none compile -O (some 0): IR passes { hoistLiterals := false, hoistVarDerefs := false, removeNops := false }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 0 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none compile -O (some 1): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 1 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none compile -O (some 2): IR passes { hoistLiterals := true, hoistVarDerefs := false, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 2 wraps true loops true std c++20
+  Jank.R3.Codegen.BuildType.none compile -O (some 3): IR passes { hoistLiterals := true, hoistVarDerefs := true, removeNops := true }; JIT level 0 wraps true loops-mustprogress true fns true fptosi-poison true; AOT level 3 wraps true loops true std c++20
+(ran in 0.0 s)
+
+######## native
+== native world: searches (2000 seeds per mode, depth 3; property 1 = jank vs Clojure, 2 = -On vs -O0)
+  JIT (eval) -O0, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 564 violate, 10 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O0 1
+    [CG2 float-to-integer conversion out of range] 56x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O0 -9223372036854775808 printing [0]
+    [R33 booleans are numbers] 293x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O0 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O0 crash (SIGFPE: integer division by zero)
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O0 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 19x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O0 false
+    [CG2b int does not check the int range] 42x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O0 2147483648
+    [R23 if merges branch types] 37x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O0 0.0 printing [0.0]
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O0 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O0 -2147418113
+  JIT (eval) -O1, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 629 violate, 11 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O1 1
+    [CG2 float-to-integer conversion out of range] 65x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O1 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [R33 booleans are numbers] 279x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O1 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O1 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O1 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 17x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O1 false
+    [CG2b int does not check the int range] 38x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O1 2147483648
+    [R23 if merges branch types] 30x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O1 0.0 printing [0.0]
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): Clojure never ends, jank -O1 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O1 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O1 -2147418113
+  JIT (eval) -O1, property 2, depth 3, 2000 seeds: 2000 timelines (complete), 160 violate, 3 classes
+    [CG2 float-to-integer conversion out of range] 49x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): -O0 -9223372036854775808 printing [0], -O1 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): -O0 crash (SIGFPE: integer division by zero), -O1 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): -O0 never ends, -O1 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+  JIT (eval) -O2, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 629 violate, 11 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O2 1
+    [CG2 float-to-integer conversion out of range] 65x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O2 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [R33 booleans are numbers] 279x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O2 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O2 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O2 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 17x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O2 false
+    [CG2b int does not check the int range] 38x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O2 2147483648
+    [R23 if merges branch types] 30x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O2 0.0 printing [0.0]
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): Clojure never ends, jank -O2 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O2 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O2 -2147418113
+  JIT (eval) -O2, property 2, depth 3, 2000 seeds: 2000 timelines (complete), 160 violate, 3 classes
+    [CG2 float-to-integer conversion out of range] 49x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): -O0 -9223372036854775808 printing [0], -O2 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): -O0 crash (SIGFPE: integer division by zero), -O2 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): -O0 never ends, -O2 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+  JIT (eval) -O3, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 629 violate, 11 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O3 1
+    [CG2 float-to-integer conversion out of range] 65x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O3 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [R33 booleans are numbers] 279x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O3 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O3 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O3 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 17x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O3 false
+    [CG2b int does not check the int range] 38x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O3 2147483648
+    [R23 if merges branch types] 30x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O3 0.0 printing [0.0]
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): Clojure never ends, jank -O3 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O3 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O3 -2147418113
+  JIT (eval) -O3, property 2, depth 3, 2000 seeds: 2000 timelines (complete), 160 violate, 3 classes
+    [CG2 float-to-integer conversion out of range] 49x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): -O0 -9223372036854775808 printing [0], -O3 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): -O0 crash (SIGFPE: integer division by zero), -O3 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): -O0 never ends, -O3 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+  AOT (module) -O0, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 565 violate, 10 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O0 1
+    [CG2 float-to-integer conversion out of range] 56x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O0 -9223372036854775808 printing [0]
+    [R33 booleans are numbers] 293x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O0 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O0 crash (SIGFPE: integer division by zero)
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O0 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 19x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O0 false
+    [CG2b int does not check the int range] 42x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O0 2147483648
+    [R23 if merges branch types] 38x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O0 0.0 printing [0.0]
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O0 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O0 -2147418113
+  AOT (module) -O1, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 630 violate, 11 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O1 1
+    [CG2 float-to-integer conversion out of range] 65x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O1 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [R33 booleans are numbers] 279x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O1 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O1 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O1 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 17x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O1 false
+    [CG2b int does not check the int range] 38x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O1 2147483648
+    [R23 if merges branch types] 31x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O1 0.0 printing [0.0]
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): Clojure never ends, jank -O1 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O1 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O1 -2147418113
+  AOT (module) -O1, property 2, depth 3, 2000 seeds: 2000 timelines (complete), 160 violate, 3 classes
+    [CG2 float-to-integer conversion out of range] 49x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): -O0 -9223372036854775808 printing [0], -O1 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): -O0 crash (SIGFPE: integer division by zero), -O1 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): -O0 never ends, -O1 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+  AOT (module) -O2, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 630 violate, 11 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O2 1
+    [CG2 float-to-integer conversion out of range] 65x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O2 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [R33 booleans are numbers] 279x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O2 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O2 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O2 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 17x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O2 false
+    [CG2b int does not check the int range] 38x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O2 2147483648
+    [R23 if merges branch types] 31x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O2 0.0 printing [0.0]
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): Clojure never ends, jank -O2 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O2 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O2 -2147418113
+  AOT (module) -O2, property 2, depth 3, 2000 seeds: 2000 timelines (complete), 160 violate, 3 classes
+    [CG2 float-to-integer conversion out of range] 49x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): -O0 -9223372036854775808 printing [0], -O2 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): -O0 crash (SIGFPE: integer division by zero), -O2 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): -O0 never ends, -O2 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+  AOT (module) -O3, property 1, depth 3, 2000 seeds: 2000 timelines (complete), 630 violate, 11 classes
+    [D2 (round 1): integer / is C++ division] 3x; shrunk to 18 decisions: (/ (let [a 0] (if 0 2147483648 0)) 2147483647): Clojure 2147483648/2147483647, jank -O3 1
+    [CG2 float-to-integer conversion out of range] 65x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): Clojure throws (IllegalArgumentException: Value out of range for int: -1.0E20) after printing [0], jank -O3 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [R33 booleans are numbers] 279x; shrunk to 15 decisions: (let [u 0] (+ (log (+ u u)) (let [a u] (int false)))): Clojure throws (ClassCastException) after printing [0], jank -O3 0 printing [0]
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): Clojure throws (ArithmeticException: Divide by zero), jank -O3 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG5 typed parameter + fn-level recur: invalid C++] 84x; shrunk to 26 decisions: (let [u (let [a (if 0 0 0)] (+ 0 0))] ((fn [^cpp/long p] (if (< p 0) (recur (+ p 0)) p)) 0)): Clojure 0, jank -O3 compile error (no matching constructor for initialization of 'jank::runtime::object_ref' (a fn-level recur shadow from a native-typed parameter))
+    [R24 loop local keeps the literal's type] 17x; shrunk to 8 decisions: (loop [x false n 0] (if (< n 2) (recur 0 (+ n 1)) x)): Clojure 0, jank -O3 false
+    [CG2b int does not check the int range] 38x; shrunk to 5 decisions: (int 2147483648): Clojure throws (IllegalArgumentException: Value out of range for int: 2147483648), jank -O3 2147483648
+    [R23 if merges branch types] 31x; shrunk to 12 decisions: (log (if 0 0 0.5)): Clojure 0 printing [0], jank -O3 0.0 printing [0.0]
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): Clojure never ends, jank -O3 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+    [D1 (round 1): long overflow wraps (documented)] 1x; shrunk to 9 decisions: (log (log (+ -2147483647 -9223372036854775807))): Clojure throws (ArithmeticException: integer overflow), jank -O3 9223372034707292162 printing [9223372034707292162, 9223372034707292162]
+    [D1 (round 1): small integers wrap at 32 bits] 1x; shrunk to 31 decisions: (+ (int (if 0 65536 0)) (if (let [a 0] false) (if 0 0 :k) (let [a 0] 2147483647))): Clojure 2147549183, jank -O3 -2147418113
+  AOT (module) -O3, property 2, depth 3, 2000 seeds: 2000 timelines (complete), 160 violate, 3 classes
+    [CG2 float-to-integer conversion out of range] 49x; shrunk to 16 decisions: (let [u 0] (+ (log (+ 0 0)) (int (let [a u] -1.0E20)))): -O0 -9223372036854775808 printing [0], -O3 undefined: double out of long range (to_int: static_cast<i64> is poison)
+    [documented: integer division by zero is UB (book)] 28x; shrunk to 14 decisions: (+ 0 (/ 0 0)): -O0 crash (SIGFPE: integer division by zero), -O3 undefined: integer division by zero (sdiv by zero: immediate UB (folded to poison when constant))
+    [CG1 forward progress] 83x; shrunk to 7 decisions: ((fn [p] (loop [] (if p (recur) 0))) 0): -O0 never ends, -O3 undefined: forward progress (a side-effect-free mustprogress loop never ends) (LoopDeletion removes the loop: the code continues at its exit, or becomes unreachable)
+== the C++ type of the literal text -2147483648 (long) against round 2's model (int): 2000 seeds, depth 3, JIT -O0
+  0 of 2000 programs differ
+(ran in 1.2 s)
+
+######## variadic
+== variadic world: every fn of fixed arities ⊆ [0, 12] and at most one variadic arity (required 0..12), every call of 0..16 arguments
+  114687 fns, 1949679 calls (complete); 2 classes
+    [CG4 more than 10 parameters rejected] 348160x; first: fn arities [10 & rest], 0 args: Clojure Jank.R3.Codegen.Variadic.Disp.arityError 0, jank Jank.R3.Codegen.Variadic.Disp.compileError "This function has too many parameters. The max is 10."
+    [arity exception reports 11 arguments] 10235x; first: fn arities [0], 12 args: Clojure Jank.R3.Codegen.Variadic.Disp.arityError 12, jank Jank.R3.Codegen.Variadic.Disp.arityError 11
+  residual (CG4 and the arity-exception count set aside): 382959 calls (complete), 0 disagree
+(ran in 1.3 s)
+
+######## literals
+== map/set expressions: every key list of length 1..9 over 3 values
+  29523 key lists (complete); Clojure throws Duplicate key for 29508
+  maps: compiled differs 29508, top level differs 29508; sets differ 29508
+  top level keeps both pairs: keys [0, 0]: Clojure Jank.R3.Codegen.Literals.MapOut.duplicate 0, compiled Jank.R3.Codegen.Literals.MapOut.map [(0, 1)], top level Jank.R3.Codegen.Literals.MapOut.map [(0, 0), (0, 1)]
+  residual (no repeated key): 15 lists (complete), 0 disagree
+(ran in 0.0 s)
+
+######## residual
+== native world: residual (every class found set aside)
+  JIT (eval) -O0, depth 3, 20000 seeds (both properties): 20000 timelines (complete), 0 violate, 0 classes
+  JIT (eval) -O3, depth 3, 20000 seeds (both properties): 20000 timelines (complete), 0 violate, 0 classes
+  AOT (module) -O0, depth 3, 20000 seeds (both properties): 20000 timelines (complete), 0 violate, 0 classes
+  AOT (module) -O3, depth 3, 20000 seeds (both properties): 20000 timelines (complete), 0 violate, 0 classes
+(ran in 2.6 s)
+
+######## exhaust
+== native world: residual (every class found set aside)
+  JIT (eval) -O0, depth 3, 0 seeds (both properties): 0 timelines (complete), 0 violate, 0 classes
+  JIT (eval) -O0, depth 1 (small pools), exhaustive (partitioned): 421986 timelines (complete), 0 violate, 0 classes
+  JIT (eval) -O3, depth 3, 0 seeds (both properties): 0 timelines (complete), 0 violate, 0 classes
+  JIT (eval) -O3, depth 1 (small pools), exhaustive (partitioned): 421986 timelines (complete), 0 violate, 0 classes
+  AOT (module) -O0, depth 3, 0 seeds (both properties): 0 timelines (complete), 0 violate, 0 classes
+  AOT (module) -O0, depth 1 (small pools), exhaustive (partitioned): 421986 timelines (complete), 0 violate, 0 classes
+  AOT (module) -O3, depth 3, 0 seeds (both properties): 0 timelines (complete), 0 violate, 0 classes
+  AOT (module) -O3, depth 1 (small pools), exhaustive (partitioned): 421986 timelines (complete), 0 violate, 0 classes
+(ran in 101.7 s)
+
+######## round2
+== round 2's program world (Jank.Codegen.ProgSearch), 2000 seeds per mode, depth 3
+  eval -O0 (JIT, default): 2000 timelines, 299 violate, 12 classes: [evaluation order, case dispatch, cross-fn self reference by unmunged name, C++ syntax error, throws on one side, crash: crash (undefined behaviour: static_cast to jit_closure* of a, nested loop: stale recur shadow, def metadata (throws), def metadata, case branch converted to another branch's type, munged names collide, constants merged]
+  eval -O1: 2000 timelines, 335 violate, 14 classes: [evaluation order, case dispatch, deduplicated value still used (case/loop), cross-fn self reference by unmunged name, C++ syntax error, throws on one side, crash: crash (undefined behaviour: static_cast to jit_closure* of a, nested loop: stale recur shadow, def metadata (throws), hoisted value placed before a catch handler, def metadata, case branch converted to another branch's type, munged names collide, constants merged]
+  eval -O3 (release): 2000 timelines, 351 violate, 14 classes: [evaluation order, def metadata, case dispatch, deduplicated value still used (case/loop), cross-fn self reference by unmunged name, C++ syntax error, throws on one side, crash: crash (undefined behaviour: static_cast to jit_closure* of a, nested loop: stale recur shadow, def metadata (throws), hoisted value placed before a catch handler, case branch converted to another branch's type, munged names collide, constants merged]
+  module, static runtime (AOT default): 2000 timelines, 431 violate, 12 classes: [evaluation order, def metadata, case dispatch, cross-fn self reference by unmunged name, C++ syntax error, throws on one side, crash: crash (undefined behaviour: static_cast to jit_closure* of a, nested loop: stale recur shadow, case branch converted to another branch's type, munged names collide, constants merged, def metadata (throws)]
+  control (known classes left out), eval -O0, depth 3: 2000 timelines, 0 violate
+  control, eval -O0, depth 2, exhaustive (partitioned by the first decision, ≤ 20000 per partition): 186717 timelines (stopped), 0 violate []
+  control, module (AOT), depth 2, exhaustive (partitioned by the first decision, ≤ 20000 per partition): 186717 timelines (stopped), 7402 violate [def metadata]
+(ran in 70.8 s)
+

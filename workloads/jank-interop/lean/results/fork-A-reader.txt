@@ -1,0 +1,413 @@
+The reader and lexer model is finished and builds with `lake build jank-reader`, with no `sorry` and no `native_decide`. The full run takes about 48 s and its output is saved in `results/reader.txt`. Everything below is a hypothesis: it is what the C++ predicts when modeled as written, re-read against the source, and checked to be reachable from jank code. jank was never built or run. Paths are under `upstream/compiler+runtime/`.
+
+## Deviations (reader and lexer)
+
+### A1. A NUL byte hangs or crashes the reader, so read is not total
+**Program:**
+```clojure
+(read-string "\"\u0000\"")       ; Clojure "\u0000" (1-char string)  jank: never returns (100% CPU)
+(read-string (pr-str (char 0)))  ; Clojure \u0000                    jank: never returns
+(read-string "a\u0000")          ; Clojure symbol "a\u0000"          jank: never returns
+(read-string "#\u0000")          ; Clojure throws                    jank: unbounded recursion, stack overflow (SIGSEGV)
+(read-string "1 ;\u0000")        ; Clojure 1                         jank: never returns (it parses the second form, A20)
+```
+**Code path:**
+- `read/lex.cpp: convert_to_codepoint` (452-468) calls `std::mbrtowc`. For a NUL byte, mbrtowc returns length 0 (C11 7.29.6.3.2).
+- These loops then do `pos += len` and never advance:
+  - symbols 1169-1183, keywords 1268-1282, characters 612-620;
+  - strings 1311-1335, `;` comments 635-657, `#!` comments 1397-1411.
+- `#` (1370-1371, 1428) and `~` (1452-1454) do `pos += len` and return a zero-width token. The next `next()` returns the same token again.
+- `parse.cpp: parse_reader_macro` (676) → `parse_reader_macro_symbolic_values` (840) → `next` then recurse without end. `parse_unquote` (1761) does the same.
+
+**Reachable:**
+- The jank literal `"\u0000"` unescapes through `jtl::to_char(0)` (`wcrtomb`) to one NUL byte. `(char 0)` → `core.cpp: to_char` gives the same.
+- `context::read_string` passes the string with its length (`immutable_string_view{data(), size()}`).
+- A source file containing a NUL byte has the same effect.
+- jank's own `pr-str` of `"\u0000"` or `(char 0)` emits a raw NUL (`escape.cpp: escape` 148-201; `character.cpp: get_literal_from_char_bytes` 12-37). So round-tripping a printed value hangs.
+
+**Theorems:**
+- `peek_nul`, `symbol_loop_stuck_on_nul`, `string_loop_stuck_on_nul`, `comment_loop_stuck_on_nul`: one loop iteration maps the state to itself.
+- `escape_keeps_nul`, `char_nul_printed_raw`.
+
+**Search:** exhaust (bytes ≤ 3) found `"\0` after 265 timelines. Tape:
+```
+{"name":"read.len","options":4,"value":2}
+{"name":"read.byte","options":34,"value":6}
+{"name":"read.byte","options":34,"value":25}
+```
+Explore found `"(\0(` after 80 seeds. Without NUL, every byte string tested terminates (see the search runs).
+
+### A2. Adjacent atoms need whitespace
+**Program:**
+```clojure
+(read-string "(str\"a\")")  ; Clojure (str "a")  jank: error "expected whitespace"
+(read-string "[1\"a\"]")    ; Clojure [1 "a"]    jank: error
+(read-string "\"a\"\"b\"")  ; Clojure "a"        jank: error (it sees the 2nd token)
+```
+The same happens with `:a"b"`, `1%`, `"a"#{1}`, `x~y` and `1@a`.
+
+**Code path:** symbols, numbers, keywords and strings set `require_space = true` (lex.cpp 1059, 1184, 1283, 1336). The next symbol, number, keyword, string, `^`, `#`, `` ` ``, `~`, `@` or other token calls `check_whitespace` (442-450) and fails. Clojure ends a token at any terminating macro character.
+
+**Reachable:** any source code, e.g. `(println"hi")` fails to load.
+
+**Search:** residual "strings without NUL": exhaust found `""u` after 160 timelines; "symbols without @ and /": exhaust found `1%` after 116.
+
+### A3. `-0` followed by anything but a space or end of input is an error
+**Program:**
+```clojure
+[-0]        ; Clojure [0]  jank: read error "This base-8 number literal ended unexpectedly."
+(- 5 -0)    ; Clojure 5    jank: read error   (also `-0` at the end of a line)
+```
+**Code path:** `lex.cpp: next`, number case:
+- 691-707: `-` then `0`, then `peek(2)` is not `' '`, so `radix = 8` and `++pos`.
+- 725-728: `expecting_more_digits = true`.
+- 1016: the single-`0` escape compares `pos == token_start`, which is false after the `++pos`.
+- 1042-1053: error.
+
+Only `-0 ` and `-0` at the end of input read.
+
+### A4. A leading `+` makes a symbol, not a number
+**Program:**
+```clojure
+(+ +5 1)   ; Clojure 6   jank: unable to resolve symbol +5
+```
+**Code path:** lex.cpp 1154: `case '+'` goes to the symbol case. The comment at 1056 reads "TODO: Handle numbers starting with `+`". Clojure's `read` (LispReader.java 271-281) reads `+digit` as a number.
+
+**Search:** exhaust found `+0` after 146 timelines. The numbers table has 831 differing values; the `+` shapes dominate.
+
+### A5. INT64_MIN reads as a BigInt, and integral big ratios read as longs
+**Program:**
+```clojure
+(pr-str -9223372036854775808)   ; Clojure "-9223372036854775808"   jank "-9223372036854775808N"
+(pr-str 9223372036854775808/2)  ; Clojure "4611686018427387904N"   jank "4611686018427387904"
+```
+**Code path:**
+- lex.cpp 1131-1142: `strtoll` runs on the digits after the `-`. `9223372036854775808` sets `ERANGE`, which gives a `big_integer`.
+- `parse.cpp: parse_big_integer` (1947) and `big_integer.cpp` (66-108) never narrow the value.
+- `ratio.cpp: ratio::create` (88-101) returns an `integer` whenever the result fits i64. Clojure's `BigIntOps.divide` returns a BigInt.
+
+`=` still holds against the long value, but the hash differs (round-1 D12), and pr-str/read-string do not reach a fixed point.
+
+**Theorem:** `negated_digits_never_min` (bv_decide): the negation of a non-negative i64 is never INT64_MIN.
+
+### A6. Radix literals
+**Program:**
+```clojure
+36rN      ; Clojure 23     jank 0N
+36rZN     ; Clojure 1283   jank 35N
+24rN0     ; Clojure 552    jank: read error
+36rM      ; Clojure 22     jank: an empty BigDecimal literal (error under RA7)
+16re      ; Clojure 14     jank: error "This integer literal ended unexpectedly."
+36rr      ; Clojure 27     jank: error
+258r11    ; Clojure error  jank 3
+```
+**Code path:**
+- `N` and `M` always act as suffixes: lex.cpp 941-998. `36rN` gives a `big_integer` with an empty literal, which `big_integer.cpp` 83-101 turns into 0.
+- `e`/`E`/`r`/`R` after the `r` skip the loop tail with `continue` (771-775, 831-833), so `expecting_more_digits` stays true (1042-1049).
+- The radix is `static_cast<i8>(std::stoi(...))` (1069). Theorem `radix_258_is_2`.
+
+**Search:** the numbers table found `24rN`, `16re`, `20re`, `24rM` and `29rr`. The residual exhaust (without `+`, space, `]`, `N`, `M`) found `16re` after 5392 timelines.
+
+### A7. Leading zeros: `08M` is rejected and `-010/3` gives the wrong value
+**Program:**
+```clojure
+08M      ; Clojure 8M     jank: read error (also 09M, 019M, -09M)
+-010/3   ; Clojure -10/3  jank -8/3
+-09/3    ; Clojure -3     jank: read error
+```
+**Code path:**
+- A leading `0` (709-723) or `-0` (691-707) sets radix 8. `M` keeps it, so `is_valid_num_char` (1093-1108) rejects 8 and 9.
+- For ratios, the `0` is stripped only when the token starts with `0` (892-896). `-010` goes whole to boost's `cpp_int` string assignment, which reads a leading `0` as octal (RA5). An invalid octal digit throws.
+
+**Search:** residual exhaust found `09M` after 405 timelines.
+
+### A8. String escapes
+**Program:**
+```clojure
+"\0"      ; Clojure "\u0000"            jank: read error "invalid escape sequence"
+"\101"    ; Clojure "A"                 jank: read error
+"\uD800"  ; Clojure 1-char string D800  jank "?"
+```
+**Code path:**
+- `util/escape.cpp: unescape` (35-145) has no octal case (default at 135-137).
+- A lone surrogate goes through `jtl::to_char(cp, "?")`, i.e. `wcrtomb`, and becomes the fallback `?` (RA3).
+- jank also accepts `"\a"`, `"\v"` and `"\?"`, which Clojure rejects.
+
+### A9. Comments end only at `\n`
+**Program:**
+```clojure
+(read-string ";x\r42")   ; Clojure 42   jank: EOF error
+```
+**Code path:** lex.cpp 643 (and 1405 for `#!`). Clojure's `CommentReader` (LispReader.java 625-636) also stops at `\r`, so files with CR-only line endings read nothing in jank.
+
+**Theorem:** `comment_continues_past_cr`.
+
+### A10. `@x` reads as an unqualified `(deref x)`
+**Program:**
+```clojure
+(read-string "@a")                           ; Clojure (clojure.core/deref a)  jank (deref a)
+(let [deref (fn [_] :shadowed)] @(atom 1))   ; Clojure 1                       jank :shadowed
+```
+**Code path:**
+- `parse.cpp: parse_deref` (1786-1808) builds the symbol `"deref"` at 1803.
+- `analyze/processor.cpp: analyze_symbol` (1432) looks up locals before vars. A namespace that excludes `clojure.core/deref` and defines its own also captures `@`.
+
+**Search:** exhaust found `@_` after 179 timelines.
+
+### A11. Metadata
+**Program:**
+```clojure
+(meta '^"String" x)  ; Clojure {:tag "String"}      jank: read error
+(meta '^[long] x)    ; Clojure {:param-tags [long]}  jank: read error
+(meta '^foo x)       ; Clojure {:tag foo}            jank {:tag (quote foo)}
+```
+**Code path:** `parse.cpp: parse_meta_hint` (590-674):
+- Keyword → `{kw true}`.
+- Symbol or list → `{:tag (quote v)}` (614-625).
+- Map → itself.
+- Anything else → error (630-633).
+
+Clojure's `MetaReader` (LispReader.java 955-962) accepts symbols, strings, keywords, vectors and maps, and does not quote.
+
+### A12. `#()` rejects `%10`, `%20`, …
+**Program:**
+```clojure
+(#(+ %10 %1) 1 2 3 4 5 6 7 8 9 10)   ; Clojure 11   jank: read error "invalid shorthand function parameter"
+```
+**Code path:** `parse.cpp: parse_symbol` (1856-1860): `all_digits &= isdigit(c) && c != '0'` for every digit.
+
+### A13. Duplicate literal keys that Clojure rejects are read
+**Program:**
+```clojure
+(count #{1 1N})       ; Clojure: read error "Duplicate key"  jank 2
+{1 :a 1N :b}          ; Clojure: read error                   jank {1 :b}
+(count #{0.0 -0.0})   ; Clojure: read error                   jank 2
+```
+**Code path:** `parse_map` (432, 449-459) and `parse_reader_macro_set` (722-743) detect duplicates through `std::unordered_map<object_ref>`, i.e. `hash::visit` plus `equal` (object.cpp 369-385). These pairs are equal but hash differently (round-1 D12, new path through literals). `insert_or_assign` then compares with `equal`.
+
+### A14. `@` does not end a token, and `~` before a non-ASCII character breaks
+**Program:**
+```clojure
+(read-string "a@b")   ; Clojure a then (clojure.core/deref b)  jank the symbol a@b
+`(f ~λ)               ; Clojure (user/f <λ's value>)           jank: read error (invalid UTF-8)
+```
+**Code path:**
+- `@` is missing from `is_special_char` (lex.cpp 493-497). In Clojure every macro character except `#`, `'` and `%` terminates a token.
+- `~` does `pos += len` of the peeked character (1453-1454). For a multi-byte character, the next token starts at its second byte.
+
+### A15. Unicode whitespace is not whitespace
+**Program:**
+```clojure
+(read-string "(\u2003a)")    ; Clojure (a)    jank (\u2003a), a symbol whose name starts with EM SPACE
+(read-string "[1\u001c2]")   ; Clojure [1 2]  jank: read error
+```
+**Code path:** token skipping uses byte-level `std::isspace` (lex.cpp 558; bytes ≥ 0x80 are not space), while `is_symbol_char` uses `iswspace`. Java's `isWhitespace` includes U+001C-001F, U+1680, U+2000-2006, U+2008-200A, U+2028, U+2029, U+205F and U+3000.
+
+**Search:** characters exhaust found U+2003 after 16 timelines. Without U+2003 the characters search is complete over 579,195 timelines with nothing.
+
+### A16. `:/` reads as the keyword with an empty name
+**Program:**
+```clojure
+(name (read-string ":/"))   ; Clojure "/"   jank ""
+```
+**Code path:** `parse_keyword` (1912-1929) splits at index 0, giving ns "" and name "". **Search:** exhaust found it after 16 timelines.
+
+### A17. Namespaced map literals and legacy `#^` are unsupported
+**Program:**
+```clojure
+#:a{:b 1}   ; Clojure {:a/b 1}    jank: read error "unsupported reader macro"
+#^:a x      ; Clojure ^{:a true} x jank: read error
+```
+**Code path:** `parse_reader_macro` (690-706) has no keyword or meta-hint case.
+
+### A18. Regex literals with Java-only syntax fail to read
+**Program:**
+```clojure
+#"(?i)abc"    ; Clojure: case-insensitive pattern  jank: read error
+#"(?<=a)b"    ; Clojure: lookbehind                jank: read error
+```
+The same holds for `#"(?<n>a)"` and `#"a*+"`.
+
+**Code path:** `parse_regex` (888-913) builds `re_pattern`, which is `std::regex{s.c_str(), ECMAScript}` (re_pattern.cpp 6-10). A `regex_error` becomes a read error, so the whole file fails to load (RA8). Matching semantics are fork B's area.
+
+### A19. Syntax quote
+**Program:**
+```clojure
+`(require 'clojure.set)          ; Clojure (clojure.core/require (quote clojure.set))
+                                 ; jank    (clojure.core/require (quote user/clojure.set))
+(let [a 1 b 1] `(~@#{a b}))      ; Clojure (1)    jank (1 1)
+(meta `x)                        ; Clojure nil    jank {:jank/source {...}}
+```
+**Code path:**
+- Unqualified symbols get `<var ns or current ns>/name` (parse.cpp 1489-1500). Clojure's `Compiler.resolveSymbol` leaves names containing a `.` alone.
+- `~@` of a literal set splices the set form's element expressions one by one (1364-1371), so equal values are not collapsed.
+- Every read form carries `{:jank/source}` metadata, and `syntax_quote` wraps it with `with-meta` (1702-1721). Clojure strips line/column.
+- jank also qualifies `new` and the other Clojure-only specials (`set!`, `monitor-enter`, …), which has no effect in jank.
+
+**Search:** exhaust found `` `a.b `` after 17 timelines. Without dotted symbols and `new`, exhaust found `` (let [a 1 b 1] `((~@#{a b}))) `` (Clojure `((1))`, jank `((1 1))`) after 305. Explore tape:
+```
+sq.kind=5, sq.size=2, sq.splice=0, sq.kind=0, sq.symbol=0, sq.splice=0,
+sq.kind=3, sq.size=2, sq.splice=1, sq.unquoted=2, sq.lit.set=2, sq.splice=0,
+sq.kind=0, sq.symbol=0, sq.a=1, sq.b=1
+```
+
+### A20. `read-string` also parses the second form
+**Program:**
+```clojure
+(binding [*default-data-reader-fn* (fn [t v] (println "ran") v)] (read-string "1 #x 2"))
+; Clojure 1, prints nothing   jank 1, prints "ran"
+(read-string "1 \"\u0000\"")  ; Clojure 1   jank: never returns
+```
+**Code path:** `context.cpp: read_string` (261-283). The range-for's `++it` parses the second form before `if(nth_form <= count) break;`. This also makes `(read-string "1.5N")` return 1.5 and `(read-string "1-2")` return 1, where Clojure errors.
+
+### A21. Every read collection and symbol has metadata
+**Program:**
+```clojure
+(meta (read-string "[1 2]"))   ; Clojure nil   jank {:jank/source {:start {...} :end {...} ...}}
+```
+The same holds for symbols, lists, maps and sets. **Code path:** `source_to_meta` in `parse_list`, `parse_vector`, `parse_map`, the set path and `parse_symbol` (387-418, 487-507, 745, 1897), built in `core/meta.cpp: source_to_meta` (171-228).
+
+### A22. Under the C locale (LANG unset, glibc), non-ASCII source cannot be read
+**Program (run with LANG unset):**
+```clojure
+(str "é")      ; Clojure "é"  jank: read error "unterminated string"
+"\u00e9"       ; Clojure "é"  jank "?"
+```
+**Code path:** `jank_init_base` (c_api.cpp 1110) does `std::locale::global(std::locale(""))`, which also sets the C locale. Under the C locale, `mbrtowc` and `wcrtomb` reject bytes ≥ 0x80 (RA1). The source comment admits "might make text encoding become more platform dependent"; nothing in the docs mentions it. Clojure reads source as UTF-8 regardless of locale.
+
+### Accepted invalid input (counted, low severity)
+jank accepts these, which Clojure rejects:
+- `1/-2` → -1/2, and `1/ 2`;
+- `\u41` and `\u0x41` → \A, `\ua` → newline, `\o400` → U+0100, and `\😀`;
+- `a/` and `:a/`;
+- `a::b`, `:a:`;
+- `1e5N` → 100000.0;
+- `0x10M` → 10M.
+
+## What was modeled
+
+| C++ (file:function:lines) | jank model (Lean) | Clojure spec (Lean) |
+|---|---|---|
+| lex.cpp `convert_to_codepoint` 452 (glibc `mbrtowc`), `peek` 1514 | `LexBytes.mbrtowc`, `Lex.P.decode`, `P.peek` | `ReadClj.toUtf16` (Java String) |
+| lex.cpp `is_utf8_char`, `is_special_char`, `is_symbol_char`, `is_valid_num_char`, `check_whitespace` | `Lex.isUtf8Char`, `isSpecialChar`, `isSymbolChar`, `isValidNumChar`, `P.checkWs` | `ReadClj.isWhitespace`, `isMacro`, `isTerminatingMacro` |
+| lex.cpp `processor::next` 547-1512 (each case) | `Lex.next`, `Lex.lexNumber`, `lexSymbol`; loop bodies `symbolStep`, `stringStep`, `commentStep` | `ReadClj.read`, `readToken`, `numberToken` |
+| `strtoll`, `strtod`, `std::stoi`, `static_cast<i8>`, boost `cpp_int` assign | `LexBytes.strtoll`, `strtod`, `stoi`, `toI8`, `boostParse` | `ReadClj.matchNumber` (intPat, floatPat, ratioPat, `Numbers.divide`) |
+| parse.cpp `next`, `parse_upto`, lists, vectors, maps, sets, quote, deref, unquote, `#_`, `##`, `#'`, `#()`/`%`, regex, tagged, `#?` | `Read.nextForm`, `parseUpto`, `parseColl`, `wrap`, `parseReaderMacro`, `parseSymbol` | `ReadClj.readMacro`, `dispatch`, `readDelimited`, namespaced maps |
+| parse.cpp `parse_character`, `get_char_from_literal`, `parse_character_in_base`, `is_utf8_char(string)` | `Read.parseCharacter`, `stolAll`, `isUtf8Str` | `ReadClj.readCharacter` |
+| escape.cpp `unescape`; utf8.cpp `to_char(cp, fallback)` | `Read.unescape`, `toCharFallback`, `fromChars4` | `ReadClj.readString` (StringReader) |
+| `parse_meta_hint`, `merge` | `Read.metaOf`, `withMeta` | `ReadClj.cljMetaOf`, `cljWithMeta` |
+| `parse_keyword`, `intern_keyword` | `Read.parseKeyword` | `ReadClj.interpretToken` (symbolPat, arraySymbolPat, `Symbol.intern`) |
+| big_integer.cpp ctor 66-108, ratio.cpp `create`, big_decimal ctor | `Read.bigIntegerCreate`, `ratioCreate`, `bigDecimalCreate` | in `matchNumber` |
+| duplicate check (object.cpp hash/equal_to), `insert_or_assign` | `Read.jankSameKey`, `jankEqual` | `Val.equiv` (createWithCheck) |
+| re_pattern ctor (`std::regex` ECMAScript) | `Read.ecmaRejects` | always accepted (Pattern) |
+| context.cpp `read_string` 166-298 | `Read.readString`, `readAll` | `ReadClj.readString1`, `readAll` |
+| parse.cpp `syntax_quote`, `syntax_quote_expand_segments`, `is_special` | `ReadSyntaxQuote.jankSQ`, `jankItems`, `jankQualify` | `cljSQ`, `cljItems`, `cljQualify`, `cljResolve` |
+| `to_code_string` of strings, chars, keywords, symbols, numbers; `string_builder(double)` | `ReadRoundtrip.jankPr`, `jankEscape`, `jankCharPr`, `decTexts` | `ReadRoundtrip.cljPr` (core_print) |
+
+## Assumptions
+- **RA1. Locale.** The default is a UTF-8 locale. The "C locale" is glibc's ASCII one: `mbrtowc` gives EILSEQ for bytes ≥ 0x80 and `wcrtomb` fails for code points ≥ 0x80. macOS's C locale behaves differently and is not claimed.
+- **RA2. Character classes.**
+  - `isspace` on a byte ≥ 0x80 is false.
+  - glibc's `iswspace` is U+0009-000D, U+0020, U+1680, U+2000-2006, U+2008-200A, U+2028, U+2029, U+205F and U+3000 (not U+001C-001F, not U+00A0).
+- **RA3.** `wcrtomb` rejects surrogates.
+- **RA4.** `strtod` and `Double.parseDouble` both round correctly, so doubles are compared as exact decimals of the same text.
+- **RA5. boost (submodule not checked out).**
+  - `cpp_int` string parsing: an optional `-`, then `0x` means hex and a leading `0` means octal; a bad digit throws.
+  - A thrown C++ exception is a read error.
+- **RA6.** `std::stol` accepts a sign and `0x` (base 16). `codecvt_utf8<char32_t>` rejects surrogates and values above 0x10FFFF.
+- **RA7.** A `big_decimal` built from an empty literal is an error (exact boost behavior unknown; either way it is not 22).
+- **RA8.** C++ `std::regex` ECMAScript rejects `(?` not followed by `:`, `=` or `!`, and possessive quantifiers.
+- **RA9. Read context.**
+  - The current namespace is `user`, with no aliases and no data readers installed.
+  - Reader conditionals are not allowed (the `read-string` default).
+  - Syntax quote is modeled separately.
+- **RA10.** Comparisons ignore jank's `{:jank/source}` metadata (reported as A21). Symbols and keywords are compared by printed name (`a/b/1` splits differently; only `namespace` sees it). Sets are compared as sets.
+- **RA11.** In the syntax-quote model, jank's fold of a set literal iterates in Clojure's order, so only the duplicate effect shows.
+- **RA12. Hangs and crashes.**
+  - A lexer loop whose fuel (input size + 2) runs out is a hang; the theorems show the state is a fixed point.
+  - Parser recursion deeper than input size + 8 is a stack overflow.
+- **RA13.** On the Clojure side, `Character.isDigit` is ASCII only; the alphabets contain no other digits.
+
+## Properties checked
+- **P1.** Read is total: it returns or errors, and never hangs or crashes.
+- **P2.** jank reads every input Clojure's `read-string` reads, to the same value. Wrong values and rejected valid input are violations; accepted invalid input is counted only.
+- **P3.** `(read-string (pr-str x)) = x` for printable values.
+- **P4.** Syntax-quote expansions evaluate to Clojure's results.
+- **P5.** `read-string` reads only its first form.
+
+## Search runs (all in results/reader.txt)
+
+**Read is total**
+
+| Run | Bounds and alphabet | Result |
+|---|---|---|
+| With NUL, explore | 3000 seeds, bytes ≤ 6 from 34 bytes (delimiters, macro chars, digits, NUL, é, 0xFF, lone 0xA9, \x01, \x1C, \x7F, tab) | found after 80 timelines |
+| With NUL, exhaust | bytes ≤ 3 | found after 265 timelines (`"\0`) |
+| Without NUL, explore | 20000 seeds, bytes ≤ 12 | nothing |
+| Without NUL, exhaust | bytes ≤ 4 | complete, 1,222,981 timelines, nothing |
+
+Without NUL, invalid UTF-8 and the other control characters always error and never hang.
+
+**Agreement with Clojure (P2)**
+
+| Area | Alphabet and length | First found |
+|---|---|---|
+| Numbers | `012469-+.exrNM/Z] `, ≤ 5 | exhaust `+0` (146); explore `+06.4` (272) |
+| Numbers, residual searches | same, with `+`, space, `]` removed in turn | `09M` (405, 366, 329) |
+| Numbers, residual | also without `N`, `M` | `16re` (5392) |
+| Strings | `"\u0041noaxé` + NUL, ≤ 5 | NUL (14); explore hang `\\\0ux` (8) |
+| Strings without NUL | ≤ 5 | `""u` (160) |
+| Characters | `\uo041nwlaeé( ` + U+2003, ≤ 5 | U+2003 (16) |
+| Characters without U+2003 | ≤ 5 | complete, 579,195 timelines, nothing |
+| Symbols and keywords | `:/a.#%'@~^"1 `, ≤ 4 | `:/` (16) |
+| Symbols, residual (without `@`, `/`) | ≤ 4 | `1%` (116) |
+| Delimiters | `()[]{}#_'@^;\r1a: `, ≤ 4 | `@_` (179) |
+| Delimiters, residual (without `@`, `\r`) | ≤ 4 | `#'1` (1723): a read-level difference only; evaluation errors in both |
+
+**Exhaustive tables** (every string up to the given length):
+
+| Table | Strings | Agree | Hang/crash | Different | Rejects valid | Accepts invalid |
+|---|---|---|---|---|---|---|
+| Numbers (≤ 4) | 111,151 | 105,128 | 0 | 831 | 27 | 5,165 |
+| Strings (≤ 4) | 22,621 | 17,684 | 2,864 | 0 | 2,016 | 57 |
+| Characters (≤ 4) | 54,241 | 46,032 | 0 | 2,557 | 5,148 | 504 |
+| Symbols (≤ 3) | 2,380 | 2,063 | 0 | 88 | 60 | 169 |
+| Delimiters (≤ 3) | 5,220 | 5,054 | 0 | 61 | 4 | 101 |
+
+**Other runs**
+- **Syntax quote:** explore found a difference at seed 26 and exhaust after 17 timelines (`` `a.b ``). The residual search without dotted symbols and `new` found `~@#{a b}` after 305.
+- **Round trip:** 52 values × 2 double formats.
+  - 6 do not read back: NUL char, `"\0"`, `"a\0b"`, each hangs.
+  - 2 read back `=` but with another type: INT64_MIN.
+  - The Clojure model round-trips all its own strings and chars.
+- **read-string** (10 cases) and **locale** (7 cases): hand tables.
+
+## Theorems proven (12; Jank/LexTheorems.lean)
+- `mbrtowc_nul`: mbrtowc gives a NUL byte code point 0 with length 0.
+- `nul_is_symbol_char`: NUL is a symbol character in either locale.
+- `peek_nul`: peeking at a NUL gives code point 0 with length 0.
+- `symbol_loop_stuck_on_nul`, `string_loop_stuck_on_nul`, `comment_loop_stuck_on_nul`: one loop iteration on a NUL maps the state to itself, so the loop never ends.
+- `comment_continues_past_cr`: a `\r` does not end a comment.
+- `negated_digits_never_min` (bv_decide): for every i64 x with sign bit clear, `-x ≠ INT64_MIN`.
+- `radix_258_is_2`, `radix_130`: the i8 radix wrap.
+- `escape_keeps_nul`, `char_nul_printed_raw`: jank prints NUL raw.
+
+## Library gaps filled, and what agrees
+**Gaps**
+- `Search.exhaust` and `shrink` stop at, or shrink to, any instance of the same property. A shrink once turned a hang into an adjacency error. Residual searches, re-run with the found trigger removed from the alphabet, reach the next cause; full tables use plain enumeration.
+- The top-level lexer and parser are `partial` (fuel-bounded loops), so their loop bodies were pulled out as total step functions (`symbolStep`, `stringStep`, `commentStep`) and the theorems are about those.
+
+**Agrees with Clojure**
+- Character literals: names, `\uXXXX`, `\oNNN` ≤ 377, single and multi-byte characters (only accepted-invalid differences remain).
+- String escapes `\n \t \r \\ \" \b \f \uXXXX` and surrogate pairs.
+- Numbers: decimal, hex, octal, ordinary radix, `N`, `M`, exponents, `1.`, `-0.0`, ratio normalization, `1/0` an error.
+- `##Inf`, `##-Inf`, `##NaN`; `#_` (also nested); quote; `#'`; regex raw text.
+- `::kw`, `:1`, `/`, `clojure.core//`, ns/name split at the first `/`.
+- Unterminated forms and invalid UTF-8 give errors.
+
+**Files** (all build with `lake build jank-reader`):
+- `Jank/LexBytes.lean`, `Jank/Lex.lean`, `Jank/LexTheorems.lean`
+- `Jank/ReadValue.lean`, `Jank/Read.lean`, `Jank/ReadClj.lean`, `Jank/ReadSyntaxQuote.lean`, `Jank/ReadRoundtrip.lean`
+- `Jank/ReaderSearch.lean`, `results/reader.txt`
+
+Someone else changed `lakefile.toml` so that `jank-reader` is rooted at `Run.Reader`, so I created `Run/Reader.lean`; `RunReader.lean` no longer exists. None of these is wired into `Main.lean` or `Jank.lean` yet; that is left to you. To read the round-1 hash and equality facts, `Jank/Read.lean` restates them (`jankSameKey`, `jankEqual`) instead of importing them.

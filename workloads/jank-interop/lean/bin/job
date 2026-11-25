@@ -1,0 +1,20 @@
+#!/bin/bash
+# Usage: bin/job SECONDS command args...
+# Runs a command bounded to SECONDS (perl alarm), holding one of 4 machine-wide job slots
+# (directories under .jobs/), so that at most 4 such jobs run at once on the machine.
+secs=$1; shift
+root="$(cd "$(dirname "$0")/.." && pwd)/.jobs"
+mkdir -p "$root"
+slot=""
+while [ -z "$slot" ]; do
+  for i in 0 1 2 3; do
+    d="$root/slot$i"
+    if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; break; fi
+    p=$(cat "$d/pid" 2>/dev/null)
+    if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
+  done
+  [ -z "$slot" ] && sleep 3
+done
+trap 'rm -rf "$slot"' EXIT
+trap 'exit 143' INT TERM HUP
+perl -e 'alarm shift; exec @ARGV' "$secs" "$@"

@@ -1,0 +1,226 @@
+== sorted map: one operation on (sorted-map …) of 0–2 entries
+  explore (3000 seeds): sorted map as Clojure's after 56 timelines, 13 decisions: (= (sorted-map :a :y :a :y) (sorted-map 2 :y 2 :x)): Clojure false, jank undefined behavior (keyword::compare reads 2 as a keyword (expect_object, keyword.cpp 52))
+  shrunk to 13 decisions: (= (sorted-map :a :x :a :x) (sorted-map 2 :x 2 :x)): Clojure false, jank undefined behavior (keyword::compare reads 2 as a keyword (expect_object, keyword.cpp 52))
+  tape:
+    {"name":"smap.size","options":3,"value":2}
+    {"name":"smap.key0","options":9,"value":6}
+    {"name":"smap.val0","options":2,"value":0}
+    {"name":"smap.key1","options":9,"value":6}
+    {"name":"smap.val1","options":2,"value":0}
+    {"name":"smap.op","options":13,"value":8}
+    {"name":"smap.arg.key","options":9,"value":0}
+    {"name":"smap.arg.val","options":2,"value":0}
+    {"name":"smap.other.size","options":3,"value":2}
+    {"name":"smap.other.key0","options":9,"value":3}
+    {"name":"smap.other.val0","options":2,"value":0}
+    {"name":"smap.other.key1","options":9,"value":3}
+    {"name":"smap.other.val1","options":2,"value":0}
+  exhaust: found after 6544 timelines: (= (sorted-map 0 :x) (sorted-map "a" :x)): Clojure false, jank throws
+  exhaust's counterexample shrunk to 9 decisions: (= (sorted-map 0 :x) (sorted-map "a" :x)): Clojure false, jank throws
+  tape:
+    {"name":"smap.size","options":3,"value":1}
+    {"name":"smap.key0","options":9,"value":0}
+    {"name":"smap.val0","options":2,"value":0}
+    {"name":"smap.op","options":13,"value":8}
+    {"name":"smap.arg.key","options":9,"value":0}
+    {"name":"smap.arg.val","options":2,"value":0}
+    {"name":"smap.other.size","options":3,"value":1}
+    {"name":"smap.other.key0","options":9,"value":4}
+    {"name":"smap.other.val0","options":2,"value":0}
+  census: 70480 of 2191770 map programs disagree; first ones:
+    (= (sorted-map 0 :x) (sorted-map "a" :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map "a" :y)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map "b" :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map "b" :y)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map :a :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map :a :y)): Clojure false, jank throws
+== sorted map without = / find / select-keys (C17, C18 set aside)
+  explore (3000 seeds): nothing
+  exhaust: complete, 2191770 timelines, nothing
+== sorted set: one operation on (sorted-set …) of 0–2 elements
+  explore (3000 seeds): sorted set as Clojure's after 101 timelines, 7 decisions: (= (sorted-set 1.0 1.0) (sorted-set "a")): Clojure false, jank throws
+  shrunk to 7 decisions: (= (sorted-set 1.0 1.0) (sorted-set "a")): Clojure false, jank throws
+  tape:
+    {"name":"sset.size","options":3,"value":2}
+    {"name":"sset.elem0","options":9,"value":2}
+    {"name":"sset.elem1","options":9,"value":2}
+    {"name":"sset.op","options":8,"value":6}
+    {"name":"sset.arg","options":9,"value":0}
+    {"name":"sset.other.size","options":3,"value":1}
+    {"name":"sset.other.elem0","options":9,"value":4}
+  exhaust: found after 942 timelines: (= (sorted-set 0) (sorted-set "a")): Clojure false, jank throws
+  exhaust's counterexample shrunk to 6 decisions: (= (sorted-set 0) (sorted-set "a")): Clojure false, jank throws
+  tape:
+    {"name":"sset.size","options":3,"value":1}
+    {"name":"sset.elem0","options":9,"value":0}
+    {"name":"sset.op","options":8,"value":6}
+    {"name":"sset.arg","options":9,"value":0}
+    {"name":"sset.other.size","options":3,"value":1}
+    {"name":"sset.other.elem0","options":9,"value":4}
+  census: 3168 of 80262 set programs disagree; first ones:
+    (= (sorted-set 0) (sorted-set "a")): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set "b")): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set :a)): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set :b)): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set [1])): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set "a" "a")): Clojure false, jank throws
+== sorted set without = (C17 set aside)
+  explore (3000 seeds): nothing
+  exhaust: complete, 80262 timelines, nothing
+== sorted map, numeric keys only (0, 1, 1.0, 2), every program: 28 disagree
+    (find (sorted-map 1 :x) 1.0): Clojure [1 :x], jank [1.0 :x]
+    (select-keys (sorted-map 1 :x) [1.0]): Clojure ([1 :x]), jank ([1.0 :x])
+    (find (sorted-map 1.0 :x) 1): Clojure [1.0 :x], jank [1 :x]
+    (select-keys (sorted-map 1.0 :x) [1]): Clojure ([1.0 :x]), jank ([1 :x])
+    (find (sorted-map 0 :x 1 :y) 1.0): Clojure [1 :y], jank [1.0 :y]
+    (select-keys (sorted-map 0 :x 1 :y) [1.0]): Clojure ([1 :y]), jank ([1.0 :y])
+    (find (sorted-map 0 :x 1.0 :y) 1): Clojure [1.0 :y], jank [1 :y]
+    (select-keys (sorted-map 0 :x 1.0 :y) [1]): Clojure ([1.0 :y]), jank ([1 :y])
+    get: 0
+    find: 14
+    contains?: 0
+    dissoc: 0
+    assoc: 0
+    count: 0
+    seq: 0
+    conj: 0
+    select-keys: 14
+== (= (sorted-set a) (sorted-set b)) over 9² pairs: 56 disagree
+    (= (sorted-set 0) (sorted-set "a")): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set "b")): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set :a)): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set :b)): Clojure false, jank throws
+    (= (sorted-set 0) (sorted-set [1])): Clojure false, jank throws
+    (= (sorted-set 1) (sorted-set "a")): Clojure false, jank throws
+== (= (sorted-map a :x) (sorted-map b :x)) over 9² pairs: 56 disagree
+    (= (sorted-map 0 :x) (sorted-map "a" :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map "b" :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map :a :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map :b :x)): Clojure false, jank throws
+    (= (sorted-map 0 :x) (sorted-map [1] :x)): Clojure false, jank throws
+    (= (sorted-map 1 :x) (sorted-map "a" :x)): Clojure false, jank throws
+== sort of an empty collection (7135b7708: core/seq.cpp 1098/1108; f3d82d654: 1091 and native_vector_sequence.cpp first/next)
+    [7135b7708] (first (sort nil)): Clojure nil, jank nil
+    [7135b7708] (next (sort nil)): Clojure nil, jank nil
+    [7135b7708] (last (sort nil)): Clojure nil, jank nil
+    [7135b7708] (first (sort [])): Clojure nil, jank nil
+    [7135b7708] (next (sort [])): Clojure nil, jank nil
+    [7135b7708] (last (sort [])): Clojure nil, jank nil
+    [f3d82d654] (first (sort nil)): Clojure nil, jank nil
+    [f3d82d654] (next (sort nil)): Clojure nil, jank nil
+    [f3d82d654] (last (sort nil)): Clojure nil, jank nil
+    [f3d82d654] (first (sort [])): Clojure nil, jank undefined behavior: native_vector_sequence::first reads data[0] of a vector of 0
+    [f3d82d654] (next (sort [])): Clojure nil, jank a non-nil seq (index 1, count 18446744073709551615)
+    [f3d82d654] (last (sort [])): Clojure nil, jank does not end in 100000 turns (the index grows past the size)
+== (reset-meta! (sorted-map) {:x 1}) then [(meta (sorted-map)) (meta (into (sorted-map) {1 2}))]
+    Clojure ClassCastException at reset-meta!; jank [{:x 1} {:x 1}] (after undefined behavior)
+== unported sorted-collection functions
+    sorted-set-by (core.jank 2438): throws in jank; (sorted-set-by > 1 2) ; Clojure #{2 1}
+    sorted-map-by (core.jank 5032): throws in jank; (sorted-map-by > 1 :a 2 :b) ; Clojure {2 :b, 1 :a}
+    rseq (core.jank 5081): throws in jank; (rseq [1 2]) ; Clojure (2 1); (rseq (sorted-set 1 2)) ; (2 1)
+    subseq (core.jank 6510 (mk-bound-fn 6505)): throws in jank; (subseq (sorted-set 1 2 3) > 1) ; Clojure (2 3)
+    rsubseq (core.jank 6527): throws in jank; (rsubseq (sorted-set 1 2 3) < 3) ; Clojure (2 1)
+== destructuring: (let [form value] …), forms nested twice, values nested twice (explore); once and once (exhaust)
+  explore (3000 seeds): destructuring as Clojure's after 71 timelines, 13 decisions: (let [{:as b} '(:a nil :b 2 (seq {:c 3}))] [a b c]): Clojure {b {:a nil, :b 2, :c 3}}, jank throws (invalid map entry: (seq {:c 3}))
+  shrunk to 13 decisions: (let [{} '(:a nil :a nil (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+  tape:
+    {"name":"bind.form","options":3,"value":2}
+    {"name":"bind.sym","options":3,"value":0}
+    {"name":"bind.keys","options":3,"value":0}
+    {"name":"bind.explicit","options":2,"value":0}
+    {"name":"bind.or","options":2,"value":0}
+    {"name":"bind.as","options":2,"value":0}
+    {"name":"val.kind","options":6,"value":5}
+    {"name":"val.pairs","options":3,"value":2}
+    {"name":"val.k0","options":2,"value":0}
+    {"name":"val.v0","options":5,"value":0}
+    {"name":"val.k1","options":2,"value":0}
+    {"name":"val.v1","options":5,"value":0}
+    {"name":"val.trailing","options":4,"value":3}
+== destructuring: forms and values nested once
+  exhaust: found after 299132 timelines: (let [{} '(:a nil (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+  exhaust's counterexample shrunk to 11 decisions: (let [{} '(:a nil (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+  tape:
+    {"name":"bind.form","options":3,"value":2}
+    {"name":"bind.sym","options":3,"value":0}
+    {"name":"bind.keys","options":3,"value":0}
+    {"name":"bind.explicit","options":2,"value":0}
+    {"name":"bind.or","options":2,"value":0}
+    {"name":"bind.as","options":2,"value":0}
+    {"name":"val.kind","options":6,"value":5}
+    {"name":"val.pairs","options":3,"value":1}
+    {"name":"val.k0","options":2,"value":0}
+    {"name":"val.v0","options":5,"value":0}
+    {"name":"val.trailing","options":4,"value":3}
+  census: 15840 of 435132 binding programs disagree; first ones:
+    (let [{} '(:a nil (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+    (let [{} '(:a 1 (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+    (let [{} '(:a 2 (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+    (let [{} '(:a :a (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+    (let [{} '(:a :b (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+    (let [{} '(:b nil (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+== destructuring, no trailing (seq m) in keyword arguments (C20 set aside), nested once
+  explore (3000 seeds): nothing
+  exhaust: complete, 384183 timelines, nothing
+== ((fn [& {:as m}] m) args…) over every argument list of length ≤ 3 from 6 values: 36 disagree
+    (f :a :a (seq {:d 4})): Clojure {:a :a, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f :a 1 (seq {:d 4})): Clojure {:a 1, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f :a {:b 2} (seq {:d 4})): Clojure {:a {:b 2}, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f :a nil (seq {:d 4})): Clojure {:a nil, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f :a [:c 3] (seq {:d 4})): Clojure {:a [:c 3], :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f :a (seq {:d 4}) (seq {:d 4})): Clojure {:a (seq {:d 4}), :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f 1 :a (seq {:d 4})): Clojure {1 :a, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+    (f 1 1 (seq {:d 4})): Clojure {1 1, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+== defn: (defn countdown [n] (if (pos? n) (countdown (dec n)) :done)) (def orig countdown) (defn countdown [n] :redefined) (orig 3)
+    Clojure :redefined, jank :done
+== namespaces: 3 operations (def, ns reload, alias, find-var, ns-resolve, resolve, in-ns)
+  explore (3000 seeds): namespace operations as Clojure's after 1 timelines, 2 decisions: (alias 's 'clojure.core) (find-var 'nope/x): Clojure throws (No such namespace: nope), jank nil
+  shrunk to 2 decisions: (def inc 1) (find-var 'nope/x): Clojure throws (No such namespace: nope), jank nil
+  tape:
+    {"name":"ns.op0","options":9,"value":0}
+    {"name":"ns.op1","options":9,"value":5}
+  exhaust: found after 2 timelines: (def inc 1) (def inc 1) (ns user): Clojure nil, jank throws (inc already refers to #'user/inc in ns user)
+  exhaust's counterexample shrunk to 3 decisions: (def inc 1) (def inc 1) (ns user): Clojure nil, jank throws (inc already refers to #'user/inc in ns user)
+  tape:
+    {"name":"ns.op0","options":9,"value":0}
+    {"name":"ns.op1","options":9,"value":0}
+    {"name":"ns.op2","options":9,"value":1}
+== every program of 3 operations (729): first disagreement, by operation
+    (ns <ns>): 16 programs; e.g. (def inc 1) (def inc 1) (ns user): Clojure nil, jank throws (inc already refers to #'user/inc in ns user)
+    (find-var 'map): 133 programs; e.g. (def inc 1) (def inc 1) (find-var 'map): Clojure throws (Symbol must be namespace-qualified), jank #'clojure.core/map
+    (find-var 'nope/x): 133 programs; e.g. (def inc 1) (def inc 1) (find-var 'nope/x): Clojure throws (No such namespace: nope), jank nil
+    (ns-resolve 'a 's/y): 133 programs; e.g. (def inc 1) (def inc 1) (ns-resolve 'a 's/y): Clojure #'other/y, jank nil
+    (in-ns 'b): 133 programs; e.g. (def inc 1) (def inc 1) (in-ns 'b): Clojure #namespace[b], jank nil
+    (find-var '<ns>/inc): 117 programs; e.g. (ns user) (ns user) (find-var 'user/inc): Clojure nil, jank #'clojure.core/inc
+== printing ##Inf/##-Inf/##NaN: 30 of 56 (function, value) pairs differ
+    (str [##Inf]): Clojure "[##Inf]", jank "[Infinity]"
+    (str [##-Inf]): Clojure "[##-Inf]", jank "[-Infinity]"
+    (str [##NaN]): Clojure "[##NaN]", jank "[NaN]"
+    (str {:k ##Inf}): Clojure "{:k ##Inf}", jank "{:k Infinity}"
+    (str {:k ##-Inf}): Clojure "{:k ##-Inf}", jank "{:k -Infinity}"
+    (str {:k ##NaN}): Clojure "{:k ##NaN}", jank "{:k NaN}"
+    (str [1.5 ##NaN]): Clojure "[1.5 ##NaN]", jank "[1.5 NaN]"
+    (str [[##Inf]]): Clojure "[[##Inf]]", jank "[[Infinity]]"
+    (print-str ##Inf): Clojure "##Inf", jank "Infinity"
+    (print-str ##-Inf): Clojure "##-Inf", jank "-Infinity"
+    (print-str ##NaN): Clojure "##NaN", jank "NaN"
+    (print-str [##Inf]): Clojure "[##Inf]", jank "[Infinity]"
+    (print-str [##-Inf]): Clojure "[##-Inf]", jank "[-Infinity]"
+    (print-str [##NaN]): Clojure "[##NaN]", jank "[NaN]"
+    (print-str {:k ##Inf}): Clojure "{:k ##Inf}", jank "{:k Infinity}"
+    (print-str {:k ##-Inf}): Clojure "{:k ##-Inf}", jank "{:k -Infinity}"
+    (print-str {:k ##NaN}): Clojure "{:k ##NaN}", jank "{:k NaN}"
+    (print-str [1.5 ##NaN]): Clojure "[1.5 ##NaN]", jank "[1.5 NaN]"
+    (print-str [[##Inf]]): Clojure "[[##Inf]]", jank "[[Infinity]]"
+    (println-str ##Inf): Clojure "##Inf\n", jank "Infinity\n"
+    (println-str ##-Inf): Clojure "##-Inf\n", jank "-Infinity\n"
+    (println-str ##NaN): Clojure "##NaN\n", jank "NaN\n"
+    (println-str [##Inf]): Clojure "[##Inf]\n", jank "[Infinity]\n"
+    (println-str [##-Inf]): Clojure "[##-Inf]\n", jank "[-Infinity]\n"
+    (println-str [##NaN]): Clojure "[##NaN]\n", jank "[NaN]\n"
+    (println-str {:k ##Inf}): Clojure "{:k ##Inf}\n", jank "{:k Infinity}\n"
+    (println-str {:k ##-Inf}): Clojure "{:k ##-Inf}\n", jank "{:k -Infinity}\n"
+    (println-str {:k ##NaN}): Clojure "{:k ##NaN}\n", jank "{:k NaN}\n"
+    (println-str [1.5 ##NaN]): Clojure "[1.5 ##NaN]\n", jank "[1.5 NaN]\n"
+    (println-str [[##Inf]]): Clojure "[[##Inf]]\n", jank "[[Infinity]]\n"
+== total run time: 18 s

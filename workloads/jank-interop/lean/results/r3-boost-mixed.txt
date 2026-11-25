@@ -1,0 +1,33 @@
+# Round 3 (coordinator rerun): the Boost driver's two random searches with SplitMix64-mixed seeds
+# (Source.seeded i draws the same first decision for small i). Replaces the unmixed explore lines of r3-boost.txt.
+== random literals (longs, doubles, BigInts ≤ 25 digits, BigDecimals ≤ 25 digits with exponents ±30, ratios): explore 20000 mixed seeds
+  aside 0: found after 16 seeds [MP2 non-terminating quotient returns a value]: (< -0.267206855557126e9M 822/11): jank true, Clojure throws
+  aside 1: found after 29 seeds [MP5 BigDecimal with a double gives a BigDecimal]: (+ -793868487906268.5e20 -7.299e-17M): jank -79386848790626848984279172614455296.00000000000000007299M, Clojure -7.938684879062685E34
+  aside 2: found after 40 seeds [MP17 bigint of a ratio goes through i64]: (bigint 2538823853562271788421/6): jank throws (out of range for `i64` conversion), Clojure 423137308927045298070N
+  aside 3: found after 46 seeds [R72 BigDecimal printing: scale lost, .0 added]: (str -216708955818889931.244270e12M): jank -216708955818889931244270000000.0, Clojure -2.16708955818889931244270E+29
+  aside 4: found after 61 seeds [MP8 bigdec/bigint of a double: the binary value, not Double.toString]: (bigdec 4243283373259958.5e-10): jank 424328.3373259958461858332157135009765625M, Clojure 424328.33732599585M
+  aside 5: found after 115 seeds [MP18 (D2) BigInt / truncates]: (/ -97N -739944569204289532): jank 0N, Clojure 97/739944569204289532
+  aside 6: found after 193 seeds [MP4 BigDecimal printed in boost's scientific form]: (str 3476459417584371.e-20M): jank 3.476459417584371e-05, Clojure 0.00003476459417584371
+  aside 7: found after 323 seeds [MP20 double of a ratio divides two doubles]: (double 311/13): jank 23.923076923076923, Clojure 23.92307692307692
+  aside 8: found after 362 seeds [MP7 rem of a ratio and a decimal truncates the decimal]: (rem 97588979401.679573e5M 95753516444488404221869/5): jank 9758897940167957N, Clojure 9758897940167957.3M
+  aside 9: found after 488 seeds [D8 BigDecimal = within 2^-52]: (= -0.135699e-20M -6.e-18M): jank true, Clojure false
+  aside 10: found after 5256 seeds [MP9 BigDecimals jank calls = hash differently (D8 with D12)]: (= (hash 276.87e-29M) (hash -57612641.0e-24M)) given (= 276.87e-29M -57612641.0e-24M): jank = true, hashes 3685363649 3141650579, Clojure hashes equal
+  aside 11: found after 5688 seeds [MP19 ratio: an integral result is a long, not a BigInt]: (* 7/5 -90877112920N): jank -127227958088, Clojure -127227958088N
+  aside 12: found after 6787 seeds [div0 (documented: division by 0)]: (/ -5692965999019299.5e-10 -0.0e25M): jank -inf.0M, Clojure throws (Divide by zero)
+  aside 13: 20000 seeds, nothing
+== codegen: BigDecimal literal constants (mantissas 11 × exponents -150..150), JIT object vs AOT text rebuilt at load
+  3311 literals
+  AOT load throws: 845
+      5e-9M: JIT 5e-09.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("5e-09.0"); load: Unable to parse the string "5e-09.0" as a floating point value.
+      1e-9M: JIT 1e-09.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-09.0"); load: Unable to parse the string "1e-09.0" as a floating point value.
+      1e-8M: JIT 1e-08.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-08.0"); load: Unable to parse the string "1e-08.0" as a floating point value.
+      1e-7M: JIT 1e-07.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-07.0"); load: Unable to parse the string "1e-07.0" as a floating point value.
+      1e-6M: JIT 1e-06.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-06.0"); load: Unable to parse the string "1e-06.0" as a floating point value.
+      1e-5M: JIT 1e-05.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-05.0"); load: Unable to parse the string "1e-05.0" as a floating point value.
+  BigInt constants: 1600 values, 0 not rebuilt exactly
+  exhaust, aside []: found after 1 timelines: 1e-150M: JIT 1e-150.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-150.0"); load: Unable to parse the string "1e-150.0" as a floating point value.
+    tape: {"name":"codegen.mantissa","options":11,"value":0}
+{"name":"codegen.exponent","options":301,"value":0}
+  explore 3000 mixed seeds, aside []: found after 2: 100e-15M: JIT 1e-13.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-13.0"); load: Unable to parse the string "1e-13.0" as a floating point value.
+  exhaust, aside [AOT load throws]: complete, 3311 timelines, nothing
+  explore 3000 mixed seeds, aside [AOT load throws]: nothing

@@ -1,0 +1,385 @@
+jank3-interop: CppInterOp 28b0830d replicated (round 3) under jank 7135b7708's interop paths, against C++20 / the book / Clojure
+== census: round 2's standard-modeled CppInterOp answers vs the CppInterOp replica
+  IsIntegral: 2 of 55 queries differ
+    color: round 2 true; CppInterOp false
+    mode: round 2 true; CppInterOp false
+  IsBuiltin: 0 of 55 queries differ
+  GetPointeeType: 3 of 55 queries differ
+    int[3]: round 2 null; CppInterOp int
+    const char[4]: round 2 null; CppInterOp const char
+    int[3][2]: round 2 null; CppInterOp int[3]
+  GetUnderlyingType: 2 of 55 queries differ
+    int[3] *: round 2 int; CppInterOp int[3]
+    int Foo::*: round 2 int Foo::*; CppInterOp int
+  GetScopeFromType: 0 of 55 queries differ
+  GetSignedType (x86-64): 4 of 25 queries differ
+    char: round 2 signed char; CppInterOp char
+    const int: round 2 int; CppInterOp const int
+    const char: round 2 signed char; CppInterOp const char
+    const double: round 2 double; CppInterOp const double
+  GetUnsignedType (x86-64): 3 of 25 queries differ
+    const int: round 2 unsigned int; CppInterOp const unsigned int
+    const char: round 2 unsigned char; CppInterOp const unsigned char
+    const double: round 2 double; CppInterOp const double
+  GetShortType (x86-64): 12 of 25 queries differ
+    void: round 2 unsigned short; CppInterOp void
+    bool: round 2 unsigned short; CppInterOp bool
+    char8_t: round 2 unsigned short; CppInterOp char8_t
+    char16_t: round 2 unsigned short; CppInterOp char16_t
+    char32_t: round 2 unsigned short; CppInterOp char32_t
+    float: round 2 unsigned short; CppInterOp float
+    double: round 2 unsigned short; CppInterOp double
+    long double: round 2 unsigned short; CppInterOp long double
+    std::nullptr_t: round 2 unsigned short; CppInterOp std::nullptr_t
+    const int: round 2 short; CppInterOp const short
+  GetLongType (x86-64): 16 of 25 queries differ
+    void: round 2 unsigned long; CppInterOp void
+    bool: round 2 unsigned long; CppInterOp bool
+    char8_t: round 2 unsigned long; CppInterOp char8_t
+    char16_t: round 2 unsigned long; CppInterOp char16_t
+    char32_t: round 2 unsigned long; CppInterOp char32_t
+    long: round 2 long long; CppInterOp long
+    unsigned long: round 2 unsigned long long; CppInterOp unsigned long
+    long long: round 2 long long; CppInterOp long
+    unsigned long long: round 2 unsigned long long; CppInterOp unsigned long
+    float: round 2 unsigned long; CppInterOp float
+  GetSignedType (AArch64): 3 of 25 queries differ
+    const int: round 2 int; CppInterOp const int
+    const char: round 2 signed char; CppInterOp const signed char
+    const double: round 2 double; CppInterOp const double
+  GetUnsignedType (AArch64): 4 of 25 queries differ
+    char: round 2 unsigned char; CppInterOp char
+    const int: round 2 unsigned int; CppInterOp const unsigned int
+    const char: round 2 unsigned char; CppInterOp const char
+    const double: round 2 double; CppInterOp const double
+  GetCommonType: 280 of 3025 queries differ
+    (void, void): round 2 void; CppInterOp null
+    (bool, bool): round 2 bool; CppInterOp int
+    (bool, color): round 2 unsigned int; CppInterOp int
+    (bool, int &): round 2 int; CppInterOp null
+    (bool, const int &): round 2 int; CppInterOp null
+    (bool, int &&): round 2 int; CppInterOp null
+    (char, char): round 2 char; CppInterOp int
+    (char, const char): round 2 char; CppInterOp int
+    (char, color): round 2 unsigned int; CppInterOp int
+    (char, int &): round 2 int; CppInterOp null
+  IsImplicitlyConvertible: 63 of 3025 queries differ
+    (bool, const int &): round 2 true; CppInterOp false
+    (bool, int &&): round 2 true; CppInterOp false
+    (char, const int &): round 2 true; CppInterOp false
+    (char, int &&): round 2 true; CppInterOp false
+    (signed char, const int &): round 2 true; CppInterOp false
+    (signed char, int &&): round 2 true; CppInterOp false
+    (unsigned char, const int &): round 2 true; CppInterOp false
+    (unsigned char, int &&): round 2 true; CppInterOp false
+    (wchar_t, const int &): round 2 true; CppInterOp false
+    (wchar_t, int &&): round 2 true; CppInterOp false
+  IsConstructible(to, from): 3 of 3025 queries differ
+    (void, void): round 2 true; CppInterOp false
+    (bool, int Foo::*): round 2 false; CppInterOp true
+    (int &&, const int): round 2 true; CppInterOp false
+  IsCStyleConvertible: 336 of 3025 queries differ
+    (void, void): round 2 true; CppInterOp false
+    (bool, std::nullptr_t): round 2 false; CppInterOp true
+    (bool, int Foo::*): round 2 false; CppInterOp true
+    (char, std::nullptr_t): round 2 false; CppInterOp true
+    (char, int Foo::*): round 2 false; CppInterOp true
+    (signed char, std::nullptr_t): round 2 false; CppInterOp true
+    (signed char, int Foo::*): round 2 false; CppInterOp true
+    (unsigned char, std::nullptr_t): round 2 false; CppInterOp true
+    (unsigned char, int Foo::*): round 2 false; CppInterOp true
+    (wchar_t, std::nullptr_t): round 2 false; CppInterOp true
+  GetBuiltinOperatorType(=): 697 of 3025 queries differ
+    (bool, bool): round 2 null; CppInterOp bool
+    (bool, char): round 2 null; CppInterOp bool
+    (bool, signed char): round 2 null; CppInterOp bool
+    (bool, unsigned char): round 2 null; CppInterOp bool
+    (bool, wchar_t): round 2 null; CppInterOp bool
+    (bool, char8_t): round 2 null; CppInterOp bool
+    (bool, char16_t): round 2 null; CppInterOp bool
+    (bool, char32_t): round 2 null; CppInterOp bool
+    (bool, short): round 2 null; CppInterOp bool
+    (bool, unsigned short): round 2 null; CppInterOp bool
+  GetBuiltinOperatorType(+): 61 of 3025 queries differ
+    (bool, color): round 2 unsigned int; CppInterOp int
+    (char, color): round 2 unsigned int; CppInterOp int
+    (signed char, color): round 2 unsigned int; CppInterOp int
+    (unsigned char, color): round 2 unsigned int; CppInterOp int
+    (wchar_t, color): round 2 unsigned int; CppInterOp int
+    (char8_t, color): round 2 unsigned int; CppInterOp int
+    (char16_t, color): round 2 unsigned int; CppInterOp int
+    (short, color): round 2 unsigned int; CppInterOp int
+    (unsigned short, color): round 2 unsigned int; CppInterOp int
+    (int, color): round 2 unsigned int; CppInterOp int
+  GetBuiltinOperatorType(<): 150 of 3025 queries differ
+    (std::nullptr_t, std::nullptr_t): round 2 null; CppInterOp bool
+    (std::nullptr_t, int Foo::*): round 2 null; CppInterOp bool
+    (int *, char *): round 2 bool; CppInterOp null
+    (int *, const char *): round 2 bool; CppInterOp null
+    (int *, base *): round 2 bool; CppInterOp null
+    (int *, derived *): round 2 bool; CppInterOp null
+    (int *, int * *): round 2 bool; CppInterOp null
+    (int *, int (int) *): round 2 bool; CppInterOp null
+    (int *, int[3] *): round 2 bool; CppInterOp null
+    (int *, const char[4]): round 2 bool; CppInterOp null
+  GetTypeFromScope(function) / IsVariable(field): 2 of 2 queries differ
+    take_int: round 2 int (int); CppInterOp int (int) *
+    point::x (a FieldDecl): round 2 IsVariable true; CppInterOp false
+== round 2 re-checked on the replica
+  R36 (loop [x nil n 0] (if (= n 1) x (recur 5 1))): round 2 (no builtin = on objects) compile error (analyze/invalid-cpp-operator-call: The binary operator `=` is not supported for the types `jank::runtime::object_ref` and `jank::runtime::object_ref`.); with CppInterOp's answer GetBuiltinOperatorType(=, object_ref, object_ref) = `jank::runtime::object_ref`: 5; Clojure 5
+  R87 determine_implicit_conversion(`const char (&)[4]`, `const char *`): round 2 Jank.Interop.CppUtil.ImplicitConversionAction.unknown; replica Jank.R3.Interop.Paths.Action.none (GetPointeeType(`const char[4]`) = `const char`)
+  V (cpp/cast) acceptance (is_constructible || IsImplicitlyConvertible) over round 2's 196 pairs: 0 differ
+  VIII (round 2's 147 chains) on the replica, x86-64: 53 of 147 deviate
+  VIII (round 2's 147 chains) on the replica, AArch64 Linux: 53 of 147 deviate
+  VIII as round 2 computed it (round 2's modifiers, x86-64): 46 of 147
+    changed: (:signed cpp/char) (x86-64): C++ `signed char`; jank `char` (round 2 agrees; replica deviates)
+    changed: (:long cpp/long) (x86-64): C++ `long long`; jank `long` (round 2 agrees; replica deviates)
+    changed: (:signed (:long cpp/long)) (x86-64): C++ `long long`; jank `long` (round 2 agrees; replica deviates)
+    changed: (:unsigned (:long cpp/long)) (x86-64): C++ `unsigned long long`; jank `unsigned long` (round 2 agrees; replica deviates)
+    changed: (:short (:signed cpp/char)): not a C++ type; jank accepts it as `short` (round 2 deviates; replica agrees)
+    changed: (:short (:short cpp/bool)) (x86-64): not a C++ type; jank accepts it as `bool` (round 2 agrees; replica deviates)
+    changed: (:long (:signed cpp/char)): not a C++ type; jank accepts it as `long` (round 2 deviates; replica agrees)
+    changed: (:long (:signed cpp/long)) (x86-64): C++ `long long`; jank `long` (round 2 agrees; replica deviates)
+    changed: (:long (:unsigned cpp/long)) (x86-64): C++ `unsigned long long`; jank `unsigned long` (round 2 agrees; replica deviates)
+    changed: (:long (:short cpp/bool)) (x86-64): not a C++ type; jank accepts it as `bool` (round 2 agrees; replica deviates)
+    changed: (:long (:long cpp/int)) (x86-64): C++ `long long`; jank `long` (round 2 agrees; replica deviates)
+  IX GetCommonType over the IX branch types: 4 pairs differ
+    (bool, bool): round 2 bool; replica int
+    (jank::runtime::obj::integer_ref, jank::runtime::obj::integer_ref): round 2 jank::runtime::oref<jank::runtime::obj::integer>; replica <null>
+    (jank::runtime::obj::keyword_ref, jank::runtime::obj::keyword_ref): round 2 jank::runtime::oref<jank::runtime::obj::keyword>; replica <null>
+    (jank::runtime::object_ref, jank::runtime::object_ref): round 2 jank::runtime::object_ref; replica <null>
+  III (round 2's 312 parameter cases): x86-64 10 deviate; AArch64 Linux 10 deviate
+== VIII'. DSL integer modifiers (CppInterOp Get*Type), 11 bases × chains ≤ 3 of signed/unsigned/short/long/const × 2 platforms
+  explore (3000 mixed seeds): dsl:accepts-non-type after 1 timelines, 4 decisions: (:long cpp/bool) (AArch64 Linux): not a C++ type; jank accepts it as `bool`
+  shrunk to 4 decisions: (:signed cpp/bool) (x86-64): not a C++ type; jank accepts it as `bool`
+  tape:
+    {"name":"r3.dsl.platform","options":2,"value":0}
+    {"name":"r3.dsl.depth","options":4,"value":1}
+    {"name":"r3.dsl.modifier","options":5,"value":0}
+    {"name":"r3.dsl.base","options":11,"value":4}
+  table: 1514 of 3124 cases deviate; classes: [signed-char-is-char (3), accepts-non-type (1450), long-long-unreachable (58), unsigned-char-is-char (3)]
+    [signed-char-is-char] (:signed cpp/char) (x86-64): C++ `signed char`; jank `char`
+    [signed-char-is-char] (:signed (:const cpp/char)) (x86-64): C++ `const signed char`; jank `const char`
+    [signed-char-is-char] (:const (:signed cpp/char)) (x86-64): C++ `const signed char`; jank `const char`
+    [accepts-non-type] (:signed (:signed cpp/char)) (x86-64): not a C++ type; jank accepts it as `char`
+    [accepts-non-type] (:signed (:unsigned cpp/char)) (x86-64): not a C++ type; jank accepts it as `signed char`
+    [accepts-non-type] (:unsigned (:signed cpp/char)) (x86-64): not a C++ type; jank accepts it as `unsigned char`
+    [accepts-non-type] (:unsigned (:unsigned cpp/char)) (x86-64): not a C++ type; jank accepts it as `unsigned char`
+    [accepts-non-type] (:short (:unsigned cpp/char)) (x86-64): not a C++ type; jank accepts it as `unsigned short`
+    [accepts-non-type] (:long (:unsigned cpp/char)) (x86-64): not a C++ type; jank accepts it as `unsigned long`
+    [accepts-non-type] (:signed (:signed (:signed cpp/char))) (x86-64): not a C++ type; jank accepts it as `char`
+    [accepts-non-type] (:signed (:signed (:unsigned cpp/char))) (x86-64): not a C++ type; jank accepts it as `signed char`
+    [long-long-unreachable] (:long (:long cpp/int)) (x86-64): C++ `long long`; jank `long`
+    [long-long-unreachable] (:signed (:long (:long cpp/int))) (x86-64): C++ `long long`; jank `long`
+    [long-long-unreachable] (:unsigned (:long (:long cpp/int))) (x86-64): C++ `unsigned long long`; jank `unsigned long`
+    [long-long-unreachable] (:long (:signed (:long cpp/int))) (x86-64): C++ `long long`; jank `long`
+    [long-long-unreachable] (:long (:unsigned (:long cpp/int))) (x86-64): C++ `unsigned long long`; jank `unsigned long`
+    [long-long-unreachable] (:long (:long (:signed cpp/int))) (x86-64): C++ `long long`; jank `long`
+    [long-long-unreachable] (:long (:long (:unsigned cpp/int))) (x86-64): C++ `unsigned long long`; jank `unsigned long`
+    [long-long-unreachable] (:long (:long (:const cpp/int))) (x86-64): C++ `const long long`; jank `const long`
+    [unsigned-char-is-char] (:unsigned cpp/char) (AArch64 Linux): C++ `unsigned char`; jank `char`
+    [unsigned-char-is-char] (:unsigned (:const cpp/char)) (AArch64 Linux): C++ `const unsigned char`; jank `const char`
+    [unsigned-char-is-char] (:const (:unsigned cpp/char)) (AArch64 Linux): C++ `const unsigned char`; jank `const char`
+  residual searches (exhaust, each found class set aside in turn):
+    VIII'. DSL integer modifiers (CppInterOp Get*Type), 11 bases × chains ≤ 3 of signed/unsigned/short/long/const × 2 platforms: found after 12 timelines (dsl:signed-char-is-char): (:signed cpp/char) (x86-64): C++ `signed char`; jank `char`
+    VIII'. DSL integer modifiers (CppInterOp Get*Type), 11 bases × chains ≤ 3 of signed/unsigned/short/long/const × 2 platforms: found after 16 timelines (dsl:accepts-non-type): (:signed cpp/bool) (x86-64): not a C++ type; jank accepts it as `bool`
+    VIII'. DSL integer modifiers (CppInterOp Get*Type), 11 bases × chains ≤ 3 of signed/unsigned/short/long/const × 2 platforms: found after 48 timelines (dsl:long-long-unreachable): (:long cpp/long) (x86-64): C++ `long long`; jank `long`
+    VIII'. DSL integer modifiers (CppInterOp Get*Type), 11 bases × chains ≤ 3 of signed/unsigned/short/long/const × 2 platforms: found after 1739 timelines (dsl:unsigned-char-is-char): (:unsigned cpp/char) (AArch64 Linux): C++ `unsigned char`; jank `char`
+    VIII'. DSL integer modifiers (CppInterOp Get*Type), 11 bases × chains ≤ 3 of signed/unsigned/short/long/const × 2 platforms: complete, 3432 timelines, nothing (set aside: [signed-char-is-char, accepts-non-type, long-long-unreachable, unsigned-char-is-char])
+== X. DSL member forms :member / :member* / :&member, against the book and C++
+  explore (3000 mixed seeds): member:member*-takes-a-name after 15 timelines, 4 decisions: (cpp/cast (:member* Bar (:fn int [])) ...): C++/book `int () Bar::*`; jank: Member names need to be symbols.
+  shrunk to 4 decisions: (cpp/cast (:member* Foo x) ...): C++/book: Unable to find `x`.; jank gives `int Foo::*`
+  tape:
+    {"name":"r3.member.kw","options":3,"value":1}
+    {"name":"r3.member.type","options":4,"value":0}
+    {"name":"r3.member.second","options":11,"value":0}
+    {"name":"r3.member.type_position","options":2,"value":0}
+  table: 27 of 264 cases deviate; classes: [member-function-as-value (2), member-overloaded-static (2), pointer-type-as-class (9), member*-takes-a-name (12), &member-skips-access (2)]
+    [member-function-as-value] #cpp (:member Foo get): C++/book: not a type, not a value; jank gives `int () *`
+    [member-function-as-value] #cpp (:member Bar get): C++/book: not a type, not a value; jank gives `int () *`
+    [member-overloaded-static] #cpp (:member Foo sf): C++/book `<null>`; jank: There is no `sf` member within `Foo`.
+    [member-overloaded-static] #cpp (:member Bar sf): C++/book `<null>`; jank: There is no `sf` member within `Bar`.
+    [pointer-type-as-class] #cpp (:member (:* Foo) get): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `int () *`
+    [pointer-type-as-class] #cpp (:member (:* Foo) make): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `Foo * () *`
+    [pointer-type-as-class] #cpp (:member (:* Foo) count): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `int &`
+    [pointer-type-as-class] (cpp/cast (:member* (:* Foo) x) ...): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `int Foo::*`
+    [pointer-type-as-class] (cpp/cast (:member* (:* Foo) secret) ...): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `int Foo::*`
+    [pointer-type-as-class] (cpp/cast (:member* (:* Foo) get) ...): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `const int () Foo::*`
+    [member*-takes-a-name] (cpp/cast (:member* Foo x) ...): C++/book: Unable to find `x`.; jank gives `int Foo::*`
+    [member*-takes-a-name] (cpp/cast (:member* Foo secret) ...): C++/book: Unable to find `secret`.; jank gives `int Foo::*`
+    [member*-takes-a-name] (cpp/cast (:member* Foo get) ...): C++/book: Unable to find `get`.; jank gives `const int () Foo::*`
+    [member*-takes-a-name] (cpp/cast (:member* Foo int) ...): C++/book `int Foo::*`; jank: There is no `int` member within `Foo`.
+    [member*-takes-a-name] (cpp/cast (:member* Foo (:fn int [])) ...): C++/book `int () Foo::*`; jank: Member names need to be symbols.
+    [member*-takes-a-name] (cpp/cast (:member* Foo (:* (:fn void []))) ...): C++/book `void () * Foo::*`; jank: Member names need to be symbols.
+    [&member-skips-access] #cpp (:&member Foo secret): C++/book: private; jank gives `int Foo::*`
+    [&member-skips-access] #cpp (:&member Bar secret): C++/book: private; jank gives `int Foo::*`
+  residual searches (exhaust, each found class set aside in turn):
+    X. DSL member forms :member / :member* / :&member, against the book and C++: found after 6 timelines (member:member-function-as-value): #cpp (:member Foo get): C++/book: not a type, not a value; jank gives `int () *`
+    X. DSL member forms :member / :member* / :&member, against the book and C++: found after 12 timelines (member:member-overloaded-static): #cpp (:member Foo sf): C++/book `<null>`; jank: There is no `sf` member within `Foo`.
+    X. DSL member forms :member / :member* / :&member, against the book and C++: found after 50 timelines (member:pointer-type-as-class): #cpp (:member (:* Foo) get): C++/book: not a class; jank looks through the pointer (GetScopeFromType) and gives `int () *`
+    X. DSL member forms :member / :member* / :&member, against the book and C++: found after 89 timelines (member:member*-takes-a-name): (cpp/cast (:member* Foo x) ...): C++/book: Unable to find `x`.; jank gives `int Foo::*`
+    X. DSL member forms :member / :member* / :&member, against the book and C++: found after 180 timelines (member:&member-skips-access): #cpp (:&member Foo secret): C++/book: private; jank gives `int Foo::*`
+    X. DSL member forms :member / :member* / :&member, against the book and C++: complete, 264 timelines, nothing (set aside: [member-function-as-value, member-overloaded-static, pointer-type-as-class, member*-takes-a-name, &member-skips-access])
+== XI. calls through function pointers and pointers to members (build_indirect_cpp_call)
+  explore (3000 mixed seeds): call:private-base-object after 4 timelines, 1 decisions: (#cpp (:&member Foo scale) ppb (cpp/long 2)): C++ ill-formed; jank accepts
+  shrunk to 1 decisions: (#cpp (:&member Foo scale) ppb (cpp/long 2)): C++ ill-formed; jank accepts
+  tape:
+    {"name":"r3.call.case","options":188,"value":164}
+  table: 29 of 188 cases deviate; classes: [pm-const-object-pointer (2), private-base-object (7), converting-reference-parameter (16), explicit-constructor-argument (4)]
+    [pm-const-object-pointer] (#cpp (:&member Foo x) cpfoo): C++ valid; jank: Unable to call function since argument 0 is not convertible from `const Foo *` to `Foo *`.
+    [pm-const-object-pointer] (#cpp (:&member Foo get) cpfoo): C++ valid; jank: Unable to call function since argument 0 is not convertible from `const Foo *` to `Foo *`.
+    [private-base-object] (#cpp (:&member Foo x) ppb): C++ ill-formed; jank accepts
+    [private-base-object] (#cpp (:&member Foo get) ppb): C++ ill-formed; jank accepts
+    [private-base-object] (#cpp (:&member Foo set) ppb 1): C++ ill-formed; jank accepts
+    [private-base-object] (#cpp (:&member Foo set) ppb (cpp/long 2)): C++ ill-formed; jank accepts
+    [private-base-object] (#cpp (:&member Foo set) ppb 2.5): C++ ill-formed; jank accepts
+    [private-base-object] (#cpp (:&member Foo set) ppb (cpp/size_t 3)): C++ ill-formed; jank accepts
+    [converting-reference-parameter] (#cpp (:&member Foo scale) foo 1): C++ valid; jank: Unable to call function since argument 1 is not convertible from `int` to `const long &`.
+    [converting-reference-parameter] (#cpp (:&member Foo scale) foo 2.5): C++ valid; jank: Unable to call function since argument 1 is not convertible from `double` to `const long &`.
+    [converting-reference-parameter] (#cpp (:&member Foo scale) foo (cpp/size_t 3)): C++ valid; jank: Unable to call function since argument 1 is not convertible from `size_t` to `const long &`.
+    [converting-reference-parameter] (#cpp (:&member Foo scale) cpp/gfoo 1): C++ valid; jank: Unable to call function since argument 1 is not convertible from `int` to `const long &`.
+    [converting-reference-parameter] (#cpp (:&member Foo scale) cpp/gfoo 2.5): C++ valid; jank: Unable to call function since argument 1 is not convertible from `double` to `const long &`.
+    [converting-reference-parameter] (#cpp (:&member Foo scale) cpp/gfoo (cpp/size_t 3)): C++ valid; jank: Unable to call function since argument 1 is not convertible from `size_t` to `const long &`.
+    [explicit-constructor-argument] (#cpp cpp/fp_vector 1): C++ ill-formed; jank accepts
+    [explicit-constructor-argument] (#cpp cpp/fp_vector (cpp/long 2)): C++ ill-formed; jank accepts
+    [explicit-constructor-argument] (#cpp cpp/fp_vector 2.5): C++ ill-formed; jank accepts
+    [explicit-constructor-argument] (#cpp cpp/fp_vector (cpp/size_t 3)): C++ ill-formed; jank accepts
+  residual searches (exhaust, each found class set aside in turn):
+    XI. calls through function pointers and pointers to members (build_indirect_cpp_call): found after 25 timelines (call:pm-const-object-pointer): (#cpp (:&member Foo x) cpfoo): C++ valid; jank: Unable to call function since argument 0 is not convertible from `const Foo *` to `Foo *`.
+    XI. calls through function pointers and pointers to members (build_indirect_cpp_call): found after 37 timelines (call:private-base-object): (#cpp (:&member Foo x) ppb): C++ ill-formed; jank accepts
+    XI. calls through function pointers and pointers to members (build_indirect_cpp_call): found after 128 timelines (call:converting-reference-parameter): (#cpp (:&member Foo scale) foo 1): C++ valid; jank: Unable to call function since argument 1 is not convertible from `int` to `const long &`.
+    XI. calls through function pointers and pointers to members (build_indirect_cpp_call): found after 184 timelines (call:explicit-constructor-argument): (#cpp cpp/fp_vector 1): C++ ill-formed; jank accepts
+    XI. calls through function pointers and pointers to members (build_indirect_cpp_call): complete, 188 timelines, nothing (set aside: [pm-const-object-pointer, private-base-object, converting-reference-parameter, explicit-constructor-argument])
+== XII. function templates with explicit template arguments, called
+  explore (3000 mixed seeds): template:explicit-args-dropped after 1 timelines, 1 decisions: (#cpp (add cpp/int) (cpp/long 2) (cpp/long 2)): C++ `add<int>` returns `int`; jank deduces from the arguments and returns `long`
+  shrunk to 1 decisions: (#cpp (add cpp/int) (cpp/long 2) (cpp/long 2)): C++ `add<int>` returns `int`; jank deduces from the arguments and returns `long`
+  tape:
+    {"name":"r3.template.case","options":75,"value":8}
+  table: 69 of 75 cases deviate; classes: [explicit-args-dropped (69)]
+    [explicit-args-dropped] (#cpp (add cpp/int) 1 2.5): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) 1 (cpp/long 2)): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) 2.5 1): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) 2.5 2.5): C++ `add<int>` returns `int`; jank deduces from the arguments and returns `double`
+    [explicit-args-dropped] (#cpp (add cpp/int) 2.5 (cpp/long 2)): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) (cpp/long 2) 1): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+  residual searches (exhaust, each found class set aside in turn):
+    XII. function templates with explicit template arguments, called: found after 2 timelines (template:explicit-args-dropped): (#cpp (add cpp/int) 1 2.5): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    XII. function templates with explicit template arguments, called: complete, 75 timelines, nothing (set aside: [explicit-args-dropped])
+== XIII. operators on class operands (GetOperator; no built-in candidates)
+  explore (2000 mixed seeds): operator:no-builtin-candidates after 4 timelines, 1 decisions: (cpp/- meters-value meters-value): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+  shrunk to 1 decisions: (cpp/+ meters-value meters-value): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+  tape:
+    {"name":"r3.operator.case","options":42,"value":0}
+  table: 12 of 42 cases deviate; classes: [no-builtin-candidates (12)]
+    [no-builtin-candidates] (cpp/+ meters-value meters-value): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ meters-value double): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ meters-value int): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- meters-value meters-value): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- meters-value double): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- meters-value int): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+  residual searches (exhaust, each found class set aside in turn):
+    XIII. operators on class operands (GetOperator; no built-in candidates): found after 1 timelines (operator:no-builtin-candidates): (cpp/+ meters-value meters-value): C++ valid (built-in operator through the conversion function); jank: The operator is not supported for the type.
+    XIII. operators on class operands (GetOperator; no built-in candidates): complete, 42 timelines, nothing (set aside: [no-builtin-candidates])
+== XIV. data member access (cpp/.-name obj)
+  explore (2000 mixed seeds): member-access:inherited-static-member after 9 timelines, 2 decisions: (cpp/.-count bar): C++ valid; jank: There is no `count` member within the class.
+  shrunk to 2 decisions: (cpp/.-count bar): C++ valid; jank: There is no `count` member within the class.
+  tape:
+    {"name":"r3.member_access.object","options":6,"value":1}
+    {"name":"r3.member_access.name","options":5,"value":2}
+  table: 3 of 30 cases deviate; classes: [inherited-static-member (2), private-base-member (1)]
+    [inherited-static-member] (cpp/.-count bar): C++ valid; jank: There is no `count` member within the class.
+    [inherited-static-member] (cpp/.-count pbar): C++ valid; jank: There is no `count` member within the class.
+    [private-base-member] (cpp/.-x pb): C++ ill-formed (inaccessible through a private base); jank gives `int &`
+  residual searches (exhaust, each found class set aside in turn):
+    XIV. data member access (cpp/.-name obj): found after 8 timelines (member-access:inherited-static-member): (cpp/.-count bar): C++ valid; jank: There is no `count` member within the class.
+    XIV. data member access (cpp/.-name obj): found after 11 timelines (member-access:private-base-member): (cpp/.-x pb): C++ ill-formed (inaccessible through a private base); jank gives `int &`
+    XIV. data member access (cpp/.-name obj): complete, 30 timelines, nothing (set aside: [inherited-static-member, private-base-member])
+== XV. cpp/unsafe-cast (IsCStyleConvertible) against C-style casts
+  explore (3000 mixed seeds): unsafe-cast:null-constant-dummy after 5 timelines, 2 decisions: (cpp/unsafe-cast std.nullptr_t <void * value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+  shrunk to 2 decisions: (cpp/unsafe-cast std.nullptr_t <int value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+  tape:
+    {"name":"r3.unsafe_cast.source","options":12,"value":0}
+    {"name":"r3.unsafe_cast.target","options":12,"value":9}
+  table: 19 of 144 cases deviate; classes: [null-constant-dummy (16), floating-source (2), nullptr-source (1)]
+    [null-constant-dummy] (cpp/unsafe-cast std.nullptr_t <int value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast (:member* Foo x) <int value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast std.nullptr_t <long value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast (:member* Foo x) <long value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast std.nullptr_t <bool value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast (:member* Foo x) <bool value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast std.nullptr_t <int * value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [null-constant-dummy] (cpp/unsafe-cast (:member* Foo x) <int * value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    [floating-source] (cpp/unsafe-cast cpp/color <double value>): a valid C-style cast; jank: Invalid unsafe-cast
+    [floating-source] (cpp/unsafe-cast cpp/mode <double value>): a valid C-style cast; jank: Invalid unsafe-cast
+    [nullptr-source] (cpp/unsafe-cast cpp/long <std::nullptr_t value>): a valid C-style cast; jank: Invalid unsafe-cast
+  residual searches (exhaust, each found class set aside in turn):
+    XV. cpp/unsafe-cast (IsCStyleConvertible) against C-style casts: found after 10 timelines (unsafe-cast:null-constant-dummy): (cpp/unsafe-cast std.nullptr_t <int value>): an invalid C-style cast for a non-constant value; jank accepts (CppInterOp casts a literal 0)
+    XV. cpp/unsafe-cast (IsCStyleConvertible) against C-style casts: found after 29 timelines (unsafe-cast:floating-source): (cpp/unsafe-cast cpp/color <double value>): a valid C-style cast; jank: Invalid unsafe-cast
+    XV. cpp/unsafe-cast (IsCStyleConvertible) against C-style casts: found after 110 timelines (unsafe-cast:nullptr-source): (cpp/unsafe-cast cpp/long <std::nullptr_t value>): a valid C-style cast; jank: Invalid unsafe-cast
+    XV. cpp/unsafe-cast (IsCStyleConvertible) against C-style casts: complete, 144 timelines, nothing (set aside: [null-constant-dummy, floating-source, nullptr-source])
+== XVI. if with native branches, references included (find_branch_common_type on GetCommonType)
+  explore (2000 mixed seeds): branch:reference-branch-narrowed after 15 timelines, 2 decisions: (if c cpp/guint true): C++ (and the value either branch holds) `unsigned int`; jank types the `if` `bool`
+  shrunk to 2 decisions: (if c cpp/guint 1): C++ (and the value either branch holds) `unsigned int`; jank types the `if` `int`
+  tape:
+    {"name":"r3.branch.then","options":9,"value":7}
+    {"name":"r3.branch.else","options":9,"value":0}
+  table: 19 of 81 cases deviate; classes: [reference-branch-narrowed (16), reference-typed-if (3)]
+    [reference-branch-narrowed] (if c 1 cpp/glong): C++ (and the value either branch holds) `long`; jank types the `if` `int`
+    [reference-branch-narrowed] (if c 1 cpp/gdouble): C++ (and the value either branch holds) `double`; jank types the `if` `int`
+    [reference-branch-narrowed] (if c 1 cpp/guint): C++ (and the value either branch holds) `unsigned int`; jank types the `if` `int`
+    [reference-branch-narrowed] (if c 3000000000 cpp/gdouble): C++ (and the value either branch holds) `double`; jank types the `if` `long`
+    [reference-branch-narrowed] (if c true cpp/gint): C++ (and the value either branch holds) `int`; jank types the `if` `bool`
+    [reference-branch-narrowed] (if c true cpp/glong): C++ (and the value either branch holds) `long`; jank types the `if` `bool`
+    [reference-branch-narrowed] (if c true cpp/gdouble): C++ (and the value either branch holds) `double`; jank types the `if` `bool`
+    [reference-branch-narrowed] (if c true cpp/guint): C++ (and the value either branch holds) `unsigned int`; jank types the `if` `bool`
+    [reference-typed-if] (if c cpp/gint 1): C++ a prvalue `int`; jank types the `if` `int &` (codegen declares the local without the reference, cpp_processor.cpp:913)
+    [reference-typed-if] (if c cpp/glong 3000000000): C++ a prvalue `long`; jank types the `if` `long &` (codegen declares the local without the reference, cpp_processor.cpp:913)
+    [reference-typed-if] (if c cpp/gdouble 2.5): C++ a prvalue `double`; jank types the `if` `double &` (codegen declares the local without the reference, cpp_processor.cpp:913)
+  residual searches (exhaust, each found class set aside in turn):
+    XVI. if with native branches, references included (find_branch_common_type on GetCommonType): found after 6 timelines (branch:reference-branch-narrowed): (if c 1 cpp/glong): C++ (and the value either branch holds) `long`; jank types the `if` `int`
+    XVI. if with native branches, references included (find_branch_common_type on GetCommonType): found after 37 timelines (branch:reference-typed-if): (if c cpp/gint 1): C++ a prvalue `int`; jank types the `if` `int &` (codegen declares the local without the reference, cpp_processor.cpp:913)
+    XVI. if with native branches, references included (find_branch_common_type on GetCommonType): complete, 81 timelines, nothing (set aside: [reference-branch-narrowed, reference-typed-if])
+== XVII. native exceptions: catch handler types
+  explore (2000 mixed seeds): exception:rvalue-reference-handler after 14 timelines, 2 decisions: (try (throw-native <const char *>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+  shrunk to 2 decisions: (try (throw-native <int>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+  tape:
+    {"name":"r3.exception.handler","options":9,"value":6}
+    {"name":"r3.exception.thrown","options":5,"value":0}
+  table: 11 of 45 cases deviate; classes: [by-value-handler-is-a-reference (5), array-handler (1), rvalue-reference-handler (5)]
+    [by-value-handler-is-a-reference] (try (throw-native <int>) (catch cpp/int e ...)): C++ catches a copy (a change to e is not rethrown by `(throw)`); jank binds `int &` to the exception object itself
+    [by-value-handler-is-a-reference] (try (throw-native <int>) (catch (:const cpp/int) e ...)): C++ catches a copy (a change to e is not rethrown by `(throw)`); jank binds `const int &` to the exception object itself
+    [by-value-handler-is-a-reference] (try (throw-native <std::runtime_error>) (catch std.exception e ...)): C++ catches a copy (a change to e is not rethrown by `(throw)`); jank binds `std::exception &` to the exception object itself
+    [by-value-handler-is-a-reference] (try (throw-native <std::runtime_error>) (catch std.runtime_error e ...)): C++ catches a copy (a change to e is not rethrown by `(throw)`); jank binds `std::runtime_error &` to the exception object itself
+    [by-value-handler-is-a-reference] (try (throw-native <long>) (catch cpp/long e ...)): C++ catches a copy (a change to e is not rethrown by `(throw)`); jank binds `long &` to the exception object itself
+    [array-handler] (try (throw-native <int *>) (catch (:array cpp/int 3) e ...)): C++ catches (handler adjusted to a pointer); jank does not catch (`int[3] &`)
+    [rvalue-reference-handler] (try (throw-native <int>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+    [rvalue-reference-handler] (try (throw-native <long>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+    [rvalue-reference-handler] (try (throw-native <std::runtime_error>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+    [rvalue-reference-handler] (try (throw-native <int *>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+    [rvalue-reference-handler] (try (throw-native <const char *>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+  residual searches (exhaust, each found class set aside in turn):
+    XVII. native exceptions: catch handler types: found after 1 timelines (exception:by-value-handler-is-a-reference): (try (throw-native <int>) (catch cpp/int e ...)): C++ catches a copy (a change to e is not rethrown by `(throw)`); jank binds `int &` to the exception object itself
+    XVII. native exceptions: catch handler types: found after 29 timelines (exception:array-handler): (try (throw-native <int *>) (catch (:array cpp/int 3) e ...)): C++ catches (handler adjusted to a pointer); jank does not catch (`int[3] &`)
+    XVII. native exceptions: catch handler types: found after 31 timelines (exception:rvalue-reference-handler): (try (throw-native <int>) (catch (:&& cpp/int) e ...)): C++ ill-formed (rvalue-reference handler); jank declares `catch(int & e)`
+    XVII. native exceptions: catch handler types: complete, 45 timelines, nothing (set aside: [by-value-handler-is-a-reference, array-handler, rvalue-reference-handler])
+== theorems (proved at build time; no sorry, no native_decide)
+  applyMod_keeps_notLongLong
+  dsl_never_long_long
+  long_long_int_is_long
+  signed_char_is_char_x86
+  unsigned_char_is_char_aarch64
+  signed_char_aarch64
+  unsigned_char_x86
+  short_long_bool
+  isIntegral_enum
+  isBuiltin_enum
+  getPointeeType_array
+  getScopeFromType_fnptr
+  isImplicitlyConvertible_to_lref
+  isImplicitlyConvertible_to_rref
+  isCStyleConvertible_floating
+  isCStyleConvertible_nullptr
+  pm_const_pointee_dropped
+  getCommonType_small_same
+  getCommonType_ref_null
+== done in 0 s

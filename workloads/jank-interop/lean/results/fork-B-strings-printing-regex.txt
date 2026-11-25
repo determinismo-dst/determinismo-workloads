@@ -1,0 +1,401 @@
+Fork B (strings and characters, printing, regex functions): models, searches and theorems are done. Every item below is a hypothesis read from the C++/jank source; jank was not built or run.
+
+Files (all build with `lake build jank-strings`; full run takes 45 s, output in `results/strings.txt`):
+- `Jank/StrModel.lean`
+- `Jank/PrintModel.lean`
+- `Jank/RegexModel.lean`
+- `Jank/StringsSearch.lean`
+- `Run/Strings.lean` — while I worked, someone changed `lakefile.toml` to `root = "Run.Strings"` and `RunStrings.lean` disappeared, so I created this file. It only calls `Jank.StringsSearch.searches`.
+- `results/strings.txt`
+
+None of these files is imported from `Jank.lean` or `Main.lean` yet. You need to wire them in.
+
+Paths below are under `upstream/compiler+runtime/`. "UTF-8 locale" and "C locale" refer to `jank_init_base` (c_api.cpp:1110), which calls `std::locale::global(std::locale(""))`, i.e. the environment's locale. That is the C locale when `LANG` is unset, which is common in containers.
+
+## Deviations
+
+### Strings and characters
+
+**B1. `count`, `nth`, `get`, `contains?` and `subs` work on UTF-8 bytes, not UTF-16 units**
+```clojure
+(count "é")        ; Clojure 1        jank 2
+(nth "é" 0)        ; Clojure \é       jank a one-byte character 0xC3
+(get "é" 1)        ; Clojure nil      jank a one-byte character 0xA9
+(contains? "é" 1)  ; Clojure false    jank true
+(subs "é" 0 1)     ; Clojure "é"      jank "\xC3" (invalid UTF-8)
+(subs "é" 2)       ; Clojure throws   jank ""
+```
+- **Path:**
+  - persistent_string.cpp: `count` 179 (`data.size()`), `nth` 107 / `get` 78 (`make_box<character>(data[i])`), `contains` 95, `substring` 139.
+  - Reached through core.jank `count` 190 → seq.cpp `sequence_length` 833; seq.cpp `nth` 639; core.cpp `subs` 398/411.
+- **Documentation:** the book says only "persistent_string is expected to be UTF-8". Byte indexing is not documented.
+- **Evidence:**
+  - Table, texts of ≤ 3 code points: `count` 1071/1111, `nth` 5581/7777, `get` 5581/7777, `contains?` 2518/7777, `subs`/2 4838/7777, `subs`/3 16633/54439.
+  - `explore` found it at timeline 3. Shrunk tape: `env.locale=0, str.s.len=3, chars 0,0,5, str.op=0`, i.e. `(count "aaΣ")`: Clojure 3, jank 4.
+  - Theorems `count_ge`, `count_eq_iff` (jank's count equals Clojure's iff the text is all ASCII), `nth_is_one_byte`, `nth_never_non_ascii`.
+
+**B2. `seq` on a string walks code points, so it disagrees with Clojure and with jank's own `count`/`nth`**
+```clojure
+(seq "😀")            ; Clojure (\uD83D \uDE00)  jank (\😀)
+(count (seq "a😀"))   ; Clojure 3                jank 2   (while (count "a😀") is 5 in jank)
+(int (first "😀"))    ; Clojure 55357            jank 128512 (UTF-8 locale)
+```
+- **Path:** persistent_string_sequence.cpp `first` 121, `next` 127, `count` 77, via jtl/utf8.cpp `next_char_size` 13.
+- **Evidence:** table — `seq` 291/1111, count of seq 291/1111, `int` of first 111/1111 (UTF-8 locale).
+
+**B3. A string whose last character is cut short makes `seq` walk past the end (undefined behavior)**
+```clojure
+(vec (seq (subs "aé" 0 2)))  ; Clojure [\a \é]
+; jank: next() yields a seq at byte 3 of a 2-byte string; first() reads out of bounds
+```
+- **Path:** persistent_string_sequence.cpp `next` 127–137 ends only when `n == size`. A truncated lead byte gives `n > size`.
+- `first` (121) then calls `next_char_size`, which reads `s[3]` unchecked (immutable_string.hpp `operator[]` 256, no bounds check).
+- **Likely result:** the substring constructor (immutable_string.hpp 162) throws "position outside of string", or "Invalid UTF-8 string." is thrown. A `next`-only walk such as `last` keeps reading memory.
+- `count` of the seq does terminate (it uses `<`, line 82).
+- The string is reachable through B1's `subs` or `(str (nth "é" 0))`.
+- **Evidence:** theorem `seq_walks_past_end`.
+
+**B4. `=` with a string seq on the left compares bytes to characters: not reflexive, not symmetric**
+```clojure
+(let [x (seq "é")] (= x x))  ; Clojure true  jank false
+(= (seq "é") (vec "é"))      ; Clojure true  jank false   ((= (vec "é") (seq "é")) is true)
+```
+- **Path:**
+  - persistent_string_sequence.cpp `equal` 33 → seq_ext.hpp `equal(o, begin, end)` 12, iterating the string's `char`s.
+  - Each `char` is compared by core/equal.cpp `equal(char, object_ref)` 8, which requires a one-byte character.
+  - oref.hpp `equal` 402 has no identity shortcut.
+- **Evidence:** table 1071/1111 for both forms; theorem `seq_not_reflexive`.
+
+**B5. A string seq and an equal vector hash differently, even in ASCII**
+```clojure
+(= (seq "a") [\a])                       ; true in both
+(contains? (hash-set (seq "a")) [\a])    ; Clojure true  jank false
+```
+- **Path:** persistent_string_sequence.cpp `to_hash` 71 → hash.hpp `ordered(begin, end)` 47 with hash.cpp `visit(char)` 151 (raw byte, sign-extended).
+- A vector hashes each character's `to_hash` instead (character.cpp 89 → immutable_string `to_hash` 647, which murmur-mixes the bytes).
+- **Evidence:** table 1110/1111; theorem `seq_hash_inconsistent`.
+
+**B6. `compare` and `sort` on strings use UTF-8 byte order, not UTF-16 order**
+```clojure
+(compare "Ａ" "😀")    ; Clojure positive    jank negative
+(sort ["Ａ" "😀"])     ; Clojure ("😀" "Ａ")  jank ("Ａ" "😀")
+```
+- **Path:** persistent_string.cpp `compare` 68 → immutable_string.hpp `compare` 576.
+- **Evidence:** 262 of 12,321 pairs disagree in sign. Theorem `compare_fullwidth_emoji`: every character in U+E000–U+FFFF (e.g. fullwidth forms) sorts on the other side of every supplementary character.
+- **Note:** `static_cast<int>(length - s_length)` gets the sign right for all lengths below 2^31 (`compare_len_sign_ok`, bv_decide). It gets the sign wrong for lengths 2^31 apart (`compare_len_wrong`), which needs 2 GiB strings; this is not counted.
+
+**B7. `clojure.string/index-of` and `last-index-of` return byte indices and mishandle negative or past-the-end starts**
+```clojure
+(clojure.string/index-of "éa" "a")            ; Clojure 1    jank 2
+(clojure.string/index-of "a" "a" -1)          ; Clojure 0    jank nil
+(clojure.string/last-index-of "aa" "a" -1)    ; Clojure nil  jank 1
+(clojure.string/index-of "" "" 1)             ; Clojure 0    jank nil
+```
+- **Path:** string.jank 227/240 → string_native.cpp `index_of` 257 / `last_index_of` 264. The `i64` start is passed as `size_t` (−1 becomes 2^64−1) to immutable_string `find` 281 / `rfind` 351.
+- **Evidence:**
+  - `exhaust` found it after 95 timelines. Shrunk tape: `env.locale=0, str.s.len=0, str.op=94`.
+  - Table: index-of 4487/22220, last-index-of 5725/22220.
+  - Theorem `index_of_negative`.
+
+**B8. `trim`, `triml`, `trimr` and `blank?` use C `isspace` on bytes, not `Character/isWhitespace`**
+```clojure
+(clojure.string/trim "\u2003a")    ; Clojure "a"   jank "\u2003a"
+(clojure.string/blank? "\u001f")   ; Clojure true  jank false
+```
+- **Missed:** U+001C–U+001F, U+1680, U+2000–2006, U+2008–200A, U+2028, U+2029, U+205F, U+3000.
+- **Path:** string_native.cpp `triml_index` 271, `trimr_index` 304; immutable_string.hpp `is_blank` 635.
+- **Evidence:** table — trim 428, triml 246, trimr 246, blank? 36 (of 1111 each).
+
+**B9. `upper-case` and `lower-case` map one code point at a time through the C library in the process locale**
+```clojure
+(clojure.string/upper-case "ß")    ; Clojure "SS"   jank "ß"    (any locale)
+(clojure.string/lower-case "aΣ")   ; Clojure "aς"   jank "aσ"   (final sigma)
+(clojure.string/upper-case s)      ; C locale, s = "é" read at run time (e.g. slurped): Clojure "É", jank "é"
+```
+- **Path:** util/string.cpp `to_uppercase` 26 / `to_lowercase` 14 (`ctype<wchar_t>` of `std::locale("")`).
+- **Evidence:** table — upper 291 (UTF-8 locale) / 526 (C locale); lower 80 / 526.
+
+**B10. `capitalize` lower-cases everything, then upper-cases only an ASCII first byte**
+```clojure
+(clojure.string/capitalize "Éa")   ; Clojure "Éa"   jank "éa"  (UTF-8 locale)
+(clojure.string/capitalize "ß")    ; Clojure "SS"   jank "ß"
+```
+- **Path:** string.jank 156 → util/string.cpp `capitalize` 54 (`std::toupper(s[0])`).
+- **Evidence:** table 474/1111 (UTF-8 locale), 526/1111 (C locale).
+
+**B11. `replace` with an empty match inserts the replacement between bytes, producing invalid UTF-8**
+```clojure
+(clojure.string/replace "é" "" "-")   ; Clojure "-é-"   jank "-\xC3-\xA9-"
+```
+- **Path:** string_native.cpp `replace` 171–181.
+- **Evidence:** table 1071/1111.
+
+**B12. `escape` looks up byte characters, so non-ASCII keys never match**
+```clojure
+(clojure.string/escape "é" {\é "X"})   ; Clojure "X"   jank "é"
+```
+- **Path:** string.jank 207–225 (`(count s)` and `(nth s index)`, see B1).
+- **Evidence:** table 1746/11110.
+
+**B13. `char` and `int` depend on the locale and use other ranges than Clojure's**
+```clojure
+(char 233)     ; Clojure \é       jank C locale: throws "Unfinished character"
+(char 65536)   ; Clojure throws   jank UTF-8 locale: \𐀀
+(char 55296)   ; Clojure \uD800   jank throws
+(int \é)       ; Clojure 233      jank C locale: 0
+```
+- **Path:**
+  - core.cpp `to_char` 1311 → character.cpp 57 → jtl/utf8.cpp `to_char` 170 (`wcrtomb`).
+  - character.cpp `to_integer` 104: `mbrtowc` with its result unchecked, so a failure leaves `wc = 0`. The same happens for `(int (nth "é" 0))`, which is 0 in both locales.
+
+**B14. In the C locale, the reader changes or rejects non-ASCII text**
+```clojure
+"\u00e9"                  ; Clojure "é"   jank C locale: "?"
+(= "\u00e9" "\u00e9x")    ; fine; but a literal "é" in source fails to lex in the C locale
+```
+- **Path:**
+  - util/escape.cpp `unescape` 60: `jtl::to_char(cp, "?")` falls back to "?".
+  - A surrogate pair escape uses the throwing `to_char` (line 87).
+  - read/lex.cpp: the string case (1303) peeks with `convert_to_codepoint` 453 (`mbrtowc`), which fails on bytes ≥ 0x80 in the C locale and returns `lex_unterminated_string`.
+- The lexer itself belongs to fork A; this item is only its locale dependence.
+
+### Printing
+
+**B15. Doubles print through `std::to_chars` shortest form, not `Double.toString`**
+```clojure
+(str 100000.0)       ; Clojure "100000.0"      jank "1e+05"
+(str 3000000.0)      ; Clojure "3000000.0"     jank "3e+06"
+(str 1.0E7)          ; Clojure "1.0E7"         jank "1e+07"
+(str 1.23456789E8)   ; Clojure "1.23456789E8"  jank "123456789.0"
+(str 1.0E-4)         ; Clojure "1.0E-4"        jank "1e-04"
+(str 1.5E-4)         ; Clojure "1.5E-4"        jank "0.00015"
+```
+- **Path:** number.cpp `real::to_string` 291 / `to_code_string` 314 → jtl/string_builder.cpp `operator()(double)` 83 (`to_chars` at 119, `".0"` at 132).
+- The same text appears in `pr-str` and `println`.
+- **Evidence:**
+  - 442 of 574 drawn doubles differ.
+  - They agree exactly for magnitudes 1e-3 to 1e4. For 1e5 and 1e6 they agree only when the double has many significant digits; outside that range they never agree.
+  - Theorems `jank_100000`, `java_100000`, `jank_1e7`, `java_1e7`, `jank_123456789`, `java_123456789`.
+
+**B16. `str` of a collection prints its strings and characters unquoted**
+```clojure
+(str ["a" \b])   ; Clojure "[\"a\" \\b]"   jank "[a b]"
+(str {:k "v"})   ; Clojure "{:k \"v\"}"    jank "{:k v}"
+```
+- **Path:** persistent_vector.cpp `to_string` 96 → core/to_string.hpp 28 (each element's `to_string`); base_persistent_map.cpp `to_string_impl` 62.
+- **Evidence:** 85 of 130 values of depth ≤ 2 differ for `str`. `print-str` agrees on all 130.
+
+**B17. `pr-str` escapes BEL and VT as `\a` and `\v`, which Clojure's reader rejects**
+```clojure
+(pr-str (str (char 7)))   ; Clojure "\"<BEL>\"" (3 chars)   jank "\"\\a\"" (4 chars)
+```
+- **Path:** util/escape.cpp `escape` 179/183.
+- **Evidence:** 2 of 130 single-character strings differ.
+
+**B18. `pr-str` of a regex does not escape `"`, so the output does not read back**
+```clojure
+(pr-str (re-pattern "\""))   ; Clojure #"\""   jank #"""
+```
+- **Path:** re_pattern.cpp `to_code_string` 23.
+- **Evidence:** 63 of 156 patterns print differently. Of 130 valid patterns, jank's text is not one regex literal for 55; Clojure's text fails for 0. Theorems `jank_regex_quote`, `clj_regex_quote`, `jank_regex_quote_unreadable`.
+
+**B19. BigDecimals lose their scale and gain ".0"** (depends on assumption RB7 about boost's output)
+```clojure
+(str 1M)        ; Clojure "1"       jank "1.0"
+(pr-str 1.50M)  ; Clojure "1.50M"   jank "1.5M"
+```
+- **Path:** big_decimal.cpp `to_string` 157 / `to_code_string` 169 → string_builder.cpp 240 (`cpp_dec_float<100>`, type.hpp 35, has no scale).
+
+**B20. `pr-str` accepts exactly one argument**
+```clojure
+(pr-str 1 2)  ; Clojure "1 2"   jank arity error
+(pr-str)      ; Clojure ""      jank arity error
+```
+- **Path:** core.jank 628–631 (`(fn* pr-str [x] ...)`, marked TODO).
+
+**B21. The printer's dynamic vars do not work**
+```clojure
+(binding [*print-length* 2] (pr-str [1 2 3]))   ; Clojure "[1 2 ...]"   jank: *print-length* cannot be resolved
+(binding [*print-readably* nil] (pr-str "a"))  ; Clojure "a"           jank "\"a\""
+*print-readably*                               ; Clojure true          jank nil
+```
+- **Path:** no definition of `*print-length*` or `*print-level*` exists in `src/` or `include/`. core.jank:41 defines `*print-readably*` as nil, and no printer reads it.
+
+**B22. `print-method` is never called**
+```clojure
+(defmethod print-method :t [x w] (throw (ex-info "called" {})))
+(pr-str (with-meta {} {:type :t}))   ; Clojure throws "called"   jank "{}"
+```
+- **Path:** core.jank 5885 defines the multimethod; printing is C++ `to_code_string` (core.cpp `pr` 192) and never dispatches to it.
+
+**B23. `print` of a string seq prints readable characters**
+```clojure
+(print-str (seq "ab"))   ; Clojure "(a b)"   jank "(\\a \\b)"
+```
+- **Path:** persistent_string_sequence.cpp `to_string` 38–55 uses `to_code_string` per character.
+
+### Regex functions (std::regex ECMAScript on bytes)
+
+**B24. Regexes match UTF-8 bytes**
+```clojure
+(re-find #"." "é")        ; Clojure "é"   jank "\xC3"
+(re-find #".." "é")       ; Clojure nil   jank "é"
+(re-matches #"[é]" "é")   ; Clojure "é"   jank nil
+```
+- **Path:** re_pattern.cpp 9: `std::regex{ s.c_str(), ECMAScript }` over `char`.
+
+**B25. `$` does not match before a final newline**
+```clojure
+(re-find #"a$" "a\n")   ; Clojure "a"   jank nil
+```
+
+**B26. A group that did not participate is `""`, not nil**
+```clojure
+(re-find #"(a)?b" "b")   ; Clojure ["b" nil]   jank ["b" ""]
+```
+- **Path:** core.cpp `smatch_to_vector` 944 (`s.str()`).
+
+**B27. `re-seq` searches the remainder as a new string: `^` matches again, and an empty match repeats forever**
+```clojure
+(re-seq #"^a" "aa")        ; Clojure ("a")                 jank ("a" "a")
+(re-seq #"a*" "b")         ; Clojure ("" "")               jank infinite ("" "" ...); realizing it never ends
+(re-seq #"[a-z]*" "ab 1")  ; Clojure ("ab" "" "" "" "")    jank infinite
+```
+- **Path:** core.cpp `re_find` 972: `match_input = match_results.suffix().str()`; core.jank `re-seq` 6389.
+
+**B28. `re-matches` takes the first match from position 0 and rejects it unless it covers the input; it does not search for a full match**
+```clojure
+(re-matches #"a|ab" "ab")   ; Clojure "ab"   jank nil
+(re-matches #"a*?" "a")     ; Clojure "a"    jank nil
+```
+- **Path:** core.cpp `re_matches` 1002 (`match_continuous`, then a suffix check).
+- **Found by:** `explore` at timeline 1. Shrunk input `(re-matches #"a?|b" "b")`, tape `re.api=2, re.kind=2, re.kind=5, re.atom=0, re.kind=0, re.atom=1, re.input.len=1, re.input.char0=1`.
+
+**B29. Regex input is cut at the first NUL**
+```clojure
+(re-find #"b" "a\u0000b")                    ; Clojure "b"           jank nil
+(re-matches #"a" "a\u0000b")                 ; Clojure nil           jank "a"
+(clojure.string/replace "a\u0000b" #"b" "c") ; Clojure "a\u0000c"    jank "a"   (from reading)
+```
+- **Path:** re_matcher.cpp 11 (`match_input{ s.c_str() }`); core.cpp 1006; string_native.cpp 222/231.
+- **Found by:** `exhaust` after 27 timelines. Tape `re.api=0, re.kind=0, re.atom=0, re.input.len=2, chars 4,0`.
+
+**B30. Java regex syntax missing from ECMAScript fails to compile** (from reading the C++ ECMAScript grammar; no model)
+```clojure
+(re-find #"(?i)a" "A")   ; Clojure "A"   jank: parse/invalid-regex; (re-pattern "(?i)a") throws std::regex_error
+```
+- The same applies to lookbehind `(?<=a)b`, named groups `(?<n>a)`, possessive `a*+`, and atomic `(?>a)`.
+- The ECMAScript grammar allows only `(?:`, `(?=` and `(?!`, so case-insensitive matching is not available at all.
+
+**B31. Replacements follow ECMAScript rules, not Java's**
+```clojure
+(clojure.string/replace "5" #"(\d)" "\\$$1")                     ; Clojure "$5"   jank "\$1"
+(clojure.string/replace "a" #"(a)" "$&")                         ; Clojure throws  jank "a"
+(clojure.string/replace "a1" #"(a)(\d)" (fn [[_ x y]] (str y x)))  ; Clojure "1a"  jank "1"
+```
+- In jank, `\` is not an escape, `$$` means `$`, and a `$` before a non-digit does not throw.
+- A replacement function receives the whole match string, not `re-groups`.
+- **Path:** string_native.cpp 224 (`std::regex_replace`) and 247 (`replacement.call(match_str)`).
+- **Evidence:** of 10 templates, the 5 with ECMA-262-defined behavior differ. `$0` and `$12` are implementation-defined in ECMA-262, so they are not counted.
+
+## What was modeled
+
+| Source → Lean | Clojure spec in Lean |
+|---|---|
+| persistent_string `count`/`nth`/`get`/`contains`/`substring` → `jCount`, `jNth`, `jGet`, `jContains`, `jSubs` | `cCount`, `cNth`, `cGet`, `cContains`, `cSubs` (UTF-16 units) |
+| utf8.cpp `next_char_size`, string sequence `first`/`next`/`count` → `nextCharSize`, `jSeq`, `jSeqCount` | `cSeq`, `cSeqCount` |
+| string sequence `equal`, `to_hash`, core/equal.cpp `equal(char, …)` → `jSeqEqual`, `jHashSeq`, `jHashVec` | `=` true, equal hashes |
+| immutable_string `compare`/`find`/`rfind` → `jCompare`, `jCompareLen`, `find`, `rfind`, `jIndexOf`, `jLastIndexOf` | `cCompare`, `cIndexOf`, `cLastIndexOf` (String.indexOf rules) |
+| string_native trim family, `is_blank` → `cIsSpace`, `jTrim*`, `jBlank` | `javaIsWhitespace`, `cTrim*`, `cBlank` |
+| util/string `to_uppercase`/`to_lowercase`/`capitalize` → `towupper`/`towlower` (by locale), `jUpper`, `jLower`, `jCapitalize` | `javaUpperCp`, `javaLower` (SpecialCasing, Final_Sigma), `cCapitalize` |
+| string_native `replace` (empty match), string.jank `escape`, `reverse` → `jReplaceEmpty`, `jEscape`, `jReverse` | `cReplaceEmpty`, `cEscape`, `cReverse` |
+| `to_char` (wcrtomb), `to_integer` (mbrtowc), escape.cpp `unescape` → `jChar`, `jInt`, `jUnescape` | `cChar` (RT.charCast) |
+| string_builder double printing → `fixedForm`, `sciForm`, `toChars`, `jankDoubleL` | `javaDoubleL` (Double.toString) |
+| escape.cpp `escape` → `jankEscape`, `jankPrStr` | `cljEscape`, `cljPrStr` |
+| `to_string`/`to_code_string` of collections → `jankToString`, `codeString` | `cljStr`, `cljPrintStr` |
+| re_pattern `to_code_string` → `jankRegexCodeL` | `cljRegexCodeL`, `readRegexLiteral` |
+| big_decimal printing → `jankDec` | `javaDec` |
+| re_pattern, re_matcher, `re_find`, `smatch_to_vector`, `re_matches` → `compileEcma`, `go` (a backtracking engine), `jankFind`, `jankSeq`, `jankMatches`, `jankGroups`, `cString` | `compileJava`, `cljFind`, `cljSeq`, `cljMatches`, `cljGroups` |
+| `std::regex_replace` format → `ecmaTemplate` | `javaTemplate` (appendReplacement) |
+
+## Assumptions
+
+- **RB1.** Texts are drawn as code points: 10 for strings, 5 for regex inputs, plus NUL. Results are compared as UTF-8; a Clojure lone surrogate becomes 3 bytes, which never match a jank string.
+- **RB2.** Clojure runs on JDK ≥ 19 (shortest `Double.toString`) with a non-Turkic default locale.
+- **RB3.** glibc's C locale is ASCII:
+  - `mbrtowc`/`wcrtomb` fail at 0x80 and above;
+  - `towupper`/`towlower` map only ASCII;
+  - `isspace` and `toupper` on bytes ≥ 0x80 (a negative `char` on x86-64) return false and leave the byte unchanged, in both locales.
+- **RB4.** glibc's UTF-8 locale: `wcrtomb` rejects surrogates, and case mapping is the simple one-to-one Unicode mapping (ß has none; Σ always maps to σ).
+- **RB5.** `std::regex` ECMAScript follows ECMA-262:
+  - first match in backtracking priority (the same as Java for the drawn syntax);
+  - `.` excludes `\n` and `\r`; `$` matches only at the end;
+  - an unmatched `sub_match::str()` is "".
+  - Iteration with `regex_iterator` (used by `split` and regex `replace`) is not modeled.
+- **RB6.** java.util.regex matches code points, its `.` excludes five line terminators, `$` matches before a final terminator, and `find()` moves one position after an empty match.
+- **RB7.** boost `cpp_dec_float::str()` prints no trailing zeros and uses fixed notation at these magnitudes. The boost submodule is empty in the tree, so this is unverified.
+- **RB8.** Doubles have at most 15 significant digits, so the shortest representation is the drawn digits (DBL_DIG).
+- **RB9.** Only the sign of `compare` is compared; Clojure's docstring promises only the sign.
+- **RB10.** Hash containers find by hash, then `=`, as in round 1.
+- **RB11.** Out-of-bounds reads are reported as undefined behavior, not as a specific outcome.
+
+## Properties checked
+
+- jank's result equals Clojure's for every string and character operation; an exception on both sides counts as agreement.
+- A string seq is `=`-reflexive and hash-consistent with an equal vector.
+- `seq` never goes past the end of its string.
+- Printed text equals Clojure's for doubles, strings, collections under `str`/`pr-str`/`print-str`, regexes and BigDecimals.
+- `pr-str` of a regex reads back as one literal.
+- `re-find`, `re-seq` and `re-matches` equal Clojure's, and `re-seq` is finite.
+
+## Search runs
+
+`explore` uses seeds 0–2999.
+
+| World | explore | exhaust | Table |
+|---|---|---|---|
+| Strings, ≤ 3 code points, both locales | found at timeline 3 | found after 95 | 57,614 of 175,638 deviate (per-operation counts above) |
+| Doubles: 7 digit sets × exponents −18..22 × sign | — | — | 442 of 574 |
+| `pr-str` of strings: code points 0–127, é, € | — | — | 2 of 130 |
+| Values of depth ≤ 2 | — | — | `str` 85/130; `print-str` 0/130 |
+| Regex patterns ≤ 3 characters | — | — | 63/156 differ; 55/130 unreadable |
+| Regex functions: patterns of depth ≤ 2, inputs ≤ 3 | found at timeline 1 | found after 27 | 33,621 of 117,936 (re-find 8557, re-seq 20640, re-matches 4424) |
+| Replacement templates | — | — | 10 by hand |
+
+## Theorems proven
+
+25 theorems, no `sorry` and no `native_decide`.
+
+- **StrModel.lean (16):** `utf8_length`, `utf16_length`, `jstr_length`, `cstr_length`, `utf8_ge_utf16`, `count_ge`, `count_eq_iff`, `compare_len_sign_ok` (bv_decide), `compare_len_wrong`, `seq_walks_past_end`, `seq_not_reflexive`, `seq_hash_inconsistent`, `nth_is_one_byte`, `nth_never_non_ascii`, `index_of_negative`, `compare_fullwidth_emoji`.
+- **PrintModel.lean (9):** `jank_100000`, `java_100000`, `jank_1e7`, `java_1e7`, `jank_123456789`, `java_123456789`, `jank_regex_quote`, `clj_regex_quote`, `jank_regex_quote_unreadable`.
+
+## Library gaps filled, and what agrees
+
+**Gaps filled:**
+- `String` is opaque to `decide` in Lean 4.36 (it is ByteArray-backed), so the printers are written over `List Char`.
+- The regex engine is `partial` (continuation passing), so its results are searched, not proved.
+- The locale is a world decision (`env.locale`).
+- As in round 1, full tables come from plain enumeration because `exhaust` stops at its first counterexample.
+
+**Agrees with Clojure:**
+- `reverse` (0/1111).
+- `print-str` on all 130 values.
+- Character names in `pr-str` (the same six).
+- `pr-str` of strings, except BEL and VT.
+- Doubles from 1e-3 to 1e4, plus 0.0 and -0.0.
+- `starts-with?`, `ends-with?` and `includes?` must agree because UTF-8 is self-synchronizing; this is an argument, not a search.
+
+**Notes, not counted as deviations:**
+- `newline`, `flush` and `re-quote-replacement` throw "TODO: port".
+- `format` is documented in its docstring as `std::format`.
+- `std::locale("")` throws at startup when the environment names a locale that is not installed (c_api.cpp:1110).
+
+## Update for jank 7135b7708 (upstream-main/compiler+runtime/)
+
+Changed citations: persistent_string_sequence.cpp moved down one line (equal 34, to_string 39–56, to_hash 72, count 78, first 122, next 128–138, empty 157 new); seq.cpp sequence_length 842, nth 648, str 807, sequence_equal 881 (is_sequential at 890); seq_ext.hpp equal 13 (is_sequential at 17); lex.cpp string case 1317. Every other cited file is unchanged.
+B1–B31 all still hold with the same programs. B2 and B6 are deviations only when Clojure's strings are judged by UTF-16 units; by code points, jank's seq and compare agree, and B2 reduces to jank's count (bytes) disagreeing with the count of its seq.
+New items, from the models in StrModel, Strings/Object and RegexModel (run in results/strings.txt):
+- B32. (keyword ns name) joins "ns/name" and splits it again at the first '/'; an empty ns is dropped. Examples: (namespace (keyword "a/b" "c")) is "a/b" in Clojure and "a" in jank; (= (keyword "a/b" "c") (keyword "a" "b/c")) is false in Clojure and true in jank; (namespace (keyword nil "b/c")) is nil in Clojure and "b" in jank. Path: core.cpp keyword 521 → context.cpp intern_keyword 561/584 → 588 → keyword.cpp 13 → symbol.cpp separate 8.
+- B33. (char -4294967231) is \A in jank; Clojure throws. Path: utf8.cpp to_char 172 (rejects only ch > 0x10FFFF) and 178 (static_cast<wchar_t>(ch) keeps the low 32 bits).
+- B34. (namespace (symbol nil "b/c")) is nil in Clojure and "b" in jank; (namespace (symbol "" "c")) and (namespace (symbol "/a")) are "" in Clojure and nil in jank. Path: core.jank symbol 520–527 (a nil ns takes the one-argument path) → core.cpp to_unqualified_symbol 97 → symbol.cpp separate 8; core.cpp namespace_ 494 (an empty ns is nil).
+- B35. clojure.string/split and replace with a pattern use std::regex_iterator, which after an empty match first retries a non-empty match at the same position. Matcher.find starts one character later instead. Examples: (clojure.string/replace "aa" #"a*?" "-") is "-a-a-" in Clojure and "-----" in jank; (clojure.string/split "ab" #"b?|a") is ["a"] in Clojure and [] in jank. Path: string_native.cpp replace 224 (regex_replace) and 233 (sregex_iterator), split 403 (cregex_iterator). 176 of 4,920 ASCII-only questions deviate, and none remains with Matcher.find's rule.

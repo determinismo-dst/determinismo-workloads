@@ -1,0 +1,58 @@
+== census compare, every ordered pair of a 50-value universe (round 2: 24 values): 2500 timelines (complete), 235 violate
+   R96: 54; first: (compare true true): Clojure 0, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+   R99: 2; first: (compare 0.1 0.1M): Clojure 0, jank 1
+   R97: 176; first: (compare :a 0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0 as a keyword (expect_object, keyword.cpp 52))
+   R98: 3; first: (compare '(1) '(1)): Clojure 0, jank throws (runtime_unsupported_behavior: compare)
+  (0 s)
+== census sort, every vector of ≤ 5 of 12 atoms (round 2: ≤ 3 of 9): 271453 timelines (complete), 74950 violate
+   R96: 12678; first: (sort [1 true]): Clojure throws (ClassCastException), jank (1 true)
+   R97: 62272; first: (sort [1 :a]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1 as a keyword (expect_object, keyword.cpp 52))
+  (0 s)
+== census sort, every vector of ≤ 7 of 12 atoms (round 2: ≤ 3 of 9): 39089245 timelines (complete), 11328760 violate
+   R96: 1605880; first: (sort [1 true]): Clojure throws (ClassCastException), jank (1 true)
+   R97: 9722880; first: (sort [1 :a]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1 as a keyword (expect_object, keyword.cpp 52))
+  (123 s)
+== census sort with a comparator fn, every kind × every vector of ≤ 5 of 6 longs (round 2: ≤ 3 of 5): 46655 timelines (complete), 7904 violate
+   RC4 (Clojure narrows a long comparator result to int): 7904; first: (sort (fn [a b] (- a b)) [0, 3000000000]): Clojure [3000000000, 0], jank [0, 3000000000]
+  (0 s)
+== census sort with a comparator fn, every kind × every vector of ≤ 7 of 6 longs (round 2: ≤ 3 of 5): 1679615 timelines (complete), 313824 violate
+   RC4 (Clojure narrows a long comparator result to int): 313824; first: (sort (fn [a b] (- a b)) [0, 3000000000]): Clojure [3000000000, 0], jank [0, 3000000000]
+  (11 s)
+== census multimethods: 2 derives, 2 defmethods, 1 prefer-methods, a call (4 tags); every disagreement is R100's walk: 409600 timelines (complete), 240 violate
+   R100: 240; first: (defmulti f identity) (derive ::t0 ::t1) (derive ::t0 ::t2) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t2) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  (0 s)
+== census multimethods: 3 derives, 3 defmethods, 1 prefer-methods, a call (4 tags); every disagreement is R100's walk: 32768000 timelines (complete), 143136 violate
+   R100: 143136; first: (defmulti f identity) (derive ::t0 ::t1) (derive ::t0 ::t2) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t2) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  (88 s)
+== census namespaces (fork C's world): 4 operations in user, R102 and R103 replaced by Clojure's (round 2: 3): 38416 timelines (complete), 0 violate
+  (0 s)
+== census namespaces (fork C's world): 5 operations in user, R102 and R103 replaced by Clojure's (round 2: 3): 537824 timelines (complete), 0 violate
+  (8 s)
+== census namespaces (fork C's world): 6 operations in user, R102 and R103 replaced by Clojure's (round 2: 3): 7529536 timelines (complete), 0 violate
+  (140 s)
+== census namespaces (def, ns reload, alias, find-var, ns-resolve, resolve, in-ns): 4 operations, the first disagreement named by its operation's class (round 2: 3, first finding only): 681 timelines (complete), 425 violate
+   R109: 45; first: (def inc 1) (def inc 1) (def inc 1) (ns user): Clojure nil, jank throws (inc already refers to #'user/inc in ns user)
+   R110: 210; first: (def inc 1) (def inc 1) (def inc 1) (find-var 'map): Clojure throws (Symbol must be namespace-qualified), jank #'clojure.core/map
+   R111: 85; first: (def inc 1) (def inc 1) (def inc 1) (ns-resolve 'a 's/y): Clojure #'other/y, jank nil
+   R112: 85; first: (def inc 1) (def inc 1) (def inc 1) (in-ns 'b): Clojure #namespace[b], jank nil
+  (0 s)
+== census namespaces (def, ns reload, alias, find-var, ns-resolve, resolve, in-ns): 5 operations, the first disagreement named by its operation's class (round 2: 3, first finding only): 2729 timelines (complete), 1705 violate
+   R109: 220; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (ns user): Clojure nil, jank throws (inc already refers to #'user/inc in ns user)
+   R110: 803; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (find-var 'map): Clojure throws (Symbol must be namespace-qualified), jank #'clojure.core/map
+   R111: 341; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (ns-resolve 'a 's/y): Clojure #'other/y, jank nil
+   R112: 341; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (in-ns 'b): Clojure #namespace[b], jank nil
+  (0 s)
+== census namespaces (def, ns reload, alias, find-var, ns-resolve, resolve, in-ns): 6 operations, the first disagreement named by its operation's class (round 2: 3, first finding only): 10921 timelines (complete), 6825 violate
+   R109: 1001; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (def inc 1) (ns user): Clojure nil, jank throws (inc already refers to #'user/inc in ns user)
+   R110: 3094; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (def inc 1) (find-var 'map): Clojure throws (Symbol must be namespace-qualified), jank #'clojure.core/map
+   R111: 1365; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (def inc 1) (ns-resolve 'a 's/y): Clojure #'other/y, jank nil
+   R112: 1365; first: (def inc 1) (def inc 1) (def inc 1) (def inc 1) (def inc 1) (in-ns 'b): Clojure #namespace[b], jank nil
+  (0 s)
+
+[exited with code 0]
+== census multimethods, Clojure's own dispatch under every order of the method table: 2 derives, 3 defmethods, 1 prefer-methods, a call: 1048576 timelines (complete), 17424 violate
+   order-dependent: 17424; first: (defmulti f identity) (derive ::t0 ::t1) (defmethod f ::t0 ...) (defmethod f ::t1 ...) (prefer-method f ::t1 ::t0) (f ::t0): [[::t0, ::t1] → the ::t1 method, [::t1, ::t0] → the ::t0 method]
+  (4 s)
+== census multimethods, Clojure's own dispatch under every order of the method table: 3 derives, 3 defmethods, 1 prefer-methods, a call: 16777216 timelines (complete), 621792 violate
+   order-dependent: 621792; first: (defmulti f identity) (derive ::t0 ::t1) (defmethod f ::t0 ...) (defmethod f ::t1 ...) (prefer-method f ::t1 ::t0) (f ::t0): [[::t0, ::t1] → the ::t1 method, [::t1, ::t0] → the ::t0 method]
+  (92 s)

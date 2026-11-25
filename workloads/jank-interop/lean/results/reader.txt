@@ -1,0 +1,419 @@
+== reader: hand-written inputs
+  [-0]  =>  jank error (This base-8 number literal ended unexpectedly.) | Clojure [0]  [Jank.ReadValue.Verdict.rejectsValid]
+  (+ -0 1)  =>  jank (+ 0 1) | Clojure (+ 0 1)  [Jank.ReadValue.Verdict.agree]
+  (- 5 -0)\n  =>  jank error (This base-8 number literal ended unexpectedly.) | Clojure (- 5 0)  [Jank.ReadValue.Verdict.rejectsValid]
+  +5  =>  jank +5 | Clojure 5  [Jank.ReadValue.Verdict.wrongValue]
+  (+ +1 2)  =>  jank (+ +1 2) | Clojure (+ 1 2)  [Jank.ReadValue.Verdict.wrongValue]
+  -9223372036854775808  =>  jank -9223372036854775808N | Clojure -9223372036854775808  [Jank.ReadValue.Verdict.wrongValue]
+  36rN  =>  jank 0N | Clojure 23  [Jank.ReadValue.Verdict.wrongValue]
+  36rZN  =>  jank 35N | Clojure 1283  [Jank.ReadValue.Verdict.wrongValue]
+  24rN0  =>  jank error (expected whitespace) | Clojure 552  [Jank.ReadValue.Verdict.rejectsValid]
+  -010/3  =>  jank -8/3 | Clojure -10/3  [Jank.ReadValue.Verdict.wrongValue]
+  -09/3  =>  jank error (boost: unexpected content) | Clojure -3  [Jank.ReadValue.Verdict.rejectsValid]
+  08M  =>  jank error (invalid characters for a base-8 number literal) | Clojure 8e0M  [Jank.ReadValue.Verdict.rejectsValid]
+  (str\"a\")  =>  jank error (expected whitespace) | Clojure (str "a")  [Jank.ReadValue.Verdict.rejectsValid]
+  \"a\"\"b\"  =>  jank error (expected whitespace) | Clojure "a" "b"  [Jank.ReadValue.Verdict.rejectsValid]
+  [1\"a\"]  =>  jank error (expected whitespace) | Clojure [1 "a"]  [Jank.ReadValue.Verdict.rejectsValid]
+  ;x\r42  =>  jank  | Clojure 42  [Jank.ReadValue.Verdict.wrongValue]
+  \"\\0\"  =>  jank error (invalid escape sequence \0) | Clojure "\u0000"  [Jank.ReadValue.Verdict.rejectsValid]
+  \"\\101\"  =>  jank error (invalid escape sequence \1) | Clojure "A"  [Jank.ReadValue.Verdict.rejectsValid]
+  \"\\a\"  =>  jank "\u0007" | Clojure error (Unsupported escape character: \a)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  \\u41  =>  jank \A | Clojure error (Invalid unicode character)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  \\o400  =>  jank \\u0100 | Clojure error (Octal escape sequence must be in range [0, 377].)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  #(+ %10 %1)  =>  jank error (invalid shorthand function parameter) | Clojure (fn* [%1 %2 %3 %4 %5 %6 %7 %8 %9 %10] (+ %10 %1))  [Jank.ReadValue.Verdict.rejectsValid]
+  ^\"String\" x  =>  jank error (invalid meta hint value) | Clojure ^{:tag "String"} x  [Jank.ReadValue.Verdict.rejectsValid]
+  ^[long] x  =>  jank error (invalid meta hint value) | Clojure ^{:param-tags [long]} x  [Jank.ReadValue.Verdict.rejectsValid]
+  ^foo x  =>  jank ^{:tag (quote foo)} x | Clojure ^{:tag foo} x  [Jank.ReadValue.Verdict.wrongValue]
+  @a  =>  jank (deref a) | Clojure (clojure.core/deref a)  [Jank.ReadValue.Verdict.wrongValue]
+  #{1 1N}  =>  jank #{1 1N} | Clojure error (Duplicate key)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  {1 :a 1N :b}  =>  jank {1 :b} | Clojure error (Duplicate key)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  #{0.0 -0.0}  =>  jank #{-0e0 (double) 0e0 (double)} | Clojure error (Duplicate key)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  :/  =>  jank : | Clojure :/  [Jank.ReadValue.Verdict.wrongValue]
+  a@b  =>  jank a@b | Clojure a (clojure.core/deref b)  [Jank.ReadValue.Verdict.wrongValue]
+  ~\u00e9  =>  jank error (invalid unicode (lex.cpp:571)) | Clojure (clojure.core/unquote \u00e9)  [Jank.ReadValue.Verdict.rejectsValid]
+  (\u2003a)  =>  jank (\u2003a) | Clojure (a)  [Jank.ReadValue.Verdict.wrongValue]
+  [1\u001c2]  =>  jank error (expected whitespace) | Clojure [1 2]  [Jank.ReadValue.Verdict.rejectsValid]
+  #:a{:b 1}  =>  jank error (unsupported reader macro) | Clojure {:a/b 1}  [Jank.ReadValue.Verdict.rejectsValid]
+  #^:a x  =>  jank error (unsupported reader macro) | Clojure ^{:a true} x  [Jank.ReadValue.Verdict.rejectsValid]
+  #\"(?i)abc\"  =>  jank error (invalid regex (std::regex_error)) | Clojure #"(?i)abc"  [Jank.ReadValue.Verdict.rejectsValid]
+  #\"(?<=a)b\"  =>  jank error (invalid regex (std::regex_error)) | Clojure #"(?<=a)b"  [Jank.ReadValue.Verdict.rejectsValid]
+  #\"(?<n>a)\"  =>  jank error (invalid regex (std::regex_error)) | Clojure #"(?<n>a)"  [Jank.ReadValue.Verdict.rejectsValid]
+  #\"a*+\"  =>  jank error (invalid regex (std::regex_error)) | Clojure #"a*+"  [Jank.ReadValue.Verdict.rejectsValid]
+  #\"(?:a)(?=b)\"  =>  jank #"(?:a)(?=b)" | Clojure #"(?:a)(?=b)"  [Jank.ReadValue.Verdict.agree]
+  :1  =>  jank :1 | Clojure :1  [Jank.ReadValue.Verdict.agree]
+  :1/a  =>  jank :1/a | Clojure :1/a  [Jank.ReadValue.Verdict.agree]
+  a::b  =>  jank a::b | Clojure error (Invalid token: a::b)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  :a:  =>  jank :a: | Clojure error (Invalid token: :a:)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  \"\\uD800\"  =>  jank "?" | Clojure "\ud800"  [Jank.ReadValue.Verdict.wrongValue]
+  \"\\uD83D\\uDE00\"  =>  jank "\U{1f600}" | Clojure "\U{1f600}"  [Jank.ReadValue.Verdict.agree]
+  258r11  =>  jank 3 | Clojure error (Invalid number: 258r11)  [Jank.ReadValue.Verdict.acceptsInvalid]
+  16re  =>  jank error (This integer literal ended unexpectedly.) | Clojure 14  [Jank.ReadValue.Verdict.rejectsValid]
+  36rr  =>  jank error (This integer literal ended unexpectedly.) | Clojure 27  [Jank.ReadValue.Verdict.rejectsValid]
+  9223372036854775808/2  =>  jank 4611686018427387904 | Clojure 4611686018427387904N  [Jank.ReadValue.Verdict.wrongValue]
+  18446744073709551616/18446744073709551616  =>  jank 1 | Clojure 1N  [Jank.ReadValue.Verdict.wrongValue]
+  \"a\u0000b\"  =>  jank HANG in string loop (lex.cpp:1325) | Clojure "a\u0000b"  [Jank.ReadValue.Verdict.notTotal]
+  a\u0000  =>  jank HANG in symbol loop (lex.cpp:1183) | Clojure a\u0000  [Jank.ReadValue.Verdict.notTotal]
+  :a\u0000  =>  jank HANG in keyword loop (lex.cpp:1282) | Clojure :a\u0000  [Jank.ReadValue.Verdict.notTotal]
+  ;\u0000  =>  jank HANG in comment loop (lex.cpp:635) | Clojure   [Jank.ReadValue.Verdict.notTotal]
+  \\\u0000  =>  jank HANG in character loop (lex.cpp:612) | Clojure \\u0000  [Jank.ReadValue.Verdict.notTotal]
+  #\u0000  =>  jank CRASH: parser recursion never ends (stack overflow) | Clojure error (EOF while reading)  [Jank.ReadValue.Verdict.notTotal]
+  ~\u0000  =>  jank CRASH: parser recursion never ends (stack overflow) | Clojure (clojure.core/unquote \u0000)  [Jank.ReadValue.Verdict.notTotal]
+  \u0000  =>  jank error (expected whitespace) | Clojure \u0000  [Jank.ReadValue.Verdict.rejectsValid]
+== read is total: byte strings ≤ 6 (random), ≤ 3 (exhaustive)
+  explore (3000 seeds): read is total after 80 timelines, 5 decisions: \"(\u0000%: hangs in string loop (lex.cpp:1325)
+  shrunk to 5 decisions: \"(\u0000(: hangs in string loop (lex.cpp:1325)
+    tape:
+      {"name":"read.len","options":7,"value":4}
+      {"name":"read.byte","options":34,"value":6}
+      {"name":"read.byte","options":34,"value":0}
+      {"name":"read.byte","options":34,"value":25}
+      {"name":"read.byte","options":34,"value":0}
+  exhaust: stopped at 0 timelines, nothing
+== read is total: byte strings ≤ 3, exhaustive
+  explore (0 seeds): nothing
+  exhaust: found after 265 timelines: \"\u0000: hangs in string loop (lex.cpp:1325)
+  shrunk to 3 decisions: \"\u0000: hangs in string loop (lex.cpp:1325)
+== agree, numbers: strings ≤ 5 over 012469-+.exrNM/Z] 
+  explore (3000 seeds): jank reads what Clojure reads after 272 timelines, 6 decisions: +06.4: Clojure 64e-1 (double), jank +06.4
+  shrunk to 6 decisions: +0000: Clojure 0, jank +0000
+    tape:
+      {"name":"read.len","options":6,"value":5}
+      {"name":"read.char","options":18,"value":7}
+      {"name":"read.char","options":18,"value":0}
+      {"name":"read.char","options":18,"value":0}
+      {"name":"read.char","options":18,"value":0}
+      {"name":"read.char","options":18,"value":0}
+  exhaust: found after 146 timelines: +0: Clojure 0, jank +0
+  shrunk to 3 decisions: +0: Clojure 0, jank +0
+== agree, strings: strings ≤ 5 over \"\\u0041noax\u00e9\u0000
+  explore (3000 seeds): jank reads what Clojure reads after 8 timelines, 6 decisions: \\\\\u0000ux: Clojure error (Unsupported character: \\\\u0000ux), jank HANG in character loop (lex.cpp:612)
+  shrunk to 6 decisions: \"\"\u0000ux: Clojure "" \u0000ux, jank error (expected whitespace)
+    tape:
+      {"name":"read.len","options":6,"value":5}
+      {"name":"read.char","options":13,"value":0}
+      {"name":"read.char","options":13,"value":0}
+      {"name":"read.char","options":13,"value":12}
+      {"name":"read.char","options":13,"value":2}
+      {"name":"read.char","options":13,"value":10}
+  exhaust: found after 14 timelines: \u0000: Clojure \u0000, jank error (expected whitespace)
+  shrunk to 2 decisions: \u0000: Clojure \u0000, jank error (expected whitespace)
+== agree, characters: strings ≤ 5 over \\uo041nwlae\u00e9( \u2003
+  explore (3000 seeds): jank reads what Clojure reads after 5 timelines, 6 decisions: l\u2003uaw: Clojure l uaw, jank error (expected whitespace)
+  shrunk to 6 decisions: l\u2003u\\\\: Clojure l u \\\, jank error (expected whitespace)
+    tape:
+      {"name":"read.len","options":6,"value":5}
+      {"name":"read.char","options":15,"value":8}
+      {"name":"read.char","options":15,"value":14}
+      {"name":"read.char","options":15,"value":1}
+      {"name":"read.char","options":15,"value":0}
+      {"name":"read.char","options":15,"value":0}
+  exhaust: found after 16 timelines: \u2003: Clojure , jank \u2003
+  shrunk to 2 decisions: \u2003: Clojure , jank \u2003
+== agree, symbols and keywords: strings ≤ 4 over :/a.#%'@~^\"1 
+  explore (3000 seeds): jank reads what Clojure reads after 19 timelines, 4 decisions: @:.: Clojure (clojure.core/deref :.), jank (deref :.)
+  shrunk to 4 decisions: @:.: Clojure (clojure.core/deref :.), jank (deref :.)
+    tape:
+      {"name":"read.len","options":5,"value":3}
+      {"name":"read.char","options":13,"value":7}
+      {"name":"read.char","options":13,"value":0}
+      {"name":"read.char","options":13,"value":3}
+  exhaust: found after 16 timelines: :/: Clojure :/, jank :
+  shrunk to 3 decisions: :/: Clojure :/, jank :
+== agree, delimiters and macros: strings ≤ 4 over ()[]{}#_'@^;\r1a: 
+  explore (3000 seeds): jank reads what Clojure reads after 90 timelines, 3 decisions: @1: Clojure (clojure.core/deref 1), jank (deref 1)
+  shrunk to 3 decisions: @1: Clojure (clojure.core/deref 1), jank (deref 1)
+    tape:
+      {"name":"read.len","options":5,"value":2}
+      {"name":"read.char","options":17,"value":9}
+      {"name":"read.char","options":17,"value":13}
+  exhaust: found after 179 timelines: @_: Clojure (clojure.core/deref _), jank (deref _)
+  shrunk to 3 decisions: @_: Clojure (clojure.core/deref _), jank (deref _)
+== read is total without NUL bytes: byte strings ≤ 12 (random, 20000 seeds)
+  explore (20000 seeds): nothing
+  exhaust: stopped at 0 timelines, nothing
+== read is total without NUL bytes: byte strings ≤ 4 (exhaustive)
+  explore (3000 seeds): nothing
+  exhaust: complete, 1222981 timelines, nothing
+== agree, numbers without +: strings ≤ 5 over 012469-.exrNM/Z] 
+  explore (3000 seeds): jank reads what Clojure reads after 821 timelines, 6 decisions: 09M 2: Clojure 9e0M 2, jank error (invalid characters for a base-8 number literal)
+  shrunk to 6 decisions: 09M 0: Clojure 9e0M 0, jank error (invalid characters for a base-8 number literal)
+    tape:
+      {"name":"read.len","options":6,"value":5}
+      {"name":"read.char","options":17,"value":0}
+      {"name":"read.char","options":17,"value":5}
+      {"name":"read.char","options":17,"value":12}
+      {"name":"read.char","options":17,"value":16}
+      {"name":"read.char","options":17,"value":0}
+  exhaust: found after 405 timelines: 09M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+  shrunk to 4 decisions: 09M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+== agree, numbers without + and space: strings ≤ 5 over 012469-.exrNM/Z]
+  explore (3000 seeds): nothing
+  exhaust: found after 366 timelines: 09M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+  shrunk to 4 decisions: 09M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+== agree, numbers without +, space and ]: strings ≤ 5 over 012469-.exrNM/Z
+  explore (3000 seeds): jank reads what Clojure reads after 2901 timelines, 6 decisions: 0619M: Clojure 619e0M, jank error (invalid characters for a base-8 number literal)
+  shrunk to 6 decisions: 0009M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+    tape:
+      {"name":"read.len","options":6,"value":5}
+      {"name":"read.char","options":15,"value":0}
+      {"name":"read.char","options":15,"value":0}
+      {"name":"read.char","options":15,"value":0}
+      {"name":"read.char","options":15,"value":5}
+      {"name":"read.char","options":15,"value":12}
+  exhaust: found after 329 timelines: 09M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+  shrunk to 4 decisions: 09M: Clojure 9e0M, jank error (invalid characters for a base-8 number literal)
+== agree, numbers without +, space, ], N and M: strings ≤ 5 over 012469-.exr/Z
+  explore (3000 seeds): nothing
+  exhaust: found after 5392 timelines: 16re: Clojure 14, jank error (This integer literal ended unexpectedly.)
+  shrunk to 5 decisions: 16re: Clojure 14, jank error (This integer literal ended unexpectedly.)
+== agree, strings without NUL: strings ≤ 5 over \"\\u0041noax\u00e9
+  explore (3000 seeds): jank reads what Clojure reads after 208 timelines, 6 decisions: \"o0\"o: Clojure "o0" o, jank error (expected whitespace)
+  shrunk to 6 decisions: \"o0\"o: Clojure "o0" o, jank error (expected whitespace)
+    tape:
+      {"name":"read.len","options":6,"value":5}
+      {"name":"read.char","options":12,"value":0}
+      {"name":"read.char","options":12,"value":8}
+      {"name":"read.char","options":12,"value":3}
+      {"name":"read.char","options":12,"value":0}
+      {"name":"read.char","options":12,"value":8}
+  exhaust: found after 160 timelines: \"\"u: Clojure "" u, jank error (expected whitespace)
+  shrunk to 4 decisions: \"\"u: Clojure "" u, jank error (expected whitespace)
+== agree, characters without U+2003: strings ≤ 5 over \\uo041nwlae\u00e9( 
+  explore (3000 seeds): nothing
+  exhaust: complete, 579195 timelines, nothing
+== agree, symbols and keywords without @ and /: strings ≤ 4 over :a.#%'~^\"1 
+  explore (3000 seeds): jank reads what Clojure reads after 23 timelines, 5 decisions: .1~a: Clojure .1 (clojure.core/unquote a), jank error (expected whitespace)
+  shrunk to 5 decisions: :1~a: Clojure :1 (clojure.core/unquote a), jank error (expected whitespace)
+    tape:
+      {"name":"read.len","options":5,"value":4}
+      {"name":"read.char","options":11,"value":0}
+      {"name":"read.char","options":11,"value":9}
+      {"name":"read.char","options":11,"value":6}
+      {"name":"read.char","options":11,"value":1}
+  exhaust: found after 116 timelines: 1%: Clojure 1 %, jank error (expected whitespace)
+  shrunk to 3 decisions: 1%: Clojure 1 %, jank error (expected whitespace)
+== agree, delimiters and macros without @ and \r: strings ≤ 4 over ()[]{}#_'^;1a: 
+  explore (3000 seeds): jank reads what Clojure reads after 2019 timelines, 4 decisions: #'1: Clojure (var 1), jank error (A value after `#'` must be a symbol.)
+  shrunk to 4 decisions: #'1: Clojure (var 1), jank error (A value after `#'` must be a symbol.)
+    tape:
+      {"name":"read.len","options":5,"value":3}
+      {"name":"read.char","options":15,"value":6}
+      {"name":"read.char","options":15,"value":8}
+      {"name":"read.char","options":15,"value":11}
+  exhaust: found after 1723 timelines: #'1: Clojure (var 1), jank error (A value after `#'` must be a symbol.)
+  shrunk to 4 decisions: #'1: Clojure (var 1), jank error (A value after `#'` must be a symbol.)
+== syntax quote without dotted symbols: the expansion evaluates as Clojure's
+  explore (3000 seeds): syntax quote evaluates as Clojure's after 427 timelines, 16 decisions: (let [a 2 b 2] `#{() (~@#{a b} a)}): Clojure #{() (2 user/a)}, jank #{() (2 2 user/a)}
+  shrunk to 16 decisions: (let [a 2 b 2] `#{a (~@#{a b} a)}): Clojure #{(2 user/a) user/a}, jank #{(2 2 user/a) user/a}
+    tape:
+      {"name":"sq.kind","options":6,"value":5}
+      {"name":"sq.size","options":3,"value":2}
+      {"name":"sq.splice","options":2,"value":0}
+      {"name":"sq.kind","options":6,"value":0}
+      {"name":"sq.symbol","options":8,"value":0}
+      {"name":"sq.splice","options":2,"value":0}
+      {"name":"sq.kind","options":6,"value":3}
+      {"name":"sq.size","options":3,"value":2}
+      {"name":"sq.splice","options":2,"value":1}
+      {"name":"sq.unquoted","options":3,"value":2}
+      {"name":"sq.lit.set","options":3,"value":2}
+      {"name":"sq.splice","options":2,"value":0}
+      {"name":"sq.kind","options":3,"value":0}
+      {"name":"sq.symbol","options":8,"value":0}
+      {"name":"sq.a","options":2,"value":1}
+      {"name":"sq.b","options":2,"value":1}
+  exhaust: found after 305 timelines: (let [a 1 b 1] `((~@#{a b}))): Clojure ((1)), jank ((1 1))
+  shrunk to 10 decisions: (let [a 1 b 1] `((~@#{a b}))): Clojure ((1)), jank ((1 1))
+== table numbers: every string of length ≤ 4 over 012469-+.exrNM/Z]  (111151 strings)
+  agree 105128; jank hangs/crashes 0; different values 831; jank rejects valid 27; jank accepts invalid 5165
+    different value: +0  =>  jank +0 | Clojure 0
+    different value: +1  =>  jank +1 | Clojure 1
+    different value: +0.  =>  jank +0. | Clojure 0e0 (double)
+    different value: 24rN  =>  jank 0N | Clojure 23
+    rejects valid: 09M  =>  jank error (invalid characters for a base-8 number literal) | Clojure 9e0M
+    rejects valid: -09M  =>  jank error (invalid characters for a base-8 number literal) | Clojure -9e0M
+    rejects valid: 009M  =>  jank error (invalid characters for a base-8 number literal) | Clojure 9e0M
+    rejects valid: 019M  =>  jank error (invalid characters for a base-8 number literal) | Clojure 19e0M
+    rejects valid: 090M  =>  jank error (invalid characters for a base-8 number literal) | Clojure 9e1M
+    rejects valid: 16re  =>  jank error (This integer literal ended unexpectedly.) | Clojure 14
+    rejects valid: 20re  =>  jank error (This integer literal ended unexpectedly.) | Clojure 14
+    rejects valid: 24rM  =>  jank error (cpp_dec_float: no digits) | Clojure 22
+    rejects valid: 29rr  =>  jank error (This integer literal ended unexpectedly.) | Clojure 27
+    accepts invalid: +/  =>  jank +/ | Clojure error (Invalid token: +/)
+    accepts invalid: ++/  =>  jank ++/ | Clojure error (Invalid token: ++/)
+    accepts invalid: +-/  =>  jank +-/ | Clojure error (Invalid token: +-/)
+    accepts invalid: -/  =>  jank -/ | Clojure error (Invalid token: -/)
+    accepts invalid: ./  =>  jank ./ | Clojure error (Invalid token: ./)
+    accepts invalid: M/  =>  jank M/ | Clojure error (Invalid token: M/)
+    accepts invalid: N/  =>  jank N/ | Clojure error (Invalid token: N/)
+    accepts invalid: Z/  =>  jank Z/ | Clojure error (Invalid token: Z/)
+    accepts invalid: e/  =>  jank e/ | Clojure error (Invalid token: e/)
+    accepts invalid: r/  =>  jank r/ | Clojure error (Invalid token: r/)
+    accepts invalid: x/  =>  jank x/ | Clojure error (Invalid token: x/)
+    accepts invalid: --/  =>  jank --/ | Clojure error (Invalid token: --/)
+    accepts invalid: -./  =>  jank -./ | Clojure error (Invalid token: -./)
+== table strings: every string of length ≤ 4 over \"\\u0041noax\u00e9\u0000 (22621 strings)
+  agree 17684; jank hangs/crashes 2864; different values 0; jank rejects valid 2016; jank accepts invalid 57
+    hang/crash: \"\u0000  =>  jank HANG in string loop (lex.cpp:1325) | Clojure error (EOF while reading string)
+    hang/crash: \\\u0000  =>  jank HANG in character loop (lex.cpp:612) | Clojure \\u0000
+    hang/crash: a\u0000  =>  jank HANG in symbol loop (lex.cpp:1183) | Clojure a\u0000
+    hang/crash: n\u0000  =>  jank HANG in symbol loop (lex.cpp:1183) | Clojure n\u0000
+    hang/crash: o\u0000  =>  jank HANG in symbol loop (lex.cpp:1183) | Clojure o\u0000
+    hang/crash: u\u0000  =>  jank HANG in symbol loop (lex.cpp:1183) | Clojure u\u0000
+    hang/crash: x\u0000  =>  jank HANG in symbol loop (lex.cpp:1183) | Clojure x\u0000
+    hang/crash: 0\\\u0000  =>  jank HANG in character loop (lex.cpp:612) | Clojure 0 \\u0000
+    hang/crash: 1\\\u0000  =>  jank HANG in character loop (lex.cpp:612) | Clojure 1 \\u0000
+    hang/crash: \"0\u0000  =>  jank HANG in string loop (lex.cpp:1325) | Clojure error (EOF while reading string)
+    rejects valid: \u0000  =>  jank error (expected whitespace) | Clojure \u0000
+    rejects valid: \u00000  =>  jank error (expected whitespace) | Clojure \u00000
+    rejects valid: \u00001  =>  jank error (expected whitespace) | Clojure \u00001
+    rejects valid: \u0000\u0000  =>  jank error (expected whitespace) | Clojure \u0000\u0000
+    rejects valid: \u0000\u00e9  =>  jank error (expected whitespace) | Clojure \u0000\u00e9
+    rejects valid: \u0000a  =>  jank error (expected whitespace) | Clojure \u0000a
+    rejects valid: \u0000n  =>  jank error (expected whitespace) | Clojure \u0000n
+    rejects valid: \u0000o  =>  jank error (expected whitespace) | Clojure \u0000o
+    rejects valid: \u0000u  =>  jank error (expected whitespace) | Clojure \u0000u
+    rejects valid: \u0000x  =>  jank error (expected whitespace) | Clojure \u0000x
+    accepts invalid: \\u0  =>  jank \\u0000 | Clojure error (Invalid unicode character)
+    accepts invalid: \\u1  =>  jank \\u0001 | Clojure error (Invalid unicode character)
+    accepts invalid: \\ua  =>  jank \\n | Clojure error (Invalid unicode character)
+    accepts invalid: 0\\u0  =>  jank 0 \\u0000 | Clojure error (Invalid unicode character)
+    accepts invalid: 0\\u1  =>  jank 0 \\u0001 | Clojure error (Invalid unicode character)
+    accepts invalid: 0\\ua  =>  jank 0 \\n | Clojure error (Invalid unicode character)
+    accepts invalid: 1\\u0  =>  jank 1 \\u0000 | Clojure error (Invalid unicode character)
+    accepts invalid: 1\\u1  =>  jank 1 \\u0001 | Clojure error (Invalid unicode character)
+    accepts invalid: 1\\ua  =>  jank 1 \\n | Clojure error (Invalid unicode character)
+    accepts invalid: \"\\a\"  =>  jank "\u0007" | Clojure error (Unsupported escape character: \a)
+== table characters: every string of length ≤ 4 over \\uo041nwlae\u00e9( \u2003 (54241 strings)
+  agree 46032; jank hangs/crashes 0; different values 2557; jank rejects valid 5148; jank accepts invalid 504
+    different value: \u2003  =>  jank \u2003 | Clojure 
+    different value: \u20030  =>  jank \u20030 | Clojure 0
+    different value: \u20031  =>  jank \u20031 | Clojure 1
+    different value: \u2003\u00e9  =>  jank \u2003\u00e9 | Clojure \u00e9
+    different value: \u2003a  =>  jank \u2003a | Clojure a
+    different value: \u2003e  =>  jank \u2003e | Clojure e
+    different value: \u2003l  =>  jank \u2003l | Clojure l
+    different value: \u2003n  =>  jank \u2003n | Clojure n
+    different value: \u2003o  =>  jank \u2003o | Clojure o
+    different value: \u2003u  =>  jank \u2003u | Clojure u
+    rejects valid: 0\u2003  =>  jank error (expected whitespace) | Clojure 0
+    rejects valid: 1\u2003  =>  jank error (expected whitespace) | Clojure 1
+    rejects valid: \u00e9\u2003  =>  jank error (expected whitespace) | Clojure \u00e9
+    rejects valid: \u2003\u2003  =>  jank error (expected whitespace) | Clojure 
+    rejects valid: a\u2003  =>  jank error (expected whitespace) | Clojure a
+    rejects valid: e\u2003  =>  jank error (expected whitespace) | Clojure e
+    rejects valid: l\u2003  =>  jank error (expected whitespace) | Clojure l
+    rejects valid: n\u2003  =>  jank error (expected whitespace) | Clojure n
+    rejects valid: o\u2003  =>  jank error (expected whitespace) | Clojure o
+    rejects valid: u\u2003  =>  jank error (expected whitespace) | Clojure u
+    accepts invalid: \\u0  =>  jank \\u0000 | Clojure error (Invalid unicode character)
+    accepts invalid: \\u1  =>  jank \\u0001 | Clojure error (Invalid unicode character)
+    accepts invalid: \\ua  =>  jank \\n | Clojure error (Invalid unicode character)
+    accepts invalid: \\ue  =>  jank \\u000e | Clojure error (Invalid unicode character)
+    accepts invalid: \u20030\u00e9  =>  jank \u20030\u00e9 | Clojure error (Invalid number: 0\u00e9)
+    accepts invalid: \u20030a  =>  jank \u20030a | Clojure error (Invalid number: 0a)
+    accepts invalid: \u20030e  =>  jank \u20030e | Clojure error (Invalid number: 0e)
+    accepts invalid: \u20030l  =>  jank \u20030l | Clojure error (Invalid number: 0l)
+    accepts invalid: \u20030n  =>  jank \u20030n | Clojure error (Invalid number: 0n)
+    accepts invalid: \u20030o  =>  jank \u20030o | Clojure error (Invalid number: 0o)
+== table symbols and keywords: every string of length ≤ 3 over :/a.#%'@~^\"1  (2380 strings)
+  agree 2063; jank hangs/crashes 0; different values 88; jank rejects valid 60; jank accepts invalid 169
+    different value: :/  =>  jank : | Clojure :/
+    different value: @%  =>  jank (deref %) | Clojure (clojure.core/deref %)
+    different value: @.  =>  jank (deref .) | Clojure (clojure.core/deref .)
+    different value: @/  =>  jank (deref /) | Clojure (clojure.core/deref /)
+    different value: @1  =>  jank (deref 1) | Clojure (clojure.core/deref 1)
+    different value: @a  =>  jank (deref a) | Clojure (clojure.core/deref a)
+    different value: %@%  =>  jank %@% | Clojure % (clojure.core/deref %)
+    different value: %@.  =>  jank %@. | Clojure % (clojure.core/deref .)
+    different value: %@/  =>  jank %@/ | Clojure % (clojure.core/deref /)
+    different value: %@1  =>  jank %@1 | Clojure % (clojure.core/deref 1)
+    rejects valid: 1%  =>  jank error (expected whitespace) | Clojure 1 %
+    rejects valid: #'1  =>  jank error (A value after `#'` must be a symbol.) | Clojure (var 1)
+    rejects valid: %\"\"  =>  jank error (expected whitespace) | Clojure % ""
+    rejects valid: %~%  =>  jank error (expected whitespace) | Clojure % (clojure.core/unquote %)
+    rejects valid: %~.  =>  jank error (expected whitespace) | Clojure % (clojure.core/unquote .)
+    rejects valid: %~/  =>  jank error (expected whitespace) | Clojure % (clojure.core/unquote /)
+    rejects valid: %~1  =>  jank error (expected whitespace) | Clojure % (clojure.core/unquote 1)
+    rejects valid: %~a  =>  jank error (expected whitespace) | Clojure % (clojure.core/unquote a)
+    rejects valid: '1%  =>  jank error (expected whitespace) | Clojure (quote 1) %
+    rejects valid: .\"\"  =>  jank error (expected whitespace) | Clojure . ""
+    accepts invalid: %/  =>  jank %/ | Clojure error (Invalid token: %/)
+    accepts invalid: %:  =>  jank %: | Clojure error (Invalid token: %:)
+    accepts invalid: %@  =>  jank %@ | Clojure error (EOF while reading)
+    accepts invalid: ./  =>  jank ./ | Clojure error (Invalid token: ./)
+    accepts invalid: .:  =>  jank .: | Clojure error (Invalid token: .:)
+    accepts invalid: .@  =>  jank .@ | Clojure error (EOF while reading)
+    accepts invalid: :@  =>  jank :@ | Clojure error (Invalid token: :)
+    accepts invalid: a/  =>  jank a/ | Clojure error (Invalid token: a/)
+    accepts invalid: a:  =>  jank a: | Clojure error (Invalid token: a:)
+    accepts invalid: a@  =>  jank a@ | Clojure error (EOF while reading)
+== table delimiters and macros: every string of length ≤ 3 over ()[]{}#_'@^;\r1a:  (5220 strings)
+  agree 5054; jank hangs/crashes 0; different values 61; jank rejects valid 4; jank accepts invalid 101
+    different value: @1  =>  jank (deref 1) | Clojure (clojure.core/deref 1)
+    different value: @_  =>  jank (deref _) | Clojure (clojure.core/deref _)
+    different value: @a  =>  jank (deref a) | Clojure (clojure.core/deref a)
+    different value: '@1  =>  jank (quote (deref 1)) | Clojure (quote (clojure.core/deref 1))
+    different value: '@_  =>  jank (quote (deref _)) | Clojure (quote (clojure.core/deref _))
+    different value: '@a  =>  jank (quote (deref a)) | Clojure (quote (clojure.core/deref a))
+    different value: ;\r1  =>  jank  | Clojure 1
+    different value: ;\r_  =>  jank  | Clojure _
+    different value: ;\ra  =>  jank  | Clojure a
+    different value: @ 1  =>  jank (deref 1) | Clojure (clojure.core/deref 1)
+    rejects valid: #'1  =>  jank error (A value after `#'` must be a symbol.) | Clojure (var 1)
+    rejects valid: 1@1  =>  jank error (expected whitespace) | Clojure 1 (clojure.core/deref 1)
+    rejects valid: 1@_  =>  jank error (expected whitespace) | Clojure 1 (clojure.core/deref _)
+    rejects valid: 1@a  =>  jank error (expected whitespace) | Clojure 1 (clojure.core/deref a)
+    accepts invalid: :@  =>  jank :@ | Clojure error (Invalid token: :)
+    accepts invalid: _:  =>  jank _: | Clojure error (Invalid token: _:)
+    accepts invalid: _@  =>  jank _@ | Clojure error (EOF while reading)
+    accepts invalid: a:  =>  jank a: | Clojure error (Invalid token: a:)
+    accepts invalid: a@  =>  jank a@ | Clojure error (EOF while reading)
+    accepts invalid: ':@  =>  jank (quote :@) | Clojure error (Invalid token: :)
+    accepts invalid: '_:  =>  jank (quote _:) | Clojure error (Invalid token: _:)
+    accepts invalid: '_@  =>  jank (quote _@) | Clojure error (EOF while reading)
+    accepts invalid: 'a:  =>  jank (quote a:) | Clojure error (Invalid token: a:)
+    accepts invalid: 'a@  =>  jank (quote a@) | Clojure error (EOF while reading)
+== roundtrip: (read-string (pr-str x)) with jank's printers and jank's reader
+  -9223372036854775808: printed -9223372036854775808, read back -9223372036854775808N  (= holds, the type changed)
+  -9223372036854775808: printed -9223372036854775808, read back -9223372036854775808N  (= holds, the type changed)
+  \\u0000: printed \\\u0000, read back HANG in character loop (lex.cpp:612)
+  \\u0000: printed \\\u0000, read back HANG in character loop (lex.cpp:612)
+  "\u0000": printed \"\u0000\", read back HANG in string loop (lex.cpp:1325)
+  "\u0000": printed \"\u0000\", read back HANG in string loop (lex.cpp:1325)
+  "a\u0000b": printed \"a\u0000b\", read back HANG in string loop (lex.cpp:1325)
+  "a\u0000b": printed \"a\u0000b\", read back HANG in string loop (lex.cpp:1325)
+  52 values × 2 double formats: 6 not read back, 2 read back = but with another type
+== read-string: the first form, after parsing the second (context.cpp:261-283)
+  (read-string 1 2): jank 1 [second form: form 2] | Clojure 1
+  (read-string 1 )): jank 1 [second form: error unexpected closing character] | Clojure 1
+  (read-string 1 \"a\u0000\"): jank HANG in string loop (lex.cpp:1325) (while parsing the second form) [second form: HANG string loop (lex.cpp:1325)] | Clojure 1
+  (read-string 1 a\u0000): jank HANG in symbol loop (lex.cpp:1183) (while parsing the second form) [second form: HANG symbol loop (lex.cpp:1183)] | Clojure 1
+  (read-string 1 #\u0000): jank CRASH: parser recursion never ends (stack overflow) (while parsing the second form) [second form: CRASH parser recursion never ends (stack overflow)] | Clojure 1
+  (read-string 1 ;\u0000): jank HANG in comment loop (lex.cpp:635) (while parsing the second form) [second form: HANG comment loop (lex.cpp:635)] | Clojure 1
+  (read-string 1 (): jank 1 [second form: error unterminated form] | Clojure 1
+  (read-string 1.5N): jank 15e-1 (double) [second form: error expected whitespace] | Clojure error (Invalid number: 1.5N)
+  (read-string 1-2): jank 1 [second form: error expected whitespace] | Clojure error (Invalid number: 1-2)
+  (read-string [1]]): jank [1] [second form: error unexpected closing character] | Clojure [1]
+== locale: jank under LANG unset (C locale, glibc) vs a UTF-8 locale vs Clojure
+  \"\u00e9\": jank C error (unterminated string) | jank UTF-8 "\u00e9" | Clojure "\u00e9"
+  \"\\u00e9\": jank C "?" | jank UTF-8 "\u00e9" | Clojure "\u00e9"
+  \\\u00e9: jank C error (unexpected eof after \) | jank UTF-8 \\u00e9 | Clojure \\u00e9
+  :\u00e9: jank C error (A keyword must contain a valid symbol after `:`.) | jank UTF-8 :\u00e9 | Clojure :\u00e9
+  \u00e9: jank C error (invalid unicode (lex.cpp:571)) | jank UTF-8 \u00e9 | Clojure \u00e9
+  (str \"\u65e5\u672c\"): jank C error (unterminated string) | jank UTF-8 (str "\u65e5\u672c") | Clojure (str "\u65e5\u672c")
+  \"\\u0041\": jank C "A" | jank UTF-8 "A" | Clojure "A"
+== syntax quote: the expansion evaluates as Clojure's
+  explore (3000 seeds): syntax quote evaluates as Clojure's after 26 timelines, 7 decisions: (let [a 2 b 1] `#{a.b}): Clojure #{a.b}, jank #{user/a.b}
+  shrunk to 7 decisions: (let [a 1 b 1] `#{a.b}): Clojure #{a.b}, jank #{user/a.b}
+    tape:
+      {"name":"sq.kind","options":6,"value":5}
+      {"name":"sq.size","options":3,"value":1}
+      {"name":"sq.splice","options":2,"value":0}
+      {"name":"sq.kind","options":6,"value":0}
+      {"name":"sq.symbol","options":11,"value":4}
+      {"name":"sq.a","options":2,"value":0}
+      {"name":"sq.b","options":2,"value":0}
+  exhaust: found after 17 timelines: (let [a 1 b 1] `a.b): Clojure a.b, jank user/a.b
+  shrunk to 4 decisions: (let [a 1 b 1] `a.b): Clojure a.b, jank user/a.b
+exit 0

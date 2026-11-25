@@ -1,0 +1,1866 @@
+# Round 3, nREPL (jank 7135b7708): driver outputs of jank3-nrepl, in run order
+# World S: one connection, requests from grammars (Jank/R3/Nrepl/Search.lean), jank beside the spec.
+# World T: connections interleaved on one jank process; t-explore = random schedules (Determinismo.interleave),
+#   t-exhaust = every schedule within k preemptions of round robin (interleavePB), t-full = every interleaving.
+# r2-control = round 2's scenarios on round 2's model (Jank.Nrepl.Server), preemption-bounded.
+# Labels in [brackets]: the spec variant (or round-2 entry) that explains a mismatch when replayed from the timeline's start.
+
+######## lane A
+== World S census gEval mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 612 timelines; outside the model: 0 []
+  nothing
+  (238 ms)
+== World S census gEval mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 374544 timelines; outside the model: 0 []
+  nothing
+  (183244 ms)
+== World S census gNs mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 406 timelines; outside the model: 0 []
+  eval value: text [R112 in-ns returns nil]: 12
+      e.g. eval "(ns foo) (in-ns 'foo)" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "foo"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,1,1,0; story:
+        r0 eval "(ns foo) (in-ns 'foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"foo\"]" "foo"] out ""
+  lookup: handler error [R131 arglists hold nil]: 1
+      e.g. lookup ns=clojure.core sym=iteration: ns-resolve gives clojure.core/iteration, the replies [{"err" "An exception was thrown from the nREPL handler:cannot write nil as bencode", "id" "r0", "session" "s0", "status" ["error" "done"]}]
+      path 1,9; story:
+        r0 lookup ns=clojure.core sym=iteration → jank [{"err" "An exception was thrown from the nREPL handler:cannot write nil as bencode", "id" "r0", "session" "s0", "status" ["error" "done"]}]
+  (159 ms)
+== World S census gNs mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 159571 timelines; outside the model: 0 []
+  lookup: handler error [R138 no :module outside core modules]: 10
+      e.g. lookup ns=foo sym=b: ns-resolve gives foo/b, the replies [{"err" "An exception was thrown from the nREPL handler:cannot write nil as bencode", "id" "r1", "session" "s0", "status" ["error" "done"]}]
+      path 0,0,1,3,0,1,1; story:
+        r0 eval "(ns foo) (def b 1)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "#'foo/b"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'foo/b" "foo"] out ""
+        r1 lookup ns=foo sym=b → jank [{"err" "An exception was thrown from the nREPL handler:cannot write nil as bencode", "id" "r1", "session" "s0", "status" ["error" "done"]}]
+  eval value: text [R127 sessions keep no state]: 736
+      e.g. eval "(str *ns*)": jank values ["user"], spec ["foo"] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,0,0,2,0,2; story:
+        r0 eval "(ns foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "foo"] out ""
+        r1 eval "(str *ns*)" → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "\"user\""}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "\"foo\"" "foo"] out ""
+  eval value: ns [R127 sessions keep no state]: 170
+      e.g. eval "(def b 1) b": jank :ns [user], spec (some foo)
+      path 0,0,0,0,0,3,1,4,2; story:
+        r0 eval "(ns foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "foo"] out ""
+        r1 eval "(def b 1) b" → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "1"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "foo"] out ""
+  eval value: error [R127 sessions keep no state]: 1460
+      e.g. eval "(def b 1) foo/b": jank eval-error true, spec [Jank.R3.Nrepl.SpecItem.value "1" "foo"] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,0,0,3,1,5,2; story:
+        r0 eval "(ns foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "foo"] out ""
+        r1 eval "(def b 1) foo/b" → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"err" "#error", "id" "r1", "session" "s0"}, {"ex" "#error", "id" "r1", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "foo"] out ""
+  lookup: info [R111 alias resolved in *ns*]: 30
+      e.g. lookup ns=bar sym=str/join: ns-resolve gives clojure.string/join, the replies [{"id" "r1", "session" "s0", "status" ["no-info" "done"]}]
+      path 0,0,1,7,0,1,5; story:
+        r0 eval "(ns foo) (ns bar (:require [clojure.string :as str]))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "bar", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "bar"] out ""
+        r1 lookup ns=bar sym=str/join → jank [{"id" "r1", "session" "s0", "status" ["no-info" "done"]}]
+  lookup: info [N2 unknown ns falls back to user]: 72
+      e.g. lookup ns=foo sym=b: ns-resolve gives nil, the replies [{"id" "r1", "info" {"name" "b", "ns" "user"}, "session" "s0", "status" ["done"]}]
+      path 0,2,1,3,0,1,1; story:
+        r0 eval "(str *ns*) (def b 1)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/b"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'user/b" "user"] out ""
+        r1 lookup ns=foo sym=b → jank [{"id" "r1", "info" {"name" "b", "ns" "user"}, "session" "s0", "status" ["done"]}]
+  eval value: text [R112 in-ns returns nil]: 5028
+      e.g. eval "(ns foo) (in-ns 'foo)" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "foo"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,0,0,0,1,1,0; story:
+        r0 eval "(ns foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "foo"] out ""
+        r1 eval "(ns foo) (in-ns 'foo)" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"foo\"]" "foo"] out ""
+  lookup: handler error [R131 arglists hold nil]: 394
+      e.g. lookup ns=clojure.core sym=iteration: ns-resolve gives clojure.core/iteration, the replies [{"err" "An exception was thrown from the nREPL handler:cannot write nil as bencode", "id" "r1", "session" "s0", "status" ["error" "done"]}]
+      path 0,0,0,0,1,9; story:
+        r0 eval "(ns foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "foo"] out ""
+        r1 lookup ns=clojure.core sym=iteration → jank [{"err" "An exception was thrown from the nREPL handler:cannot write nil as bencode", "id" "r1", "session" "s0", "status" ["error" "done"]}]
+  (71366 ms)
+== World S census gTopDo mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 210 timelines; outside the model: 0 []
+  eval value: text [N1 top-level do analyzed whole]: 5
+      e.g. eval "(do (in-ns 'foo) (def c 1))" ns=user: jank values [#'user/c], spec [#'foo/c] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 2,0; story:
+        r0 eval "(do (in-ns 'foo) (def c 1))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "#'user/c"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'foo/c" "foo"] out ""
+  eval value: error [N1 top-level do analyzed whole]: 27
+      e.g. eval "(do (defmacro m2 [] 2) (m2))" ns=user: jank eval-error true, spec [Jank.R3.Nrepl.SpecItem.value "2" "user"] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0; story:
+        r0 eval "(do (defmacro m2 [] 2) (m2))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "2" "user"] out ""
+  (131 ms)
+== World S census gTopDo mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 37412 timelines; outside the model: 0 []
+  eval value: text [N1 top-level do analyzed whole]: 929
+      e.g. eval "(do (defmacro m2 [] 2) (m2)) (do (in-ns 'foo) (def c 1))" ns=user: jank values [#'user/c], spec [#'foo/c] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,3,0,1,2; story:
+        r0 eval "(do (defmacro m2 [] 2) (m2)) c" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error] out ""
+        r1 eval "(do (defmacro m2 [] 2) (m2)) (do (in-ns 'foo) (def c 1))" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "foo", "session" "s0", "value" "#'user/c"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'foo/c" "foo"] out ""
+  eval value: error [N1 top-level do analyzed whole]: 5400
+      e.g. eval "(do (defmacro m2 [] 2) (m2))" ns=user: jank eval-error true, spec [Jank.R3.Nrepl.SpecItem.value "2" "user"] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0; story:
+        r0 eval "(do (defmacro m2 [] 2) (m2))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "2" "user"] out ""
+  (19005 ms)
+== World S census gKnown mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 528 timelines; outside the model: 0 []
+  eval value: no form gives 0.0 [R132]: 60
+      e.g. eval ";; c" ns=user: jank values [0.0], spec none
+      path 2,0,0,0; story:
+        r0 eval ";; c" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "0.0"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [] out ""
+  eval value: handler error from pr-str [R126]: 48
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank answers a handler error (throws #error); spec [Jank.R3.Nrepl.SpecItem.error]
+      path 0,0,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user → jank [{"err" "An exception was thrown from the nREPL handler:throws #error", "id" "r0", "session" "s0", "status" ["error" "done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error] out ""
+  eval output: whitespace dropped [R136]: 120
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (println)" ns=user: jank :out "", spec "\n"
+      path 0,1,5,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (println)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "user"] out "\n"
+  eval value: text [R112 in-ns returns nil]: 48
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (in-ns 'foo)" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "foo"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,9,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (in-ns 'foo)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"foo\"]" "foo"] out ""
+  (231 ms)
+== World S census gKnown mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 133332 timelines; outside the model: 0 []
+  eval value: error [R127 sessions keep no state]: 3312
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (nil? *e)": jank eval-error false, spec [Jank.R3.Nrepl.SpecItem.error] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 9,1,0,0,0,0,1,1,1,0; story:
+        r0 eval "(in-ns 'foo) (map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error] out ""
+        r1 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (nil? *e)" → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "false"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error] out ""
+  eval value: no form gives 0.0 [R132]: 15180
+      e.g. eval ";; c" ns=user: jank values [0.0], spec none
+      path 0,1,1,0,0,2,0,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (nil? *e)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "true"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "true" "user"] out ""
+        r1 eval ";; c" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "0.0"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [] out ""
+  eval value: handler error from pr-str [R126]: 12144
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank answers a handler error (throws #error); spec [Jank.R3.Nrepl.SpecItem.error]
+      path 0,0,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user → jank [{"err" "An exception was thrown from the nREPL handler:throws #error", "id" "r0", "session" "s0", "status" ["error" "done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error] out ""
+  eval value: text [R127 sessions keep no state]: 3924
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) *1" ns=user session=1: jank values [true], spec [nil] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,1,0,0,0,1,4,0,1; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (nil? *e)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "true"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "true" "user"] out ""
+        r1 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) *1" ns=user session=1 → jank [{"id" "r1", "session" "s1"}, {"id" "r1", "session" "s1"}, {"id" "r1", "ns" "user", "session" "s1", "value" "true"}, {"id" "r1", "session" "s1", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "user"] out ""
+  eval output: whitespace dropped [R136]: 28656
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (println)" ns=user: jank :out "", spec "\n"
+      path 0,1,1,0,0,0,1,5,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (nil? *e)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "true"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "true" "user"] out ""
+        r1 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (println)" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "nil"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "user"] out "\n"
+  eval value: text [R112 in-ns returns nil]: 11712
+      e.g. eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (in-ns 'foo)" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "foo"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,1,0,0,0,1,9,0,0; story:
+        r0 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (nil? *e)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "true"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "true" "user"] out ""
+        r1 eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1]) (in-ns 'foo)" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "foo", "session" "s0", "value" "nil"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"foo\"]" "foo"] out ""
+  (99287 ms)
+== World S census gLoad mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 26 timelines; outside the model: 0 []
+  eval value: no form gives 0.0 [R132]: 2
+      e.g. load-file ";; only a comment" ns=user: jank values [0.0], spec none
+      path 1,5,0; story:
+        r0 load-file ";; only a comment" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "0.0"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [] out ""
+  eval value: ns (load-file: the file's ns switch is not undone): 4
+      e.g. load-file "(ns lf) (def c 3)" ns=user: jank :ns [lf], spec (some user)
+      path 1,1,0; story:
+        r0 load-file "(ns lf) (def c 3)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "lf", "session" "s0", "value" "#'lf/c"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'lf/c" "user"] out ""
+  (59 ms)
+== World S census gLoad mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 526 timelines; outside the model: 0 []
+  eval value: no form gives 0.0 [R132]: 42
+      e.g. load-file ";; only a comment" ns=user: jank values [0.0], spec none
+      path 0,0,0,1,5,0; story:
+        r0 eval "(def a 1)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/a"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'user/a" "user"] out ""
+        r1 load-file ";; only a comment" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "0.0"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [] out ""
+  eval value: ns (load-file: the file's ns switch is not undone): 84
+      e.g. load-file "(ns lf) (def c 3)" ns=user: jank :ns [lf], spec (some user)
+      path 0,0,0,1,1,0; story:
+        r0 eval "(def a 1)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/a"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'user/a" "user"] out ""
+        r1 load-file "(ns lf) (def c 3)" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "lf", "session" "s0", "value" "#'lf/c"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'lf/c" "user"] out ""
+  (289 ms)
+== World S census gFile mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 40 timelines; outside the model: 0 []
+  eval value: text [R31 macro-expansion meta (the request has a file)]: 1
+      e.g. eval "(defmacro mk [& xs] (vec xs)) (meta (mk 1 2))" ns=user file=src/user.clj: jank values [{:jank/macro-expansion (mk 1 2)}], spec [nil] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,1,1; story:
+        r0 eval "(defmacro mk [& xs] (vec xs)) (meta (mk 1 2))" ns=user file=src/user.clj → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "{:jank/macro-expansion (mk 1 2)}"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "user"] out ""
+  eval value: text [namespace pr-str is its name]: 6
+      e.g. eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user: jank values [user], spec [#object[clojure.lang.Namespace 0x… "user"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,3,0; story:
+        r0 eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "user"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"user\"]" "user"] out ""
+  (66 ms)
+== World S census gFile mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 1327 timelines; outside the model: 0 []
+  eval value: text [R31 macro-expansion meta (the request has a file)]: 70
+      e.g. eval "(defmacro mk [& xs] (vec xs)) (meta (mk 1 2))" ns=user file=src/user.clj: jank values [{:jank/macro-expansion (mk 1 2)}], spec [nil] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,0,1,1,1; story:
+        r0 eval "(defmacro mk [& xs] (vec xs))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/mk"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'user/mk" "user"] out ""
+        r1 eval "(defmacro mk [& xs] (vec xs)) (meta (mk 1 2))" ns=user file=src/user.clj → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "{:jank/macro-expansion (mk 1 2)}"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "nil" "user"] out ""
+  eval value: text [namespace pr-str is its name]: 240
+      e.g. eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user: jank values [user], spec [#object[clojure.lang.Namespace 0x… "user"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,0,1,3,0; story:
+        r0 eval "(defmacro mk [& xs] (vec xs))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/mk"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'user/mk" "user"] out ""
+        r1 eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "user"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"user\"]" "user"] out ""
+  (1105 ms)
+== World S census gFileNone mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 20 timelines; outside the model: 0 []
+  eval value: text [namespace pr-str is its name]: 3
+      e.g. eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user: jank values [user], spec [#object[clojure.lang.Namespace 0x… "user"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,1,3; story:
+        r0 eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "user"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"user\"]" "user"] out ""
+  (76 ms)
+== World S census gFileNone mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 343 timelines; outside the model: 0 []
+  eval value: text [namespace pr-str is its name]: 64
+      e.g. eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user: jank values [user], spec [#object[clojure.lang.Namespace 0x… "user"]] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,1,3; story:
+        r0 eval "(defmacro mk [& xs] (vec xs))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/mk"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#'user/mk" "user"] out ""
+        r1 eval "(defmacro mk [& xs] (vec xs)) *ns*" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "user"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"user\"]" "user"] out ""
+  (341 ms)
+== World S census gEval mode=Jank.R3.Nrepl.SpecMode.repl aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 612 timelines; outside the model: 0 []
+  eval value: count: 462
+      e.g. eval "1 1" ns=user: jank values [1], spec [1, 1] (Jank.R3.Nrepl.SpecMode.repl)
+      path 0,1,0,0; story:
+        r0 eval "1 1" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "1"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user", Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+  (452 ms)
+== World S census gEval mode=Jank.R3.Nrepl.SpecMode.repl aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 92262 timelines; outside the model: 0 []
+  eval value: count [NA1 REPL per form vs one value per eval]: 200
+      e.g. eval "a (def a (inc a))" ns=user: jank values [], spec [#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]] (Jank.R3.Nrepl.SpecMode.repl)
+      path 2,1,3,0,2,1,3,0; story:
+        r0 eval "a (def a (inc a))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error, Jank.R3.Nrepl.SpecItem.error] out ""
+        r1 eval "a (def a (inc a))" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"err" "#error", "id" "r1", "session" "s0"}, {"ex" "#error", "id" "r1", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]" "user", Jank.R3.Nrepl.SpecItem.error] out ""
+  eval value: error [NA1 REPL per form vs one value per eval]: 420
+      e.g. eval "1 a" ns=user: jank eval-error true, spec [Jank.R3.Nrepl.SpecItem.value "1" "user",
+ Jank.R3.Nrepl.SpecItem.value "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]" "user"] (Jank.R3.Nrepl.SpecMode.repl)
+      path 2,1,3,0,0,1,2,0; story:
+        r0 eval "a (def a (inc a))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error, Jank.R3.Nrepl.SpecItem.error] out ""
+        r1 eval "1 a" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"err" "#error", "id" "r1", "session" "s0"}, {"ex" "#error", "id" "r1", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user",
+ Jank.R3.Nrepl.SpecItem.value "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]" "user"] out ""
+  eval value: count: 69870
+      e.g. eval "1 1" ns=user: jank values [1], spec [1, 1] (Jank.R3.Nrepl.SpecMode.repl)
+      path 0,0,0,0,1,0,0; story:
+        r0 eval "1" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "1"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+        r1 eval "1 1" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "1"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user", Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+  (74397 ms)
+== World S census gResidualPairs mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=1 prefix=#[] max 3000000
+  complete at 6486 timelines; outside the model: 0 []
+  nothing
+  (1029 ms)
+== World S census gResidual mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=2 prefix=#[] max 3000000
+  complete at 96100 timelines; outside the model: 0 []
+  nothing
+  (22478 ms)
+== World S census gResidual mode=Jank.R3.Nrepl.SpecMode.repl aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=2 prefix=#[] max 3000000
+  complete at 96100 timelines; outside the model: 0 []
+  nothing
+  (22475 ms)
+== World S explore gResidual4 mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=4 seeds 0..49999
+  nothing in 50000 timelines
+  (22746 ms)
+== World S explore gResidual4 mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=4 seeds 50000..99999
+  nothing in 50000 timelines
+  (20841 ms)
+== World S explore gResidual4 mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=4 seeds 100000..149999
+  nothing in 50000 timelines
+  (22828 ms)
+== World S explore gResidual4 mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=4 seeds 150000..199999
+  nothing in 50000 timelines
+  (22999 ms)
+
+######## lane B
+== World T explore (random schedules) T1 R125: two connections printing (real code), random schedules: 2000 seeds
+  found after 1 timelines: eval output reaches its client: c1-1 eval "(print \"b\")": :out "", the eval printed "b"
+  shrunk to 160 decisions: c1-1 eval "(print \"b\")": :out "", the eval printed "b"
+  tape:
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 1: connects
+      1: accept loop: client 1 on fd 4; a future runs handle-client
+      2: client 0: connects
+      3: accept loop: client 0 on fd 5; a future runs handle-client
+      6: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      8: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+      11: conn 0: handle-message clone (id c0-0)
+      12: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+      13: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      14: client 0: c0-0 done
+      15: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code13:(println \"a\")2:ns4:usere"
+      18: conn 0: read_some → 71 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code13:(println \"a\")2:ns4:usere"
+      20: conn 0: handle-message eval (id c0-1)
+      21: conn 1: handle-message clone (id c1-0)
+      23: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+      24: client 1: c1-0 done
+      25: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+      33: conn 1: read_some → 69 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+      39: conn 0: read (println "a")
+      40: conn 1: handle-message eval (id c1-1)
+      45: conn 0: fwrite "a" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+      46: conn 0: fwrite "\n" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+      69: conn 1: read (print "b")
+      75: conn 0: write "d2:id4:c0-13:out2:a\n7:session6:uuid-0e"
+      76: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      77: conn 1: fwrite "b" to stdout (fd 1 is some (Jank.NreplServer.Desc.terminal))
+      78: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:nile"
+      79: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      82: client 0: c0-1 done
+      84: client 0: closes
+      86: conn 0: read_some → "" (eof): connected_ = false
+      87: conn 0: not connected: handle-client returns (its socket stays open)
+      102: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      103: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      104: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+      105: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+      106: client 1: c1-1 done
+      108: client 1: closes
+      110: conn 1: read_some → "" (eof): connected_ = false
+      111: conn 1: not connected: handle-client returns (its socket stays open)
+  (77 ms)
+== World T explore (random schedules) T2 R125 set aside (capture under a lock): the same: 20000 seeds
+  nothing in 20000 timelines
+  (14560 ms)
+== World T census, ≤ 2 preemptions from round robin: T2 R125 set aside (capture under a lock): the same prefix=#[]
+  complete at 1344960 timelines
+  nothing
+  (767134 ms)
+== World T explore (random schedules) T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked: 5000 seeds
+  nothing in 5000 timelines
+  (19189 ms)
+== World T explore (random schedules) T4 R1 through nREPL: a NUL in one connection's code, the other printing: 200 seeds
+  found after 1 timelines: every request gets a done reply (no hang): client 0 waits for the done of c0-1; conn 0 never returns from the reader (HANG string loop (lex.cpp:1325)); fd 1 (stdout) is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0")
+  shrunk to 161 decisions: client 0 waits for the done of c0-1; conn 0 never returns from the reader (HANG string loop (lex.cpp:1325))
+  tape:
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 1: connects
+      1: accept loop: client 1 on fd 4; a future runs handle-client
+      2: client 0: connects
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      4: accept loop: client 0 on fd 5; a future runs handle-client
+      8: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+      9: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      11: conn 0: handle-message clone (id c0-0)
+      12: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+      13: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      14: client 0: c0-0 done
+      15: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code4:\"a\x00\"2:ns4:usere"
+      18: conn 1: handle-message clone (id c1-0)
+      19: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+      20: conn 0: read_some → 61 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code4:\"a\x00\"2:ns4:usere"
+      21: client 1: c1-0 done
+      22: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code13:(println \"x\")2:ns4:usere"
+      25: conn 1: read_some → 71 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code13:(println \"x\")2:ns4:usere"
+      27: conn 1: handle-message eval (id c1-1)
+      32: conn 0: handle-message eval (id c0-1)
+      47: conn 1: read (println "x")
+      52: conn 1: fwrite "x" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"))
+      54: conn 1: fwrite "\n" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"))
+      72: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      73: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      74: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+      75: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+      77: client 1: c1-1 done
+      79: client 1: closes
+      80: conn 1: read_some → "" (eof): connected_ = false
+      81: conn 1: not connected: handle-client returns (its socket stays open)
+      82: conn 0: the reader never returns (HANG string loop (lex.cpp:1325)); fd 1 and 2 stay on this eval's temp files
+  (107 ms)
+== World T explore (random schedules) T5 R126: a value that throws while printed, then more evals on the connection; capture locked: 5000 seeds
+  found after 1 timelines: eval value: error: c0-1: eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank eval-error false, spec [Jank.R3.Nrepl.SpecItem.error] (Jank.R3.Nrepl.SpecMode.loadString)
+  shrunk to 263 decisions: c0-1: eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank eval-error false, spec [Jank.R3.Nrepl.SpecItem.error] (Jank.R3.Nrepl.SpecMode.loadString)
+  tape:
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 1: connects
+      1: accept loop: client 1 on fd 4; a future runs handle-client
+      2: client 0: connects
+      3: accept loop: client 0 on fd 5; a future runs handle-client
+      5: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      6: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+      8: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+      10: conn 1: handle-message clone (id c1-0)
+      11: conn 1: write "d2:id4:c1-011:new-session6:uuid-06:statusl4:doneee"
+      12: client 1: c1-0 done
+      13: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-04:code9:(def c 3)2:ns4:usere"
+      15: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      18: conn 1: read_some → 66 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-04:code9:(def c 3)2:ns4:usere"
+      20: conn 1: handle-message eval (id c1-1)
+      25: conn 0: handle-message clone (id c0-0)
+      27: conn 0: write "d2:id4:c0-011:new-session6:uuid-16:statusl4:doneee"
+      28: client 0: c0-0 done
+      29: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-14:code43:(map (fn [_] (throw (ex-info \"p\" {}))) [1])2:ns4:usere"
+      32: conn 0: read_some → 101 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-14:code43:(map (fn [_] (throw (ex-info \"p\" {}))) [1])2:ns4:usere"
+      39: conn 0: handle-message eval (id c0-1)
+      41: conn 1: read (def c 3)
+      61: conn 1: write "d2:id4:c1-17:session6:uuid-0e"
+      62: conn 1: write "d2:id4:c1-17:session6:uuid-0e"
+      68: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-05:value8:#'user/ce"
+      70: conn 1: write "d2:id4:c1-17:session6:uuid-06:statusl4:doneee"
+      72: client 1: c1-1 done
+      74: client 1: closes
+      75: conn 1: read_some → "" (eof): connected_ = false
+      76: conn 1: not connected: handle-client returns (its socket stays open)
+      84: conn 0: read (map (fn [_] (throw (ex-info "p" {}))) [1])
+      104: conn 0: handler exception "throws #error": answered with status [error done]
+      105: conn 0: write "d3:err60:An exception was thrown from the nREPL handler:throws #error2:id4:c0-17:session6:uuid-16:statusl5:error4:doneee"
+      106: client 0: c0-1 done
+      107: client 0: sends c0-2 "d2:op4:eval2:id4:c0-27:session6:uuid-14:code9:(nil? *e)2:ns4:usere"
+      109: conn 0: read_some → 66 bytes "d2:op4:eval2:id4:c0-27:session6:uuid-14:code9:(nil? *e)2:ns4:usere"
+      111: conn 0: handle-message eval (id c0-2)
+      124: conn 0: read (nil? *e)
+      144: conn 0: write "d2:id4:c0-27:session6:uuid-1e"
+      146: conn 0: write "d2:id4:c0-27:session6:uuid-1e"
+      148: conn 0: write "d2:id4:c0-22:ns4:user7:session6:uuid-15:value4:truee"
+      150: conn 0: write "d2:id4:c0-27:session6:uuid-16:statusl4:doneee"
+      151: client 0: c0-2 done
+      152: client 0: sends c0-3 "d2:op4:eval2:id4:c0-37:session6:uuid-14:code2:*12:ns4:usere"
+      154: conn 0: read_some → 59 bytes "d2:op4:eval2:id4:c0-37:session6:uuid-14:code2:*12:ns4:usere"
+      156: conn 0: handle-message eval (id c0-3)
+      169: conn 0: read *1
+      189: conn 0: write "d2:id4:c0-37:session6:uuid-1e"
+      191: conn 0: write "d2:id4:c0-37:session6:uuid-1e"
+      193: conn 0: write "d2:id4:c0-32:ns4:user7:session6:uuid-15:value4:truee"
+      195: conn 0: write "d2:id4:c0-37:session6:uuid-16:statusl4:doneee"
+      196: client 0: c0-3 done
+      198: client 0: closes
+      200: conn 0: read_some → "" (eof): connected_ = false
+      201: conn 0: not connected: handle-client returns (its socket stays open)
+  (349 ms)
+== World T explore (random schedules) T6 macros defined on one connection used by the other (shared namespace); capture locked: 5000 seeds
+  nothing in 5000 timelines
+  (7975 ms)
+== World T explore (random schedules) T7 control: partial reads, one client, every op: 5000 seeds
+  nothing in 5000 timelines
+  (3683 ms)
+== World T explore (random schedules) T8 control: EINTR on a blocked read_some (R139): 5000 seeds
+  found after 1 timelines: every request gets a done reply (no hang): client 0 waits for the done of c0-1; conn 0's loop ended while its client is connected
+  shrunk to 16 decisions: client 0 waits for the done of c0-1; conn 0's loop ended while its client is connected
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"net.read.eintr","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"net.read.eintr","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      10: client 0: c0-0 done
+      11: conn 0: read_some → "" (EINTR): connected_ = false
+      12: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code18:(do (print \"a\") 3)2:ns4:usere"
+      13: conn 0: not connected: handle-client returns (its socket stays open)
+  (8 ms)
+
+######## lane C
+== World S census gEval mode=Jank.R3.Nrepl.SpecMode.repl aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 612 timelines; outside the model: 0 []
+  eval value: count [NA1 REPL per form vs one value per eval]: 462
+      e.g. eval "1 1" ns=user: jank values [1], spec [1, 1] (Jank.R3.Nrepl.SpecMode.repl)
+      path 0,1,0,0; story:
+        r0 eval "1 1" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "1"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user", Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+  (408 ms)
+== World S census gEval mode=Jank.R3.Nrepl.SpecMode.repl aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 92262 timelines; outside the model: 0 []
+  eval value: error [NA1 REPL per form vs one value per eval]: 420
+      e.g. eval "1 a" ns=user: jank eval-error true, spec [Jank.R3.Nrepl.SpecItem.value "1" "user",
+ Jank.R3.Nrepl.SpecItem.value "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]" "user"] (Jank.R3.Nrepl.SpecMode.repl)
+      path 2,1,3,0,0,1,2,0; story:
+        r0 eval "a (def a (inc a))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.error, Jank.R3.Nrepl.SpecItem.error] out ""
+        r1 eval "1 a" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"err" "#error", "id" "r1", "session" "s0"}, {"ex" "#error", "id" "r1", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user",
+ Jank.R3.Nrepl.SpecItem.value "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]" "user"] out ""
+  eval value: count [NA1 REPL per form vs one value per eval]: 70070
+      e.g. eval "1 1" ns=user: jank values [1], spec [1, 1] (Jank.R3.Nrepl.SpecMode.repl)
+      path 0,0,0,0,1,0,0; story:
+        r0 eval "1" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "1"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+        r1 eval "1 1" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "1"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user", Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+  (53958 ms)
+== World S census gResidualPairs mode=Jank.R3.Nrepl.SpecMode.repl aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=1 prefix=#[] max 3000000
+  complete at 6486 timelines; outside the model: 0 []
+  eval value: count [NA1 REPL per form vs one value per eval]: 3134
+      e.g. eval "1 1" ns=user: jank values [1], spec [1, 1] (Jank.R3.Nrepl.SpecMode.repl)
+      path 0,1,0,0; story:
+        r0 eval "1 1" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "1"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "1" "user", Jank.R3.Nrepl.SpecItem.value "1" "user"] out ""
+  (876 ms)
+== World T census, ≤ 1 preemptions from round robin: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked prefix=#[]
+  stopped at 400000 timelines
+  nothing
+  (764276 ms)
+== World T census, ≤ 1 preemptions from round robin: T5 R126: a value that throws while printed, then more evals on the connection; capture locked prefix=#[]
+  complete at 34496 timelines
+  eval value: error: 34496
+      e.g. c0-1: eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank eval-error false, spec [Jank.R3.Nrepl.SpecItem.error] (Jank.R3.Nrepl.SpecMode.loadString)
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0; story:
+        0: client 0: connects
+        1: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+        2: client 1: connects
+        3: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+        4: accept loop: client 0 on fd 4; a future runs handle-client
+        5: accept loop: client 1 on fd 5; a future runs handle-client
+        8: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+        10: conn 0: handle-message clone (id c0-0)
+        11: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+        14: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+        16: conn 1: handle-message clone (id c1-0)
+        17: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+        19: client 0: c0-0 done
+        20: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code43:(map (fn [_] (throw (ex-info \"p\" {}))) [1])2:ns4:usere"
+        21: client 1: c1-0 done
+        22: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code9:(def c 3)2:ns4:usere"
+        23: conn 0: read_some → 101 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code43:(map (fn [_] (throw (ex-info \"p\" {}))) [1])2:ns4:usere"
+        25: conn 0: handle-message eval (id c0-1)
+        38: conn 0: read (map (fn [_] (throw (ex-info "p" {}))) [1])
+        58: conn 0: handler exception "throws #error": answered with status [error done]
+        59: conn 0: write "d3:err60:An exception was thrown from the nREPL handler:throws #error2:id4:c0-17:session6:uuid-06:statusl5:error4:doneee"
+        61: conn 1: read_some → 66 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code9:(def c 3)2:ns4:usere"
+        63: conn 1: handle-message eval (id c1-1)
+        76: conn 1: read (def c 3)
+        96: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        97: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        98: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value8:#'user/ce"
+        99: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+        101: client 0: c0-1 done
+        102: client 0: sends c0-2 "d2:op4:eval2:id4:c0-27:session6:uuid-04:code9:(nil? *e)2:ns4:usere"
+        103: client 1: c1-1 done
+        105: client 1: closes
+        106: conn 0: read_some → 66 bytes "d2:op4:eval2:id4:c0-27:session6:uuid-04:code9:(nil? *e)2:ns4:usere"
+        108: conn 0: handle-message eval (id c0-2)
+        121: conn 0: read (nil? *e)
+        141: conn 0: write "d2:id4:c0-27:session6:uuid-0e"
+        142: conn 0: write "d2:id4:c0-27:session6:uuid-0e"
+        143: conn 0: write "d2:id4:c0-22:ns4:user7:session6:uuid-05:value4:truee"
+        144: conn 0: write "d2:id4:c0-27:session6:uuid-06:statusl4:doneee"
+        146: conn 1: read_some → "" (eof): connected_ = false
+        147: conn 1: not connected: handle-client returns (its socket stays open)
+        148: client 0: c0-2 done
+        149: client 0: sends c0-3 "d2:op4:eval2:id4:c0-37:session6:uuid-04:code2:*12:ns4:usere"
+        150: conn 0: read_some → 59 bytes "d2:op4:eval2:id4:c0-37:session6:uuid-04:code2:*12:ns4:usere"
+        152: conn 0: handle-message eval (id c0-3)
+        165: conn 0: read *1
+        185: conn 0: write "d2:id4:c0-37:session6:uuid-0e"
+        186: conn 0: write "d2:id4:c0-37:session6:uuid-0e"
+        187: conn 0: write "d2:id4:c0-32:ns4:user7:session6:uuid-05:value4:truee"
+        188: conn 0: write "d2:id4:c0-37:session6:uuid-06:statusl4:doneee"
+        190: client 0: c0-3 done
+        192: client 0: closes
+        193: conn 0: read_some → "" (eof): connected_ = false
+        194: conn 0: not connected: handle-client returns (its socket stays open)
+  (29173 ms)
+== World T census, ≤ 1 preemptions from round robin: T6 macros defined on one connection used by the other (shared namespace); capture locked prefix=#[]
+  complete at 48384 timelines
+  nothing
+  (47886 ms)
+== World T census, ≤ 2 preemptions from round robin: T7 control: partial reads, one client, every op prefix=#[]
+  (time limit after 1489000 timelines)
+  stopped at 1489000 timelines
+  nothing
+  (1150375 ms)
+== World T census, ≤ 2 preemptions from round robin: T8 control: EINTR on a blocked read_some (R139) prefix=#[]
+  complete at 7669 timelines
+  every request gets a done reply (no hang): 3145
+      e.g. client 0 waits for the done of c0-3; conn 0's loop ended while its client is connected
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0; story:
+        0: client 0: connects
+        1: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+        2: accept loop: client 0 on fd 4; a future runs handle-client
+        5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+        7: conn 0: handle-message clone (id c0-0)
+        8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+        10: client 0: c0-0 done
+        11: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code18:(do (print \"a\") 3)2:ns4:usere"
+        12: conn 0: read_some → 76 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code18:(do (print \"a\") 3)2:ns4:usere"
+        14: conn 0: handle-message eval (id c0-1)
+        26: conn 0: read (do (print "a") 3)
+        29: conn 0: fwrite "a" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+        46: conn 0: write "d2:id4:c0-13:out1:a7:session6:uuid-0e"
+        47: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+        48: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value1:3e"
+        49: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+        51: client 0: c0-1 done
+        52: client 0: sends c0-2 "d2:op6:lookup2:id4:c0-22:ns4:user3:sym3:mape"
+        53: conn 0: read_some → 44 bytes "d2:op6:lookup2:id4:c0-22:ns4:user3:sym3:mape"
+        55: conn 0: handle-message lookup (id c0-2)
+        56: conn 0: write "d2:id4:c0-24:infod8:arglistsll1:f4:collee12:arglists-str10:([f coll])3:doc3:map4:name3:map2:ns12:clojure.coree6:statusl4:doneee"
+        58: client 0: c0-2 done
+        59: conn 0: read_some → "" (EINTR): connected_ = false
+        60: conn 0: not connected: handle-client returns (its socket stays open)
+        61: client 0: sends c0-3 "d2:op5:close2:id4:c0-37:session6:uuid-0e"
+  (2142 ms)
+
+######## lane D0
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin: lookup and info in core modules (control) prefix=#[]
+  (time limit after 1762000 timelines)
+  stopped at 1762000 timelines
+  nothing
+  (1150218 ms)
+Terminated: 15
+
+######## lane D
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: lookup and info in core modules (control) prefix=#[]
+  complete at 3088 timelines
+  nothing
+  (636 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: eval of the empty string (control: no-code since 7135b7708) prefix=#[]
+  complete at 874 timelines
+  nothing
+  (115 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: eval with inspect sent as an integer (control: answered with an error since 7135b7708) prefix=#[]
+  complete at 13312 timelines
+  nothing
+  (2629 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: describe (control: lists every handled op since 7135b7708) prefix=#[]
+  complete at 200 timelines
+  nothing
+  (50 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: an unknown op, interrupt (control) prefix=#[]
+  complete at 200 timelines
+  nothing
+  (47 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: N12: EINTR on a blocked read_some, one client prefix=#[]
+  complete at 9566 timelines
+  every request gets a done reply (no hang): 4631
+      e.g. client 0 waits for the done of c0-4; conn 0's loop ended (connected_ false) while its client is still connected; the socket stays open
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0; story:
+  (2356 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: partial reads, one client, every op (control) prefix=#[]
+  complete at 197792 timelines
+  nothing
+  (66617 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: two connections: clone, lookup, completions, close concurrently (control) prefix=#[]
+  complete at 1132192 timelines
+  nothing
+  (289451 ms)
+== round 2 scenario on round 2's model, ≤ 2 preemptions from round robin, whole-message reads: two connections, one evaluating, partial reads (control) prefix=#[]
+  complete at 1313952 timelines
+  nothing
+  (407155 ms)
+
+######## lane E
+== World S census gLazyOut mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 3000000
+  complete at 30 timelines; outside the model: 0 []
+  eval output [N6 output printed while printing the value is lost]: 12
+      e.g. eval "(map println [1 2])" ns=user: jank :out "", spec "1\n2\n"
+      path 0,0; story:
+        r0 eval "(map println [1 2])" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "(nil nil)"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "(nil nil)" "user"] out "1\n2\n"
+  (39 ms)
+== World S census gLazyOut mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 552 timelines; outside the model: 0 []
+  eval output [N6 output printed while printing the value is lost]: 228
+      e.g. eval "(map println [1 2])" ns=user: jank :out "", spec "1\n2\n"
+      path 0,0; story:
+        r0 eval "(map println [1 2])" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "(nil nil)"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R3.Nrepl.SpecItem.value "(nil nil)" "user"] out "1\n2\n"
+  (449 ms)
+== World S census gLazyOut mode=Jank.R3.Nrepl.SpecMode.loadString aside={ blankOut := true,
+  sessions := true,
+  variant := { noTopDoSplit := true, inNsNil := true, nsPrintName := true, printOutLost := true },
+  lookupKnown := true,
+  lookupFallback := true,
+  loadNs := true } len=2 prefix=#[] max 3000000
+  complete at 900 timelines; outside the model: 0 []
+  nothing
+  (451 ms)
+== World T explore (random schedules) T10 N6 across connections: a lazy value printed after its capture, the other connection capturing; capture locked: 5000 seeds
+  found after 37 timelines: eval output reaches its client: c1-1 eval "(print \"b\")": :out "1\n2\nb", the eval printed "b"
+  shrunk to 161 decisions: c1-1 eval "(print \"b\")": :out "1\n2\nb", the eval printed "b"
+  tape:
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      2: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      4: client 1: connects
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: accept loop: client 1 on fd 5; a future runs handle-client
+      8: conn 0: handle-message clone (id c0-0)
+      9: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      11: client 0: c0-0 done
+      13: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code19:(map println [1 2])2:ns4:usere"
+      15: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+      16: conn 0: read_some → 77 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code19:(map println [1 2])2:ns4:usere"
+      17: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+      19: conn 0: handle-message eval (id c0-1)
+      24: conn 1: handle-message clone (id c1-0)
+      28: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+      33: client 1: c1-0 done
+      35: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+      38: conn 0: read (map println [1 2])
+      43: conn 1: read_some → 69 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+      58: conn 1: handle-message eval (id c1-1)
+      65: conn 0: (pr-str *1) prints "1\n2\n" after the capture (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+      68: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      69: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      71: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value9:(nil nil)e"
+      72: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      73: client 0: c0-1 done
+      75: client 0: closes
+      77: conn 0: read_some → "" (eof): connected_ = false
+      78: conn 0: not connected: handle-client returns (its socket stays open)
+      84: conn 1: read (print "b")
+      87: conn 1: fwrite "b" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+      105: conn 1: write "d2:id4:c1-13:out5:1\n2\nb7:session6:uuid-1e"
+      107: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      109: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+      111: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+      112: client 1: c1-1 done
+      114: client 1: closes
+      116: conn 1: read_some → "" (eof): connected_ = false
+      117: conn 1: not connected: handle-client returns (its socket stays open)
+  (155 ms)
+== World T census, ≤ 1 preemptions from round robin: T10 N6 across connections: a lazy value printed after its capture, the other connection capturing; capture locked prefix=#[]
+  complete at 6800 timelines
+  nothing
+  (3323 ms)
+== World T census, ≤ 1 preemptions from round robin: T1 R125: two connections printing (real code), random schedules prefix=#[]
+  complete at 6640 timelines
+  nothing
+  (3260 ms)
+== World T census, ≤ 1 preemptions from round robin: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked prefix=#[]
+  complete at 53312 timelines
+  nothing
+  (75656 ms)
+== World T census, ≤ 2 preemptions from round robin: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked prefix=#[]
+  (time limit after 853000 timelines)
+  stopped at 853000 timelines
+  nothing
+  (1151311 ms)
+
+######## lane F
+== World T census, ≤ 2 preemptions from round robin: T10 N6 across connections: a lazy value printed after its capture, the other connection capturing; capture locked prefix=#[]
+  complete at 1304752 timelines
+  eval output reaches its client: 864
+      e.g. c1-1 eval "(print \"b\")": :out "b1\n2\n", the eval printed "b"
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0; story:
+        0: client 0: connects
+        1: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+        2: client 1: connects
+        3: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+        4: accept loop: client 0 on fd 4; a future runs handle-client
+        5: accept loop: client 1 on fd 5; a future runs handle-client
+        8: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+        10: conn 0: handle-message clone (id c0-0)
+        11: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+        14: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+        16: conn 1: handle-message clone (id c1-0)
+        17: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+        19: client 0: c0-0 done
+        20: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code19:(map println [1 2])2:ns4:usere"
+        21: client 1: c1-0 done
+        22: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+        23: conn 0: read_some → 77 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code19:(map println [1 2])2:ns4:usere"
+        25: conn 0: handle-message eval (id c0-1)
+        38: conn 0: read (map println [1 2])
+        57: conn 1: read_some → 69 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+        59: conn 1: handle-message eval (id c1-1)
+        72: conn 1: read (print "b")
+        75: conn 1: fwrite "b" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+        82: conn 0: (pr-str *1) prints "1\n2\n" after the capture (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+        83: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+        84: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+        85: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value9:(nil nil)e"
+        86: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+        99: conn 1: write "d2:id4:c1-13:out5:b1\n2\n7:session6:uuid-1e"
+        100: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        101: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+        102: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+        104: client 0: c0-1 done
+        106: client 0: closes
+        107: client 1: c1-1 done
+        109: client 1: closes
+        110: conn 0: read_some → "" (eof): connected_ = false
+        111: conn 0: not connected: handle-client returns (its socket stays open)
+        112: conn 1: read_some → "" (eof): connected_ = false
+        113: conn 1: not connected: handle-client returns (its socket stays open)
+  (609191 ms)
+
+######## lane G
+== World T census, ≤ 2 preemptions from round robin: T1 R125: two connections printing (real code), random schedules prefix=#[]
+  complete at 1197488 timelines
+  stdout is restored after every eval: 4800
+      e.g. fd 1 is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0")
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0; story:
+        0: client 0: connects
+        1: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+        2: client 1: connects
+        3: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+        4: accept loop: client 0 on fd 4; a future runs handle-client
+        5: accept loop: client 1 on fd 5; a future runs handle-client
+        8: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+        10: conn 0: handle-message clone (id c0-0)
+        11: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+        14: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+        16: conn 1: handle-message clone (id c1-0)
+        17: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+        19: client 0: c0-0 done
+        20: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code13:(println \"a\")2:ns4:usere"
+        21: client 1: c1-0 done
+        22: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+        23: conn 0: read_some → 71 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code13:(println \"a\")2:ns4:usere"
+        25: conn 0: handle-message eval (id c0-1)
+        37: conn 0: read (println "a")
+        40: conn 0: fwrite "a" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+        41: conn 0: fwrite "\n" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+        48: conn 1: read_some → 69 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+        50: conn 1: handle-message eval (id c1-1)
+        62: conn 1: read (print "b")
+        65: conn 1: fwrite "b" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+        82: conn 0: write "d2:id4:c0-13:out2:a\n7:session6:uuid-0e"
+        83: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+        84: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:nile"
+        85: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+        97: conn 1: write "d2:id4:c1-13:out1:b7:session6:uuid-1e"
+        98: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        99: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+        100: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+        102: client 0: c0-1 done
+        104: client 0: closes
+        105: client 1: c1-1 done
+        107: client 1: closes
+        108: conn 0: read_some → "" (eof): connected_ = false
+        109: conn 0: not connected: handle-client returns (its socket stays open)
+        110: conn 1: read_some → "" (eof): connected_ = false
+        111: conn 1: not connected: handle-client returns (its socket stays open)
+  eval output reaches its client: 16224
+      e.g. c1-1 eval "(print \"b\")": :out "", the eval printed "b"
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0; story:
+        0: client 0: connects
+        1: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+        2: client 1: connects
+        3: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+        4: accept loop: client 0 on fd 4; a future runs handle-client
+        5: accept loop: client 1 on fd 5; a future runs handle-client
+        8: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+        10: conn 0: handle-message clone (id c0-0)
+        11: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+        14: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+        16: conn 1: handle-message clone (id c1-0)
+        17: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+        19: client 0: c0-0 done
+        20: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code13:(println \"a\")2:ns4:usere"
+        21: client 1: c1-0 done
+        22: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+        23: conn 0: read_some → 71 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code13:(println \"a\")2:ns4:usere"
+        25: conn 0: handle-message eval (id c0-1)
+        37: conn 0: read (println "a")
+        40: conn 0: fwrite "a" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+        41: conn 0: fwrite "\n" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"))
+        48: conn 1: read_some → 69 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code11:(print \"b\")2:ns4:usere"
+        50: conn 1: handle-message eval (id c1-1)
+        62: conn 1: read (print "b")
+        65: conn 1: fwrite "b" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+        81: conn 0: write "d2:id4:c0-13:out2:a\n7:session6:uuid-0e"
+        82: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+        83: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:nile"
+        84: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+        97: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        98: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        99: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+        100: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+        102: client 0: c0-1 done
+        104: client 0: closes
+        105: client 1: c1-1 done
+        107: client 1: closes
+        108: conn 0: read_some → "" (eof): connected_ = false
+        109: conn 0: not connected: handle-client returns (its socket stays open)
+        110: conn 1: read_some → "" (eof): connected_ = false
+        111: conn 1: not connected: handle-client returns (its socket stays open)
+  (531716 ms)
+== World T census, ≤ 1 preemptions from round robin: T4 R1 through nREPL: a NUL in one connection's code, the other printing prefix=#[]
+  complete at 2016 timelines
+  every request gets a done reply (no hang): 2016
+      e.g. client 0 waits for the done of c0-1; conn 0 never returns from the reader (HANG string loop (lex.cpp:1325)); fd 1 (stdout) is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0")
+      path 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0; story:
+        0: client 0: connects
+        1: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+        2: client 1: connects
+        3: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+        4: accept loop: client 0 on fd 4; a future runs handle-client
+        5: accept loop: client 1 on fd 5; a future runs handle-client
+        8: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+        10: conn 0: handle-message clone (id c0-0)
+        11: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+        14: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+        16: conn 1: handle-message clone (id c1-0)
+        17: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+        19: client 0: c0-0 done
+        20: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code4:\"a\x00\"2:ns4:usere"
+        21: client 1: c1-0 done
+        22: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code13:(println \"x\")2:ns4:usere"
+        23: conn 0: read_some → 61 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code4:\"a\x00\"2:ns4:usere"
+        25: conn 0: handle-message eval (id c0-1)
+        37: conn 0: the reader never returns (HANG string loop (lex.cpp:1325)); fd 1 and 2 stay on this eval's temp files
+        37: conn 1: read_some → 71 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code13:(println \"x\")2:ns4:usere"
+        39: conn 1: handle-message eval (id c1-1)
+        51: conn 1: read (println "x")
+        54: conn 1: fwrite "x" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+        55: conn 1: fwrite "\n" to stdout (fd 1 is some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"))
+        72: conn 1: write "d2:id4:c1-13:out2:x\n7:session6:uuid-1e"
+        73: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+        74: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value3:nile"
+        75: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+        77: client 1: c1-1 done
+        79: client 1: closes
+        80: conn 1: read_some → "" (eof): connected_ = false
+        81: conn 1: not connected: handle-client returns (its socket stays open)
+  (543 ms)
+== World T census, ≤ 1 preemptions from round robin: T7 control: partial reads, one client, every op prefix=#[]
+  stopped at 1500000 timelines
+  nothing
+  (1026025 ms)
+
+######## lane H
+== World T census, ≤ 2 preemptions from round robin, partition 0..1: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked
+  partition: decisions 0..1 of 216 on the all-zero timeline (2 subtrees)
+  complete at 94849 timelines
+  nothing
+  (113429 ms)
+bin/job: line 20: 71986 Alarm clock: 14         perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
+
+[exited with code 0]
+

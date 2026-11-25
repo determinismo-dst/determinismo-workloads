@@ -1,0 +1,352 @@
+ROUND 3 — IMMER (persistent vector, map and set internals). Area `Immer`, exe `jank3-immer`, prefix IM.
+jank main 7135b7708 (paths under upstream-main/compiler+runtime/), immer 282629d0 (deps/immer/).
+
+== 1. Deviations ==
+
+IM1. A key (or set element) `=` to a stored one replaces the stored one in hash maps and hash sets.
+  Programs (Clojure 1.12 → jank predicted):
+    (first (keys (assoc (hash-map '(1) :a) [1] :b)))      ; Clojure (1)   jank [1]
+    (hash-map '(1) :a [1] :b)                             ; Clojure {(1) :b}   jank {[1] :b}
+    (first (conj #{'(1)} [1]))                            ; Clojure (1)   jank [1]
+    ((conj #{'(1)} [1]) '(1))                             ; Clojure (1)   jank [1]
+    (first (hash-set '(1) [1]))  (first (set ['(1) [1]])) ; Clojure (1)   jank [1]
+    (first (conj #{0.0} -0.0))                            ; Clojure 0.0   jank -0.0   (0.0 and -0.0 meet at level 0: see D12)
+    (first (hash-set 0.0 -0.0))                           ; Clojure 0.0   jank -0.0
+    (let [k (with-meta 'k {:x 1})]
+      (meta (first (keys (assoc (hash-map k 1) 'k 2))))) ; Clojure {:x 1}   jank nil   (by reading: symbol equal/hash ignore meta)
+    Through the array-map promotion (an 8-entry array map promotes on any assoc, persistent_array_map.cpp:79):
+    (let [m (into {} [[0 0] [1 1] [2 2] [3 3] [4 4] [5 5] [6 6] ['(1) 0]])]
+      (some vector? (keys (assoc m [1] 1))))              ; Clojure nil   jank true
+    (below 8 entries jank's array map keeps the stored key, as Clojure does: native_array_map.cpp:139-162 writes data[i+1] only)
+  Path:
+    persistent_hash_map.cpp:110 assoc → `data.set(key, val)` → immer map.hpp:400 `impl_.add({k, v})` → champ.hpp:604-606
+      (`Equal{}(*val, v)` → `copy_inner_replace_value(node, offset, std::move(v))`: the whole stored pair replaced) and
+      champ.hpp:577-581 (collision node: `copy_collision_replace`, the new pair moved to the front);
+    transient_hash_map.cpp:99 assoc_in_place (and 141 conj_in_place, 41 the promotion constructor) → map_transient.hpp:250
+      `set` → `add_mut` → champ.hpp:697-699 (`vals[offset] = std::move(v)`), 654 (`*fst = std::move(v)`), 657/702 (copies);
+    persistent_hash_map.cpp:21-23 (promotion from an array map: entries then the new pair, `transient.set`) and :69
+      (`hash-map` → create_from_seq);
+    persistent_hash_set.cpp:151 conj → `data.insert(head)` → set.hpp:220 `impl_.add` (same champ code; for a set the
+      stored element is replaced); persistent_hash_set.cpp:50 (`hash-set` → create_from_seq) and
+      transient_hash_set.cpp:46 conj_in_place → set_transient.hpp:149 `add_mut` (core.jank `set`, `into #{}`).
+    Clojure keeps the stored key: PersistentHashMap.java BitmapIndexedNode.assoc 704 (`Util.equiv(key, keyOrNull)` →
+    only the value slot is set), HashCollisionNode.assoc, TransientHashMap (856), PersistentArrayMap.assoc 247-255;
+    PersistentHashSet.cons 98-101 (unchanged when contained); ATransientSet.conj (impl.assoc(val, val): key kept).
+  Reached from: assoc/assoc!/conj/conj!/merge/into/zipmap/hash-map/hash-set/set/frequencies (past 8 keys) on hash maps
+    and hash sets with a key equal to, but a different object from, a stored one: a vector and a list or seq with the
+    same elements (equal and, in jank, equal hashes), symbols or collections with different metadata, a string and an
+    equal string object, and so on.
+  Replica prediction: theorems im1_jank_key_replaced, im1_set_element_replaced (by decide on the replica);
+    im1_clojure_keeps_key (spec).
+  Searches: class key-identity in M1r1 (168,568 of 2,654,872 timelines), M2r1 (84,944 of 2,239,700), M3 (4,894 of
+    87,438), S1 (8,416), S1r1 (4,236), S2 (21,576); with it set aside the residual censuses M1r2 (3,016,000), M2r2
+    (2,353,672), M3r (105,434), S1r2 (86,625) and S2r (274,732) are complete with nothing.
+  Confidence: high (immer's add replaces by construction; read twice; jank never uses update/update_if_exists).
+  Status: new.
+
+IM2. An array-map transient can still be read after persistent!.
+  (let [t (transient {:a 1})] (persistent! t) (get t :a :nf))   ; Clojure throws IllegalAccessError   jank 1
+  (let [t (transient {:a 1})] (persistent! t) (contains? t :a))   ; Clojure throws   jank true
+  (let [t (transient {:a 1})] (persistent! t) (find t :a))        ; Clojure throws   jank [:a 1]
+  (let [t (transient {:a 1})] (persistent! t) (t :a :nf))         ; Clojure throws   jank 1
+  ((get t :a), (t :a) and (count t) throw, as Clojure's.)
+  Path: transient_array_map.cpp:47 get(key, fallback), :52 find, :62 contains, :146 call(o, fallback) have no
+    assert_active() (count 35-37 and get(key) 41-43 do). to_persistent (126-131) moves `data` into the persistent map;
+    native_array_map's move constructor is defaulted (native_array_map.hpp:34): the dead transient keeps the same array
+    pointer and length, so these reads see the new persistent map's entries.
+    Clojure: ATransientMap.valAt(key, notFound) → ensureEditable (PersistentArrayMap.java:557-560); containsKey and
+    entryAt go through valAt; invoke(k, nf) → valAt.
+  Reached from: any small map ({...} literal, (into {} ...), (transient {}) for ≤ 8 entries); transient_hash_map,
+    transient_hash_set and transient_vector reads all assert.
+  Theorems: im2_dead_array_reads (for every content, key and default these reads return), im2_dead_asserting_reads,
+    im2_example.
+  Searches: class dead-read in M2 (1,071 timelines) and M2r1 (1,515), shrunk to an array-map transient
+    ((get t1 :a :nf) after (persistent! t1) on {:f0 0 ... :f7 0}: jank :nf, Clojure throws); set aside in M2r2
+    (complete, 2,353,672 timelines, nothing else). The replica's hash-map transient throws on every read after
+    persistent! (im2_dead_asserting_reads).
+  Confidence: high.
+  Status: new (round 1's D15 was the vector counterpart; fixed at 7135b7708).
+
+== Changes to earlier entries ==
+ D12 (round 1, equal values with different hashes): CHANGED in part. CHAMP's `get` (champ.hpp:536-561) walks the
+   query's hash 5 bits a level and, at the first data slot it meets, asks only Equal{}(stored, query): it never
+   compares hashes. So two `=` values whose hashes agree in their low bits find each other as long as the stored one
+   sits above the level where the bits differ. 0.0 (hash 0) and -0.0 (hash 0x80000000) differ only in bit 31, i.e. at
+   level 6, so in small sets and maps they DO find each other:
+       (contains? #{0.0} -0.0)          ; round 1: jank false   replica: jank true (= Clojure)   -> round-1 example RETRACTED
+       (count (hash-set 0.0 -0.0))      ; jank 1 (= Clojure; the set holds -0.0, IM1)
+   and fail only when the stored one is pushed below level 6, e.g. by a key whose hash shares the low 30 bits
+   (2.0's hash is 0x40000000):
+       (contains? #{0.0 2.0} -0.0)      ; Clojure true    jank false
+       (count (conj #{0.0 2.0} -0.0))   ; Clojure 2       jank 3
+   1 and 1N (hashes 1392991556 and 2654435770) differ in the low 5 bits: round 1's examples (count (hash-set 1 1N)) = 2,
+   (get (hash-map 1N :a) 1) = nil, (count (hash-set [] (lazy-seq nil))) = 2 are confirmed. The shape dependence is new:
+   whether 0.0/-0.0 are one key depends on the other keys present.
+   The replica adds three consequences of the same cause (not new causes):
+   - promotion: an array map finds 1N as 1 (runtime::equal), but at 8 entries any assoc promotes to a hash map, where
+     1 and 1N are different keys:
+       (count (assoc (into {} (map vector (range 1 9) (repeat 0))) 1N :x))   ; Clojure 8   jank 9
+   - hash-map `=` follows lookups: (= (hash-map 1 0) (hash-map 1N 0)) is false in jank (Clojure true), and
+     (= (hash-map 0.0 0) (hash-map -0.0 0)) is true but the two hashes differ (search M1d, both classes);
+   - map `=` is not symmetric across array and hash maps:
+       (= {1 :a} (hash-map 1N :a))   ; jank false     (= (hash-map 1N :a) {1 :a})   ; jank true   (Clojure true, true)
+ R13 (round 2, literal duplicates accepted): CHANGED in its second example. The reader builds a set literal with a
+   transient insert per element (parse.cpp:722-749, `set.insert(item.ptr)` → add_mut); its duplicate check is a
+   std::unordered_map keyed by full hash, which misses 0.0/-0.0, but the CHAMP insert then finds 0.0 at level 0 and
+   replaces it: (count #{0.0 -0.0}) is 1 (the set holds -0.0), not 2 as round 2 said. The literal is still accepted
+   where Clojure's reader rejects it (R13 stands); `{1 :a 1N :b}` is unchanged ({1 :b}, an array map).
+ D13: not affected (hash.cpp; jank's set hash `unordered(begin, end)` from 0 is what the replica uses).
+ D14 (array-map transient wrote into its source): stays fixed: transient_array_map.cpp:24-27 clones; the only sharing
+   left is the dead transient reading its persistent map's array after persistent! (IM2), read-only.
+ D15 (transient vector nth after persistent!): stays fixed: every transient_vector read asserts.
+ R123 (map find builds the entry from the key passed): confirmed for hash maps and transient hash maps: immer
+   map::find returns a pointer to the value only (map.hpp `find` → project_value_ptr), persistent_hash_map.cpp:99 and
+   transient_hash_map.cpp:84 box `[key, *res]` with the argument key. (With IM1 the stored key may itself be the last
+   one assoc'ed.)
+ R56 (string seq vs vector hash): confirmed, with the mechanism refined. jank hashes (seq "a") to 873615215
+   and [\a] to 3091590493 (round 2's StrModel, evaluated); their low 5 bits are 15 and 29, so the lookup of [\a] in
+   (hash-set (seq "a")) stops at an empty root slot: false, as round 2 said. Under D12's refinement the result is
+   shape dependent: a string seq and an `=` vector whose hashes agree in the digits down to where the stored one
+   sits are found.
+ R117 (doseq mutates held seqs): the hash-set seq (iterator_sequence.cpp:133-142 next_in_place) also does not
+   decrement its stored `size`, so a set seq walked in place keeps its old count (same class, by reading).
+ Round 1 A3 (immer abstracted) replaced: vectors are lists for every input (theorems below); set iteration order is
+   CHAMP's (a node's values, then its children, by bitmap position), not insertion order: no round-1 result depended on
+   it; "same hash, then equal" is refined to "the query's hash digits lead to a slot, then Equal{}(stored, query) at the
+   first data slot met; hashes never compared" (D12 above); round 1's jankSet kept
+   the first of two equal elements, jank keeps the last (IM1): round-1 equality tables are unchanged by it (membership
+   is symmetric there after D11's fix).
+ Round 2 "Libraries with no source here: immer": replaced by the replica (Assumptions below).
+
+== 2. What was replicated ==
+ Jank/R3/Immer/Rbts.lean — immer rbts for immer::vector<object_ref, jank::memory_policy> (B = BL = 5 derived from
+   node.hpp derive_bits_leaf): rbtree (size, shift, root, tail; tail_offset; empty_root/empty_tail statics), positions
+   (regular_sub_pos, regular_pos, full_pos, leaf_pos, full_leaf_pos, leaf_sub_pos: count/index/towards), make_path,
+   make_path_e, visit_regular_descent/array_for/get (shift > 30 is IMMER_UNREACHABLE: none), rbtree_iterator,
+   push_back + push_tail_visitor, update_visitor (assoc), take + slice_right_visitor (collapse), the _mut versions
+   (push_back_mut + push_tail_mut_visitor, ensure_mutable_tail, get_mut_visitor/assoc_mut, take_mut +
+   slice_right_mut_visitor), vector_transient (owner token: transient(), persistent() & resets it), from_range.
+   Nodes carry identity and owner token (gc_transience_policy: can_mutate = token equality; no_refcount: unique() false).
+ Jank/R3/Immer/Champ.lean — immer CHAMP (hash_t = size_t, B = 5, max_depth 13, max_shift 65): node layout
+   (nodemap/datamap, separately owned values arrays, collision nodes), get, do_add/add, do_add_mut/add_mut,
+   do_sub/sub, do_sub_mut/sub_mut (store, owned/mutated), make_merged(_e), every copy_/move_ node function,
+   ensure_mutable_values, owned/owned_values(_safe), champ_iterator order, do_check_champ, transients
+   (map_transient/set_transient: persistent() & and &&), GC_free of deleted nodes recorded.
+ Jank/R3/Immer/Objects.lean — jank's objects over the replica: persistent_vector (conj, assoc, pop, nth, get, subvec
+   via from_range, transient), transient_vector (conj!, assoc!, pop! = take_mut, nth, count, persistent!),
+   persistent_array_map / transient_array_map / native_array_map (find/insert_or_assign/erase, promotion at 8 for
+   persistent and transient), persistent_hash_map (assoc/dissoc/get/find/contains, create_from_seq, equal, to_hash),
+   transient_hash_map (reads assert; to_persistent = persistent() &&), persistent_hash_set / transient_hash_set
+   (to_persistent = persistent() &). Hash = round 1's jankHash (std::hash<object_ref>), equality = round 1's jankEq
+   (std::equal_to<object_ref> = runtime::equal, stored operand on the left).
+ Jank/R3/Immer/HashInv.lean — inverse of jank's long hash: a long with any chosen 32-bit hash and any high word.
+ Jank/R3/Immer/Maps.lean — Clojure spec (PersistentHashMap/ArrayMap/HashSet and transients) and the map and set
+   worlds; Vectors.lean — PersistentVector spec and the vector world; Kit.lean — census/explore/report.
+ Laws: RbtsLaws.lean, RbtsGet.lean, VecLaws.lean (vectors); ChampFacts.lean, ChampLaws.lean (CHAMP); Findings.lean.
+   Driver Run/R3/Immer.lean.
+
+== 3. Left out, and why ==
+ - rrbtree / relaxed nodes / flex_vector / concat / slice_left: immer::vector never builds them (jank has no flex
+   vectors; subvec copies through from_range).
+ - champ update/update_if_exists/diff/equals (operator==), for_each_chunk: not called by jank (jank's map and set `=`
+   are its own, base_persistent_map.cpp:31 / persistent_hash_set.cpp:55, modeled).
+ - Memory as bytes: allocation sizes (packed vs max), buffer capacities, `destroy_n` beyond the logical count. The
+   replica keeps each buffer's physical slots as a list; reads past them are UB and return none.
+ - The GC itself: GC_free is recorded (freed ids), collection and address reuse are not modeled (IMA1).
+ - Iterator caching inside rbtree_iterator (curr_ per leaf base): equivalent for a tree that does not change while
+   iterated; jank iterates only persistent vectors (transients are not seqable).
+ - Seq objects (persistent_vector_sequence, base_persistent_map_sequence, iterator_sequence) as objects: only their
+   element order is modeled; their in-place mutation is round 2's R117.
+ - Metadata, identity of boxed objects beyond the value kinds, keys of every kind: keys are round 1's values
+   (keywords, longs, 1N, doubles, strings, chars, vectors/lists of those); metadata examples are by reading.
+ - CHAMP laws other than get-after-add (lookups of other keys after add, dissoc, count = elements, preservation
+   of the well-formedness invariant, the transient add_mut): not proved. Lookups of other keys need an equality that
+   is an equivalence agreeing with the hash, which jank's is not (D12, R55); get_add needs neither. The CHAMP
+   replica is otherwise checked by the searches (do_check_champ-style structure check after every step) and by a
+   self-test against a list model under six hash functions (identity, coarse buckets, splits at depth 6, constant
+   hash = all collisions, bit 31, a multiplicative hash), persistent and transient, 200 scripts of 60 operations
+   each: all agree.
+ - Element laws over the transient push and take paths (nth after conj!/pop!): not proved (their counts are, and
+   nth after assoc! is); they are searched (V worlds) with the aliasing check.
+ - Vectors past 2^35 + 32 elements: push_back would make a root at shift 35, which visit_regular_descent does not
+   handle (IMMER_DESCENT_DEEP is 0, config.hpp:120; position.hpp:1145 IMMER_UNREACHABLE). Not reachable in practice
+   (2^35 object_refs = 256 GiB); the laws assume fewer than 2^35 elements.
+
+== 4. Assumptions ==
+ Replaced:
+ - Round 1 A3 (immer abstracted: vectors are Lists, sets in insertion order, lookup "same hash then equal"):
+   replaced by the replica. Vectors: confirmed (theorems). Sets: order is CHAMP's, insertion order contradicted
+   (no round-1 result used it). Lookup: refined (the query's 5-bit hash digits choose the path; Equal{}(stored,
+   query) at the first data slot met, or over a collision node at depth 13; full hashes are never compared).
+   Insert: contradicted (immer keeps the last of two equal elements, round 1 kept the first: IM1).
+ - Round 2 "Libraries with no source here: immer": replaced (immer 282629d0 read and replicated).
+ New or standing:
+ - IMA1. bdwgc scans node and values memory conservatively, so an owner token (a 1-byte GC allocation,
+   gc_transience_policy.hpp:52) stays allocated while any node holds it: tokens are never reused. Modeled as fresh
+   ids.
+ - IMA2. Mutation in place is modeled as replacement with the same identity. This is the C++ semantics when every
+   object owned by a live transient's token is reachable once and from no other live value, and no freed object is
+   reachable; the `aliasing` check verifies exactly that after every step of every searched timeline (self-test:
+   the check fires on a transient that shares a persistent vector's token).
+ - IMA3. Release build (NDEBUG): immer's asserts are off; IMMER_TAGGED_NODE=0 (CMakeLists.txt:113): a node read with
+   the wrong kind is UB (none in the replica).
+ - IMA4. x86-64: size_t 64 bits, `char` signed (keyword/string hashes), std::hash<object_ref> zero-extends the u32.
+ - IMA5. jank's `=` and hash are round 1's jankEq/jankHash (Jank/Equality.lean, updated for 7135b7708 in round 2),
+   fuel 12, for the value kinds used as keys.
+ - IMA6. Values are distinct objects (no identity shortcuts): `persistent_vector::equal` checks `&o == this`, which
+   only matters for values that are not equal to themselves (NaN, R55's string seq); not searched.
+ - IMA7. Transient users rebind to the transient each bang returns (the documented use); a promoted array-map
+   transient's old handle is not used again.
+
+== 5. Properties checked ==
+ Maps (Maps.lean `check`, after every step, every live value):
+  - count, (get m k) for every key of the alphabet, (find m k)'s key [find-key = R123], entries as a multiset with
+    keys told apart structurally [key-identity / entries], against Clojure's PersistentHashMap/ArrayMap values;
+  - live transients: count and lookups against Clojure's transient;
+  - every ordered pair of live maps: jank `=` vs Clojure `=`, `=` symmetric, `=` ⇒ equal hash;
+  - reads of a transient after persistent! throw [dead-read];
+  - CHAMP invariants: do_check_champ (every element on its hash path), bitmap/buffer counts, size = elements
+    [structure];
+  - identity: objects owned by a live transient's token are reachable once and from nothing else; no freed object is
+    reachable [aliasing].
+  - seq/keys/vals/reduce-kv/print order consistency holds by construction: all of them walk the same
+    champ_iterator (base_persistent_map.cpp 62/139, core.jank keys/vals via reduce over seq, seq.cpp reduce_kv 952
+    over `data`), and the replica uses one iteration for all.
+ Sets: the same, with Clojure's set as a map from element to element (conj keeps, conj! replaces the value; `(s x)`
+  returns the value; seq walks the keys).
+ Vectors (Vectors.lean): count; the rbtree is well formed (Tree.wf); elements, iteration (rbtree_iterator) and nth at
+  boundary indices equal Clojure's list; assoc/pop/subvec throw exactly when Clojure's do; reads after persistent!
+  throw; aliasing as above.
+
+== 6. Search runs (results/r3-immer.txt; census = every timeline within the bounds, violations counted per class) ==
+ Worlds: Maps.lean (maps, sets), Vectors.lean. Alphabets: identity kA = {:a, 1, 1N, [1], '(1), 0.0, -0.0};
+ kA' = kA without 1N and -0.0 (round 1's D12 pairs); designed kH (HashInv.longWithHash) = the longs 3912401338
+ (hash 0x1), 2891797613 (0x21: shares 5 bits, split at level 1), 2257408629 (0x80000001) and 104041869 (0x40000001)
+ (share 30 bits: split at level 6), 5036627362 and 12729593413 (hash 0x1 again: full 32-bit collisions, a collision
+ node at depth 13), and :a. Values {0, 1}. Map starts: (hash-map) and the 8-entry array map {:f0 0 ... :f7 0}
+ (M1, M2); 8-entry array maps holding '(1) or 1 (M3); (hash-map) and a 3-key designed hash map (M4, M5). Steps
+ per timeline as named; every step chooses an operation, its target among the live values and its key/value.
+ Vectors: starts 0, 1, 31, 32, 33, 63, 64, 65, 1024, 1055, 1056, 1057, 1088, 1089 (leaf, tail and depth
+ boundaries), 32767..32833 (shift 10 to 15) and 1048608/1048609 (shift 15 to 20), each built two ways (transient
+ push_back_mut, and conj); 11 operations (conj, assoc, pop, subvec, into, transient, conj!, assoc!, pop!,
+ persistent!, read after persistent!); indices drawn at the boundaries (0, 31, 32, count-1, count, ...).
+ Random searches (M6, S4, V2, V3, V4) draw through Kit.exploreMixed (SplitMix64-mixed seeds), never Source.seeded
+ with a raw small seed, so first decisions vary across seeds; every verdict below comes from an exhaustive census.
+ Per search (timelines summed over its segments; "stopped" = bounded, not the whole world):
+ M1 maps: assoc/dissoc/hash-map, identity keys (7), starts (hash-map) and an 8-entry array map, 3 steps
+    census complete: 196,192 timelines, 24 s; [count] 5640, [get] 73224, [find-key] 90048
+ M1d: D12 keys kept; count, get, find-key, key-identity, entries set aside (what D12 does to = and hash on maps)
+    census complete: 16,953,976 timelines, 1664 s; [=] 340180, [hash] 221248
+ M1r1: D12 keys removed (1N, -0.0); find-key (R123) set aside
+    census complete: 2,654,872 timelines, 275 s; [key-identity] 168568
+ M1r2: and key-identity set aside
+    census complete: 3,016,000 timelines, 364 s; no violations
+ M2 maps: transient/assoc!/dissoc!/persistent!/reads after persistent!/assoc, identity keys, 4 steps
+    census complete: 191,206 timelines, 18 s; [dead-read] 1071, [get] 44588, [find-key] 70856
+ M2r1: D12 keys removed; find-key set aside
+    census complete: 2,239,700 timelines, 344 s; [dead-read] 1515, [key-identity] 84944
+ M2r2: and dead-read, key-identity set aside
+    census complete: 2,353,672 timelines, 377 s; no violations
+ M3 promotion: 8-entry array maps holding '(1) or 1, identity keys, 3 steps (find-key set aside: it holds at the start)
+    census complete: 87,438 timelines, 15 s; [hash] 752, [key-identity] 4894, [count] 2860, [get] 25976
+ M3r: D12 keys removed; find-key and key-identity set aside
+    census complete: 105,434 timelines, 23 s; no violations
+ M4 CHAMP: persistent ops, designed-hash keys (depths 1, 6, collision nodes), 4 steps
+    census stopped (time budget, not resumed): 10,750,000 timelines, 3 segments, 3330 s; no violations
+    (the census order had reached decisions 0.0.0.0.2.2.0.4.0.2.2.1.0.0.1.2.2: every timeline before that path is covered)
+ M5 CHAMP transients: designed-hash keys, 4 steps (dead-read set aside)
+    census stopped (time budget, not resumed): 4,750,000 timelines, 1127 s; no violations
+    (the census order had reached decisions 5.1.1.0.5.0.1.1.5.0.4.1.3: every timeline before that path is covered)
+ M6 explore: all operations, identity and designed keys together, 8 steps (find-key, D12 keys, key-identity, dead-read set aside)
+    explore, 20000 seeds: nothing (13 s)
+ S1 sets: conj/disj/hash-set, identity keys, 3 steps
+    census complete: 129,021 timelines, 10 s; [count] 2878, [hash] 3742, [contains] 40222, [key-identity] 8416
+ S1r1: D12 keys removed
+    census complete: 77,249 timelines, 5 s; [key-identity] 4236
+ S1r2: and key-identity set aside
+    census complete: 86,625 timelines, 5 s; no violations
+ S2 sets: transients, identity keys, 4 steps
+    census complete: 289,031 timelines, 39 s; [count] 540, [hash] 5462, [contains] 54448, [key-identity] 21576
+ S2r: D12 keys removed; key-identity set aside
+    census complete: 274,732 timelines, 37 s; no violations
+ S3 sets: designed-hash keys, all operations, 4 steps
+    census stopped (time budget, not resumed): 24,500,000 timelines, 3 segments, 3310 s; no violations
+    (the census order had reached decisions 2.0.1.2.1.4.1.0.2.8: every timeline before that path is covered)
+ S4 explore: all operations, identity and designed keys, 8 steps (key-identity set aside)
+    explore, 20000 seeds: nothing (5 s)
+ V1 vectors: 14 starts at the leaf/tail/depth boundaries (two builders), all 11 operations, 2 steps
+    census complete: 33,316 timelines, 25 s; no violations
+ V1b vectors: starts 31, 32, 33, 1056, 1057 (two builders), all 11 operations, 3 steps
+    census complete: 684,330 timelines, 672 s; no violations
+ V2 vectors: the same starts, all operations, 6 steps
+    explore, 30000 seeds: nothing (65 s)
+ V3 vectors: starts around 32768 (shift 10 to 15), all operations, 4 steps
+    explore, 1500 seeds: nothing (16 s)
+ V4 vectors: starts 1048608 and 1048609 (shift 15 to 20), all operations, 3 steps
+    explore, 200 seeds: nothing (48 s)
+ Notes: a census job runs at most 18 minutes, then prints the path to resume from; S3 and M4 ran three segments
+ and M5 one (the round's deadline), so those three are reported as stopped, with the decision path they had
+ reached (the census order is depth first: everything before that path is covered). Their world sizes are unknown;
+ S3's path shows that all timelines whose first decision is 0 or 1 were covered (24.5M timelines). Every class
+ found in a census is one of IM1 (key-identity), IM2 (dead-read), D12 (count, get, contains, find-key with 1/1N,
+ =, hash) or R123 (find-key with '(1)/[1]); the residual censuses with those classes set aside or their trigger
+ keys removed (M1r2, M2r2, M3r, S1r2, S2r) are complete with nothing, and the designed-hash worlds (M4, M5, S3) and
+ the vector worlds found nothing.
+
+== 7. Theorems (no sorry, no native_decide, no new axioms; #print axioms in results/r3-immer.txt) ==
+ Every theorem below depends only on propext, Classical.choice and Quot.sound, except HashInv's, whose bv_decide
+ steps add bv_decide's own `_native.bv_decide` certificates (the brief allows bv_decide); no vector, CHAMP or finding
+ theorem uses HashInv.
+ Vector laws over the rbts replica, for every input (new: round 1 proved them over Lists only, an abstraction of
+ immer; these are over immer's own algorithms):
+  - iter_eq_get: rbtree_iterator reads element i as nth/operator[] (array_for(i)[i & 31]) — iteration = nth order.
+  - pushBack_size, pushBackMut_size: conj / conj! add one; assoc_size, assocMut_size: assoc keeps the count;
+    take_size, takeMut_size, pop_size: take n / pop give n / count - 1; pop_conj_size.
+  - get_assoc: for every well-formed tree (Tree.wfT) and i, j < count: (nth (assoc v i x) j) = if i = j then x else
+    (nth v j).
+  - get_assocMut (new): the same for assoc! (get_mut_visitor through assoc_mut), for every owner token: nodes the
+    transient owns are written in place, others copied (copy_inner_e / ensure_mutable_tail); same reads either way.
+  - get_pushBack: for every well-formed tree below 2^35 elements: (nth (conj v x) j) = (nth v j) for j < count, x at
+    count.
+  - get_take: for every well-formed tree and j < k ≤ count: (nth (take v k) j) = (nth v j) (pop is take (count-1)).
+  - empty_wfT, pushBack_wfT: the empty vector is well formed and conj keeps a tree well formed (below 2^35), so
+    the laws above hold for every vector conj'ed from []; get_pop_conj: (nth (pop (conj v x)) j) = (nth v j).
+  - fromList_size, subvec_ok_iff, subvec_count: subvec returns exactly within Clojure's bounds, with end - start
+    elements (from_range).
+  Supporting: readAt_updInner (update_visitor), readAt_getMutInner (get_mut_visitor), sliceInner_tail_indep,
+  readAt_pushTail (push_tail_visitor), readAt_makePath, wfP_pushTail, wfP_makePath, wfP_reg_full, wfP_sub_reg,
+  sliceInner_tail_read, sliceInner_root_nc, sliceInner_root_c (slice_right_visitor with and without collapse),
+  validI_sub/validI_reg/validI_full (every index below the size is inside the positions' counts), eq_of_samePath
+  (radix uniqueness), digit lemmas.
+ Hash keys: integer_longWithHash: for every target hash h and high word, the constructed long hashes to h in jank
+  (hash::integer), via mixK1_of_inv, mixH1_of_inv, fmix_of_inv.
+ CHAMP: get_add (new, for every input): for every champ satisfying wfNode (bitmaps below 2^32 and disjoint,
+  buffers holding their popcounts, collision nodes at depth 13, children well formed), every value v and query k
+  with hashK k = hashT v and Equal{}(v, k): champ::get(k) after champ::add(v) returns v itself. No other assumption
+  on hash or equality (other stored values may be `=` to k under any hash). Corollaries map_get_assoc
+  ((find (assoc m k x) k) is the new pair [k x] whenever (= k k)) and set_get_conj. Supporting: get_doAdd (every
+  level, every branch of do_add: child, Equal slot, merge, empty slot, collision node), get_makeMerged,
+  getLoop_child/getLoop_data, popcount lemmas (popcount_lt, popcount_and_le, or_pow_mask, two_bits_mask),
+  idxAt_eq, wf_facts.
+ CHAMP: doAdd_replaces (new, every node, hash, value and Equal): when do_add meets a data slot whose stored value
+  Equal accepts, the result holds the new value in that slot and reports nothing added (IM1 at its source);
+  mkInner_values.
+ Findings: im1_jank_key_replaced, im1_set_element_replaced, im1_clojure_keeps_key (by decide on the replica);
+  im2_dead_array_reads (for every entries/key/default), im2_dead_asserting_reads, im2_example.
+
+== 8. Library gaps filled (sdk/lean untouched; all in Jank/R3/Immer/) ==
+ - Object identity and in-place mutation without a heap: nodes carry an allocation id and an owner token; mutation
+   is replacement under the same id; the `aliasing` check (Maps.lean) makes that exact by verifying, after every step,
+   that objects owned by a live transient's token are reachable once and from no other live value, and that no
+   GC_free'd object is reachable. Fresh ids/tokens are threaded explicitly (Rbts) or through `StateM Al` (Champ).
+ - Census with property classes and first examples per class, explore over SplitMix-mixed seeds, timing and flushed
+   output per search, selectable searches per run (Kit.lean, driver): exhaust stops at the first violation, so classes
+   are counted with a census and set aside by name or by removing their trigger from the alphabet. The census runs in
+   time-budgeted segments with checkpoint lines and prints a resume path; the driver takes `ID>path` to continue it
+   and `ID@v` for the partition with first decision v (Kit.censusFrom, nextPathUnder); summarize.py merges segments.
+ - Keys with a chosen hash: the inverse of jank's hash::integer (HashInv.lean, proved), so collision structure at a
+   chosen CHAMP depth, and full 32-bit collisions, are drawn with plain long literals.
+ - Proof-friendly replicas: every replica function recurses on a level number (structural), so `decide`/`rfl` run
+   concrete programs in the kernel (Findings) and induction proves the laws; `Float` is opaque to the kernel, so
+   examples with doubles are evaluated with #eval (.r3-scratch/immer/examples.lean, output in results).
+ - Slot contention: every build and search went through bin/job, one census segment (at most 18 minutes) per job.

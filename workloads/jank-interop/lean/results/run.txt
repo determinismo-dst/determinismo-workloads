@@ -1,0 +1,457 @@
+== numbers: + - * +' -' *' / on longs
+  explore (3000 seeds): jank arithmetic = Clojure's (up to documented differences) after 1 timelines, 4 decisions: (/ 2 9223372036854775806): Clojure 1/4611686018427387903, jank 0
+  shrunk to 4 decisions: (/ 2 9223372036854775806): Clojure 1/4611686018427387903, jank 0
+  tape:
+    {"name":"num.kind","options":3,"value":2}
+    {"name":"num.op","options":3,"value":0}
+    {"name":"num.a","options":20,"value":3}
+    {"name":"num.b","options":20,"value":18}
+  exhaust: found after 30 timelines: (+ 1 2147483647): Clojure 2147483648, jank -2147483648
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"num.kind","options":3,"value":0}
+    {"name":"num.op","options":3,"value":0}
+    {"name":"num.a","options":20,"value":1}
+    {"name":"num.b","options":20,"value":9}
+  table: 479 of 2800 questions deviate; first per operator:
+    +: 36 deviate
+      (+ 1 2147483647): Clojure 2147483648, jank -2147483648
+      (+ -1 -2147483648): Clojure -2147483649, jank 2147483647
+      (+ 2 2147483647): Clojure 2147483649, jank -2147483647
+    -: 37 deviate
+      (- 0 -2147483648): Clojure 2147483648, jank -2147483648
+      (- 1 -2147483648): Clojure 2147483649, jank -2147483647
+      (- 1 -2147483647): Clojure 2147483648, jank -2147483648
+    *: 70 deviate
+      (* -1 -2147483648): Clojure 2147483648, jank -2147483648
+      (* 2 2147483647): Clojure 4294967294, jank -2
+      (* 2 2147483646): Clojure 4294967292, jank -4
+    +': 0 deviate
+    -': 65 deviate
+      (-' 0 -9223372036854775808): Clojure 9223372036854775808N, jank -9223372036854775808N
+      (-' 1 -9223372036854775808): Clojure 9223372036854775809N, jank -9223372036854775807N
+      (-' 1 -9223372036854775807): Clojure 9223372036854775808N, jank -9223372036854775808N
+    *': 0 deviate
+    /: 271 deviate
+      (/ 1 2): Clojure 1/2, jank 0
+      (/ 1 3): Clojure 1/3, jank 0
+      (/ 1 7): Clojure 1/7, jank 0
+== numbers: doubles
+  (quot 9007199254740993 1): Clojure 9007199254740993, jank 9007199254740992
+  (quot 7.5 2): Clojure 3.000000, jank 3
+  (quot -9223372036854775808 -1): Clojure -9223372036854775808, jank x86-64 -9223372036854775808, jank aarch64 9223372036854775807
+  (== 9007199254740993 9007199254740992): Clojure false, jank true
+  (abs -0.0): Clojure 0.000000, jank -0.000000
+  (bigdec 9007199254740993): Clojure 9007199254740993M, jank 9007199254740992M
+  == over 20² long pairs: 4 deviate, e.g. [(9223372036854775807, 9223372036854775806), (-9223372036854775808, -9223372036854775807), (9223372036854775806, 9223372036854775807)]
+  quot over 20² long pairs (x86-64): 38 deviate, e.g. [(9223372036854775807, 1), (9223372036854775807, -1), (9223372036854775807, 2), (9223372036854775807, 3)]
+  bigdec = over 8² pairs: 20 deviate, e.g. [(= 0M 0.00000000000000015M) jank true, (= 0M 0.0000000000000001M) jank true, (= 0M -0.00000000000000001M) jank true, (= 1M 1.0000000000000000001M) jank true]
+== numbers: NaN boxing
+  x86-64 default NaN (Inf-Inf, 0*Inf, 0/0): bits fff8000000000000, decoded as Jank.Numbers.Decoded.heapObjectAt 0x0000000000000000#64
+  AArch64 default NaN: bits 7ff8000000000000, decoded as Jank.Numbers.Decoded.smallReal
+  ##NaN (jank_nan): bits 7ff8000000000000, decoded as Jank.Numbers.Decoded.smallReal
+  -0.0: bits 8000000000000000, decoded as Jank.Numbers.Decoded.smallReal
+== numbers: parse-long, parse-double
+  parse-long over 1111 strings: 5 deviate, e.g. [( 1, (none, (some 1))), ( 11, (none, (some 11))), (  1, (none, (some 1))), ( +1, (none, (some 1))), ( -1, (none, (some -1)))]
+  parse-double over 1111 strings: 25 deviate, e.g. [(1 , (a finite double, nil)), (1d, (a finite double, nil)), (1f, (a finite double, nil)), (11 , (a finite double, nil)), (11d, (a finite double, nil)), (11f, (a finite double, nil)), (1  , (a finite double, nil)), (1. , (a finite double, nil))]
+    (parse-double "1e400"): Clojure ##Inf, jank nil
+    (parse-double "1e-400"): Clojure a finite double, jank nil
+    (parse-double "inf"): Clojure nil, jank ##Inf
+    (parse-double "nan"): Clojure nil, jank ##NaN
+    (parse-double "1.5 "): Clojure a finite double, jank nil
+    (parse-double "1.5d"): Clojure a finite double, jank nil
+    (parse-double "Infinity"): Clojure ##Inf, jank ##Inf
+    (parse-double " 1.5"): Clojure a finite double, jank a finite double
+== equality: Jank.Equality.EqProperty.agrees
+  explore (3000 seeds): jank = is Clojure's = after 16 timelines, 4 decisions: (= '() #{}): Clojure false, jank true
+  shrunk to 4 decisions: (= '() #{}): Clojure false, jank true
+  tape:
+    {"name":"a.kind","options":7,"value":2}
+    {"name":"a.size","options":3,"value":0}
+    {"name":"b.kind","options":7,"value":4}
+    {"name":"b.size","options":3,"value":0}
+  exhaust: found after 6761 timelines: (= [] nil): Clojure false, jank true
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"a.kind","options":7,"value":1}
+    {"name":"a.size","options":3,"value":0}
+    {"name":"b.kind","options":7,"value":0}
+    {"name":"b.atom","options":10,"value":0}
+== equality: Jank.Equality.EqProperty.symmetric
+  explore (3000 seeds): = is symmetric after 16 timelines, 4 decisions: (= '() #{}) is true but (= #{} '()) is false
+  shrunk to 4 decisions: (= '() #{}) is true but (= #{} '()) is false
+  tape:
+    {"name":"a.kind","options":7,"value":2}
+    {"name":"a.size","options":3,"value":0}
+    {"name":"b.kind","options":7,"value":4}
+    {"name":"b.size","options":3,"value":0}
+  exhaust: found after 11 timelines: (= nil []) is false but (= [] nil) is true
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"a.kind","options":7,"value":0}
+    {"name":"a.atom","options":10,"value":0}
+    {"name":"b.kind","options":7,"value":1}
+    {"name":"b.size","options":3,"value":0}
+== equality: Jank.Equality.EqProperty.hashConsistent
+  explore (3000 seeds): = implies equal hashes after 16 timelines, 4 decisions: (= '() #{}) is true but (hash '()) = 2277397642, (hash #{}) = 4279838538
+  shrunk to 4 decisions: (= '() #{}) is true but (hash '()) = 2277397642, (hash #{}) = 4279838538
+  tape:
+    {"name":"a.kind","options":7,"value":2}
+    {"name":"a.size","options":3,"value":0}
+    {"name":"b.kind","options":7,"value":4}
+    {"name":"b.size","options":3,"value":0}
+  exhaust: found after 1356 timelines: (= 1 1N) is true but (hash 1) = 1392991556, (hash 1N) = 2654435770
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"a.kind","options":7,"value":0}
+    {"name":"a.atom","options":10,"value":2}
+    {"name":"b.kind","options":7,"value":0}
+    {"name":"b.atom","options":10,"value":3}
+  table over 645² = 416025 pairs: 1034 disagree with Clojure, 1772 asymmetric, 1858 equal with different hashes
+  smallest disagreements:
+    (= [] {}) jank true clj false
+    (= [] "") jank true clj false
+    (= '() {}) jank true clj false
+    (= [] #{}) jank true clj false
+    (= '() "") jank true clj false
+    (= [] nil) jank true clj false
+    (= '() #{}) jank true clj false
+    (= [\a] "a") jank true clj false
+    (= '(\a) "a") jank true clj false
+    (= [1] (hash-set 1)) jank true clj false
+    (= [0] (hash-set 0)) jank true clj false
+    (= '(0) (hash-set 0)) jank true clj false
+  written by hand:
+    (= (seq {:a 1}) [[:a 1]]): jank true, Clojure true; jank hashes 2767208205 vs 1242899341
+    (= (seq {:a 1}) '([:a 1])): jank true, Clojure true; jank hashes 2767208205 vs 1242899341
+    (= (lazy-seq nil) '()): jank true, Clojure true; jank hashes 1 vs 2277397642
+    (= (lazy-seq nil) []): jank true, Clojure true; jank hashes 1 vs 2277397642
+    (= 0.0 -0.0): jank true, Clojure true; jank hashes 0 vs 2147483648
+    (= [0.0] [-0.0]): jank true, Clojure true; jank hashes 965192274 vs 720395989
+    (= 1 1N): jank true, Clojure true; jank hashes 1392991556 vs 2654435770
+    (= {:a 1} {:a 1N}): jank true, Clojure true; jank hashes 34030447 vs 984367194
+  smallest hash inconsistencies:
+    (= 1N 1) true; hashes 2654435770 vs 1392991556
+    (= 1 1N) true; hashes 1392991556 vs 2654435770
+    (= [] {}) true; hashes 2277397642 vs 4279838538
+    (= [] "") true; hashes 2277397642 vs 0
+    (= '() "") true; hashes 2277397642 vs 0
+    (= [] nil) true; hashes 2277397642 vs 0
+    (= '() {}) true; hashes 2277397642 vs 4279838538
+    (= [] #{}) true; hashes 2277397642 vs 4279838538
+    (= '() #{}) true; hashes 2277397642 vs 4279838538
+    (= 0.0 -0.0) true; hashes 0 vs 2147483648
+    (= [1N] [1]) true; hashes 567629472 vs 2913583773
+    (= [\a] "a") true; hashes 3091590493 vs 1455541201
+== vector: transient nth after persistent!
+  jank some 7, Clojure none
+== array map: a transient never changes the map it came from (3 operations)
+  explore (3000 seeds): a persistent map never changes after 118 timelines, 6 decisions: m0 = {}; m1 = {:a 0, :b 1}; t0 = (transient m1); (assoc! t0 :a 2): m1 is {:a 2, :b 1}, Clojure {:a 0, :b 1}
+  shrunk to 6 decisions: m0 = {}; m1 = {:a 0, :b 1}; t0 = (transient m1); (assoc! t0 :a 2): m1 is {:a 2, :b 1}, Clojure {:a 0, :b 1}
+  tape:
+    {"name":"map.op","options":6,"value":5}
+    {"name":"map.op","options":6,"value":2}
+    {"name":"map.which","options":2,"value":1}
+    {"name":"map.op","options":6,"value":3}
+    {"name":"map.key","options":2,"value":0}
+    {"name":"map.val","options":3,"value":2}
+  exhaust: found after 1145 timelines: m0 = {}; m1 = {:a 0, :b 1}; m2 = (assoc m0 :a 0); t0 = (transient m1); (assoc! t0 :a 1): m1 is {:a 1, :b 1}, Clojure {:a 0, :b 1}
+  exhaust's counterexample shrunk to 9 decisions; tape:
+    {"name":"map.op","options":6,"value":0}
+    {"name":"map.key","options":2,"value":0}
+    {"name":"map.val","options":3,"value":0}
+    {"name":"map.which","options":2,"value":0}
+    {"name":"map.op","options":6,"value":2}
+    {"name":"map.which","options":3,"value":1}
+    {"name":"map.op","options":6,"value":3}
+    {"name":"map.key","options":2,"value":0}
+    {"name":"map.val","options":3,"value":1}
+== array map, to_transient cloning (the fix), 3 operations
+  explore (3000 seeds): nothing
+  exhaust: complete, 33849 timelines, nothing
+== atom: a watch that removes itself, jank on x86-64 (strong CAS)
+  explore (2000 seeds): deadlock after 1 timelines, 0 decisions: every live thread blocked (steps 12)
+  shrunk to 0 decisions: every live thread blocked (steps 12)
+  tape:
+    
+  exhaust: found after 1 timelines: every live thread blocked (steps 12)
+== atom: a watch that removes itself, jank on LL/SC (weak CAS may fail)
+  explore (2000 seeds): deadlock after 1 timelines, 0 decisions: every live thread blocked (steps 12)
+  shrunk to 0 decisions: every live thread blocked (steps 12)
+  tape:
+    
+  exhaust: found after 1 timelines: every live thread blocked (steps 12)
+== atom: a watch that removes itself, Clojure semantics
+  explore (2000 seeds): nothing
+  exhaust: complete, 1 timelines, nothing
+== atom: a watch that swaps the atom, beside an add-watch, jank on x86-64 (strong CAS)
+  explore (2000 seeds): nothing
+  exhaust: found after 232 timelines: every live thread blocked (steps 16)
+  exhaust's counterexample shrunk to 17 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+== atom: a watch that swaps the atom, beside an add-watch, jank on LL/SC (weak CAS may fail)
+  explore (2000 seeds): nothing
+  exhaust: found after 232 timelines: every live thread blocked (steps 16)
+  exhaust's counterexample shrunk to 19 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"cpu.cas_spurious","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"cpu.cas_spurious","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+== atom: a watch that swaps the atom, beside an add-watch, Clojure semantics
+  explore (2000 seeds): nothing
+  exhaust: complete, 53815 timelines, nothing
+== atom: compare-and-set! on a fresh atom, jank on x86-64 (strong CAS)
+  explore (2000 seeds): nothing
+  exhaust: complete, 1 timelines, nothing
+== atom: compare-and-set! on a fresh atom, jank on LL/SC (weak CAS may fail)
+  explore (2000 seeds): linearizable after 2 timelines, 1 decisions: history not linearizable: [op 0 at node 0: Jank.Atom.Op.cas 0 1 [0, 4] ok Jank.Atom.Res.bool false] (steps 6)
+  shrunk to 1 decisions: history not linearizable: [op 0 at node 0: Jank.Atom.Op.cas 0 1 [0, 4] ok Jank.Atom.Res.bool false] (steps 6)
+  tape:
+    {"name":"cpu.cas_spurious","options":2,"value":1}
+  exhaust: found after 2 timelines: history not linearizable: [op 0 at node 0: Jank.Atom.Op.cas 0 1 [0, 4] ok Jank.Atom.Res.bool false] (steps 6)
+  exhaust's counterexample shrunk to 1 decisions; tape:
+    {"name":"cpu.cas_spurious","options":2,"value":1}
+== atom: compare-and-set! on a fresh atom, Clojure semantics
+  explore (2000 seeds): nothing
+  exhaust: complete, 1 timelines, nothing
+== atom: two compare-and-set! from 0, jank on x86-64 (strong CAS)
+  explore (2000 seeds): nothing
+  exhaust: complete, 4228 timelines, nothing
+== atom: two compare-and-set! from 0, jank on LL/SC (weak CAS may fail)
+  explore (2000 seeds): linearizable after 97 timelines, 8 decisions: history not linearizable: [op 1 at node 1: Jank.Atom.Op.cas 0 2 [0, 4] ok Jank.Atom.Res.bool false, op 0 at node 0: Jank.Atom.Op.cas 0 1 [6, 12] ok Jank.Atom.Res.bool true] (steps 14)
+  shrunk to 8 decisions: history not linearizable: [op 1 at node 1: Jank.Atom.Op.cas 0 2 [0, 4] ok Jank.Atom.Res.bool false, op 0 at node 0: Jank.Atom.Op.cas 0 1 [6, 12] ok Jank.Atom.Res.bool true] (steps 14)
+  tape:
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"cpu.cas_spurious","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"cpu.cas_spurious","options":2,"value":0}
+  exhaust: found after 421 timelines: history not linearizable: [op 0 at node 0: Jank.Atom.Op.cas 0 1 [0, 4] ok Jank.Atom.Res.bool false, op 1 at node 1: Jank.Atom.Op.cas 0 2 [6, 12] ok Jank.Atom.Res.bool true] (steps 14)
+  exhaust's counterexample shrunk to 8 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"cpu.cas_spurious","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"cpu.cas_spurious","options":2,"value":0}
+== atom: two compare-and-set! from 0, Clojure semantics
+  explore (2000 seeds): nothing
+  exhaust: complete, 2116 timelines, nothing
+== atom: two swap! inc, jank on x86-64 (strong CAS)
+  explore (2000 seeds): nothing
+  exhaust: complete, 217500 timelines, nothing
+== atom: two swap! inc, jank on LL/SC (weak CAS may fail)
+  explore (2000 seeds): nothing
+  exhaust: stopped at 500000 timelines, nothing
+== atom: two swap! inc, Clojure semantics
+  explore (2000 seeds): nothing
+  exhaust: complete, 48610 timelines, nothing
+== atom: two swap! inc and a deref, jank on x86-64 (strong CAS)
+  explore (2000 seeds): nothing
+  exhaust: stopped at 500000 timelines, nothing
+== atom: two swap! inc and a deref, jank on LL/SC (weak CAS may fail)
+  explore (2000 seeds): nothing
+  exhaust: stopped at 500000 timelines, nothing
+== atom: two swap! inc and a deref, Clojure semantics
+  explore (2000 seeds): nothing
+  exhaust: stopped at 500000 timelines, nothing
+  story of the shrunk nested-swap deadlock (17 decisions):
+    thread 0: Jank.Atom.Instr.watchAnnounce
+    thread 0: Jank.Atom.Instr.watchLock
+    thread 0: Jank.Atom.Instr.watchAdd 0 (Jank.Atom.WatchFn.swapBelow 2)
+    thread 0: Jank.Atom.Instr.watchUnlock
+    thread 0: Jank.Atom.Instr.invoke 0 (Jank.Atom.Op.swapInc)
+    thread 0: Jank.Atom.Instr.loadInc 0
+    thread 0: Jank.Atom.Instr.validateLock
+    thread 0: Jank.Atom.Instr.validateUnlock
+    thread 0: Jank.Atom.Instr.swapCas 0
+    thread 0: Jank.Atom.Instr.notifyLock 0 1
+    thread 0: Jank.Atom.Instr.callWatch 0 (Jank.Atom.WatchFn.swapBelow 2) 0 1
+    thread 0: Jank.Atom.Instr.loadInc 1000
+    thread 0: Jank.Atom.Instr.validateLock
+    thread 0: Jank.Atom.Instr.validateUnlock
+    thread 0: Jank.Atom.Instr.swapCas 1000
+    thread 1: Jank.Atom.Instr.watchAnnounce
+    thread 0: Jank.Atom.Instr.notifyLock 1 2 blocks
+    thread 1: Jank.Atom.Instr.watchLock blocks
+== alter-meta!: two threads, jank
+  explore (200 seeds): alter-meta! is atomic after 2 timelines, 3 decisions: two threads each (alter-meta! a update :n inc) from :n 0: :n is 1, Clojure 2
+  shrunk to 3 decisions: two threads each (alter-meta! a update :n inc) from :n 0: :n is 1, Clojure 2
+  tape:
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 2 timelines: two threads each (alter-meta! a update :n inc) from :n 0: :n is 1, Clojure 2
+  exhaust's counterexample shrunk to 3 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+== alter-meta!: two threads, Clojure (synchronized)
+  explore (200 seeds): nothing
+  exhaust: complete, 2 timelines, nothing
+== delay: one thread, two derefs, body Jank.Delay.Body.returnsNil, jank
+  explore (200 seeds): a delay's body runs once after 1 timelines, 0 decisions: 1 thread(s), 2 deref(s) each, body Jank.Delay.Body.returnsNil: the body ran 2 times
+  shrunk to 0 decisions: 1 thread(s), 2 deref(s) each, body Jank.Delay.Body.returnsNil: the body ran 2 times
+  tape:
+    
+  exhaust: found after 1 timelines: 1 thread(s), 2 deref(s) each, body Jank.Delay.Body.returnsNil: the body ran 2 times
+== delay: two threads, one deref each, body Jank.Delay.Body.returnsNil, jank
+  explore (200 seeds): a delay's body runs once after 1 timelines, 7 decisions: 2 thread(s), 1 deref(s) each, body Jank.Delay.Body.returnsNil: the body ran 2 times
+  shrunk to 5 decisions: 2 thread(s), 1 deref(s) each, body Jank.Delay.Body.returnsNil: the body ran 2 times
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 1 timelines: 2 thread(s), 1 deref(s) each, body Jank.Delay.Body.returnsNil: the body ran 2 times
+  exhaust's counterexample shrunk to 5 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+== delay: two threads, body Jank.Delay.Body.returnsNil, Clojure
+  explore (200 seeds): nothing
+  exhaust: complete, 168 timelines, nothing
+== delay: one thread, two derefs, body Jank.Delay.Body.returnsValue, jank
+  explore (200 seeds): nothing
+  exhaust: complete, 1 timelines, nothing
+== delay: two threads, one deref each, body Jank.Delay.Body.returnsValue, jank
+  explore (200 seeds): nothing
+  exhaust: complete, 168 timelines, nothing
+== delay: two threads, body Jank.Delay.Body.returnsValue, Clojure
+  explore (200 seeds): nothing
+  exhaust: complete, 168 timelines, nothing
+== delay: one thread, two derefs, body Jank.Delay.Body.throws, jank
+  explore (200 seeds): realized? after a deref after 1 timelines, 0 decisions: body Jank.Delay.Body.throws: (realized? d) is false after @d returned or threw
+  shrunk to 0 decisions: body Jank.Delay.Body.throws: (realized? d) is false after @d returned or threw
+  tape:
+    
+  exhaust: found after 1 timelines: body Jank.Delay.Body.throws: (realized? d) is false after @d returned or threw
+== delay: two threads, one deref each, body Jank.Delay.Body.throws, jank
+  explore (200 seeds): realized? after a deref after 1 timelines, 7 decisions: body Jank.Delay.Body.throws: (realized? d) is false after @d returned or threw
+  shrunk to 5 decisions: body Jank.Delay.Body.throws: (realized? d) is false after @d returned or threw
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 1 timelines: body Jank.Delay.Body.throws: (realized? d) is false after @d returned or threw
+  exhaust's counterexample shrunk to 5 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+== delay: two threads, body Jank.Delay.Body.throws, Clojure
+  explore (200 seeds): nothing
+  exhaust: complete, 168 timelines, nothing
+== promise: two concurrent delivers, jank
+  explore (200 seeds): exactly one deliver returns the promise after 1 timelines, 6 decisions: 2 concurrent (deliver p x): 2 returned the promise, 0 nil
+  shrunk to 4 decisions: 2 concurrent (deliver p x): 2 returned the promise, 0 nil
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 1 timelines: 2 concurrent (deliver p x): 2 returned the promise, 0 nil
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+== promise: two concurrent delivers, Clojure
+  explore (200 seeds): nothing
+  exhaust: complete, 40 timelines, nothing
+== promise: a deliver and a deref with a timeout, jank
+  explore (200 seeds): a deref with a timeout returns the value or timeout-val after 1 timelines, 1 decisions: (deref p 100 :timeout) returned nil
+  shrunk to 1 decisions: (deref p 100 :timeout) returned nil
+  tape:
+    {"name":"thread.next","options":2,"value":1}
+  exhaust: found after 1 timelines: (deref p 100 :timeout) returned nil
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+== promise: a deliver and a deref with a timeout, Clojure
+  explore (200 seeds): nothing
+  exhaust: complete, 10 timelines, nothing
+== bindings: futures and OS thread ids, jank
+  explore (200 seeds): a future sees its creator's bindings after 2 timelines, 7 decisions: (binding [*x* :one] @(future nil)) @(future *x*): the second future (OS thread 1) read *x* = :one, Clojure :root
+  shrunk to 7 decisions: (binding [*x* :one] @(future nil)) @(future *x*): the second future (OS thread 1) read *x* = :one, Clojure :root
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"os.thread_id","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 49 timelines: (binding [*x* :one] @(future nil)) @(future *x*): the second future (OS thread 1) read *x* = :one, Clojure :root
+  exhaust's counterexample shrunk to 10 decisions; tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"os.thread_id","options":2,"value":1}
+    {"name":"thread.next","options":3,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+== bindings: futures and OS thread ids, Clojure
+  explore (200 seeds): nothing
+  exhaust: complete, 576 timelines, nothing
+  story of the found timeline:
+    future 0 starts on OS thread 1
+    future 1 starts on OS thread 1
+== try/catch/finally
+  explore (500 seeds): try/catch/finally as on the JVM after 2 timelines, 4 decisions: (try (throw (ex-info "a" {})) (catch a e (throw (ex-info "b" {}))) (finally (throw (ex-info "c" {})))): Clojure Jank.Try.Outcome.throws "c", jank Jank.Try.Outcome.terminate
+  shrunk to 4 decisions: (try (throw (ex-info "a" {})) (catch a e (throw (ex-info "b" {}))) (finally (throw (ex-info "c" {})))): Clojure Jank.Try.Outcome.throws "c", jank Jank.Try.Outcome.terminate
+  tape:
+    {"name":"try.body_throws","options":2,"value":1}
+    {"name":"try.catch_matches","options":2,"value":0}
+    {"name":"try.handler_throws","options":2,"value":1}
+    {"name":"try.finally","options":3,"value":2}
+  exhaust: found after 18 timelines: (try (throw (ex-info "a" {})) (catch a e (throw (ex-info "b" {}))) (finally (throw (ex-info "c" {})))): Clojure Jank.Try.Outcome.throws "c", jank Jank.Try.Outcome.terminate
+  exhaust's counterexample shrunk to 4 decisions; tape:
+    {"name":"try.body_throws","options":2,"value":1}
+    {"name":"try.catch_matches","options":2,"value":0}
+    {"name":"try.handler_throws","options":2,"value":1}
+    {"name":"try.finally","options":3,"value":2}
+perl -e 'alarm 1700; exec @ARGV' .lake/build/bin/jank-model  186.93s user 0.15s system 99% cpu 3:07.29 total

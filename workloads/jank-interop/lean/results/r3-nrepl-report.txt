@@ -1,0 +1,460 @@
+ROUND 3 — nREPL evaluation wired to the reader, analyzer and evaluator replicas
+(area Nrepl, exe jank3-nrepl, deviation prefix N; jank 7135b7708, paths under
+upstream-main/compiler+runtime/; search outputs in results/r3-nrepl.txt)
+
+What changed from round 2: the nREPL model's program table is gone. An eval now runs jank's real
+path. do-eval → safe_eval → eval_string reads ONE form with the reader replica, builds the objects
+parse.cpp builds (source_to_meta under the thread's *ns*/*file*), and analyzes the form with a fresh
+analyzer replica against this process's namespaces and vars. It evaluates the form with effects
+(vars, thread bindings, output on FILE* stdout through the fd table and the capture), then reads
+the next form. *1/*2/*3/*e are set on the connection thread's binding boxes. The value is printed
+with pr-str and the bencode replies are written.
+
+The spec is a Clojure process: the LispReader replica per form, then Compiler.eval (macroexpand,
+then a top-level do split into its forms). After that come the Compiler.analyze replica
+(cljAnalyze), an evaluator with effects, and Clojure's core macros and functions.
+
+Each mismatch is labelled by replaying its timeline on a spec "variant" that adopts one known jank
+behavior. Residual searches turn the found variants on, so the two processes do not diverge on a
+known class.
+
+No sorry, no native_decide, no new axioms. Round 1/2 files untouched.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+
+N1. A top-level (do ...) is analyzed as one form: its later forms do not see the macros, namespace
+switches or aliases its earlier forms make.
+  Exchange (op eval, ns "user"; expected = Clojure/nREPL, predicted = jank):
+    code "(do (defmacro m [] 2) (m))"
+      expected {:value "2"}
+      jank: eval-error. (m) is analyzed as a call of the macro's function, which wants &form and
+      &env: "Wrong number of args (0)".
+    code "(do (in-ns 'foo) (def c 1))"
+      expected {:value "#'foo/c" :ns "foo"}
+      jank {:value "#'user/c" :ns "foo"}. A later "foo/c" fails in jank; "user/c" fails in Clojure.
+    code "(do (ns baz) (defn h [] 3))"
+      expected "#'baz/h"; jank "#'user/h".
+    code "(do (require '[clojure.string :as s]) (s/join [1 2]))"
+      expected "\"12\""; jank: eval-error (s/join unresolved: the alias does not exist yet).
+  Path:
+    runtime/context_dynamic.cpp context::eval_string 59–71: each form read goes whole to
+      an_prc.analyze(form, statement), then evaluate::eval.
+    analyze/processor.cpp analyze_def 1303–1306: qualify_symbol and intern_owned_var run at
+      analysis, in the *ns* current when the whole do is analyzed.
+    processor.cpp analyze_call 3505: __rt_ctx->macroexpand; a var not yet marked :macro is a plain
+      call.
+    evaluate.cpp eval(do_) 574: runs the forms already analyzed.
+    Clojure: Compiler.java Compiler.eval 7684–7691 macroexpands, then sends each form of a
+      top-level do through eval separately.
+  Reach:
+    - any nREPL eval or load-file;
+    - also module loading (module/loader_dynamic.cpp 833/843 → eval_string/eval_file) and jank's
+      terminal REPL (terminal_repl_client.cpp 362 → eval_file);
+    - macros that expand to (do (defmacro x ...) (x ...)).
+  Theorem: evalString_analyzes_whole_form.
+  Search: gTopDo.
+    - One request: complete over 210 timelines; 32 labelled N1.
+    - Two requests: complete over 37,412; 6,329 labelled N1.
+    - With the N1 variant on (gResidual): nothing.
+  Confidence: high. Status: new.
+
+N2. lookup/info in a namespace that does not exist answers for user.
+  Exchange: eval "(def b 1)" ns=user, then lookup ns=foo sym=b (no namespace foo):
+    expected {:status ["no-info" "done"]}
+    jank {:info {:ns "user" :name "b"} :status ["done"]}.
+  Path: handler/lookup.jank lookup line 11 (or (some-> ns symbol find-ns) default-ns); line 9 has a
+    TODO about it.
+  Reach: lookup/info/eldoc with a buffer namespace not loaded yet, or a mistyped one.
+  Theorem: lookupTarget_unknown.
+  Search: gNs census, two requests, complete over 159,571 timelines: 72 labelled N2.
+  Confidence: high. Status: new.
+
+N3. pr-str of a namespace is its bare name.
+  Exchange: eval "*ns*"
+    expected {:value "#object[clojure.lang.Namespace 0x… \"user\"]"} (core_print.clj:
+    print-method Object → print-tagged-object; Namespace has only a print-dup)
+    jank {:value "user"}.
+  Path: runtime/ns.cpp ns::to_code_string 223 returns to_string(), the name.
+  Search: gFile census 240 of 1,327 timelines; gFileNone 64 of 343.
+  Confidence: high. Status: new (printing; not among R68–R77).
+
+N4. load-file of a file that switches namespace answers :ns with the file's namespace.
+  Exchange: load-file file="(ns lf) (def c 3)" ns=user
+    expected {:value "#'lf/c" :ns "user"}: Compiler.load binds *ns* for the load (Compiler.java
+      8146, popped at 8183).
+    jank {:value "#'lf/c" :ns "lf"}.
+  Path: handler/eval.jank :load-file 74–80 → do-eval 33–37 (res-ns is *ns* after the file's
+    forms) → 60.
+  Search: gLoad census, two requests, 84 of 526 timelines.
+  Confidence: medium-low (NA2). Status: new.
+
+N5. An eval is one input: one value, one *1 shift, and the first exception ends it.
+  Exchange (spec: clojure.main/repl over the code, NA1):
+    eval "1 2"
+      expected :value "1", :value "2"; jank :value "2" only.
+    then eval "*2"
+      expected "1"; jank the *1 from before "1 2" (nil at start).
+    eval "(def a 1) (throw (ex-info \"x\" {})) (def b 2)", then eval "b"
+      expected #'user/a, eval-error, #'user/b, then 2.
+      jank: one eval-error (a defined, b not), then an eval-error (b unresolved).
+  Path:
+    context_dynamic.cpp eval_string 59–79: ret is the last form's value; expect_ok throws out of
+      the loop at the first error.
+    evaluate.cpp safe_eval 743–748: one shift.
+    handler/eval.jank 59: one :value.
+    jank's terminal REPL has the same design (terminal_repl_client.cpp 362–369).
+  Search:
+    - gEval REPL-mode census, two requests, complete over 92,262: 70,490 timelines labelled NA1.
+    - gResidualPairs in REPL mode with every other class set aside: 3,134 of 6,486, all NA1.
+    - In load-string mode (jank's design as the spec) nothing remains (residuals below).
+  Confidence: medium (it rests on NA1). Status: new.
+
+N6. What printing the value prints is lost to its client, or goes to another client.
+  Exchange:
+    eval "(map println [1 2])"
+      expected {:out "1\n2\n"} then {:value "(nil nil)"}
+      jank {:value "(nil nil)"} and no :out; "1\n2\n" goes to the server's stdout.
+    Two connections:
+      - conn 0 evals "(map println [1 2])", conn 1 evals "(print \"b\")";
+      - client 1 receives :out "b1\n2\n" (or "1\n2\nb");
+      - this happens even with captures serialized (with-capture under a lock).
+  Path:
+    handler/eval.jank do-eval 31–36: with-capture wraps only safe-eval.
+    handler/eval.jank 59: (pr-str *1) realizes the lazy sequence after the capture ended. What it
+      prints goes through FILE* stdout to wherever fd 1 points then.
+    capture.jank start 18 / end 39: dup2 on fd 1 is process-wide.
+  Tape (World T, ≤ 2 preemptions from round robin): thread.preempt=3 at decision 57,
+    thread.preempt=1 at decision 82, every other decision 0.
+  Story:
+    - 38: conn 0 reads (map println [1 2]); its capture ends.
+    - 72–75: conn 1 starts its capture (fd 1 → /tmp/jank-nrepl-2) and fwrites "b".
+    - 82: conn 0's (pr-str *1) prints "1\n2\n" with fd 1 on /tmp/jank-nrepl-2.
+    - 99: conn 1 writes :out "b1\n2\n".
+  Search:
+    - gLazyOut census, two requests, complete over 552: 228 labelled N6.
+    - With the N6 variant: complete over 900, nothing.
+    - T10 random schedules: found after 37 timelines.
+    - T10 ≤1 preemption: complete over 6,800, nothing.
+    - T10 ≤2 preemptions: complete over 1,304,752; 864 deliver conn 0's output to client 1.
+  Confidence: high. Status: new. Same place as R126, without an exception.
+
+Round 2 entries re-checked on the wired model:
+  R1 (NUL hangs the reader) holds through nREPL.
+    - The eval never answers, so its client waits forever.
+    - The hung thread keeps fd 1 and fd 2 on its capture files for the life of the process, so the
+      server's own output is lost. Other connections' captures still work: each saves and restores
+      the redirected fd.
+    - T4: random found after 1; ≤1 preemption complete over 2,016, all hang.
+  R31 (macro-built collections carry {:jank/macro-expansion …} at run time) is weakened: through
+    nREPL it holds only when the request carries a "file" field. Without :file in :jank/source,
+    meta_source is unknown (core/meta.cpp 116–131) and context.cpp macroexpand adds nothing.
+    - gFile (file "src/user.clj"): 70 of 1,327 timelines.
+    - gFileNone: none.
+  R111 holds: lookup ns=bar sym=str/join after (ns bar (:require [clojure.string :as str])) answers
+    no-info (gNs: 30).
+  R112 holds: eval "(in-ns 'foo)" answers :value "nil" (gNs: 5,028; gKnown: 11,712).
+  R125 holds with real code.
+    - T1 random: found at the first timeline.
+    - T1 ≤2 preemptions: complete over 1,197,488 schedules; 16,224 give a client the wrong :out;
+      4,800 leave fd 1 on a temp file.
+    - Tape: thread.preempt=3 at decision 48, thread.preempt=1 at decision 72.
+    - Story: conn 1 starts its capture while fd 1 is conn 0's temp file. Conn 0 restores fd 1.
+      Conn 1's restore then puts fd 1 back on conn 0's (unlinked) file, or conn 1's "b" goes to the
+      terminal and client 1 gets :out "".
+    - ≤1 preemption finds nothing (6,640): it needs two.
+    - Set aside with captures serialized (T2): ≤2 preemptions complete over 1,344,960, nothing;
+      20,000 random, nothing.
+  R126 holds. With the wired model, *1 keeps the unprintable value, so every later "*1" fails again
+    with a handler error, and *e stays unset.
+    - gKnown: 12,144 labelled.
+    - T5 ≤1 preemption: complete 34,496, every timeline R126. The connection keeps answering (no
+      deadlock).
+  R127 holds for every input (theorem jankHandle_eval_session_indep).
+    - gNs: 2,366; gKnown: 7,236 labelled.
+    - Its ns part also shows after load-file (gLoad, before NA2's restore).
+  R131 holds (gNs: 394).
+  R132 holds for every state (safeEval_noForm_release/debug). Also for whitespace-only code and for
+    load-file of a comment-only file (gLoad: 42; gKnown: 15,180).
+  R136 holds for every output (outReply_nil_iff); gKnown: 28,656.
+  R138 holds (gNs: 10). Refinement: :module comes from the namespace current when the var's name was
+    *read*, which for evals is the namespace it is defined in.
+  R139 holds: T8 ≤2 preemptions complete over 7,669 schedules, 3,145 end the connection.
+  Unchanged by the wiring: R128, R129, R130, R133, R134, R135, R137, R140. Their paths do not go
+    through evaluation, or (R129, R137) are outside the grammar; round 2's text stands.
+  Retracted: none.
+
+======================================================================
+2. WHAT WAS REPLICATED (Jank/R3/Nrepl/, Run/R3/Nrepl.lean; ~4,000 lines)
+======================================================================
+
+Rt.lean
+  - Heap: ex-info objects, namespace objects, atoms, lazy map sequences.
+  - Var cells: root, meta, dynamic.
+  - Thread-binding frames:
+    - context.cpp push_thread_bindings 706, pop 750, get_thread_bindings 765;
+    - var.cpp set 114 and get_thread_binding 145;
+    - core.cpp future 1091 conveying boxes.
+  - Printers:
+    - jank to_code_string/to_string, strings through Jank.Strings.stringToCodeString (escape.cpp);
+    - Clojure pr-str/str (Jank.Print.cljPrStr; Namespace via print-tagged-object).
+  - Reader objects:
+    - parse.cpp parse_integer 1940, parse_symbol 1824, list/vector/map 370–506;
+    - source_to_meta: core/meta.cpp 171/213, loader.cpp core_modules 256.
+
+JankEval.lean (the jank process)
+  - core.jank macros: defn 712, defmacro 808, ns 5581; when/let/fn/loop/or/and/comment.
+  - Runtime functions:
+    - core.cpp print 141, print1 161, println 169, pr 192, prn 213, in_ns 819 (nil);
+    - refer core.jank 4717 → ns.cpp refer 174;
+    - require/alias 4708/4900; reset-meta! meta.cpp 84; find-ns, the-ns, create-ns; swap!, deref,
+      conj, map (lazy), doall; pr-str (one argument).
+  - The evaluator:
+    - Jank.Analyzer.Eval's meaning of the tree, copied, with effects added;
+    - evaluate.cpp eval(def) 333 (meta evaluated, dynamic flag), eval(var_deref) 364 (thread
+      binding), eval(call) 376 (var deref loop).
+  - The analyzer's runtime view rebuilt before each analysis:
+    - macro flags from var meta;
+    - user macros run as closures (context.cpp macroexpand1 604);
+    - core :inline.
+  - EvRun: context_dynamic.cpp eval_string 50–79 as steps (read one form with Jank.Read.nextForm,
+    analyze with a fresh processor + optimize, evaluate, one step per output event).
+
+Handler.lean
+  - evaluate.cpp safe_eval 733–775 (one shift; *e from error_ref/object/std::exception; none →
+    0.0 or abort).
+  - handler/eval.jank do-eval 22–80 (no-code, namespace-not-found, replies, inspect, pr-str after
+    the capture).
+  - handler/lookup.jank 5–41, handler/completions.jank 31–80.
+
+World.lean
+  - World S. core.jank handle-client 79–106: responses-for, bencode write (round 2's replica),
+    handler error on a write failure; the client decodes with the spec decoder.
+  - The spec's sessions; the judge; labels by replay; census with prefixes.
+
+CljEval.lean (the spec)
+  - clojure.main/repl 368 per form, or load-string/Compiler.load 8130.
+  - Compiler.eval 7658 (macroexpand, do split), cljAnalyze (round 2), an evaluator with effects.
+  - Clojure's defn/defmacro/ns; in-ns returns the ns; Namespace.reference/checkReplacement 106;
+    variants.
+
+Threads.lean (World T)
+  - Round 2's server world (accept, threads, fd table, FILE* buffer, line buffering, capture
+    dup/mkstemp/dup2/close/slurp/unlink, partial reads, EINTR, clients) with the wired eval steps.
+  - Bindings per thread; the shared process state.
+  - What pr-str prints after the capture is written to fd 1.
+
+ThreadSearch.lean
+  - interleavePB (preemption bounding).
+  - World T scenarios T1–T10; round 2's controls on round 2's model under preemption bounds.
+
+Search.lean
+  - Grammars gEval, gNs, gTopDo, gKnown, gLoad, gFile, gFileNone, gLazyOut, gResidual(+Pairs,
+    4); exploreMixed (SplitMix64).
+
+Theorems.lean (see 7).
+
+Round-2 replica corrections: none needed. Round 2's coreModules list was checked against
+loader.cpp 256–281.
+
+======================================================================
+3. LEFT OUT, AND WHY
+======================================================================
+- The JIT itself: fn/let/loop/try bodies are given Jank.Analyzer.Eval's meaning. The interpreted
+  top level (evaluate.cpp) and compiled bodies are not told apart, so R37's operand order is not
+  re-run here.
+- try/catch, binding, letfn, loops: Eval.lean does not model try; the grammar avoids these.
+- Doubles, ratios, chars, regexes, syntax-quote in code strings: outside the grammar (the reader
+  conversion reports them unsupported).
+- line/column fields: they only enter :jank/source :start/:end, which no property reads.
+- Macro bodies' own output during expansion is dropped (NA5).
+- The interrupt op (R128, absent in jank), stack overflow in an eval (R129: the evaluator's fuel is
+  a bound, reported as outside the model), and fd exhaustion (R135) are not re-run.
+- Complete runs at ≤2 preemptions where the tree outgrew a 20-minute job:
+  - T9 (two evals per connection): ≤1 complete; ≤2 stopped at 853,000.
+  - T7 (partial reads): ≤1 stopped at 1,500,000; ≤2 stopped at 1,489,000. Every read decides a
+    split and a length, so the trees are large.
+  - Round 2's controls with round 2's partial reads: ≤2 control 0 stopped at 1,762,000.
+  Round 2's controls were therefore completed with whole-message reads. Read chunkings are covered
+  by round 2's complete chunking census and by T7's runs.
+  An exact partition command (t-range/r2-range: prefixes 0^i j) can finish the rest: T9 has 216
+  decisions on its all-zero timeline, and partition 0..1 alone is complete over 94,849 timelines,
+  nothing. Estimated ~10M timelines, hours of a shared slot, so not run.
+- Observed outside the nREPL area, not searched: jank's terminal REPL looks up *e
+  (terminal_repl_client.cpp ~317) but never sets it on an error (its handlers only print).
+
+======================================================================
+4. ASSUMPTIONS
+======================================================================
+Round 2's, replaced or kept:
+- "N: evaluation abstracted to a program table": replaced by the wired evaluator (confirmed where it
+  overlapped: R126/R132/R136 reproduce).
+- "N: a thread's *ns* is clojure.core or user": kept as NA3 (user).
+- "N: Boost.Asio read_some returns ≥1 byte or an error; POSIX lowest free fd": kept.
+- "N: nREPL semantics from jank's sources and Clojure's eval/out": kept, made precise as NA1/NA2.
+
+New:
+- NA1. An nREPL eval runs clojure.main/repl over the code string within the session's bindings: a
+  :value per form, *3/*2/*1 per form, an exception caught (eval-error, *e) and the loop goes on.
+  Only N5 depends on it; every other search uses load-string mode.
+- NA2. load-file is Clojure's load of the content (Compiler.load: forms in order, the first
+  exception ends it, *ns* bound for the load). The reply's :ns is the session's *ns* afterwards
+  (N4).
+- NA3. The accept loop conveys *ns* = user to each connection thread (R111's resolution namespace).
+- NA4. Granularity in World T: a form's read, its analysis and its evaluation are one step each;
+  each fwrite/putc is one step after its evaluation. Global effects of one form are atomic.
+- NA5. Macro bodies print nothing (their output during expansion is dropped).
+- NA6. Clojure's namespace print: #object[clojure.lang.Namespace 0x… "user"] (the identity hash is
+  elided).
+- NA7. The core library is the subset the grammar uses, with core.jank's expansions and C++
+  semantics. Core vars' metadata is simplified (:arglists, :doc, :jank/source {:module
+  "clojure.core"}), except iteration's arglists (R131).
+- NA8. A lookup in a namespace that does not exist should answer no-info (N2): Clojure's
+  ns-resolve needs the namespace.
+
+======================================================================
+5. PROPERTIES CHECKED
+======================================================================
+- No hang, no deadlock.
+- The process stays up.
+- Every request gets replies with its id and session, ending with exactly one done.
+- Replies are written (bencode write) and decode (spec decoder).
+- Eval values per spec mode: the values, :ns beside the last, eval-error iff the spec saw an
+  exception.
+- Eval :out is exactly what the eval printed:
+  - World S against the spec;
+  - World T against the eval's own fwrites.
+- stdout (fd 1) is the terminal again after every eval (World T).
+- lookup/info find what Clojure's ns-resolve finds in that namespace (same namespaces).
+- completions list every ns-map key with the prefix.
+- Per-session state (R127 labels).
+- In World T, each client's values match its script run alone (disjoint names).
+
+======================================================================
+6. SEARCH RUNS (world, bounds, timelines, result)
+======================================================================
+World S, one connection, load-string spec unless noted. Census = every timeline, classes counted.
+"len" is requests per timeline; a code string is 1 fragment or 2 joined.
+- gEval (17 fragments), len 1: complete 612, nothing.
+- gEval, len 2: complete 374,544, nothing.
+- gEval REPL mode, len 1: complete 612, NA1 462.
+- gEval REPL mode, len 2: complete 92,262, NA1 70,490.
+- gNs (11 fragments, 3 ns fields, 10 queries), len 1: complete 406 (R112 12, R131 1).
+- gNs, len 2: complete 159,571. R138 10, R127 2,366, R111 30, N2 72, R112 5,028, R131 394.
+- gTopDo (14 fragments), len 1: complete 210, N1 32.
+- gTopDo, len 2: complete 37,412, N1 6,329.
+- gKnown (11 fragments, 2 sessions), len 1: complete 528. R132 60, R126 48, R136 120, R112 48.
+- gKnown, len 2: complete 133,332. R127 7,236, R132 15,180, R126 12,144, R136 28,656,
+  R112 11,712.
+- gLoad (load-file), len 1: complete 26 (R132 2, N4 4).
+- gLoad, len 2: complete 526 (R132 42, N4 84).
+- gFile (file field), len 1: complete 40 (R31 1, N3 6).
+- gFile, len 2: complete 1,327 (R31 70, N3 240).
+- gFileNone, len 1: complete 20 (N3 3).
+- gFileNone, len 2: complete 343 (N3 64; no R31).
+- gLazyOut, len 1: complete 30, N6 12.
+- gLazyOut, len 2: complete 552, N6 228.
+- gLazyOut, every variant on: complete 900, nothing.
+Residual (every class set aside: blank output, sessions, round-2 lookup signatures, N1–N4, R112;
+R126/R132/R31/NUL triggers removed):
+- gResidualPairs (44 fragments, all pairs), len 1: complete 6,486, nothing.
+- gResidual (44 fragments, 13 queries, 7 load-file contents, 3 ns fields, 2 sessions), len 2:
+  complete 96,100, nothing.
+- gResidual REPL mode, len 2: complete 96,100, nothing (single forms).
+- gResidualPairs REPL mode: complete 6,486, all NA1 (3,134).
+- gResidual4, len 4, mixed random seeds 0..199,999: 200,000 timelines, nothing.
+
+World T (two connections unless noted). "≤k" = every schedule within k preemptions of round
+robin; whole-message reads unless noted; all random runs use mixed seeds.
+- T1 R125:
+  - random: found at 1;
+  - ≤1: complete 6,640, nothing;
+  - ≤2: complete 1,197,488, 16,224 wrong :out and 4,800 fd 1 left redirected.
+- T2 (T1 with captures locked):
+  - 20,000 random: nothing;
+  - ≤2: complete 1,344,960, nothing.
+- T3 (4 evals each, residual asides, locked):
+  - 5,000 random: nothing;
+  - ≤1: stopped 400,000, nothing.
+- T4 NUL:
+  - random: found at 1;
+  - ≤1: complete 2,016, all hang (R1).
+- T5 R126:
+  - random: found at 1;
+  - ≤1: complete 34,496, all R126 (no deadlock).
+- T6 macros:
+  - 5,000 random: nothing;
+  - ≤1: complete 48,384, nothing.
+- T7 (one client, partial reads, every op):
+  - 5,000 random: nothing;
+  - ≤1: stopped 1,500,000, nothing;
+  - ≤2: stopped 1,489,000, nothing.
+- T8 EINTR: random found at 1; ≤2 complete 7,669, 3,145 R139.
+- T9 (2 evals each, residual, locked):
+  - 5,000 random: nothing;
+  - ≤1: complete 53,312, nothing;
+  - ≤2: stopped 853,000, nothing;
+  - ≤2 partition 0..1 of 216: complete 94,849, nothing.
+- T10 N6:
+  - random: found after 37;
+  - ≤1: complete 6,800, nothing;
+  - ≤2: complete 1,304,752, 864 N6.
+Round 2's scenarios that stopped at 20,000 (8 controls + N12), on round 2's own model:
+- With round 2's partial reads, ≤2: control 0 stopped at 1,762,000, nothing.
+- Whole-message reads, ≤2, all complete:
+  - lookup/info in core modules: 3,088, nothing;
+  - eval "": 874, nothing;
+  - inspect as an integer: 13,312, nothing;
+  - describe: 200, nothing;
+  - unknown op / interrupt: 200, nothing;
+  - N12 EINTR: 9,566, 4,631 R139 (a deadlock: the connection's loop ended, its client still
+    waiting);
+  - one client every op: 197,792, nothing;
+  - two connections clone/lookup/completions/close: 1,132,192, nothing;
+  - two connections one evaluating: 1,313,952, nothing.
+- Seeds (coordinator's note on Source.seeded):
+  - every random search here went through exploreMixed (SplitMix64-mixed seeds);
+  - no verdict depends on a first draw;
+  - R139 is confirmed by complete searches (T8: 3,145 of 7,669; N12: 4,631 of 9,566), not by
+    seed 0.
+
+======================================================================
+7. THEOREMS (Jank/R3/Nrepl/Theorems.lean; lake build Jank.R3.Nrepl.Theorems)
+======================================================================
+TB.set_of_bound, TB.deref_of_bound, TB.binding?_boxes — var::set/deref on a bound var.
+TB.deref_set_same — var::set then deref of the same var gives the value set.
+TB.deref_set_other — a var bound to another box is unchanged by var::set.
+safeEval_success — for every value and every thread state with *1/*2/*3/*e bound to distinct boxes:
+  *3←*2←*1←v, *e unchanged, result ok v. [new for every input]
+safeEval_failure — for every thrown object, error_ref or std::exception: *e set to the returned
+  exception, *1/*2/*3 unchanged. [new for every input]
+safeEval_noForm_release — no form, release build: *1 = 0.0, result 0.0. [R132, every state;
+  round 2: one scenario]
+safeEval_noForm_debug — no form, debug build: the process aborts. [R132, every state]
+jankDoEval_state_indep — do-eval's effect on the connection never reads the request map.
+jankHandle_eval_session_indep — two evals differing only in their session leave the same process
+  and connection state. [R127 for every input; round 2: found after 37 timelines]
+outReply_nil_iff — do-eval sends no :out exactly when the output is C whitespace only.
+  [R136 for every output; round 2: two scenarios]
+evalString_analyzes_whole_form — whatever form the reader returns (a whole (do ...) included),
+  eval_string's next step analyzes it as one unit. [N1, every form]
+lookupTarget_unknown — a lookup whose ns names no namespace searches user. [N2, every state and
+  name]
+
+======================================================================
+8. LIBRARY GAPS FILLED (in Jank/R3/Nrepl/; sdk/lean untouched)
+======================================================================
+- Preemption-bounded interleaving (interleavePB): exhaust over the decisions is complete for "≤k
+  preemptions from round robin". This made the two-connection searches complete; sdk's interleave
+  decides at every step, so its trees cannot finish.
+- Censuses with a prefix, and an IO census with a wall-clock deadline: a job prints "stopped at N
+  (time limit)" before its alarm instead of dying silently.
+- Exact tree partitions (partitionCensus: the all-zero timeline plus prefixes 0^i j), so a big tree
+  splits into bounded jobs.
+- Class labels by replay: on a mismatch, the timeline is replayed on spec variants that each adopt
+  one known jank behavior, to name the class (also NA1 and R127 replays). Variants double as
+  set-asides that keep the two processes from diverging.
+- Mixed seeds (exploreMixed, SplitMix64) for every random run.
+- Not a library gap but a pitfall noted: in this Lean version a structure instance's fields cannot
+  end a line with a comma, and newline-separated fields must align.

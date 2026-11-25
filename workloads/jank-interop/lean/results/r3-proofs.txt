@@ -1,0 +1,28 @@
+== P1: ((fn [& {:as m}] m) args…), args ≤ 3 over 8 elements: 585 lists, 128 disagree
+   trailing (seq {:d 4}) (R107): 64
+   trailing () (P1): 64
+   trailing #{} (model: Clojure side throws, see note): 0
+   other: 0
+   ((fn [& {:as m}] m) :a :a (seq {:d 4})): Clojure {:a :a, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+   ((fn [& {:as m}] m) :a :a ()): Clojure {:a :a}, jank throws (invalid map entry: ())
+   ((fn [& {:as m}] m) :a 1 (seq {:d 4})): Clojure {:a 1, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+   ((fn [& {:as m}] m) :a 1 ()): Clojure {:a 1}, jank throws (invalid map entry: ())
+   ((fn [& {:as m}] m) :a {:b 2} (seq {:d 4})): Clojure {:a {:b 2}, :d 4}, jank throws (invalid map entry: (seq {:d 4}))
+   ((fn [& {:as m}] m) :a {:b 2} ()): Clojure {:a {:b 2}}, jank throws (invalid map entry: ())
+== theorems (checked at build time)
+   Lin.linearizable_of_witness: linearization points give a linearizable history (relational definition)
+   Threads.interleave_inv / interleave_no_deadlock: invariants through every interleaving
+   AtomLin.linearizable_x86 / linearizable_clojure: every timeline's history is linearizable (strong register)
+   AtomLin.linearizable_llsc_weak: LL/SC: linearizable against the register with a weak compare-and-set
+   AtomLin.linearizable_llsc_no_cas: LL/SC without compare-and-set!: linearizable (strong register)
+   AtomLin.llsc_cas_not_linearizable: round 1's LL/SC tape gives a history no strong-register order explains
+   AtomLin.no_deadlock: recording watches: the run never reports a deadlock
+   AtomLin.counter_linearizable / counter2_linearizable / casRace_linearizable_x86: round 1's scenarios
+   Multi.root_methods_same / agree_of_dominates_agree / jank_prefers_direct
+   Vector.nth_iff / assoc_none_iff / pop_none_iff / subvec_none_iff / subvec_spec / transient_nth_agrees
+   Delay.delay_value_runs_once / delay_clojure_runs_once / deliver_once
+   Lex.mbrtowc_len_pos / symbolStep_next / commentStep_next / stringStep_next / loop_stops / lexSymbol_never_hangs
+   Destructure.p1_jank_conj_throws / p1_clj_adds_nothing (P1); even_agrees / odd_agrees: the kwargs conversion
+   Range.fixed_walk_agrees / fixed_walk_agrees2 / fixed_walk_agrees1: integer range with the exact count = Clojure
+   ArrayMap.transient_keeps_source: after the clone fix, any assoc!/dissoc! sequence on (transient m) leaves m unchanged
+   Lex.flag_loop_done / symF_spec / charF_spec / comF_spec / defF_spec: every done-flag loop of the lexer ends

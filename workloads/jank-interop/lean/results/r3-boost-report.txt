@@ -1,0 +1,356 @@
+ROUND 3 — BOOST (boost::multiprecision as jank 7135b7708 uses it). Exe `jank3-boost`, prefix MP.
+Run output: results/r3-boost.txt (all searches below, produced by `bin/job 1500 .lake/build/bin/jank3-boost`).
+Paths: jank under upstream-main/compiler+runtime/; boost under deps/boost-multiprecision/include/boost/multiprecision/ (2b3ab082).
+Everything is a prediction of the replica (jank not built or run). Clojure = Clojure 1.12 sources in clojure-ref + Java's documented BigDecimal/BigInteger.
+
+jank's types (include/cpp/jank/type.hpp:33-37): native_big_integer = number<cpp_int_backend<>> (64-bit limbs:
+cpp_int/cpp_int_config.hpp:104-121), native_big_decimal = number<cpp_dec_float<100>, et_off> = 16 limbs of 8 decimal
+digits (128 digits incl. guard limbs), int32 exponent, |exp10| ≤ 2^26 (cpp_dec_float.hpp:89-123). jank builds boost in
+standalone mode (Boost::multiprecision defines BOOST_MP_STANDALONE=1, deps CMakeLists.txt:25-29).
+
+=====================================================================================================
+1. DEVIATIONS
+=====================================================================================================
+
+MP1. BigDecimal division multiplies by a truncated Newton inverse: exact quotients come out wrong
+  (/ 6M 3M)   ; Clojure 2M     jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M (121 digits)
+  (/ 6M 3)    ; Clojure 2M     jank the same 1.999…9M
+  (/ 3 6M)    ; Clojure 0.5M   jank 0.49999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998M
+  (/ 1.5M 3)  ; Clojure 0.5M   jank 0.4999…9M (128 digits)
+  - Path: core/math.hpp:div 299-340 (`make_box(typed_l->data / typed_r->data)`) → boost detail/no_et_ops.hpp:139-166
+    operator/ → default_ops.hpp:569-574 (a long divisor is first converted, `T vv(v)`) → cpp_dec_float.hpp:1016-1045
+    operator/= → calculate_inv 1222-1286 (double estimate from extract_parts, Newton x(2−vx) at 6/9/15/16 limbs)
+    → operator*= 951-1012 whose school product keeps the top prec limbs (609-643: truncation, never rounding up).
+    For a divisor with a prime factor other than 2 and 5 the inverse is a truncated decimal below 1/v, so every
+    quotient is slightly low, and jank's `str` prints all 128 digits (MP4), so the error is visible.
+    Same path: big_decimal/big_integer pairs (big_decimal.cpp:22-45 via `str()`), ratio↔decimal
+    (ratio.cpp:12-16 to_native_big_decimal, :540-548), `(bigdec ratio)` (big_decimal.cpp:140-144).
+  - Reached: any `/` with a BigDecimal operand. Table: 46 questions (of 12,888).
+  - Confidence: high (the replica is line by line; theorem six_times_decimal_ne_two: no decimal times 6 is 2, so 2
+    would need an inverse above 1/3, and Newton with truncating products from a low estimate stays below). New.
+
+MP2. Non-terminating BigDecimal quotients return a 128-digit value instead of throwing
+  (/ 1M 3)        ; Clojure ArithmeticException "Non-terminating decimal expansion; no exact representable decimal result."
+                  ; jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M
+  (bigdec 1/3)    ; Clojure throws   jank 0.333…3M
+  (< 0M 1/3)      ; Clojure throws (Ratio→BigDecimal, Numbers.java:315-318)   jank true
+  - Path: as MP1 (no exactness check anywhere); Clojure: BigDecimalOps.divide (Numbers.java:1020-1025) with no
+    *math-context* (with-precision is unported: core.jank 6487-6503 throws "TODO: port with-precision").
+  - Table: 887 questions (division, and every op/compare of a decimal with a non-terminating ratio). New.
+
+MP3. BigDecimals hold 128 significant digits: literals, sums, differences and products are truncated
+  (+ 1 1E130M)    ; Clojure 10000…0001M (131 digits)   jank 1E+130 (printed "1e+130.0M")
+  (- 1M 1E-130M)  ; Clojure 0.999…9M (130 nines)       jank 1.0M
+  1.<133 digits>M ; read with its last 5 digits dropped
+  - Path: rd_string cpp_dec_float.hpp:2296-2318 (decimals cut to 120 after limb alignment), operator+=
+    759-937 (an operand more than 120 digits smaller is ignored at 793-802; shifted limbs are dropped), operator*=.
+  - Table: 84 questions. New.
+
+MP4. BigDecimal `str`/`pr-str` use boost's scientific form below 1e-4 and from 1e128, with ".0" appended
+  (str 0.00001M)   ; Clojure "0.00001"   jank "1e-05.0"
+  (pr-str 1E130M)  ; Clojure "1E+130M"   jank "1e+130.0M"
+  (str 1.5E-7M)    ; Clojure "1.5E-7"    jank "1.5e-07"
+  (read-string (pr-str 0.00001M))  ; Clojure 0.00001M   jank error "A number literal cannot contain a `.` in this position."
+  - Path: big_decimal.cpp:157-175 → jtl/string_builder.cpp:240-249 (`d.str()`, then ".0" when there is no '.')
+    → cpp_dec_float.hpp:1913-2081 str(0, 0) (all 128 digits, no rounding) → detail/number_base.hpp:1313-1466
+    format_float_string: digits = max(len, 16) = len ∈ [121,128]; scientific unless −4 ≤ order < len (line 1394),
+    i.e. exactly for nonzero |x| < 10^-4 or |x| ≥ 10^128 (theorems jank_str_fixed_iff, jank_sci_below_1e_4,
+    jank_sci_from_1e128); exponent with at least two digits (BOOST_MP_MIN_EXPONENT_DIGITS 2, :1305-1309).
+  - A single significant digit prints "<d>e±XX" with no '.', so ".0" lands after the exponent and the text does not
+    read back. Table: 4 questions (+ 67 of RB7's 168 inputs). New (R72 kept for the scale/".0" part).
+
+MP5. A BigDecimal combined with a double gives a BigDecimal (Clojure: a double)
+  (+ 1M 0.5)  ; Clojure 1.5   jank 1.5M
+  (* 6M 0.1)  ; Clojure 0.6000000000000001   jank 0.600000000000000033306690738754696212708950042724609375M
+  - Path: core/math.hpp:add 71-112 (and sub/mul/div) → boost no_et_ops.hpp:50-70 operator+(number, double) (the
+    double converted exactly by cpp_dec_float::operator=(double), cpp_dec_float.hpp:2461-2516) → make_box.hpp:36
+    make_box(native_big_decimal). Clojure: BigDecimalOps.opsWith(DoubleOps) = DOUBLE_OPS (Numbers.java:975-977).
+  - Table: 722 questions. New.
+
+MP6. `rem` of BigDecimals is computed by 128-digit fmod: wrong (even negative) remainders for large quotients
+  (rem 1E130M 3)                    ; Clojure 1M                  jank 99999997.0M
+  (rem 1E130M 123456789.123456789M) ; Clojure 46008073.045998073M jank -4600000000.0M
+  - Path: core/math.cpp:rem 224-304, big-decimal branch 269-289 (`boost::multiprecision::fmod(abs(l), abs(r))`,
+    sign of l) → default_ops.hpp:1260-1321 eval_fmod (divide, floor, multiply, subtract, all truncated to 128 digits).
+  - Table: 13 questions. New.
+
+MP7. `rem` of a ratio and a BigDecimal truncates the decimal to an integer
+  (rem 1/2 0.1M)    ; Clojure 0.0M     jank throws "Division by zero is not permitted."
+  (rem 1.75M 1/2)   ; Clojure 0.25M    jank 0N
+  (rem 1/2 1.50M)   ; Clojure 0.50M    jank 1/2
+  - Path: math.cpp:250-268: the non-ratio operand becomes `ratio_data{ native_big_integer(data), 1 }`; for a
+    native_big_decimal that is boost's explicit conversion (number.hpp:146-166 → generic_interconvert.hpp:533-563,
+    float → int, truncating). Clojure: RatioOps.opsWith(BigDecimalOps) = BIGDECIMAL_OPS (Numbers.java:746-748).
+  - Table: 94 questions. New.
+
+MP8. `bigdec`/`bigint` of a double use the double's binary value, not Double.toString
+  (bigdec 0.1)     ; Clojure 0.1M   jank 0.1000000000000000055511151231257827021181583404541015625M
+  (bigint 1.0E23)  ; Clojure 100000000000000000000000N   jank 99999999999999991611392N
+  (bigint 1.0E300) ; Clojure 10^300   jank a 128-digit truncation of an approximation of the double (pow2(937) by
+                   ; repeated squaring, detail/functions/pow.hpp:28-72)
+  - Path: math.cpp:to_big_decimal 794-839 (817: make_box<big_decimal>(f64)), to_big_integer 751-783 (771-772:
+    native_big_decimal(f64).convert_to<native_big_integer>()) → cpp_dec_float::operator=(double) 2461-2516 (frexp,
+    30 bits at a time, `*this *= pow2(e)`: exact while 2^e is in the 256-entry table, -128..127). Clojure: core.clj
+    bigdec 3680 / bigint 3654 use BigDecimal/valueOf(double). Table: 3. New.
+
+MP9. BigDecimals that jank's `=` calls equal hash differently
+  (= 1M 1.0000000000000000001M)          ; jank true (D8); hashes 3307139568 and 575929905
+  (count (hash-set 1M 1.0000000000000000001M))  ; jank 2 while (= …) is true
+  - Path: big_decimal.cpp:177-180 `std::hash<native_big_decimal>` → number.hpp:2481-2484 → cpp_dec_float.hpp:259-266
+    hash() (every limb, exponent, sign, class). Extends D8 with D12's property. Table: 2.
+
+MP10. `(double x)` of a BigDecimal rounds twice, and flushes values below DBL_MIN to 0.0
+  (double 9007199254740993.00000000000000000001M) ; Clojure 9.007199254740994E15   jank 9.007199254740992E15
+  (double 1E-310M)  ; Clojure 1.0E-310   jank 0.0
+  (double 3E-320M)  ; Clojure 3.0E-320   jank 0.0
+  - Path: big_decimal.cpp:197-200 (also math.hpp:to_real 1440-1462 used by `==`, `quot`) → cpp_dec_float.hpp:1570-1610
+    extract_double: |x| below double_min() → 0.0; else str(18, scientific) (19 significant digits, half-even) read
+    by std::stringstream (strtod). Clojure: RT.doubleCast → BigDecimal.doubleValue() (nearest double: MPA6).
+  - Table: 1 (+ spot checks). New.
+
+MP11. `(long x)` of a BigDecimal: exact truncation that saturates
+  (long 1E130M)                                   ; Clojure IllegalArgumentException "Value out of range for long"   jank 9223372036854775807
+  (long 9007199254740993.00000000000000000001M)   ; Clojure 9007199254740994 (through doubleValue)   jank 9007199254740993
+  - Path: core.jank `long` → math.hpp:to_int 1411 → big_decimal.cpp:192-195 → cpp_dec_float.hpp:1664-1720
+    extract_signed_long_long (returns LLONG_MAX/MIN past the range). Clojure: RT.longCast(Object) 1276-1302 →
+    longCast(double) 1327-1331. Table: 2. New (low).
+
+MP12. AOT: a BigDecimal constant whose text is "<d>e±XX.0" makes the module fail to load
+  (def x 0.00001M)  ; JIT works; AOT module load throws
+                    ; std::runtime_error "Unable to parse the string \"1e-05.0\" as a floating point value."
+  - Path: codegen/cpp_processor.cpp:gen_constant 311-316 writes
+    `jank::runtime::make_box<jank::runtime::obj::big_decimal>("{to_string()}")`; the module's load function
+    rebuilds lifted constants (2176-2180); `big_decimal(immutable_string)` (big_decimal.cpp:128-132; the only viable
+    constructor: number's `const char*` constructor is explicit, traits/is_restricted_conversion.hpp:17-41) →
+    rd_string, whose standalone exponent check (cpp_dec_float.hpp:2104-2112) rejects the ".0" after the exponent
+    (theorem aot_sci_text_rejected, for every digit, sign and exponent). JIT (eval target) refers to the literal's
+    object by address (cpp_processor.cpp:131-213), so only AOT is affected. `inf`/`nan` constants (MP16) print
+    "inf.0"/"nan.0" and fail the same way. Multi-digit scientific texts ("1.5e-05") rebuild exactly.
+  - Search: 845 of 3,311 literals (11 mantissas × exponents −150..150) fail; no other mismatch. New (round 2 left
+    BigDecimal constants out).
+
+MP13. `(bigdec s)` parses with boost's grammar
+  (bigdec "inf") ; Clojure NumberFormatException   jank inf (prints "inf.0M")
+  (bigdec "NaNxyz") ; Clojure throws   jank nan     (bigdec "1e") ; Clojure throws   jank 1.0M
+  (bigdec ".")   ; Clojure throws   jank 0.0M       (bigdec "e1") ; Clojure throws   jank 0.0M
+  - Path: math.cpp:to_big_decimal 821-826 (persistent_string) → big_decimal.cpp:128-132 → cpp_dec_float.hpp:2083-2394
+    rd_string: "inf"/"infinity"/"nan…" (2133-2147), an exponent check that accepts an empty exponent (2104-2112),
+    "." as zero (2200-2204). Search: 1,030 of 66,430 strings ≤ 5 over "019x-+.eN"; all jank-accepts/Clojure-rejects.
+  - New (low).
+
+MP14. `(bigint s)` parses with boost's cpp_int grammar
+  (bigint "010")  ; Clojure 10N   jank 8N (octal)       (bigint "0110") ; Clojure 110N   jank 72N
+  (bigint "08")   ; Clojure 8N    jank throws           (bigint "+5")   ; Clojure 5N     jank throws
+  (bigint "0x10") ; Clojure throws jank 16N             (bigint "1N")   ; Clojure throws jank 1N
+  (bigint "-")    ; Clojure throws jank 0N              (bigint "0x")   ; Clojure throws jank 0N
+  - Path: math.cpp:to_big_integer 762-767 (persistent_string) → big_integer.cpp:init 33-58 (drops one trailing 'N')
+    → cpp_int.hpp:do_assign_string 1752-1922 ('-' only, "0x"/"0X" hex, leading 0 octal, empty → 0, NUL ends the
+    string). Search over 66,430 strings: 30 other values, 263 accepted-invalid, 235 rejected-valid. New.
+
+MP15. Reader: ratio parts with a leading 0 that reach boost are octal (extends R7)
+  0010/3                   ; Clojure 10/3    jank 8/3
+  008/3                    ; Clojure 8/3     jank throws "Unexpected content found while parsing character string."
+  00017/1                  ; Clojure 17      jank 15
+  1/0100000000000000000000 ; Clojure 1/100000000000000000000   jank 1/1152921504606846976
+  1/09999999999999999999   ; Clojure 1/9999999999999999999     jank throws
+  - Path: read/lex.cpp:905-915: with radix 8 the numerator drops only the first '0' (`token_start + 1`), the rest
+    goes to boost `assign` (octal again); lex.cpp:916-935: a denominator past i64 (strtoll ERANGE) is
+    `native_big_integer(std::string_view{number_literal})`, its digits with the leading 0 (the denominator is lexed
+    with found_slash_after_number, so radix 10 and the 0 kept). boost: cpp_int.hpp:1766-1777, 1822-1869.
+    Theorems octal_le_decimal / octal_lt_decimal: such a part is always read smaller (≥ 2 digits, nonzero lead).
+  - Round 2's R7 had -010/3 and -09/3; these inputs (≥ 5 and ≥ 20 characters) are past its tables. New instances.
+
+MP16. Reader: BigDecimal literal exponents and hex-looking literals
+  1e67108872M   ; Clojure 1E+67108872M   jank infinity (prints "inf.0M")
+  1e-67108864M  ; Clojure 1E-67108864M   jank 0.0M
+  1e4294967296M ; Clojure NumberFormatException (scale overflow)   jank 1.0M (atoll then int32 wrap)
+  0x1e5M        ; Clojure invalid number   jank 100000.0M   (0x1eM → 1.0M)
+  - Path: lex.cpp:1123-1132 (the M literal after the "0x" prefix, digits checked for base 16) → big_decimal::create
+    → rd_string 2104-2112 (`std::atoll`, cast to int32, line 2109), 2351-2375 (overflow above 2^26 → inf, at or below −2^26 →
+    0). New (low; extreme inputs).
+
+MP17. `(bigint ratio)` goes through i64
+  (bigint 100000000000000000000/3)  ; Clojure 33333333333333333333N   jank throws "out of range for `i64` conversion"
+  - Path: math.cpp:774-777 → ratio.cpp:113-116 to_integer → big_integer.cpp:200-208 to_i64. New.
+
+MP18. `/` of two integers with a BigInt truncates (extends D2 to BigInt)
+  (/ 7N 2) ; Clojure 7/2   jank 3N        (/ 1 3N) ; Clojure 1/3   jank 0N
+  - Path: math.hpp:div 299-340 → cpp_int `/` (truncating). Table: 60. Extends D2 (D2 named i64/i32 only).
+
+MP19. Ratio arithmetic with a BigInt: an integral result is a long, not a BigInt (ratio.cpp, not boost)
+  (* 0N 1/2) ; Clojure 0N   jank 0        (/ 3N 1/2) ; Clojure 6N   jank 6
+  - Path: ratio.cpp:87-101 create (integer when it fits) via 430-448. Clojure: RatioOps → Numbers.divide(BigInteger,
+    BigInteger) returns a BigInt (Numbers.java). Table: 30. New (low; runtime area).
+
+MP20. `(double ratio)` divides two doubles (ratio.cpp, not boost)
+  (double -7/3) ; Clojure -2.333333333333333 (Ratio.doubleValue: DECIMAL64 then doubleValue)   jank -2.3333333333333335
+  - Path: ratio.cpp:108-111 to_real (each cpp_int converted with RNE, cpp_int/misc.hpp:185-278). Table: 1. New (low;
+    jank's value is the nearer one).
+
+Extensions and confirmations of earlier entries (with the replica):
+  - R72 confirmed: (str 1M) "1.0", (str 1.50M) "1.5" (RB7's "no trailing zeros" holds); MP4 adds the scientific case.
+  - R99 confirmed and extended: (compare 0.1M 0.1) −1, (< 0.1M 0.1) true (Clojure false); also BigInt vs double:
+    (compare 9.007199254740992E15 9007199254740993N) jank −1, Clojure 0 (a cpp_int < double has no boost operator;
+    it resolves to jank's operator<(native_big_integer, native_big_decimal), big_decimal.cpp:78-86, converting the
+    double exactly). Table: 8.
+  - D4 extended: quot of BigDecimals goes through doubles and returns a long: (quot 1 0.00001M) jank 99999,
+    Clojure 100000M. Table: 783 (mostly the long-vs-BigDecimal type).
+  - D5 extended: (== 1M 1.0000000000000000001M) jank true (doubles), Clojure false. Table: 12.
+  - D7 confirmed, small correction to round 1's model (below). D8 confirmed exactly (225-pair grid, 0 differ).
+  - D12 seen again for long/BigInt (8).
+  - Division by zero with a BigDecimal gives inf/nan objects ("inf.0M", "nan.0M") where Clojure throws "Divide by
+    zero": counted as the book's documented division-by-0 behavior (68), not reported.
+
+Notes (not numbered): `numerator`, `denominator`, `biginteger` return jank big_integers, printed "1N"; Clojure returns
+BigIntegers, printed "1". `rationalize` and `with-precision` are unported (core.jank 1934-1938, 6487-6503).
+
+=====================================================================================================
+2. WHAT WAS REPLICATED (Jank/R3/Boost/, driver Run/R3/Boost.lean)
+=====================================================================================================
+- Ieee.lean: strtod/stringstream>>double as the nearest double (round 2's Codegen.Float.ofRat), DBL_MIN/MAX/EPSILON,
+  `static_cast<uint64_t>(double)`.
+- CppInt.lean (cpp_int.hpp, cpp_int/misc.hpp, cpp_int_config.hpp): do_assign_string (non-trivial, every branch:
+  sign, 0x/0X, octal, base-10 blocks of 18, errors and their messages, C-string NUL), do_get_string (decimal,
+  std::to_string for one limb, 18-digit blocks), eval_convert_to(double) (top 53 bits + RNE via nextafter, overflow),
+  limbs/size/sign; jank big_integer::to_hash's hash_combine (big_integer.cpp:148-170).
+- DecFloat.lean (cpp_dec_float.hpp unless noted): the representation (16 limbs, exp, neg, fpclass, prec_elem),
+  from_lst, zero/one/two/half/nan/inf/max/min/eps, from_unsigned_long_long, operator=(long long), compare,
+  compare_ranges, eval_add_n, eval_subtract_n, operator+= (alignment, carry, borrow, justification, overflow),
+  operator-=, eval_multiply_n_by_n_to_2n, eval_mul_dispatch (school), operator*= (special values, prec_mul,
+  overflow/underflow), isone, isint, precision, order, extract_parts, cpp_dec_float(double, exponent),
+  calculate_inv, operator/=, pow2 (the table checked against the header, plus pow_imp from functions/pow.hpp),
+  operator=(double), rd_string (standalone, every branch), str(digits, flags), format_float_string
+  (number_base.hpp), extract_double, extract_integer_part, extract_signed_long_long, hash (+ detail/hash.hpp
+  hash_combine), abs, eval_floor/ceil, eval_fmod (default_ops.hpp), eval_ldexp, generic_interconvert int→float and
+  float→int (generic_interconvert.hpp) with eval_scalbn/ilogb and detail::lltrunc (functions/trunc.hpp).
+- Num.lean (jank side): JV objects and every jank C++ path the tables use: math.hpp add/sub/mul/div/lt/lte with the
+  C++ overload each type pair resolves to (boost mixed arithmetic default_ops.hpp:283-292/361-372/561-583,
+  number_compare.hpp NaN checks, jank's big_decimal.cpp and big_integer.hpp and ratio.cpp operators), compare,
+  equal, is_equiv, to_real/to_int, rem (math.cpp:224-304), quot (321-345), to_big_integer, to_big_decimal,
+  big_integer(s, radix, neg)/init, ratio_data/create, to_string/to_code_string/to_hash of each type.
+  Clojure side: Numbers.java ops combine (Long/Double/Ratio/BigInt/BigDecimal), divide/quotient/remainder,
+  toBigDecimal, compare, equal/equiv, min/max, RT.longCast/doubleCast, core.clj bigdec/bigint.
+- Java.lean: BigDecimal (add/subtract/multiply, divide with preferred scale or "Non-terminating", compareTo,
+  toString with E-notation, doubleValue, toBigInteger, new BigDecimal(String), valueOf(double) through round 2's
+  JDK-19 Double.toString), new BigInteger(String).
+- Tables.lean: number literals read through round 2's lexer (Jank.Lex.tokens) + this replica; Clojure literals by
+  matchNumber/BigDecimal(String); the question universe.
+- Reader.lean: the reader with the replica in place of RA5/RA7 (token-level swap check) and long inputs.
+- Codegen.lean: gen_constant text for big integers/decimals/ratios and the AOT load (rd_string/assign).
+- Checks.lean, Assumptions.lean, Search.lean (classes, worlds), Theorems.lean.
+
+=====================================================================================================
+3. LEFT OUT
+=====================================================================================================
+- cpp_int arithmetic internals (add/multiply/divide limb loops, gcd): modeled by their documented exact integer
+  semantics (MPA1). Only string conversion, printing, double conversion and limbs were replicated.
+- cpp_dec_float functions jank does not reach (sqrt, Karatsuba (elem_number 16 < 129), mul/div_unsigned_long_long:
+  jank's mixed operations convert the integer to cpp_dec_float first, default_ops.hpp:569-574; long double and
+  int128 extraction).
+- Doubles alone (rem/printing of doubles, D9 NaN boxing) and ratio/long or ratio/double pairs: not boost.
+- The analyzer's unboxed big_decimal literals (literal_type gives object_ref, cpp_util.cpp:855-860, so constants
+  are boxed; the `!is_boxed` text path of lift_constant is not reached by them: assumption MPA9).
+- with-precision / *math-context*, rationalize: unported in jank.
+- Scale (BigDecimal precision/scale) is not kept by jank at all: printing comparisons include R72's class.
+
+=====================================================================================================
+4. ASSUMPTIONS
+=====================================================================================================
+Replaced:
+- RA5 (boost reads 0x as hex, leading 0 as octal, throws on a bad digit): CONFIRMED. Replica vs round 2's boostParse:
+  813,616 strings ≤ 5 over "0178x9aAfFgX-+ " and 16,646,656 byte strings ≤ 3 over bytes 1..255: 0 differ. Only
+  difference: an embedded NUL ends the string for boost (strlen) where boostParse throws; reachable only through
+  (bigint "1\u00002") → 1N (MP14).
+- RA7 (an empty BigDecimal literal is an error): CONFIRMED (rd_string("") reaches stol("") and throws). But round 2's
+  bigDecimalCreate (strtod's exact decimal) is wrong for malformed literals the lexer passes: "0-.M", "0+.M" and
+  527 more ≤ 6 characters read as numbers in round 2 and throw in the replica (acceptsInvalid → agree).
+- RB7 (boost str() prints no trailing zeros): CONFIRMED for the digits; CONTRADICTED for the notation: round 2's
+  jankDec (fixed notation) differs from the replica on 67 of 168 inputs, all |x| < 10^-4 (scientific, MP4).
+- RC2 (BigDecimal vs double compares exactly): CONFIRMED: round 2's cppNumCmp equals the replica on 12,100
+  decimal/double pairs (incl. 1e300, DBL_MAX, DBL_MIN, 5e-324), 0 differ.
+- Round 1 D7 (jankBigdecOfLong): CONFIRMED except at the top of the range: round 1 saturates with Float.toInt64
+  (9223372036854775807); the double is 2^63 and jank's decimal is 9223372036854775808M (2 of 635 inputs). The
+  validation run's "9007199254740992.0" for (str (bigdec 9007199254740993)) is reproduced.
+- Round 1 D8 (jankDecEq, |a−b| < 2^-52 exact): CONFIRMED (0 of 225; the truncating subtraction and the exact
+  conversion of DBL_EPSILON do not change it there).
+- Round 1 A4 (64-bit limbs) and A13 (decimals as exact rationals): A4 confirmed (BOOST_HAS_INT128 →
+  cpp_int_config.hpp:104-121); A13 holds up to 128 digits (MP3 beyond).
+New/standing:
+- MPA1 cpp_int arithmetic is exact: / truncates, % has the dividend's sign, gcd ≥ 0 (boost docs; misc.hpp:559-578).
+- MPA2 x86-64/AArch64 compilers define BOOST_HAS_INT128 (64-bit limbs, 18-digit blocks).
+- MPA3 libstdc++: std::hash of integral types and bool is the identity (sign-extended int); num_get >> double uses
+  strtod and stores the correctly rounded value (no ERANGE path reached: extract_double bounds the value).
+- MPA4 glibc atoll saturates like strtoll; int32 casts wrap.
+- MPA5 Lean's Float operations are IEEE binary64 with round-to-nearest, as the C++ double operations in boost.
+- MPA6 BigDecimal.doubleValue is the nearest double (OpenJDK); Double.toString is JDK ≥ 19 (round 2's RB).
+- MPA7 C++ overload resolution as analyzed per pair (boost's mixed operators require is_convertible; double→cpp_int
+  is a restricted conversion, so cpp_int/double comparisons resolve to jank's big_decimal operators).
+- MPA8 Division by zero (Clojure "Divide by zero") is the book's documented difference and not reported.
+- MPA9 big_decimal/big_integer literals are always boxed constants (literal_type default branch).
+
+=====================================================================================================
+5. PROPERTIES CHECKED
+=====================================================================================================
+- Arithmetic (+ − * /), <, <=, compare, ==, =, quot, rem on pairs with a BigInt/BigDecimal: same kind and value as
+  Clojure (or both throw).
+- = implies equal hashes (jank's own =).
+- str and pr-str of BigInts/BigDecimals equal Clojure's; pr-str reads back.
+- double, long, bigdec, bigint of each number kind; bigdec/bigint of strings.
+- Reader: number literals with the replica give round 2's results; long literals give Clojure's values.
+- Codegen: an AOT constant rebuilds the literal's object (JIT uses the object itself).
+- Replica self-checks: pow2 table = exact powers of two (256/256); cpp_int str = toString and convert_to<double> =
+  nearest (2,400 values); rd_string/operator=(double) exact where they should be (374 values).
+
+=====================================================================================================
+6. SEARCH RUNS (results/r3-boost.txt)
+=====================================================================================================
+- Question table: 12,888 questions over 37 operands (each pair with a BigInt/BigDecimal × 12 ops, plus 6 unary):
+  10,045 agree; disagreements by class: MP2 887, D4 783, MP5 722, MP7 94, MP3 84, div0 68, MP18 60, MP1 46,
+  MP19 30, MP6 13, D5 12, R72 10, D12 8, R99 8, MP8 3, D7 2, D8 2, MP9 2, MP11 2, MP4 4, MP10 1, MP17 1, MP20 1;
+  unclassified 0.
+- Residual exhaust (one decision "boost.question", 12,888 options): found 23 times, each class set aside in turn
+  (D7 after 29 timelines, MP8 39, R72 107, MP4 149, MP11 158, MP10 169, MP20 193, MP2 195, MP17 208, D12 218,
+  div0 296, D4 315, MP18 476, MP3 629, D5 672, MP1 1040, MP5 1726, R99 1764, MP19 3580, MP7 6648, D8 7058,
+  MP9 7059, MP6 9791); then COMPLETE, 12,888 timelines, nothing.
+- Random literals (explore, 20,000 seeds per step; longs, doubles, BigInts ≤ 25 digits, BigDecimals ≤ 25 digits
+  with exponents ±30, ratios; 14 question kinds): 12 classes found and set aside (MP19 after 13 seeds, MP2 20, R72 29,
+  MP18 50, MP5 74, MP8 86, MP4 199, MP7 273, MP20 358, MP17 1453, div0 5719, MP9 11404), no class outside the table's;
+  then 20,000 seeds, nothing.
+- (bigint s)/(bigdec s): every string ≤ 5 over "019x-+.eN" (66,430 each): MP14 528, MP13 1,030; no other class.
+- Codegen: 3,311 BigDecimal literals: 845 AOT load failures (MP12), 0 value mismatches; 1,600 BigInt constants exact.
+  exhaust found MP12 after 1 timeline; explore after 4 seeds; with MP12 set aside exhaust complete over 3,311
+  timelines and explore 3,000 seeds: nothing.
+- Reader, round 2's numbers table (111,151 strings ≤ 4 over "012469-+.exrNM/Z] "; 3,758 big_integer and 4,000
+  big_decimal tokens) with the replica in place of RA5/RA7: 2 values change ("0-.M", "0+.M": acceptsInvalid →
+  agree, both errors now); round 2's counts become 831 wrong values, 27 rejected valid, 5,163 accepted invalid.
+  Strings ≤ 6 over "01789.eE-xMN/" (5,229,043; 262,533 + 318,161 tokens): 1,177 change, 527 acceptsInvalid → agree,
+  650 errors with another message (agree → agree); none turns an agreement into a disagreement.
+- RA5: as in section 4 (0 differ over 813,616 and 16,646,656 strings).
+
+=====================================================================================================
+7. THEOREMS (Jank/R3/Boost/Theorems.lean; no sorry, no native_decide, no axioms)
+=====================================================================================================
+- jank_str_fixed_iff: with jank's flags, boost's text is fixed notation iff −4 ≤ order < digits (number_base.hpp:1394).
+- jank_sci_below_1e_4: every order ≤ −5 is printed in scientific form (MP4), for every value.
+- jank_sci_from_1e128: every order ≥ 128 (with len ≤ 128) is scientific.
+- aot_sci_text_rejected: for every digit d, sign and exponent digits, rd_string's exponent check rejects
+  "d e ± x… . 0" (MP12), for every input.
+- octal_le_decimal / octal_lt_decimal: for every digit list, the octal reading is ≤ the decimal one, strictly when
+  it has ≥ 2 digits and a nonzero lead (MP15/R7: new for-every-input statement of round 2's bounded R7 finding).
+- no_decimal_third, six_times_decimal_ne_two: no terminating decimal is 1/3; 6m ≠ 2·10^k (MP1).
+
+=====================================================================================================
+8. LIBRARY GAPS FILLED (in Jank/R3/Boost/, sdk/lean untouched)
+=====================================================================================================
+- No residual driver for flat question sets: Search.body draws one question per timeline and violates with the
+  class in the property name; Run/R3/Boost.lean loops exhaust/explore setting aside the found class until complete.
+- Strings over large alphabets without materializing lists: Checks.foldStrings (index → string), so 16.6M-string
+  exhaustive checks run in constant memory (round 2's allStrings + eraseDups is quadratic).
+- Exact IEEE helpers (nearest double of a rational) reused from round 2's Codegen.Float; Lean Float used only where
+  boost itself computes in double.
+- Loops: `while`/`Id.run` replicas are not kernel-reducible, so theorems are stated on the replica's own structural
+  predicates (fixedStyle, expPartRejected) factored out of rd_string and format_float_string.
+
+Correction to an earlier model (read-only, not edited): Jank/Numbers.lean jankBigdecOfLong (round 1, D7) saturates
+at 2^63−1 for longs that round to 2^63; jank gives 9223372036854775808M (Jank/R3/Boost/Assumptions.lean d7).
+Round 2's Jank/Read.lean bigDecimalCreate accepts malformed literals rd_string rejects (above, RA7).

@@ -1,0 +1,299 @@
+ROUND 3 — REGEX (std::regex as libstdc++ 15.3.0 implements it, in jank 7135b7708). Exe `jank3-regex`, prefix RX.
+Every item is a prediction from an exact Lean replica of the C++ (jank was not built or run). Paths: jank files under
+upstream-main/compiler+runtime/, libstdc++ files under deps/libstdcxx-15.3.0/ (GCC 15.3.0, the nixpkgs pin).
+Driver output: results/r3-regex.txt (programs, round-2 tables, syntax table, stack depth, ≤2-token census),
+results/r3-regex-grammar3.txt (≤3-token census, both locales, residual), results/r3-regex-grammar4-p{0,1,2}.txt,
+results/r3-regex-search.txt (Determinismo exhaust/explore).
+
+How jank reaches the library (all paths read at 7135b7708):
+- #"…" → read/parse.cpp parse_regex 888 (raw text, parse_string does not unescape) → obj/re_pattern.cpp 9
+  `std::regex{ s.c_str(), std::regex_constants::ECMAScript }`; a std::exception becomes a read error.
+  (re-pattern s) → core.jank 6352 → core.cpp re_pattern 929 → the same constructor (throws at run time).
+- re-find/re-seq/re-groups/re-matches/re-matcher → core.jank 6358–6395 → core.cpp re_matcher 939 (match_input{ s.c_str() }),
+  smatch_to_vector 945, re_find 972 (regex_search 976, match_input = suffix().str() 984), re_groups 990,
+  re_matches 1002 (regex_search … match_continuous 1007, suffix check 1012).
+- clojure.string/replace, replace-first, split, split-lines → string.jank 19/99/166/175 → clojure/string_native.cpp
+  replace_first(regex, string) 78 (regex_replace(s.c_str(), …, format_first_only)), replace_first(regex, fn) 90,
+  replace(regex, string) 218 (regex_replace 224), replace(regex, fn) 226 (sregex_iterator 233, fn gets the match 247),
+  split 393 (cregex_iterator over all bytes 403, leading-empty skip 406).
+- The executor is always the recursive DFS one (regex.tcc __regex_algo_impl 48: BFS only with __polynomial).
+
+1. DEVIATIONS
+
+RX1. A quantifier after a non-ASCII character repeats only its last byte; \u00e9 and \xe9 are the byte 0xE9. (R78 changed)
+  (re-matches #"é*" "")        ; Clojure ""     jank nil
+  (re-find #"é+" "éé")         ; Clojure "éé"   jank "é"
+  (re-find #"\u00e9" "é") ; Clojure "é"    jank nil
+  (re-find #"." "é")           ; Clojure "é"    jank "\xC3"  (round 2's R78, unchanged)
+  Path: re_pattern.cpp 9 (bytes); regex_scanner.tcc _M_scan_normal 96 (each byte an ordinary-char token);
+  regex_compiler.tcc _M_quantifier 179 (pops the last atom only); _M_try_char 563 (\uNNNN, \xNN → one char).
+  Reach: any literal non-ASCII character followed by * + ? {…} in a regex; \u/\x escapes ≥ 0x80.
+  Confidence: high. Status: R78 changed — round 2's model took a literal character as one atom; on round 2's own tables
+  the replica changes 1,891 jank answers (all on quantified é): re-find 412 added, re-seq 468 changed (round 2 said
+  infinite, the replica says nil), re-matches 94 retracted + 5 added, replace 209 added + 45 changed, split 547 added + 111
+  changed. Kernel theorem e_acute_star_needs_lead_byte.
+
+RX2. \uHHHH above 0xFF is cut to its low byte. (new)
+  (re-find #"\u0141" "A") ; Clojure nil (the pattern is Ł)   jank "A"
+  Path: regex_scanner.tcc 353 (\u reads 4 hex digits) → regex_compiler.tcc 563 `_M_value.assign(1, _M_cur_int_value(16))`
+  (int → char). Reach: any \u escape above U+00FF in #"…" or re-pattern. Confidence: high. Kernel theorem u_escape_low_byte.
+
+RX3. A bracket range from an ASCII character to a non-ASCII one is a read error. (new)
+  #"[a-é]"   ; Clojure: a valid class     jank: read error "Invalid range in bracket expression."
+  #"[ -\xff]" likewise; [é-a] is accepted by jank (Java rejects it).
+  Path: regex_compiler.h _M_make_range 500 `if (__l > __r)` on signed char (x86-64): every byte ≥ 0x80 is below every
+  ASCII char. Reach: #"[a-ÿ]"-style classes (common for Latin text). Confidence: high on x86-64 (RXA3).
+  Theorems makeRange_rejects_ascii_to_high (all l < 128 ≤ r < 256), read_error_range_a_to_e_acute (kernel).
+
+RX4. Possessive quantifiers compile, as nested greedy repeats. (R18 corrected)
+  (re-find #"a++a" "aaa")      ; Clojure nil    jank "aaa"
+  (re-find #"a{2}+" "aaaa")    ; Clojure "aa"   jank "aaaa"
+  (re-matches #"\d*+\d" "12")  ; Clojure nil    jank "12"
+  Path: regex_compiler.tcc _M_term 138 `while (this->_M_quantifier())` (any number of quantifiers in a row).
+  Reach: any X*+, X++, X?+, X{n}+. Confidence: high (Java: documented possessive quantifiers).
+  Status: R18 said `a*+` is a read error; the replica compiles it (kernel theorem possessive_compiles,
+  possessive_backtracks). The rest of R18 stands: (?i), (?<=…), (?<!…), (?<name>…), (?>…) are read errors
+  ("Invalid '(?...)' zero-width assertion", regex_scanner.tcc 149).
+
+RX5. A {n} after another quantifier repeats it; a {n} with nothing before it is a read error. (new)
+  (re-find #"a{2}{3}" "aaaaaa")  ; Clojure "aa" (the second {3} repeats an empty atom)   jank "aaaaaa"
+  #"{2}"                          ; Clojure: matches ""                                  jank: read error (Mismatched '(' and ')')
+  Path: compiler.tcc 138 (quantifiers stack); _M_atom has no atom for '{' → _M_alternative ends → eof check 80.
+  Reach: rare. Confidence: medium (Java's handling of '{' after a quantifier is Pattern's behavior, not its javadoc: RXJ3).
+
+RX6. A quantifier on an assertion is a read error. (new)
+  #"^*a"  #"\b+a"  #"(?=a)*a"  #"a$?"   ; Clojure: compile (a quantified zero-width node)   jank: read error (Mismatched '(' and ')')
+  Path: regex_compiler.tcc _M_term 134 returns after _M_assertion without trying quantifiers; the quantifier token then
+  fails the eof check (compiler.tcc 80, error_paren). Reach: any ^ $ \b \B (?=…) (?!…) followed by * + ? {…}.
+  Confidence: high (jank side); Java accepts (closure() applies after every node). Kernel theorem read_error_quantified_caret.
+
+RX7. Backreferences Java accepts are read errors in jank. (new)
+  #"\1"     (no group)            ; Clojure: compiles, never matches       jank: read error "Back-reference index exceeds current sub-expression count."
+  #"\1(a)"  #"(a\1)"              ; Clojure: compile                       jank: read error (forward / open group)
+  (re-find #"(a)\10" "aa0")       ; Clojure ["aa0" "a"] (\1 then "0")     jank: read error (backref 10)
+  Path: regex_scanner.tcc 372 (all digits form one backref), regex_compiler.tcc 317 → regex_automaton.tcc 165/173.
+  Confidence: high.
+
+RX8. POSIX bracket syntax and nested classes mean other things. (new)
+  (re-find #"[[:alpha:]]" "x")    ; Clojure nil (class of : a l p h)   jank "x"
+  (re-find #"[[:alpha:]]" ":")    ; Clojure ":"                        jank nil
+  (re-find #"[[a]]" "a")          ; Clojure "a"                        jank nil  (class {[, a} then "]")
+  (re-find #"[a-z&&[^b]]" "c")    ; Clojure "c" (intersection)          jank nil
+  (re-find #"[[.a.]]" ".")        ; Clojure "."                        jank nil (collating element a)
+  #"[[:foo:]]"                    ; Clojure: valid                     jank: read error "Invalid character class."
+  Path: regex_scanner.tcc 217–240 ('[' then '.', ':', '=' in a bracket), regex_compiler.tcc _M_expression_term 436,
+  regex.tcc lookup_classname 279 / lookup_collatename. Confidence: high.
+
+RX9. ']' first in a class closes it. (new)
+  (re-find #"[]a]" "a")           ; Clojure "a"   jank nil (an empty class, then "a]")
+  #"[](]"                         ; Clojure: the class {] (}           jank: read error (Mismatched '(' and ')')
+  #"[^]"                          ; Clojure: error (unclosed class)    jank: matches any byte, newline included
+  Path: regex_scanner.tcc 248 (ECMAScript: ']' ends the bracket even at its start). Confidence: medium on the Java side
+  (Pattern takes a leading ']' as a literal: RXJ3).
+
+RX10. Escapes with another meaning. (new)
+  (re-find #"\cJ" "\n") ; Clojure "\n"  jank nil      (re-find #"\cJ" "J") ; Clojure nil  jank "J"   (\cX is X itself)
+  (re-find #"\v" "\n")  ; Clojure "\n"  jank nil      (\v is VT 0x0B; Java: vertical whitespace)
+  (re-find #"\Aa" "a")  ; Clojure "a"   jank nil      \A \z \Z \G are the letters A z Z G
+  (re-find #"\Q.\E" ".") ; Clojure "."  jank nil      \Q \E are letters
+  (re-find #"\e" "e")   ; Clojure nil   jank "e"      \e \a are letters (Java: ESC, BEL)
+  (re-find #"\h" " ")   ; Clojure " "   jank nil      \h \R \pL are letters
+  (re-find #"\01" "\u0001") ; Clojure "\u0001" jank nil  (\0 is NUL, then "1"; Java: octal)
+  #"\p{L}", #"\x{41}"   ; Clojure: valid            jank: read errors (badbrace; "Invalid '\xNN'")
+  Path: regex_scanner.tcc _M_eat_escape_ecma 310 (escape table: only 0 b f n r t v; \c 344; \x/\u 353; any other
+  letter is an identity escape). Confidence: high (all documented Java constructs).
+
+RX11. A class escape before '-' in a bracket is a read error. (new)
+  #"[\w-a]"   ; Clojure: \w, '-', 'a'   jank: read error "Invalid start of '[x-x]' range"
+  Path: regex_compiler.tcc 497. Confidence: high (jank); Java accepts (medium: Pattern.range behaviour).
+
+RX12. A lookahead at a search's first position sees a new input: '^' holds inside it and '\b'/'\B' ignore the
+character before it. (new)
+  (re-find #"a(?=\b)" "ab")            ; Clojure nil   jank "a"
+  (re-find #"foo(?=\bbar)" "foobar")   ; Clojure nil   jank "foo"
+  (re-find #"a(?=^b)" "ab")            ; Clojure nil   jank "a"
+  (re-find #"a(?!\B)" "ab")            ; Clojure nil   jank "a"
+  (re-seq #"a(?=\b)" "abab")           ; Clojure nil   jank ("a")
+  (re-seq #"b(?!^)" "b")               ; Clojure ("b") jank nil
+  Path: regex_executor.tcc _M_lookahead 151, `_Executor __sub(_M_current, _M_end, __what, _M_re, _M_flags)` 157: the
+  sub-executor's _M_begin is the current position; _M_at_begin (executor.h 167) and _M_word_boundary
+  (executor.tcc 552/560) test `_M_current == _M_begin` and only look left under match_prev_avail, which _M_search
+  (executor.tcc 42) sets only after the first start position. Reach: every jank regex call's first start position:
+  re-find at 0 (and every later re-find on the remainder), re-matches, replace/split's first search and the
+  regex_iterator retries. Confidence: high. Theorems lookahead_caret_holds, lookahead_boundary_ignores_left (for every
+  state), lookahead_boundary_example (kernel).
+
+RX13. Matching recurses per character: long inputs overflow the stack (SIGSEGV). (new; property)
+  (re-find #"a*" (apply str (repeat 3000000 \a)))   ; Clojure "aaa…"   jank: crash
+  Depth of _M_dfs (replica, measured n = 10…3000; exact linear fits): a*, .*, [^,]*: 2n+4; \w+: 2n+3; a*?$: 2n+5;
+  (?:ab)*: 1.5n+4; (a)*: 4n+4; (a|b)*: 5n+5; (?:a|b)*?c: 3n+5. Almost every frame is a non-tail call
+  (_M_rep_once_more's dfs(alt) and _M_handle_match's dfs(next) restore state after the call), so sibling-call
+  optimisation does not remove them (NT ≈ D in results/r3-regex.txt).
+  Stated bound: with an 8 MiB stack and ≥ 16 bytes per non-tail frame (RXA4), depth > 524,288 frames overflows:
+  a*-shaped patterns at n ≥ 262,143 matching characters; at a more realistic ≥ 64 bytes per frame, n ≈ 65,000.
+  Java matches single-character repeats in a loop (no per-character recursion).
+  Path: regex_executor.tcc _M_dfs 510, _M_rep_once_more 178, _M_handle_match 321. Reach: any re-find/re-matches/
+  replace/split over a long run of characters matched by a repeat. Confidence: high on the recursion and its slope;
+  the byte bound rests on RXA4.
+
+RX14. Counted repeats beyond the NFA state limit are read errors. (new)
+  #"a{99999}" (and e.g. #"\d{0,50000}")   ; Clojure: valid   jank: read error "Number of NFA states exceeds limit…"
+  Path: regex_compiler.tcc 243 (one clone of the atom per count) → regex_automaton.h _GLIBCXX_REGEX_STATE_LIMIT 33
+  (100000) in _M_insert_state. Confidence: high.
+
+Round 2 entries re-checked on the replica (and fork B's B24–B31, B35):
+- R78 (B24): confirmed and extended → RX1 (counts above).
+- R79 (B25): confirmed. (re-find #"a$" "a\n") Clojure "a" jank nil; executor.h _M_at_end 194. Theorem dollar_only_at_end
+  (for every state: '$' holds only at the end).
+- R80 (B26): confirmed. Theorem smatch_groups_never_nil (for every match: no group is nil); kernel unmatched_group_example.
+- R81 (B27): confirmed, with more forms: (re-seq #"\b\w" "ab cd") Clojure ("a" "c") jank ("a" "b" "c" "d");
+  (re-seq #"\Ba" "aaa") Clojure ("a" "a") jank ("a"); each re-find copies the remainder (quadratic in the input).
+  Theorem reSeq_infinite_of_stuck (for every pattern and input: a find that leaves match_input unchanged makes
+  re-seq infinite).
+- R82 (B28): confirmed (kernel re_matches_first_alternative).
+- R83 (B29): confirmed; per path: re-find/re-seq/re-matches/replace(string)/replace-first(string) cut s at the first
+  NUL (replace and replace-first with no match also return the cut string: (clojure.string/replace "a\u0000b" #"x" "y")
+  → "a"); replace with a fn and no match returns s whole; replace-first with a fn searches the cut string but keeps
+  the original tail; split does not cut (cregex_iterator over all bytes). Theorems reFind_stops_at_nul,
+  reMatches_stops_at_nul (for every s, t with 0 ∉ s).
+- R84 (B31): confirmed, with the exact ECMAScript rules (regex.tcc format 386): "$12" with one group → "" (Clojure
+  "a2"); "$01" with no group → "" (Clojure "a1"); "$2" with one group → "" (Clojure throws "No group 2");
+  "\\$" → "\$" (Clojure "$"); "$&", "$$" accepted (Clojure throws). A replace fn gets the match string, but a
+  replace-first fn gets smatch_to_vector (groups, "" for unmatched). re-quote-replacement throws "TODO: port".
+  Theorem format_two_digits_out_of_range (for every match and digits d1 d2: "$d1d2" past size() writes nothing).
+- R85 (B35): confirmed on libstdc++'s own regex_iterator (regex.tcc operator++ 548, retry with match_not_null |
+  match_continuous 571, match_prev_avail only afterwards 586); the "Caveat: libstdc++" is resolved. Detail: the retry's
+  match_not_null also reaches inside lookaheads (the sub-executor inherits _M_flags, executor.tcc 157/469):
+  (clojure.string/replace "bc" #"|b(?=a*)" "-") is "-b-c-" in jank, equal to Clojure only because the retry's
+  lookahead fails (by the same rules with a conforming lookahead the retry finds "b" and gives "---c-").
+- R18 (B30): changed → see RX4 (a*+ compiles); the other Java groups stay read errors.
+
+Accepted by jank, rejected by Java (counted, not reported as deviations): a**, a{2}*, [], [^], \0, [\b], \y and other
+unknown letter escapes, [é-a], [&&].
+
+2. WHAT WAS REPLICATED (Lean files under Jank/R3/Regex/; driver Run/R3/Regex.lean)
+- Traits.lean: regex_traits<char> (lookup_classname, isctype, lookup_collatename, transform_primary, value),
+  ctype<char> masks of ctype_base.h (GNU/Linux) and glibc's class/tolower tables, signed char (regex.h 99–416,
+  regex.tcc 118–378, ctype_base.h, ctype_configure_char.cc, localename.cc 259–264).
+- Scanner.lean: _Scanner<char> for ECMAScript: _M_advance, _M_scan_normal, _M_scan_in_bracket, _M_scan_in_brace,
+  _M_eat_escape_ecma, _M_eat_class, every error (regex_scanner.h/.tcc).
+- Compiler.lean: _Compiler (_M_disjunction, _M_alternative, _M_term, _M_assertion, _M_quantifier with *, +, ?, {n,m},
+  lazy forms and the next/alt swap, _M_atom, _M_bracket_expression, _M_insert_*_matcher, _M_expression_term,
+  _M_try_char, _M_match_token, _M_cur_int_value with int overflow), _BracketMatcher (_M_add_*, _M_make_range,
+  _M_apply), _CharMatcher, _AnyMatcher<ECMA>, _NFA::_M_insert_* (100000-state limit, _M_insert_backref checks),
+  _StateSeq::_M_clone (stack/map order, duplicate inserts), _M_eliminate_dummy (regex_compiler.h/.tcc, regex_automaton.h/.tcc).
+- Executor.lean: _Executor<…, DFS>: _M_search, _M_search_from_first/_M_match, _M_main_dispatch, _M_dfs with every
+  handler (_M_handle_repeat, _M_rep_once_more, subexpr begin/end, ^ $ \b, lookahead with its sub-executor, match,
+  backref, accept with match_not_null, alternative), _M_at_begin/_M_at_end/_M_word_boundary/_M_is_word;
+  __regex_algo_impl (results, prefix/suffix, failed match). Instrumented: _M_dfs depth, non-tail depth, step count.
+- Algo.lean: regex_iterator (constructor, operator++ with the not-null retry), match_results::format (ECMAScript),
+  __regex_replace (format_first_only).
+- JankFns.lean: jank's paths (re_pattern, re_matcher, re_find, smatch_to_vector, re_groups, re_matches, the regex
+  overloads of replace/replace_first, split), with jank's c_str cuts.
+- Java.lean (spec): java.util.regex parser (Pattern.compile: escapes, classes with union/intersection, quantifiers incl.
+  lazy/possessive, groups, lookahead, atomic, backrefs with Java's digit rule, \Q…\E) and a backtracking matcher over
+  UTF-16 units (code-point steps, Start vs StartS), Matcher.find/matches, appendReplacement, replaceAll/First,
+  Pattern.split; Clojure's re-find/re-seq/re-matches/re-groups, replace(-first) with template or fn, split.
+- Compare.lean: questions, both sides, the toggle chain; Search.lean: census, classification, Determinismo world,
+  residual exhaust; Round2.lean: round 2's tables on the replica; Theorems.lean, Kernel.lean: proofs.
+- Round 2's Jank/RegexModel.lean is untouched (round 2 reproducible); the replica supersedes its jank engine.
+
+3. LEFT OUT, AND WHY
+- Unreachable from jank: the BFS executor (__polynomial), POSIX grammars, icase/collate/nosubs/multiline paths,
+  regex_token_iterator, wchar_t, _GLIBCXX_DEBUG asserts.
+- jank's internal regexes (util/try.cpp, munge.cpp, loader_dynamic.cpp): fixed patterns, not user input.
+- Java side: lookbehind, inline flags, named-group references (\k, ${name}), \X, \b{g}, \N{…} and most Unicode
+  properties are parsed (to know Java accepts them) but not matched; such questions are counted as "not compared".
+  Captures set inside lookaheads are compared through the whole match only (RXJ4: Java keeps them by mutation).
+- Performance: exponential backtracking is not compared (both engines backtrack).
+- The C-locale reachability of non-ASCII input (round 2's R22: the reader cannot read it) is not re-modelled here.
+- The executor theorems run in the kernel only for tiny programs (decide +kernel).
+
+4. ASSUMPTIONS
+Replaced:
+- RA8 ("std::regex ECMAScript rejects Java-only groups") → the replica: confirmed for (?i) (?<= (?<! (?<n> (?>,
+  contradicted for possessive quantifiers (RX4).
+- RB "ECMA-262 std::regex" → libstdc++ 15.3.0 replica: differs from ECMA-262 where it matters here: \cX is X, \u
+  narrowed to a byte, [] and [^], POSIX bracket classes, quantified assertions rejected, empty-loop rule
+  (_M_rep_once_more allows two empty iterations at one position, ECMA-262 none) — on all searched questions the loop
+  rule never changed a result against Java.
+- R85 "Caveat: libstdc++" → replicated regex_iterator: confirmed.
+- RB5 (fork B) sub-points: first match in priority order, '.' excludes \n \r, '$' only at the end, unmatched str() ""
+  — all confirmed by the replica; "regex_iterator not modelled" — now modelled.
+Standing / new:
+- RXA1: glibc gives bytes 0x80–0xFF no class in the C locale (C-ctype.c) and in a UTF-8 locale (not single-byte
+  characters of the charmap); ASCII classes and tolower are the same in both. So the two locales give the same
+  answer to every regex question (all tables were run in both: identical). The locale only decides whether non-ASCII
+  text reaches a regex (R22).
+- RXA2: in a named locale, transform_primary (collate<char>::transform after tolower) is equal exactly when the
+  lowered single characters are equal (only [[=x=]] uses it).
+- RXA3: x86-64 (signed char). On aarch64-linux char is unsigned: RX3 would vanish and ranges like [\x80-\xff] change.
+- RXA4: the main thread's stack is 8 MiB (no stack size is set in jank: no setrlimit/pthread_attr in the tree), each
+  non-tail _M_dfs frame takes ≥ 16 bytes, and GCC does not inline _M_dfs into itself.
+- RXA5: jank on Linux links libstdc++ 15.3.0 (nixpkgs pin); a macOS build (libc++) is not covered.
+- RXJ1: JDK ≥ 19 (\b uses ASCII word characters, like \w).
+- RXJ2: Java's loop rule: an iteration of a quantified group that matches empty ends the loop (Loop/LazyLoop/Curly).
+- RXJ3: Pattern corners the javadoc does not state: dangling ']' '}' literal, a leading ']' in a class literal,
+  '{' with nothing before it repeats an empty atom, \b{x} for x ≠ g is \b then '{'.
+- RXJ4: captures inside lookaheads: compared through the whole match only.
+
+5. PROPERTIES CHECKED
+- jank's re-find, re-seq, re-matches, clojure.string/replace and replace-first (template and fn), split (limits 0,
+  -1, 2) give Clojure's results, on the same pattern text and input; jank throws exactly when Java does.
+- re-seq is finite.
+- Matching recursion stays within a stated stack bound (RX13).
+
+6. SEARCH RUNS (both locales give identical tallies everywhere they were run)
+- Round 2's tables on the replica: 117,936 re-find/re-seq/re-matches + 66,300 replace/split questions; utf8 and C:
+  per-entry changes as in RX1 (1,891 jank answers change, 94 retracted, 1,173 added); Java models agree on all.
+- Syntax table: 100 tokens × 6 contexts × 49 inputs × 2 calls = 58,800 questions, each locale: 2,287 differ
+  (escapes 1,835; nested/POSIX classes 168; bytes 190; ']' first 83; …), 6,468 rejects, 6,174 accepted-invalid,
+  1,470 not compared.
+- Census ≤2 core tokens × 50 inputs × 14 calls: 491,400 questions, each locale: 24,841 differ, 84,700 rejects.
+- Census ≤3 core tokens: 12,794,600 questions, each locale: 386,085 differ (R84 template 200,748; R83 47,010; R81
+  42,128; R78 37,917; {n} after a quantifier 21,926; R85 17,385; R79 14,529; possessive 2,414; R84 fn 1,513; R82 414;
+  R80 101), 2,102,800 rejects (quantified assertion 630,000; {n} first 865,200; backrefs 607,600), 58,100
+  accepted-invalid, 0 unexplained. Residual with every toggle on: 63,076 differ, all bytes (R78) or syntax (RX4/RX5);
+  complete, nothing else.
+- Census ≤4 core tokens (475,254 patterns, 3 parts) × inputs ≤3 over a b (15) × 5 calls: 35,644,050 questions:
+  301,476 differ (R81 211,873; RX5 39,328; R85 31,092; RX4 10,509; R82 5,776; R80 1,578; RX12 940; RX9 380),
+  5,307,450 rejects (RX6 1,938,600; RX5 1,867,500; RX7 1,500,900; RX9 375: #"[](]"; (?-) flags 75), 225,375
+  accepted-invalid, 0 unexplained.
+- Determinismo exhaust (core tokens ≤ 3, inputs ≤ 3 over a b \n, 5 calls, UTF-8): found after 1,647 [R79],
+  33,162 [RX5], 33,445 [RX4], 197,921 [R80], 731,361 [R81], 1,469,522 [R82], 2,200,642 [R85]; with these set aside:
+  complete, 3,655,600 timelines, nothing.
+- exhaust (tokens ≤ 2, inputs ≤ 2 over a b \n é 😀 NUL): found after 38 [R83], 91 [R78], 1,773 [R79], 30,445 [R81],
+  68,200 [R82], 98,386 [R85]; then complete, 150,930 timelines, nothing.
+- exhaust (tokens ≤ 3, inputs ≤ 3 over a b \n), C locale: the same 7 classes at the same timelines; complete,
+  3,655,600 timelines, nothing.
+- exhaust (tokens ≤ 3, inputs ≤ 3), rejected patterns reported too: found after 881 [RX7], 921 [RX5], 15,721 [RX6],
+  240,561 [RX7 open group] besides the 7 classes above; complete, 3,655,600 timelines, nothing.
+- explore: 20,000 mixed seeds, tokens ≤ 7, inputs ≤ 6, 14 calls: only known classes (R84 template 376, R81 83,
+  R79 28, R85 15, RX5 7, R84 fn 1, RX4 1); nothing new.
+- Stack depth table: 10 patterns × n ∈ {10, 100, 1000, 3000} (RX13).
+
+7. THEOREMS (no sorry, no native_decide, no new axioms; decide +kernel checked by the kernel)
+General (Jank/R3/Regex/Theorems.lean), for every input:
+- sval_high_lt_ascii: every byte ≥ 0x80 is a smaller char than every ASCII one.
+- makeRange_rejects_ascii_to_high: _M_make_range throws error_range for any l < 128 ≤ r < 256, any bracket. (RX3)
+- dollar_only_at_end: without multiline, _M_at_end holds only at the end. (R79, new for-every-input proof)
+- smatch_groups_never_nil: smatch_to_vector never yields nil for a group. (R80, new for-every-input proof)
+- cstr_of_no_nul, cstr_append_nul (helpers); reFind_stops_at_nul, reMatches_stops_at_nul: re-find and re-matches on
+  s ++ NUL ++ t equal those on s. (R83, new for-every-input proofs)
+- format_two_digits_out_of_range: "$d1d2" with d1d2 ≥ size() formats to nothing. (R84)
+- reSeq_infinite_of_stuck: one find that leaves match_input unchanged makes re-seq infinite. (R81, new for-every-input)
+- lookahead_caret_holds, lookahead_boundary_ignores_left: the lookahead sub-executor sees '^' and no left character
+  when the search has not moved past its first position. (RX12)
+Concrete programs run in the kernel (Jank/R3/Regex/Kernel.lean): read_error_range_a_to_e_acute,
+read_error_quantified_caret, possessive_compiles, e_acute_star_needs_lead_byte, lookahead_boundary_example,
+possessive_backtracks, u_escape_low_byte, posix_bracket_example, unmatched_group_example, re_matches_first_alternative.
+(Checked: the kernel rejects a false variant; axioms propext, Classical.choice, Quot.sound only.)
+
+8. LIBRARY GAPS FILLED (inside Jank/R3/Regex/; sdk/lean untouched)
+- An ordered toggle chain for residual searches: each deviation is classed by the first set-aside toggle that removes
+  it, so a census both tallies classes and proves (with all toggles on) that nothing else is left.
+- residualExhaust: Determinismo exhaust restarted with each found class set aside until a walk completes.
+- A java.util.regex model (parser, matcher, Matcher/Pattern API) as the spec, and Clojure's functions on it.
+- Stack-depth instrumentation of a recursive executor, separating tail calls (sibling calls) from frames that stay.
+- `decide +kernel` to run the replica in the kernel: the elaborator's `decide` took ~50 s per tiny compile and was
+  killed on executor runs; the kernel alone checks them quickly.

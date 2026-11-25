@@ -267,3 +267,9 @@ pointer fields, field writes, member functions, overloads, native operators, opa
 destructors, exceptions, numeric limits, IEEE doubles, binding forms, constants), every
 concurrency test (no update lost, no torn version, one compare-and-set winner, one promise value,
 GC keeping what is held) and hegel-jank's own tests.
+
+## A Lean replica of jank
+
+[lean/](lean/README.md): jank replicated in Lean 4 from its sources and searched against
+Clojure's behavior (three rounds), with its predictions as tests and their results on the real
+jank. The only copy: future rounds work here.

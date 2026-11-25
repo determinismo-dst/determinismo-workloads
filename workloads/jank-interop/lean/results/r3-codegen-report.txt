@@ -1,0 +1,203 @@
+FINAL REPORT — round 3, area Codegen (code generator and optimizer), exe jank3-codegen
+ROUND 3 — CODE GENERATOR AND OPTIMIZER (area Codegen; exe jank3-codegen; deviations CG1–CG8)
+
+jank 7135b7708 (upstream-main/); paths below are under upstream-main/compiler+runtime/. jank was never
+built or run: every item is a prediction from the replica, re-read against the source. Search output:
+results/r3-codegen.txt.
+
+What the optimizer is at 7135b7708 (Jank/R3/Codegen/Flags.lean):
+- `-O n` sets the codegen level (util/cli.cpp 324-341); `run`, `run-main`, `repl` copy it into the
+  runtime level (527-531); both default to 0 (203-206). The codegen level picks jank's IR passes
+  (213-225: -O1 and -O2 hoist_literals + remove_nops; -O3 also hoist_var_derefs).
+- clang compiles the emitted C++ with: JIT (jit/processor_dynamic.cpp 165-307): JANK_JIT_FLAGS
+  (CMakeLists.txt 339-349 `-w -fwrapv -fno-stack-protector -fPIC …` after the build type's flags;
+  Release adds `-O2 -DNDEBUG`), `-include-pch`, `-w -Wno-c++11-narrowing`, user -I/-L/-D, then
+  `-O<runtime level>` last, so it wins. AOT (aot/processor.cpp 167-319): JANK_JIT_FLAGS (so `-fwrapv`
+  too), JANK_AOT_FLAGS (linker flags), JANK_EXTRA_FLAGS, `-std=c++20`, then `-O<codegen level>`;
+  util/clang.cpp `invoke_clang` 186-197 appends JANK_EXTRA_FLAGS once more at the end.
+  `jank compile`/`compile-module` evaluate the file in the JIT at -O0 whatever `-O` says (the runtime
+  level stays 0) and compile the module at `-O<n>`.
+- codegen/optimize.cpp builds `buildPerModuleDefaultPipeline(level)` from the codegen level, but nothing
+  calls it (context.cpp:21 and context_dynamic.cpp:27 only include its header).
+- analyze/pass/optimize.cpp: the only AST pass is strip_source_meta (CG6).
+- clang 23.1.0 (nixpkgs llvmPackages_23; files fetched into deps/llvm-23.1.0-codegen/): the JIT is
+  clang's Interpreter (CPPINTEROP_USE_REPL); its IncrementalAction wraps EmitLLVMOnlyAction, whose
+  BackendConsumer::HandleTranslationUnit runs emitBackendOutput → RunOptimizationPipeline
+  (CodeGenAction.cpp 322; BackendUtil.cpp 1364, 1138 `buildPerModuleDefaultPipeline(Level)`) on every
+  incremental module: JIT code gets the same middle end as AOT code. LoopDeletion runs at O1
+  (PassBuilderPipelines.cpp 564) and O2/O3 (746); in a `mustprogress` function it deletes a loop with no
+  side effects even when the loop never ends (LoopDeletion.cpp 105-115), branching to the exit or, for a
+  loop without an exit, leaving `unreachable` (LoopUtils.cpp 601-605). In C++11 and later every function
+  is `mustprogress` and a `while(true){…}` with a non-empty body is too (CGStmt.cpp 1009-1048; only an
+  empty body is exempt, the C++26 DR).
+- So, for the C++ jank emits, in every mode: signed `+ - *` overflow wraps (`-fwrapv`); integer division
+  by zero or INT_MIN/-1 is immediate UB (LangRef `sdiv`); a float-to-integer conversion out of range is
+  poison (LangRef `fptosi`; no `-fno-strict-float-cast-overflow`); a jank loop or fn-level `recur` that
+  never ends and has no side effect is UB; strict aliasing (TBAA) is on at -O1+.
+
+1. DEVIATIONS
+
+CG1. A jank loop (or fn-level `recur`) that never ends and has no side effect is undefined behavior in the emitted C++: an optimized build (-O1, -O2, -O3; JIT and AOT) may return from it or run off the function.
+  ((fn [x] (loop [] (if x (recur) :done))) true)
+    Clojure: never ends.  jank -O0: never ends.  jank -O1/-O2/-O3: undefined; LoopDeletion deletes the loop (its only exit value, :done, is loop-invariant), so the call returns :done.
+  (loop [x 0] (if (< x 10) (recur (+ x 0.5)) x))          ; R24's third example
+    Clojure: 10.0.  jank -O0: never ends (x is an int local, R24).  jank -O1+: undefined; likely SCCP proves x stays 0, the exit is dead, and LoopDeletion leaves `unreachable`: the wrapper fn runs into whatever code follows (crash or garbage).
+  Path: cpp_processor.cpp gen(loop) 992-1022 (`while(true){` 1011, shadows `auto s(v)` 1007 / `object_ref s(v)` 1001, recur `continue;` 934); ir/processor.cpp gen_arity 261-317 (fn-level recur), gen(let) 522-591 (loop); the loop body's operations are inline (core/math.hpp always_inline `lt`/`add`/`sub`/`mul`/`div` on primitives, core/truthy.hpp `truthy`), so nothing in it is a side effect. clang: CGStmt.cpp 1009-1048 (mustprogress), LoopDeletion.cpp 105-115/436-505.
+  Reach: any loop over native locals or over a parameter's truthiness whose body makes no call, allocation or var read (my search: 83 of 2,000 programs per optimized mode). Loops whose body calls a jank fn, logs, boxes a long, unboxes an object or does object arithmetic have a side effect (or a throwing path) and hang as in Clojure (hand rows "fn recur on an object param", "loop that never ends but logs").
+  Confidence: high for "undefined at -O1+" (flags, mustprogress and LoopDeletion read at llvmorg-23.1.0); medium for the concrete outcome (it depends on which passes prove what). Status: new; changes R24 (its non-terminating example hangs only at -O0).
+
+CG2. Float-to-integer conversions in emitted code have no range check: out of range (or NaN for a recur) they are undefined.
+  (a) recur into a native integer loop local (R24's conversion, a `static_cast<int>(v)`):
+      (loop [x 0 n 0] (if (< n 1) (recur 1e10 (+ n 1)) x))
+      Clojure 1.0E10; jank -O0 -2147483648 (x86 cvttsd2si's integer indefinite); -O1+ undefined (fptosi poison: any int).
+  (b) `int` (core.jank 202-208 :inline → core/math.hpp `to_int` 1410-1420 `static_cast<i64>(l)` after a NaN check):
+      (int 1e20)    Clojure IllegalArgumentException "Value out of range for int"; jank -O0 -9223372036854775808; -O1+ undefined.
+  (c) `int` never checks the int range: to_int returns the i64 (the search's class CG2b):
+      (int 2147483648)   Clojure IllegalArgumentException; jank 2147483648 (all levels). (int 3e9) likewise.
+  (d) typed parameters and from_object (convert/builtin.hpp 228-236: `static_cast<T>(o.to_integer())`, and object_ref::to_integer of a real is `static_cast<i64>` in the runtime library, built at -O2): ((fn [^cpp/long p] p) 1e20) — Clojure (^long) IllegalArgumentException "Value out of range for long"; jank undefined in libjank (x86: -9223372036854775808), not affected by the user's -O.
+  Path: cpp_processor.cpp gen(cpp_constructor_call) 1563-1728 (primitive: `T v(static_cast<T>(arg))`, 1708-1716); analyze/processor.cpp analyze_recur 2183-2214 → apply_implicit_conversion `cast` 1088-1118; core/math.hpp 1410-1420.
+  Confidence: high. Status: (a) extends R24 (round 2 modeled the conversion as defined truncation); (b), (c), (d) new.
+
+CG3. A map or set expression whose keys collide at run time: Clojure throws, jank keeps one (compiled) or both (top level).
+  (let [a 1 b 1] {a :x b :y})      Clojure IllegalArgumentException "Duplicate key: 1"; jank {1 :y}.
+  (let [a 1 b 1] #{a b})           Clojure IllegalArgumentException; jank #{1}.
+  {(identity 1) :x (identity 1) :y}   at the REPL/`jank run` top level: Clojure throws; jank prints {1 :x, 1 :y} and `count` is 2 (an array map built `in_place_unique` from the evaluated pairs).
+  Path: compiled: ir/processor.cpp gen(map) 164-184 → cpp_processor.cpp 652-706 → codegen/api.cpp `_jank_amap_impl`/`_jank_hmap_impl`/`_jank_hset_impl` 213-449 (`assoc_in_place`/`conj_in_place` per pair; native_array_map.cpp 139-165 `insert_or_assign`); top level: evaluate.cpp eval(map) 447-491 (≤ 8 pairs `in_place_unique`, lines 463/469), eval(set) 493-509. Clojure: Compiler.java MapExpr.emit 3534-3558 → RT.map → createWithCheck; SetExpr → RT.set → createWithCheck.
+  Confidence: high. Status: new (R13 is the reader's literal duplicates).
+
+CG4. Functions with more than 10 parameters are rejected (the `& rest` symbol counts); Clojure accepts up to 20 required parameters plus a rest parameter.
+  (fn [a b c d e f g h i j k] k)          Clojure: compiles.  jank: "This function has too many parameters. The max is 10."
+  (fn [a b c d e f g h i j & r] r)        likewise (11 symbols).
+  Also: a non-variadic fn called with N ≥ 11 arguments reports `11` in its arity exception (the 11th argument is the packed list; object.cpp 175-188); Clojure reports N.
+  Path: analyze/processor.cpp analyze_fn_arity 1866-1872 (`runtime::max_params` 10, core/call.hpp 18). Everything else about arity dispatch agrees with Clojure (see the census below). Confidence: high. Status: new.
+
+CG5. A fn with a native-typed parameter (`^cpp/int`, `^cpp/long`, `^cpp/double`, any trait-convertible type) and fn-level `recur` emits C++ that does not compile.
+  ((fn [^cpp/long n] (if (< n 3) (recur (+ n 1)) n)) 0)
+    Clojure (with ^long): 3.  jank: C++ error "no matching constructor for initialization of 'jank::runtime::object_ref'" (all levels, JIT and AOT).
+  Path: ir/processor.cpp gen_arity 261-270 gives every fn-recur shadow `untyped_object_ref_type()` with the parameter's local as its value; cpp_processor.cpp 1001 emits `jank::runtime::object_ref s(n);` where `n` is the converted native local `auto &&n{ jank::runtime::convert<long>::from_object(n_N) };` (2013-2021); object_ref (oref.hpp 219-290) has no constructor from an arithmetic type. analyze_fn_arity 1797-1840 accepts the hint; analyze_recur converts the recur arguments into objects (2183, 2214), so nothing rejects the program before C++.
+  Reach: any typed parameter in an arity that uses `recur` (84 of 2,000 programs per mode). Confidence: high. Status: new.
+
+CG6. Evaluating code that quotes an existing object rewrites that object's metadata in place.
+  (def v (with-meta [1] {}))  (eval (list 'quote v))  (meta v)
+    Clojure: {}.  jank: nil.   (A `:jank/source` key in user metadata is removed the same way; a macro expanding to `(quote <object>)` does the same.)
+  Path: context_dynamic.cpp 220-226 (`eval` → `pass::optimize`); analyze/pass/strip_source_meta.cpp 13-42 calls `reset_meta(obj, strip_source_from_meta(meta))` on every primitive_literal's object; analyze_quote → analyze_primitive_literal (processor.cpp 2799, 3244) keeps the quoted object itself; core/meta.cpp 84-113 writes `typed_o->meta`, 229-239 turns an empty map into nil. Round 2's replica (Analyzer/Processor.lean stripSourceMeta) is value-based and cannot show the shared object changing. Also a data race if another thread reads the object's metadata.
+  Confidence: high. Status: new.
+
+CG7. Correction (weakens R23): a top-level `if` at the REPL / `jank run` is interpreted, so it does not merge branch types.
+  (if true 1 2.5)        jank JIT top level: 1 (= Clojure).  Inside a fn, let or loop, or in an AOT module: 1.0 (R23).
+  Path: context_dynamic.cpp 49-74 (each top-level form → evaluate::eval); evaluate.cpp eval(if) 594-606 evaluates the chosen branch; eval(cpp_literal) 651-654 returns the literal's object. Round 2's runJank evaluates every form with the compiled meaning. R23's other examples (`or`, `and`, the fn) expand to `let`/`fn` and stand. Confidence: high. Status: R23 changed.
+
+CG8. Correction to round 2's literal model (R24/R25 predictions): the literal -2147483648 is an `int` to the analyzer but a `long` in the emitted C++.
+  `lift_constant` (eval, cpp_processor.cpp 136-150: `o.to_code_string()`) and `gen_constant` (module, 277-292: `"{}"`) print "-2147483648", which C++ reads as unary minus on 2147483648, a `long`; `auto v(-2147483648)` (1278-1285) is a long and templates re-resolve on it (`jank::runtime::add(a, b)` by name, 1387). The value is narrowed to the analyzer's type only where a type is spelled (into_object `convert<int>`, if/case locals, recur casts).
+    (< (- -2147483648 1) 0)        jank true (= Clojure); round 2's model false.
+    (let [u 0] (/ -2147483648 -1))  jank -2147483648 (64-bit division, then narrowed when boxed); round 2's model: SIGFPE.
+    (+ -2147483648 -2147483648)    jank 0 (64-bit sum -4294967296 narrowed to int when boxed); Clojure -4294967296: still an R25-class deviation.
+  Confidence: medium-high (the C++ typing of the text is certain; that clang re-resolves the template by name follows CppInterOp `GetQualifiedCompleteName`, which prints the qualified name without template arguments, CppInterOp.cpp 991-1015). Status: correction; R25's own examples stand.
+
+UB that is documented or already reported, with what an optimized build changes:
+- Integer division by zero on native values ((/ 1 0), `/` inline on native operands): documented as undefined (book, differences-from-clojure.md "Math"). -O0: SIGFPE (x86 idiv); -O1+: undefined, a constant division folds to poison (no crash, any value).
+- INT_MIN / -1 on native ints ((let [x (- -2147483647 1)] (/ x -1))): round 1's D2 (there through objects). The book says signed overflow wraps (-2147483648); jank -O0 traps (SIGFPE); -O1+ undefined. With the literal -2147483648 itself the division is 64-bit (CG8) and gives -2147483648 without a trap.
+- Signed + - * overflow: defined (wraps) everywhere in emitted code (-fwrapv): R25 holds at every level, and 64-bit wrap is the documented behavior (round 1 D1, book).
+- Shifts, quot/rem on objects, `long`/`double` (non-inline fns) run in libjank (math.cpp, compiled at the jank build's -O2 without -fwrapv): `bit-shift-left` with a count ≥ 64 or < 0 (math.cpp 562-568 `l_data << r_data`) and `quot` of a huge double (321-339 `static_cast<i64>`) are undefined there, independent of the user's -O (runtime agent's area; noted, not searched).
+- Uninitialized reads: none; every local jank declares is value-initialized (`T v{ };`, cpp_processor.cpp 909-919; `auto` locals are initialized).
+- Null dereference / wrong-type access: R47's `static_cast<jit_closure*>` of a non-closure (still UB at every level); otherwise emitted code reaches objects through checked runtime calls.
+- Strict aliasing: emitted code does not reinterpret objects except R47; NaN-boxed values go through std::bit_cast (oref.hpp). No -fno-strict-aliasing is passed.
+- `#line` (cpp_processor.cpp 1920-1932, only with --debug, the default) and cpp/raw's `#line` (processor.cpp 4195-4207): only diagnostics and __LINE__/__FILE__ change; lines start at 1 (read/source.hpp 21) and the file name is escaped (util/escape.cpp 148-197), so the directive is always well formed. No semantic effect.
+- `GC_add_roots(&first, &last + 1)` (cpp_processor.cpp 2124-2134, 2160-2170; module target only): registers the lifted vars and constants as one address range, which assumes the namespace-scope globals are contiguous in declaration order. C++ gives no such guarantee; it holds for LLVM's in-order emission into one section (all are constant-initialized from `_jank_null`). If it failed, the GC could free a lifted constant (use after free). For an AOT executable the globals are in the main program's data segment, which bdwgc scans anyway; the range matters for object files loaded into the JIT. Assumption CGA5.
+
+Re-checks of round 2's entries under the optimizer model:
+- R24: changed. Its third example never ends only at -O0 (CG1 at -O1+); its conversions are undefined out of range (CG2a); its examples' values otherwise stand.
+- R25: confirmed at every level and target (-fwrapv: CMakeLists.txt 342 → JANK_JIT_FLAGS → JIT and AOT; replaces round 2's assumption "Signed overflow wraps (documented)"). Programs using the literal -2147483648 compute in 64 bits until narrowed (CG8).
+- R23: weakened (CG7): example 1 holds in compiled code and AOT, not at the REPL top level.
+- R44: confirmed; `case` keys go through c_api.cpp jank_shift_mask_case_integer in libjank, not affected by -O.
+- R45: confirmed; hoist_var_derefs is jank's IR pass at codegen level 3 (cli.cpp 215-217); LLVM cannot merge the two var reads (`var->deref()` is a call with side effects), so only jank's pass does it.
+- R46, R48: confirmed; IR passes at codegen level ≥ 1, independent of clang's level.
+- R47: confirmed; undefined at every level (the context pointer read from the argument's memory).
+
+2. WHAT WAS REPLICATED (Jank/R3/Codegen/, driver Run/R3/Codegen.lean)
+- Flags.lean: util/cli.cpp (parse_opts `-O`, the run/repl copy, commit_scratchpad and the IR passes per level); CMakeLists.txt's jank_common/jank_jit/jank_aot flag lists and JANK_JIT_FLAGS; jit/processor_dynamic.cpp's clang argument list (165-307); aot/processor.cpp build_compiler_args (167-319) with util/clang.cpp invoke_clang; codegen/optimize.cpp (documented as uncalled); clang's last-`-O`-wins, `-std`, `-fwrapv`, CGStmt.cpp checkIfLoopMustProgress and checkIfFunctionMustProgress.
+- Native.lean (jank side of the native world): the analyzer's typing of literals (cpp_util literal_type via the analyzer agent's Types.lean), of the inline arithmetic (core.jank `+ - * / <` and `int` → core/math.hpp add/sub/mul/div/lt/to_int overloads), of `if` (analyze_if 2676-2787 with find_branch_common_type and the boxing of non-bool conditions), `let`, `loop` (mutable_type shadows), `recur` (analyze_recur 2132-2230, apply_implicit_conversion 1032-1129 with resolved_expression), `fn` arities with typed parameters (analyze_fn_arity 1740-1923), calls and `log`; the emitted C++ (cpp_processor.cpp: cpp_literal 1278-1285 with lift_constant/gen_constant's text, `auto` shadows 996-1009, `while(true)` 1011, branch_set/get, typed parameter conversion 2013-2021, recur shadows typed object_ref 1001, `convert<T>` into/from object (convert/builtin.hpp 196-285; make_box.hpp 24-101 small-integer tagging), cpp_constructor_call's static_cast 1700-1716, evaluate.cpp's top-level interpreter (if/call/literal; wrap_expression for the rest); and the C++/LLVM meaning per level (Lvl): -fwrapv wraps, sdiv UB/x86 trap, fptosi poison/x86 indefinite, usual arithmetic conversions on the C++ types of the text, mustprogress loops with LoopDeletion's side-effect rule.
+- NativeSpec.lean: Clojure 1.12's meaning of the same programs (Numbers.java long ops with overflow checks, divide/ratios/BigInt normalization, lt, RT.intCast, RT.longCast/doubleCast for ^long/^double parameters, Compiler.java loop recur boxing (6955-6980, 7205-7245) and the fn recur prim check (7100-7150)).
+- NativeSearch.lean: the program generator, the classes, both properties.
+- Variadic.lean: analyze_fn_arity/analyze_fn arity checks (1748-1871, 2032-2101), ir arity_flags (339-369) with core/call.hpp's flag helpers, the slot map (gen(function) 371-405), jit_function::call 0..10, object::call's 11-argument overload, jit_variadic_function::call 0..10 and 10+more (the whole switch; jit_variadic_closure.cpp checked identical), analyze_call's packing past 10 arguments (3612-3663), evaluate.cpp eval(call) and core/call.cpp apply_to (and core.jank `apply`); spec: Compiler.java FnExpr/FnMethod arity rules and RestFn dispatch.
+- Literals.lean: codegen/api.cpp _jank_amap/_jank_hmap/_jank_hset with native_array_map insert_or_assign, evaluate.cpp eval(map)/eval(set); RT.map/RT.set createWithCheck; strip_source_meta's in-place reset_meta (heap with identity).
+- Theorems.lean: the for-every-input results (section 7).
+- Census.lean: search helpers (section 8).
+- Round 2's Codegen world (Jank/Codegen/*) is reused unchanged and rerun.
+
+3. LEFT OUT, AND WHY
+- LLVM's exact output for a UB program is not modeled: at -O1+ a UB path is reported as "undefined" with LangRef's license and the likely pass (SCCP/InstCombine poison, LoopDeletion); predicting the machine code would need the passes themselves.
+- `^cpp/int` parameters have no Clojure counterpart; they are compared with ^long and their own class is set aside.
+- Typed parameters of class/pointer types (Interop agent), BigDecimal constants (Boost agent), interop forms.
+- The runtime library's own UB (math.cpp shifts, quot, real→i64 in to_integer) is noted, not searched (runtime agent).
+- Round 2's depth-2 exhaustive control is bounded (partitions stopped at 20,000 timelines each): a complete walk would take hours at ~1 ms per timeline through the full pipeline.
+- Native-world exhaustive search is complete at depth 1 with small pools; depth 2 (≈10^9 programs with these pools) is not feasible; depth 3 is sampled (2,000 seeds per mode + 20,000 residual seeds).
+- Captured native locals in closures are covered only through `((fn [p] …) arg)` inside a `let` (closure contexts copy by value; nothing else differs).
+- ir/print.cpp (debug printing only).
+
+4. ASSUMPTIONS
+Round 2's assumptions replaced:
+- I (interop): "Signed overflow wraps (documented)" → replaced by the flags: `-fwrapv` is in jank_jit_compiler_flags (CMakeLists.txt 342) and so in JANK_JIT_FLAGS for the JIT and for AOT (aot/processor.cpp 208-213). Confirmed for emitted code at every level; theorems jit_has_fwrapv, aot_has_fwrapv. (libjank itself is built without -fwrapv: its own overflow is still UB, see the UB notes.)
+- I (interop): "The JIT passes -w -Wno-c++11-narrowing" → confirmed for the JIT (processor_dynamic.cpp 249-250); AOT passes only `-w` from JANK_JIT_FLAGS, which does not downgrade a default-error diagnostic. No emitted construct in this area narrows inside braces (constructor calls use parentheses, cpp_processor.cpp 1667-1672), so nothing changes here.
+- G (codegen): "constants are grouped by round 1's = and hash" — unchanged; R42 not revisited.
+- AN (analyzer)/round 2's runJank: "every top-level form evaluated with the compiled meaning" → contradicted for `if` (CG7).
+- Round 2's literal model: "a literal's C++ type is its literal_type" → contradicted for -2147483648 (CG8).
+New:
+- CGA1 CPPINTEROP_USE_REPL (CMakeLists.txt common flags) means CppInterOp drives clang's own Interpreter, so the JIT runs clang's -O pipeline per incremental module (read in clang 23.1.0's Interpreter/CodeGen sources).
+- CGA2 x86-64 at -O0: `idiv` traps on a zero divisor and on INT_MIN/-1 (SIGFPE; round 1's validation run shows exit 136 for d02b); `cvttsd2si` returns 0x80000000 / 0x8000000000000000 for NaN and out-of-range values.
+- CGA3 At -O1+ a UB execution is reported as "undefined"; the likely result follows LangRef (sdiv immediate UB, folded to poison on constants; fptosi poison) and the passes read (SCCP, LoopDeletion). The exact machine behavior is not predicted.
+- CGA4 What LoopDeletion counts as a side effect in jank's loops: a call that stays a call (dynamic calls, `log`, var reads, GC allocation, including `make_box` of an i64 outside the small-integer range), a path that throws (from_object, to_integer, object arithmetic through visit_number_like); the always_inline math templates on primitives, `truthy`, casts, copies and `continue` are not.
+- CGA5 Namespace-scope globals of one module are laid out in declaration order in one section (GC_add_roots's range).
+- CGA6 jank's `^cpp/long`/`^cpp/double` parameters are compared with Clojure's `^long`/`^double` (the closest documented behavior; jank's book does not document typed parameters); `^cpp/int` with `^long`.
+- CGA7 `va_arg(args, object*)` reads an `object_ref` passed through `...` correctly (a trivially copyable one-pointer class: same ABI). Not UB-free in the letter of the standard.
+- CGA8 Doubles are Lean `Float` (IEEE binary64, round to nearest); `Float.ofInt` rounds correctly.
+- CGA9 x86-64 Linux, LP64. On AArch64, `sdiv` does not trap (it returns 0 for /0 and INT_MIN for INT_MIN/-1) and `fcvtzs` saturates: the -O0 column changes there; the -O1+ license does not.
+
+5. PROPERTIES CHECKED
+1. jank's emitted program means what Clojure means (value, output, throws or not, termination), per target (JIT eval, AOT module) and level (-O0..-O3).
+2. An optimized build means what -O0 means: no undefined behavior on the executed path (-O1, -O2, -O3 against -O0).
+3. Every fn shape and call (0..16 arguments, compiled, top level or apply) runs the arity Clojure runs with the same bindings, or both reject / both throw.
+4. Map and set expressions with run-time keys: same entries as Clojure, or both throw.
+5. Evaluating code does not change existing values' metadata.
+6. The optimizer configuration: for every build type and command line, the level clang sees, -fwrapv, mustprogress.
+
+6. SEARCH RUNS (results/r3-codegen.txt)
+| World | Bounds | Result |
+|---|---|---|
+| Native world, property 1 (jank vs Clojure), JIT and AOT × -O0..-O3 | depth 3, 2,000 mixed seeds per mode | -O0: 564 (JIT) / 565 (AOT) of 2,000 deviate in 10 classes; -O1..-O3: 629 / 630 in 11 classes. New: CG1 (83/2,000 at -O1+), CG2 (56 at -O0, 65 at -O1+), CG2b (42), CG5 (84). Known: R23 (37), R24 (19), R25 (via the exhaustive run), R33 (293), D1 (2), D2 (3), division by zero (28, documented). |
+| Native world, property 2 (-On vs -O0) | depth 3, 2,000 seeds per mode, -O1/-O2/-O3 × JIT/AOT | 160 of 2,000 differ in each, 3 classes: CG1 (83), CG2 (49), integer division by zero (28). |
+| Native world residual (every class above set aside) | depth 3, seeds 100,000..119,999 (20,000), JIT/AOT × -O0/-O3, both properties | complete, nothing (an earlier pass found R24 through from_object, D2 through a truncating division, R25 through narrowing at boxing; each was classed and the run repeated). |
+| Native world exhaustive residual | depth 1, small pools, every timeline (421,986 per mode), JIT/AOT × -O0/-O3, both properties | complete, nothing (an earlier pass found `(+ -2147483648 -2147483648)` → 0 and `(loop [x 0] (if (< x 1) (recur (- x -2147483648)) 0))` never ending, both R25 by narrowing; classed and repeated). |
+| -2147483648's C++ type vs round 2's model | 2,000 seeds, depth 3, JIT -O0 | 0 of 2,000 random programs change; the hand rows show the three that do (CG8). |
+| Variadic world | every fn with fixed arities ⊆ [0,12] plus at most one variadic arity (required 0..12): 114,687 fns × 0..16 args = 1,949,679 calls | complete; 2 classes: CG4 (348,160 calls of fns with > 10 parameter symbols), arity exception reports 11 (10,235); residual over jank-accepted fns (382,959 calls): complete, nothing. |
+| Map/set expressions | every key list of length 1..9 over 3 values (29,523) | complete: all 29,508 lists with a repeated key deviate (Clojure throws; compiled and top level differ as CG3); the 15 without: complete, nothing. |
+| Round 2's program world, rerun | round 2's seeds 0..1999 × {eval -O0, -O1, -O3, module} | reproduces round 2 exactly: 299 / 335 / 351 / 431 deviate, the same classes; control (known left out) 0 of 2,000. |
+| Round 2's control at depth 2 | exhaustive, partitioned by the first decision, ≤ 20,000 timelines per partition; eval -O0 and module | stopped at 186,717 timelines each: eval nothing; module 7,402, all R43 (AOT def metadata, a class round 2's control does not leave out for AOT). |
+| Optimizer configuration | 4 build types × {run, repl, compile} × {no -O, -O0..-O3} | every JIT and AOT line: -fwrapv, loops and fns mustprogress, fptosi poison; the JIT level is the runtime level, AOT the codegen level; compile evaluates at -O0. |
+
+7. THEOREMS (no sorry, no native_decide, no axioms; decide/simp/omega)
+Flags.lean:
+- effectiveOpt_append_opt: the last `-O<n>` decides clang's level, whatever precedes it.
+- jit_has_fwrapv / aot_has_fwrapv: for every build type and command line (and any JANK_EXTRA_FLAGS for AOT), `-fwrapv` is passed.
+- jit_level: the JIT's clang level is the runtime level for every build type (Release's -O2 in JANK_JIT_FLAGS is overridden).
+- aot_level: without JANK_EXTRA_FLAGS, AOT's clang level is the codegen level.
+- run_levels: run/run-main/repl give the JIT the -O given; compile_jit_at_O0: compile/compile-module evaluate at -O0 whatever -O.
+Theorems.lean:
+- jit_loops_must_progress (with jit_std, jit_finite): for every build type and command line, every non-empty `while(true)` loop and every function jank JIT-compiles is mustprogress (std gnu++20, no -f[no-]finite-loops).
+- decimal_text_type_int_iff: the C++ text of an integer is an `int` exactly on (-2^31, 2^31); int_min_literal_types: the analyzer says int, the text is long, for -2147483648 (CG8).
+- halfStep_nonneg / halfStep_neg; r24_never_exits: for every n > 0 and every start c < n, jank's `(loop [x c] (if (< x n) (recur (+ x 0.5)) x))` stays below n forever (and never above max(c,0)); r24_clojure_exits: Clojure's reaches n after 2(n-c) steps. New for-every-input version of round 2's bounded R24 example.
+Variadic.lean:
+- only_variadic_agrees: for every required count 0..9 and 0..14 arguments, `[a1..ar & rest]` binds what Clojure binds (jit_variadic_function's switch and the packed 11th argument included).
+- ambiguous_agrees: the same with a fixed arity of the same count (the ambiguous flag).
+- eleven_to_twenty_fixed: for every 10 < p ≤ 20, jank rejects a p-parameter fn that Clojure compiles; ten_and_rest: `[a1..a10 & rest]` likewise (CG4).
+Literals.lean:
+- dup_pair, dup_set: run-time duplicate keys: Clojure throws, compiled jank keeps one entry (last value), the top level keeps both pairs (CG3).
+- no_dup_agree: for every key list without a repeat (≤ 8 pairs) the three agree.
+- quote_empty_meta_becomes_nil: eval of (quote v) turns v's {} metadata into nil; strip_changes_iff: for every key list, jank changes the metadata exactly when it is empty or holds :jank/source (CG6).
+
+8. LIBRARY GAPS FILLED (Jank/R3/Codegen/Census.lean; sdk/lean untouched)
+- censusSeeds / censusFrom / censusPartitioned: every timeline of a range of seeds or of an exhaustive walk counted per class (the bracketed property class) with the first counterexample of each, instead of stopping at the first; the exhaustive walk split by the first decision's options so each partition completes (or reports "stopped") on its own.
+- nextPathWithin: exhaust restricted to a prefix.
+- mixSeed (SplitMix64) for explore (consecutive mkStdGen seeds share first draws); round 2's seeds are reused unmixed for its rerun so its counts reproduce.
+- An x86-64 + LLVM undefined-behavior model per optimization level (Native.lean: ubAt, convNat, natArith, the loop's side-effect/state-repeat rule), a C++ "actual type" beside the analyzer's type, and a heap-identity model of metadata (Literals.lean).
+- Clang flag semantics (last -O, -std, -fwrapv, finite loops, float-cast overflow) as data with proofs (Flags.lean).

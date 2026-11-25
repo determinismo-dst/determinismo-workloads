@@ -1,0 +1,357 @@
+== replica checks
+  pow2 table: 256 header entries, 0 differ from the exact powers of two
+  cpp_int str/convert_to<double>: 2400 values, 0 wrong
+  cpp_dec_float rd_string/operator=(double) exactness: 374 values, 0 wrong
+== RA5: round 2's boostParse vs the replica do_assign_string, every string ≤ 5 over "0178x9aAfFgX-+ ": 813616 strings, 0 differ
+== RA5 over bytes: every string ≤ 3 of the bytes 1..255: 16646656 strings, 0 differ
+    with NUL [49, 0, 50]: round 2 Except.error "boost: unexpected content", replica Except.ok 1
+    with NUL [0]: round 2 Except.error "boost: unexpected content", replica Except.ok 0
+    with NUL [45, 0]: round 2 Except.error "boost: unexpected content", replica Except.ok 0
+== round 1/2 assumptions against the replica
+  RC2 (Compare.cppNumCmp: BigDecimal vs double exactly): 12100 inputs, 0 differ
+  RB7 (Print.jankDec: no trailing zeros, fixed, .0): 168 inputs, 67 differ
+      0.00001M: round 2 0.00001, replica 1e-05.0
+      0.000001M: round 2 0.000001, replica 1e-06.0
+      0.0000001M: round 2 0.0000001, replica 1e-07.0
+      0.00000001M: round 2 0.00000001, replica 1e-08.0
+      0.000000001M: round 2 0.000000001, replica 1e-09.0
+      0.0000000001M: round 2 0.0000000001, replica 1e-10.0
+      0.00000000001M: round 2 0.00000000001, replica 1e-11.0
+      0.000000000001M: round 2 0.000000000001, replica 1e-12.0
+      0.0000000000001M: round 2 0.0000000000001, replica 1e-13.0
+      -0.00001M: round 2 -0.00001, replica -1e-05.0
+      -0.000001M: round 2 -0.000001, replica -1e-06.0
+      -0.0000001M: round 2 -0.0000001, replica -1e-07.0
+  D7 (Numbers.jankBigdecOfLong): 635 inputs, 2 differ
+      9223372036854775805: round 1 9223372036854775807, replica 922337203685477580800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000/100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+      9223372036854775807: round 1 9223372036854775807, replica 922337203685477580800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000/100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  D8 (Numbers.jankDecEq): 225 inputs, 0 differ
+== reader: round 2's numbers table (every string ≤ 4 over 012469-+.exrNM/Z] ) with the boost replica in place of RA5/RA7
+  111151 strings; 3758 big_integer tokens, 4000 big_decimal tokens; 2 values change
+    0-.M: bigdec round 2 0e0M, replica Unable to parse the string "0-." as a floating point value.
+    0+.M: bigdec round 2 0e0M, replica Unable to parse the string "0+." as a floating point value.
+    verdict Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree: 2
+      0-.M: Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree   [jank r2 0e0M | replica error (Unable to parse the string "0-." as a floating point value.) | Clojure error (Invalid number: 0-.M)]
+      0+.M: Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree   [jank r2 0e0M | replica error (Unable to parse the string "0+." as a floating point value.) | Clojure error (Invalid number: 0+.M)]
+== reader: every string ≤ 6 over 01789.eE-xMN/ (5229043 strings; 262533 big_integer, 318161 big_decimal tokens): 1177 values change
+    0-.M: bigdec round 2 0e0M, replica Unable to parse the string "0-." as a floating point value.
+    00-.M: bigdec round 2 0e0M, replica Unable to parse the string "00-." as a floating point value.
+    01-.M: bigdec round 2 1e0M, replica Unable to parse the string "01-." as a floating point value.
+    07-.M: bigdec round 2 7e0M, replica Unable to parse the string "07-." as a floating point value.
+    08-.M: bigdec round 2 8e0M, replica Unable to parse the string "08-." as a floating point value.
+    09-.M: bigdec round 2 9e0M, replica Unable to parse the string "09-." as a floating point value.
+    0-0.M: bigdec round 2 0e0M, replica Unable to parse the string "0-0." as a floating point value.
+    0-1.M: bigdec round 2 0e0M, replica Unable to parse the string "0-1." as a floating point value.
+    0-7.M: bigdec round 2 0e0M, replica Unable to parse the string "0-7." as a floating point value.
+    0-8.M: bigdec round 2 0e0M, replica Unable to parse the string "0-8." as a floating point value.
+    verdict Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree: 527
+    verdict Jank.ReadValue.Verdict.agree -> Jank.ReadValue.Verdict.agree: 650
+      0-.M: Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree   [jank r2 0e0M | replica error (Unable to parse the string "0-." as a floating point value.) | Clojure error (Invalid number: 0-.M)]
+      00-.M: Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree   [jank r2 0e0M | replica error (Unable to parse the string "00-." as a floating point value.) | Clojure error (Invalid number: 00-.M)]
+      01-.M: Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree   [jank r2 1e0M | replica error (Unable to parse the string "01-." as a floating point value.) | Clojure error (Invalid number: 01-.M)]
+      07-.M: Jank.ReadValue.Verdict.acceptsInvalid -> Jank.ReadValue.Verdict.agree   [jank r2 7e0M | replica error (Unable to parse the string "07-." as a floating point value.) | Clojure error (Invalid number: 07-.M)]
+      0-.M0: Jank.ReadValue.Verdict.agree -> Jank.ReadValue.Verdict.agree   [jank r2 error (expected whitespace) | replica error (Unable to parse the string "0-." as a floating point value.) | Clojure error (Invalid number: 0-.M0)]
+      0-.M1: Jank.ReadValue.Verdict.agree -> Jank.ReadValue.Verdict.agree   [jank r2 error (expected whitespace) | replica error (Unable to parse the string "0-." as a floating point value.) | Clojure error (Invalid number: 0-.M1)]
+      0-.M7: Jank.ReadValue.Verdict.agree -> Jank.ReadValue.Verdict.agree   [jank r2 error (expected whitespace) | replica error (Unable to parse the string "0-." as a floating point value.) | Clojure error (Invalid number: 0-.M7)]
+      0-.M8: Jank.ReadValue.Verdict.agree -> Jank.ReadValue.Verdict.agree   [jank r2 error (expected whitespace) | replica error (Unable to parse the string "0-." as a floating point value.) | Clojure error (Invalid number: 0-.M8)]
+== reader: inputs past round 2's bounds (jank: round 2's lexer + this replica; Clojure: round 2's LispReader replica)
+  1/0100000000000000000000  =>  jank 1/1152921504606846976 | Clojure 1/100000000000000000000
+  1/09999999999999999999  =>  jank error (boost: unexpected content) | Clojure 1/9999999999999999999
+  1/0777777777777777777777  =>  jank 1/9223372036854775807 | Clojure 1/777777777777777777777
+  0010/3  =>  jank 8/3 | Clojure 10/3
+  008/3  =>  jank error (boost: unexpected content) | Clojure 8/3
+  -0010/3  =>  jank -8/3 | Clojure -10/3
+  00017/1  =>  jank 15 | Clojure 17
+  0x1eM  =>  jank 1.0M | Clojure error (Invalid number: 0x1eM)
+  0x1e5M  =>  jank 100000.0M | Clojure error (Invalid number: 0x1e5M)
+  0xeM  =>  jank error (Unable to parse the string "e" as a floating point value.) | Clojure error (Invalid number: 0xeM)
+  07M  =>  jank 7.0M | Clojure 7e0M
+  1.M  =>  jank 1.0M | Clojure 1e0M
+  1e67108864M  =>  jank 1e+67108864.0M | Clojure 1e67108864M
+  1e67108865M  =>  jank 1e+67108865.0M | Clojure 1e67108865M
+  1e67108872M  =>  jank inf.0M | Clojure 1e67108872M
+  1e-67108864M  =>  jank 0.0M | Clojure 1e-67108864M
+  1e-67108872M  =>  jank 0.0M | Clojure 1e-67108872M
+  1e4294967296M  =>  jank 1.0M | Clojure 1e4294967296M
+  1e2147483648M  =>  jank 0.0M | Clojure 1e2147483648M
+  0.1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123M  =>  jank 0.12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678M | Clojure 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123e-133M
+  123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012M  =>  jank 1.234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234e+131M | Clojure 123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012e0M
+  0N  =>  jank 0N | Clojure 0N
+  -0N  =>  jank 0N | Clojure 0N
+  0x10N  =>  jank 16N | Clojure 16N
+  0777777777777777777777N  =>  jank 9223372036854775807N | Clojure 9223372036854775807N
+  -9223372036854775809  =>  jank -9223372036854775809N | Clojure -9223372036854775809N
+  18446744073709551616  =>  jank 18446744073709551616N | Clojure 18446744073709551616N
+== table: 12888 questions over 37 operands; 10045 agree
+  D12 long/BigInt hashes: 8
+      (= (hash 0N) (hash 0)) given (= 0N 0)  jank = true, hashes 2654435769 0 | Clojure hashes equal
+      (= (hash 0) (hash 0N)) given (= 0 0N)  jank = true, hashes 0 2654435769 | Clojure hashes equal
+      (= (hash 1) (hash 1N)) given (= 1 1N)  jank = true, hashes 1392991556 2654435770 | Clojure hashes equal
+      (= (hash 3) (hash 3N)) given (= 3 3N)  jank = true, hashes 2738575283 2654435772 | Clojure hashes equal
+  D4 quot through doubles (a long): 783
+      (quot 3 6M)  jank 0 | Clojure 0M
+      (quot 0 1M)  jank 0 | Clojure 0M
+      (quot 0 3M)  jank 0 | Clojure 0M
+      (quot 0 6M)  jank 0 | Clojure 0M
+  D5 == through doubles: 12
+      (== 1.0000000000000000001M 1)  jank true | Clojure false
+      (== 1 1.0000000000000000001M)  jank true | Clojure false
+      (== 1.0000000000000000001M 1M)  jank true | Clojure false
+      (== 1M 1.0000000000000000001M)  jank true | Clojure false
+  D7 bigdec of a long through a double: 2
+      (bigdec 9007199254740993)  jank 9007199254740992.0M | Clojure 9007199254740993M
+      (bigdec 9223372036854775807)  jank 9223372036854775808.0M | Clojure 9223372036854775807M
+  D8 BigDecimal = within 2^-52: 2
+      (= 1.0000000000000000001M 1M)  jank true | Clojure false
+      (= 1M 1.0000000000000000001M)  jank true | Clojure false
+  MP1 decimal division through a truncated inverse: 46
+      (/ 6M 3)  jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 2M
+      (/ 6M 3N)  jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 2M
+      (/ 6M 3M)  jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 2M
+      (/ 3 1.50M)  jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 2M
+  MP10 BigDecimal to double rounds twice (19 digits, then strtod): 1
+      (double 9007199254740993.00000000000000000001M)  jank 9007199254740992.0 | Clojure 9.007199254740994E15
+  MP11 long of a BigDecimal: exact truncation, saturating: 2
+      (long 1E130M)  jank 9223372036854775807 | Clojure throws (Value out of range for long)
+      (long 9007199254740993.00000000000000000001M)  jank 9007199254740993 | Clojure 9007199254740994
+  MP17 bigint of a ratio goes through i64: 1
+      (bigint 100000000000000000000/3)  jank throws (out of range for `i64` conversion) | Clojure 33333333333333333333N
+  MP18 (D2) BigInt / truncates: 60
+      (/ 1N 3)  jank 0N | Clojure 1/3
+      (/ 1 3N)  jank 0N | Clojure 1/3
+      (/ 1N 3N)  jank 0N | Clojure 1/3
+      (/ -1 3N)  jank 0N | Clojure -1/3
+  MP19 ratio: an integral result is a long, not a BigInt: 30
+      (/ 1N 1/3)  jank 3 | Clojure 3N
+      (* 0N 1/2)  jank 0 | Clojure 0N
+      (/ 0N 1/2)  jank 0 | Clojure 0N
+      (/ 3N 1/2)  jank 6 | Clojure 6N
+  MP2 non-terminating quotient returns a value: 887
+      (< 1/3 3M)  jank true | Clojure throws
+      (< 0M 1/3)  jank true | Clojure throws
+      (< 1/3 1M)  jank true | Clojure throws
+      (< 1/3 6M)  jank true | Clojure throws
+  MP20 double of a ratio divides two doubles: 1
+      (double -7/3)  jank -2.3333333333333335 | Clojure -2.333333333333333
+  MP3 128-digit precision: 84
+      (- 1E130M 3)  jank 1e+130.0M | Clojure 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999997M
+      (- 1E130M 1)  jank 1e+130.0M | Clojure 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M
+      (+ 1E130M -1)  jank 1e+130.0M | Clojure 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M
+      (+ -1 1E130M)  jank 1e+130.0M | Clojure 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M
+  MP4 BigDecimal printed in boost's scientific form: 4
+      (str 1E130M)  jank 1e+130.0 | Clojure 1E+130
+      (str 0.00001M)  jank 1e-05.0 | Clojure 0.00001
+      (pr-str 1E130M)  jank 1e+130.0M | Clojure 1E+130M
+      (pr-str 0.00001M)  jank 1e-05.0M | Clojure 0.00001M
+  MP5 BigDecimal with a double gives a BigDecimal: 722
+      (/ 0M 0.5)  jank 0.0M | Clojure 0.0
+      (* 0M 0.1)  jank 0.0M | Clojure 0.0
+      (* 0.1 0M)  jank 0.0M | Clojure 0.0
+      (+ 0.5 0M)  jank 0.5M | Clojure 0.5
+  MP6 rem of decimals through 128-digit fmod: 13
+      (rem 1E130M 3)  jank 99999997.0M | Clojure 1M
+      (rem 1E130M 3N)  jank 99999997.0M | Clojure 1M
+      (rem 1E130M 3M)  jank 99999997.0M | Clojure 1M
+      (rem 1E130M 6M)  jank 399999994.0M | Clojure 4M
+  MP7 rem of a ratio and a decimal truncates the decimal: 94
+      (rem 3M 1/2)  jank 0N | Clojure 0.0M
+      (rem 0M 1/2)  jank 0N | Clojure 0.0M
+      (rem 1M 1/2)  jank 0N | Clojure 0.0M
+      (rem 6M 1/2)  jank 0N | Clojure 0.0M
+  MP8 bigdec/bigint of a double: the binary value, not Double.toString: 3
+      (bigdec 1.0E23)  jank 99999999999999991611392.0M | Clojure 1.0E+23M
+      (bigint 1.0E23)  jank 99999999999999991611392N | Clojure 100000000000000000000000N
+      (bigdec 0.1)  jank 0.1000000000000000055511151231257827021181583404541015625M | Clojure 0.1M
+  MP9 BigDecimals jank calls = hash differently (D8 with D12): 2
+      (= (hash 1.0000000000000000001M) (hash 1M)) given (= 1.0000000000000000001M 1M)  jank = true, hashes 575929905 3307139568 | Clojure hashes equal
+      (= (hash 1M) (hash 1.0000000000000000001M)) given (= 1M 1.0000000000000000001M)  jank = true, hashes 3307139568 575929905 | Clojure hashes equal
+  R72 BigDecimal printing: scale lost, .0 added: 10
+      (str 3M)  jank 3.0 | Clojure 3
+      (str 0M)  jank 0.0 | Clojure 0
+      (str 1M)  jank 1.0 | Clojure 1
+      (str 6M)  jank 6.0 | Clojure 6
+  R99 exact comparison against a double: 8
+      (compare 0.1 0.1M)  jank 1 | Clojure 0
+      (compare 0.1M 0.1)  jank -1 | Clojure 0
+      (< 0.1M 0.1)  jank true | Clojure false
+      (<= 0.1 0.1M)  jank false | Clojure true
+  div0 (documented: division by 0): 68
+      (/ 0M 0)  jank nan.0M | Clojure throws (Divide by zero)
+      (/ 0 0M)  jank nan.0M | Clojure throws (Divide by zero)
+      (/ 1 0M)  jank inf.0M | Clojure throws (Divide by zero)
+      (/ 3 0M)  jank inf.0M | Clojure throws (Divide by zero)
+== residual searches: one question per timeline (12888 questions), exhaust
+  aside 0: found after 29 timelines [D7 bigdec of a long through a double]: (bigdec 9007199254740993): jank 9007199254740992.0M, Clojure 9007199254740993M
+    tape: {"name":"boost.question","options":12888,"value":28}
+  aside 1: found after 39 timelines [MP8 bigdec/bigint of a double: the binary value, not Double.toString]: (bigdec 0.1): jank 0.1000000000000000055511151231257827021181583404541015625M, Clojure 0.1M
+    tape: {"name":"boost.question","options":12888,"value":38}
+  aside 2: found after 107 timelines [R72 BigDecimal printing: scale lost, .0 added]: (str 0M): jank 0.0, Clojure 0
+    tape: {"name":"boost.question","options":12888,"value":106}
+  aside 3: found after 149 timelines [MP4 BigDecimal printed in boost's scientific form]: (str 0.00001M): jank 1e-05.0, Clojure 0.00001
+    tape: {"name":"boost.question","options":12888,"value":148}
+  aside 4: found after 158 timelines [MP11 long of a BigDecimal: exact truncation, saturating]: (long 1E130M): jank 9223372036854775807, Clojure throws (Value out of range for long)
+    tape: {"name":"boost.question","options":12888,"value":157}
+  aside 5: found after 169 timelines [MP10 BigDecimal to double rounds twice (19 digits, then strtod)]: (double 9007199254740993.00000000000000000001M): jank 9007199254740992.0, Clojure 9.007199254740994E15
+    tape: {"name":"boost.question","options":12888,"value":168}
+  aside 6: found after 193 timelines [MP20 double of a ratio divides two doubles]: (double -7/3): jank -2.3333333333333335, Clojure -2.333333333333333
+    tape: {"name":"boost.question","options":12888,"value":192}
+  aside 7: found after 195 timelines [MP2 non-terminating quotient returns a value]: (bigdec -7/3): jank -2.333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M, Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+    tape: {"name":"boost.question","options":12888,"value":194}
+  aside 8: found after 208 timelines [MP17 bigint of a ratio goes through i64]: (bigint 100000000000000000000/3): jank throws (out of range for `i64` conversion), Clojure 33333333333333333333N
+    tape: {"name":"boost.question","options":12888,"value":207}
+  aside 9: found after 218 timelines [D12 long/BigInt hashes]: (= (hash 0) (hash 0N)) given (= 0 0N): jank = true, hashes 0 2654435769, Clojure hashes equal
+    tape: {"name":"boost.question","options":12888,"value":217}
+  aside 10: found after 296 timelines [div0 (documented: division by 0)]: (/ 0 0M): jank nan.0M, Clojure throws (Divide by zero)
+    tape: {"name":"boost.question","options":12888,"value":295}
+  aside 11: found after 315 timelines [D4 quot through doubles (a long)]: (quot 0 1M): jank 0, Clojure 0M
+    tape: {"name":"boost.question","options":12888,"value":314}
+  aside 12: found after 476 timelines [MP18 (D2) BigInt / truncates]: (/ 1 -7N): jank 0N, Clojure -1/7
+    tape: {"name":"boost.question","options":12888,"value":475}
+  aside 13: found after 629 timelines [MP3 128-digit precision]: (+ 1 1E130M): jank 1e+130.0M, Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M
+    tape: {"name":"boost.question","options":12888,"value":628}
+  aside 14: found after 672 timelines [D5 == through doubles]: (== 1 1.0000000000000000001M): jank true, Clojure false
+    tape: {"name":"boost.question","options":12888,"value":671}
+  aside 15: found after 1040 timelines [MP1 decimal division through a truncated inverse]: (/ 3 1.50M): jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M, Clojure 2M
+    tape: {"name":"boost.question","options":12888,"value":1039}
+  aside 16: found after 1726 timelines [MP5 BigDecimal with a double gives a BigDecimal]: (+ 0.1 0M): jank 0.1000000000000000055511151231257827021181583404541015625M, Clojure 0.1
+    tape: {"name":"boost.question","options":12888,"value":1725}
+  aside 17: found after 1764 timelines [R99 exact comparison against a double]: (<= 0.1 0.1M): jank false, Clojure true
+    tape: {"name":"boost.question","options":12888,"value":1763}
+  aside 18: found after 3580 timelines [MP19 ratio: an integral result is a long, not a BigInt]: (* 0N 1/2): jank 0, Clojure 0N
+    tape: {"name":"boost.question","options":12888,"value":3579}
+  aside 19: found after 6648 timelines [MP7 rem of a ratio and a decimal truncates the decimal]: (rem 0M 1/2): jank 0N, Clojure 0.0M
+    tape: {"name":"boost.question","options":12888,"value":6647}
+  aside 20: found after 7058 timelines [D8 BigDecimal = within 2^-52]: (= 1M 1.0000000000000000001M): jank true, Clojure false
+    tape: {"name":"boost.question","options":12888,"value":7057}
+  aside 21: found after 7059 timelines [MP9 BigDecimals jank calls = hash differently (D8 with D12)]: (= (hash 1M) (hash 1.0000000000000000001M)) given (= 1M 1.0000000000000000001M): jank = true, hashes 3307139568 575929905, Clojure hashes equal
+    tape: {"name":"boost.question","options":12888,"value":7058}
+  aside 22: found after 9791 timelines [MP6 rem of decimals through 128-digit fmod]: (rem 1E130M 3): jank 99999997.0M, Clojure 1M
+    tape: {"name":"boost.question","options":12888,"value":9790}
+  aside 23: complete, 12888 timelines, nothing
+== random literals (longs, doubles, BigInts ≤ 25 digits, BigDecimals ≤ 25 digits with exponents ±30, ratios): explore 20000 seeds
+  aside 0: found after 13 seeds [MP19 ratio: an integral result is a long, not a BigInt]: (* -904/6 420N): jank -63280, Clojure -63280N
+  aside 1: found after 20 seeds [MP2 non-terminating quotient returns a value]: (/ -2749190815967769986403N 12849478801561393.953782e-7M): jank -2139534885752.4900566013930378461350475218072842598413301840132511849437357820350194965164496121314061208702849056258367829917M, Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  aside 2: found after 29 seeds [R72 BigDecimal printing: scale lost, .0 added]: (str 937916446.005618e8M): jank 93791644600561800.0, Clojure 9.37916446005618E+16
+  aside 3: found after 50 seeds [MP18 (D2) BigInt / truncates]: (/ -59390928021N 512860060086125841): jank 0N, Clojure -19796976007/170953353362041947
+  aside 4: found after 74 seeds [MP5 BigDecimal with a double gives a BigDecimal]: (+ -1.98e-25M 1471824.5e-14): jank 1.47182449999999999860697708729681358885699182792450301349163055419921875e-08M, Clojure 1.4718245E-8
+  aside 5: found after 86 seeds [MP8 bigdec/bigint of a double: the binary value, not Double.toString]: (bigdec -92.5e-10): jank -9.25000000000000011081562642338560475963049611891619861125946044921875e-09M, Clojure -9.25E-9M
+  aside 6: found after 199 seeds [MP4 BigDecimal printed in boost's scientific form]: (str -10.e-14M): jank -1e-13.0, Clojure -1.0E-13
+  aside 7: found after 273 seeds [MP7 rem of a ratio and a decimal truncates the decimal]: (rem -995629912207/10 500.e-18M): jank throws (Division by zero is not permitted.), Clojure 0E-18M
+  aside 8: found after 358 seeds [MP20 double of a ratio divides two doubles]: (double -6228487199/3): jank -2076162399.6666667, Clojure -2.076162399666667E9
+  aside 9: found after 1453 seeds [MP17 bigint of a ratio goes through i64]: (bigint 351825031214662547585/7): jank throws (out of range for `i64` conversion), Clojure 50260718744951792512N
+  aside 10: found after 5719 seeds [div0 (documented: division by 0)]: (/ -876614145468488.e-4M -0/8): jank -inf.0M, Clojure throws (Divide by zero)
+  aside 11: found after 11404 seeds [MP9 BigDecimals jank calls = hash differently (D8 with D12)]: (= (hash -18043832169.6882437720223e-28M) (hash -0.2e-25M)) given (= -18043832169.6882437720223e-28M -0.2e-25M): jank = true, hashes 584852262 3629997231, Clojure hashes equal
+  aside 12: 20000 seeds, nothing
+== (bigint s): every string ≤ 5 over "019x-+.eN": 66430 strings
+  MP14 bigint of a string: another value (octal or hexadecimal prefix): 30
+      (bigint "011")  jank 9N | Clojure 11N
+      (bigint "010")  jank 8N | Clojure 10N
+      (bigint "0011")  jank 9N | Clojure 11N
+      (bigint "0010")  jank 8N | Clojure 10N
+      (bigint "00010")  jank 8N | Clojure 10N
+      (bigint "00011")  jank 9N | Clojure 11N
+      (bigint "0110")  jank 72N | Clojure 110N
+      (bigint "-011")  jank -9N | Clojure -11N
+  MP14 bigint of a string: boost's grammar accepts what BigInteger rejects: 263
+      (bigint "N")  jank 0N | Clojure throws (NumberFormatException)
+      (bigint "0N")  jank 0N | Clojure throws (NumberFormatException)
+      (bigint "-")  jank 0N | Clojure throws (Zero length BigInteger)
+      (bigint "0x")  jank 0N | Clojure throws (NumberFormatException)
+      (bigint "9N")  jank 9N | Clojure throws (NumberFormatException)
+      (bigint "1N")  jank 1N | Clojure throws (NumberFormatException)
+      (bigint "-N")  jank 0N | Clojure throws (NumberFormatException)
+      (bigint "00N")  jank 0N | Clojure throws (NumberFormatException)
+  MP14 bigint of a string: boost's grammar rejects what BigInteger accepts: 235
+      (bigint "+1")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 1N
+      (bigint "+0")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 0N
+      (bigint "+9")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 9N
+      (bigint "+00")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 0N
+      (bigint "+09")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 9N
+      (bigint "+01")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 1N
+      (bigint "+000")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 0N
+      (bigint "+10")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 10N
+== (bigdec s): every string ≤ 5 over "019x-+.eN": 66430 strings
+  MP13 bigdec of a string: boost's grammar accepts what BigDecimal rejects: 1030
+      (bigdec ".")  jank 0.0M | Clojure throws (NumberFormatException)
+      (bigdec "-.")  jank 0.0M | Clojure throws (NumberFormatException)
+      (bigdec "0e")  jank 0.0M | Clojure throws (NumberFormatException)
+      (bigdec "1e")  jank 1.0M | Clojure throws (NumberFormatException)
+      (bigdec "9e")  jank 9.0M | Clojure throws (NumberFormatException)
+      (bigdec ".e")  jank 0.0M | Clojure throws (NumberFormatException)
+      (bigdec "+.")  jank 0.0M | Clojure throws (NumberFormatException)
+      (bigdec "e1")  jank 0.0M | Clojure throws (NumberFormatException)
+== codegen: BigDecimal literal constants (mantissas 11 × exponents -150..150), JIT object vs AOT text rebuilt at load
+  3311 literals
+  AOT load throws: 845
+      5e-9M: JIT 5e-09.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("5e-09.0"); load: Unable to parse the string "5e-09.0" as a floating point value.
+      1e-9M: JIT 1e-09.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-09.0"); load: Unable to parse the string "1e-09.0" as a floating point value.
+      1e-8M: JIT 1e-08.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-08.0"); load: Unable to parse the string "1e-08.0" as a floating point value.
+      1e-7M: JIT 1e-07.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-07.0"); load: Unable to parse the string "1e-07.0" as a floating point value.
+      1e-6M: JIT 1e-06.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-06.0"); load: Unable to parse the string "1e-06.0" as a floating point value.
+      1e-5M: JIT 1e-05.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-05.0"); load: Unable to parse the string "1e-05.0" as a floating point value.
+  BigInt constants: 1600 values, 0 not rebuilt exactly
+  exhaust, aside []: found after 1 timelines: 1e-150M: JIT 1e-150.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("1e-150.0"); load: Unable to parse the string "1e-150.0" as a floating point value.
+    tape: {"name":"codegen.mantissa","options":11,"value":0}
+{"name":"codegen.exponent","options":301,"value":0}
+  explore 3000, aside []: found after 4: -7e-82M: JIT -7e-82.0M; AOT text jank::runtime::make_box<jank::runtime::obj::big_decimal>("-7e-82.0"); load: Unable to parse the string "-7e-82.0" as a floating point value.
+  exhaust, aside [AOT load throws]: complete, 3311 timelines, nothing
+  explore 3000, aside [AOT load throws]: nothing
+== spot checks (both sides on single programs)
+  (/ 6M 3M)  jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 2M
+  (/ 6M 3)  jank 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 2M
+  (/ 3 6M)  jank 0.49999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998M | Clojure 0.5M
+  (/ 1.5M 3)  jank 0.49999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M | Clojure 0.5M
+  (/ 1M 7M)  jank 0.14285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714285714M | Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  (/ 1M 3)  jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M | Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  (+ 1M 0.5)  jank 1.5M | Clojure 1.5
+  (* 6M 0.1)  jank 0.600000000000000033306690738754696212708950042724609375M | Clojure 0.6000000000000001
+  (+ 1 1E130M)  jank 1e+130.0M | Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M
+  (- 1M 1E-130M)  jank 1.0M | Clojure 0.9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M
+  (/ 7N 2)  jank 3N | Clojure 7/2
+  (rem 1E130M 3)  jank 99999997.0M | Clojure 1M
+  (rem 1E130M 123456789.123456789M)  jank -4600000000.0M | Clojure 46008073.045998073M
+  (rem 1/2 0.1M)  jank throws (Division by zero is not permitted.) | Clojure 0.0M
+  (rem 1.75M 1/2)  jank 0N | Clojure 0.25M
+  (< 0.1M 0.1)  jank true | Clojure false
+  (compare 9.007199254740992E15 9007199254740993N)  jank -1 | Clojure 0
+  (< 9.007199254740992E15 9007199254740993N)  jank true | Clojure false
+  (= 1M 1.0000000000000000001M)  jank true | Clojure false
+  (= (hash 1M) (hash 1.0000000000000000001M)) given (= 1M 1.0000000000000000001M)  jank = true, hashes 3307139568 575929905 | Clojure hashes equal
+  (== 1M 1.0000000000000000001M)  jank true | Clojure false
+  (quot 1 0.00001M)  jank 99999 | Clojure 100000M
+  (str 0.00001M)  jank 1e-05.0 | Clojure 0.00001
+  (pr-str 1E130M)  jank 1e+130.0M | Clojure 1E+130M
+  (str 1.50M)  jank 1.5 | Clojure 1.50
+  (pr-str 1M)  jank 1.0M | Clojure 1M
+  (double 9007199254740993.00000000000000000001M)  jank 9007199254740992.0 | Clojure 9.007199254740994E15
+  (double 1E-310M)  jank 0.0 | Clojure 1.0E-310
+  (double 3E-320M)  jank 0.0 | Clojure 3.0E-320
+  (long 1E130M)  jank 9223372036854775807 | Clojure throws (Value out of range for long)
+  (long 9007199254740993.00000000000000000001M)  jank 9007199254740993 | Clojure 9007199254740994
+  (bigdec 0.1)  jank 0.1000000000000000055511151231257827021181583404541015625M | Clojure 0.1M
+  (bigint 1.0E23)  jank 99999999999999991611392N | Clojure 100000000000000000000000N
+  (bigint 1.0E300)  jank 1000000000000000052504760255204420248704468581108159154915854115511802457988908195786371375080447864043704443832883878176000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000N | Clojure 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000N
+  (bigdec 1/3)  jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M | Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  (bigdec 9007199254740993)  jank 9007199254740992.0M | Clojure 9007199254740993M
+  (bigint 100000000000000000000/3)  jank throws (out of range for `i64` conversion) | Clojure 33333333333333333333N
+  (double -7/3)  jank -2.3333333333333335 | Clojure -2.333333333333333
+  (* 0N 1/2)  jank 0 | Clojure 0N
+  (bigint "010")  jank 8N | Clojure 10N
+  (bigint "0x10")  jank 16N | Clojure throws (NumberFormatException)
+  (bigint "1N")  jank 1N | Clojure throws (NumberFormatException)
+  (bigint "-")  jank 0N | Clojure throws (Zero length BigInteger)
+  (bigint "+5")  jank throws (The `big_integer` constructor could not parse the string: Unexpected character encountered in input..) | Clojure 5N
+  (bigint "08")  jank throws (The `big_integer` constructor could not parse the string: Unexpected content found while parsing character string..) | Clojure 8N
+  (bigdec "inf")  jank inf.0M | Clojure throws (NumberFormatException)
+  (bigdec "nan")  jank nan.0M | Clojure throws (NumberFormatException)
+  (bigdec "NaNxyz")  jank nan.0M | Clojure throws (NumberFormatException)
+  (bigdec "1e")  jank 1.0M | Clojure throws (NumberFormatException)
+  (bigdec ".")  jank 0.0M | Clojure throws (NumberFormatException)
+  (bigdec "1.5e")  jank 1.5M | Clojure throws (NumberFormatException)
+  (bigdec "0x10")  jank throws (Unable to parse the string "0x10" as a floating point value.) | Clojure throws (NumberFormatException)
+  (bigdec "+5")  jank 5.0M | Clojure 5M
+  (bigdec "1e400")  jank 1e+400.0M | Clojure 1E+400M
+  (read-string (pr-str 0.00001M)): text 1e-05.0M; jank reads error (A number literal cannot contain a `.` in this position.)
+  (read-string (pr-str 1E130M)): text 1e+130.0M; jank reads error (A number literal cannot contain a `.` in this position.)
+  (read-string (pr-str 1.5E-7M)): text 1.5e-07M; jank reads 1.5e-07M
+  (read-string (pr-str 0.1M)): text 0.1M; jank reads 0.1M

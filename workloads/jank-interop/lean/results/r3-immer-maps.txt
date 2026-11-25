@@ -1,0 +1,172 @@
+### jank3-immer maps M1 M1r1 M1r2 M1d
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M1 maps: assoc/dissoc/hash-map, identity keys (7), starts (hash-map) and an 8-entry array map, 3 steps
+  census: complete, 196192 timelines; violations per class:
+    [count] 5640 timelines; shrunk (13 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (hash-map 1 0 1N 0)) ⇒ (count m4) jank 2, Clojure 1
+    [get] 73224 timelines; shrunk (12 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (assoc m0 1 0)) ⇒ (get m4 1N) jank nil (absent), Clojure 0
+    [find-key] 90048 timelines; shrunk (12 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (assoc m0 [1] 0)) ⇒ (key (find m4 '(1))) jank '(1), Clojure [1]
+  (24 s)
+== M1r1: D12 keys removed (1N, -0.0); find-key (R123) set aside
+  census: complete, 2654872 timelines; violations per class:
+    [key-identity] 168568 timelines; shrunk (13 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (hash-map [1] 0 '(1) 0)) ⇒ m4 jank {'(1) 0}, Clojure {[1] 0}
+  (275 s)
+== M1r2: and key-identity set aside
+  census: complete, 3016000 timelines, nothing
+  (364 s)
+== M1d: D12 keys kept; count, get, find-key, key-identity, entries set aside (what D12 does to = and hash on maps)
+  census: complete, 16953976 timelines; violations per class:
+    [=] 340180 timelines; shrunk (12 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 1 0)); (def m4 (assoc m0 1N 0)) ⇒ (= m3 m4) jank false, Clojure true (m3 = {1 0}, m4 = {1N 0})
+    [hash] 221248 timelines; shrunk (12 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 0.0 0)); (def m4 (assoc m0 -0.0 0)) ⇒ (= m3 m4) but (hash m3) = 2610738074, (hash m4) = 1399837999
+  (1664 s)
+### jank3-immer maps M2r2
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M2r2: and dead-read, key-identity set aside
+  checkpoint: 250000 timelines, 23 s, no violations
+  checkpoint: 500000 timelines, 50 s, no violations
+  checkpoint: 750000 timelines, 80 s, no violations
+  checkpoint: 1000000 timelines, 115 s, no violations
+  checkpoint: 1250000 timelines, 149 s, no violations
+  checkpoint: 1500000 timelines, 190 s, no violations
+  checkpoint: 1750000 timelines, 243 s, no violations
+  checkpoint: 2000000 timelines, 298 s, no violations
+  checkpoint: 2250000 timelines, 356 s, no violations
+  census: complete, 2353672 timelines, nothing
+  (377 s)
+### exit 0
+### jank3-immer maps M2r1
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M2r1: D12 keys removed; find-key set aside
+  checkpoint: 250000 timelines, 23 s, [dead-read] 1185, [key-identity] 4866
+  checkpoint: 500000 timelines, 50 s, [dead-read] 1245, [key-identity] 11440
+  checkpoint: 750000 timelines, 79 s, [dead-read] 1275, [key-identity] 17590
+  checkpoint: 1000000 timelines, 110 s, [dead-read] 1320, [key-identity] 34518
+  checkpoint: 1250000 timelines, 139 s, [dead-read] 1365, [key-identity] 45176
+  checkpoint: 1500000 timelines, 189 s, [dead-read] 1410, [key-identity] 51304
+  checkpoint: 1750000 timelines, 240 s, [dead-read] 1440, [key-identity] 59639
+  checkpoint: 2000000 timelines, 293 s, [dead-read] 1485, [key-identity] 76860
+  census: complete, 2239700 timelines; violations per class:
+    [dead-read] 1515 timelines; shrunk (9 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def t0 (transient m0)); (def t1 (transient m1)); (def m2 (persistent! t1)) ⇒ (get t1 :a :nf) after (persistent! t1): jank :nf, Clojure throws (IllegalAccessError: Transient used after persistent! call)
+    [key-identity] 84944 timelines; shrunk (12 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def t0 (transient m0)); (def t1 (transient m0)); (def m2 (assoc m0 [1] 0)); (def m3 (assoc m2 '(1) 0)) ⇒ m3 jank {'(1) 0}, Clojure {[1] 0}
+  (344 s)
+### exit 0
+### jank3-immer maps M2
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M2 maps: transient/assoc!/dissoc!/persistent!/reads after persistent!/assoc, identity keys, 4 steps
+  census: complete, 191206 timelines; violations per class:
+    [dead-read] 1071 timelines; shrunk (9 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def t0 (transient m0)); (def t1 (transient m1)); (def m2 (persistent! t1)) ⇒ (get t1 :a :nf) after (persistent! t1): jank :nf, Clojure throws (IllegalAccessError: Transient used after persistent! call)
+    [get] 44588 timelines; shrunk (10 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def t0 (transient m0)); (def t1 (transient m0)); (def t2 (transient m0)); (def t0 (assoc! t0 1 0)) ⇒ (get t0 1N) jank nil, Clojure 0
+    [find-key] 70856 timelines; shrunk (10 decisions): (def m0 (hash-map)); (def m1 {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0 :f7 0}); (def t0 (transient m0)); (def t1 (transient m0)); (def t2 (transient m0)); (def m2 (assoc m0 [1] 0)) ⇒ (key (find m2 '(1))) jank '(1), Clojure [1]
+  (18 s)
+### exit 0
+### jank3-immer maps M3
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M3 promotion: 8-entry array maps holding '(1) or 1, identity keys, 3 steps (find-key set aside: it holds at the start)
+  census: complete, 87438 timelines; violations per class:
+    [hash] 752 timelines; shrunk (12 decisions): (def m0 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} '(1) 0)); (def m1 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} 1 0)); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 0.0 0)); (def m4 (assoc m0 -0.0 0)) ⇒ (= m3 m4) but (hash m3) = 1566811187, (hash m4) = 4044784807
+    [key-identity] 4894 timelines; shrunk (12 decisions): (def m0 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} '(1) 0)); (def m1 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} 1 0)); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (assoc m0 [1] 0)) ⇒ m4 jank {:f1 0, :f5 0, :f3 0, [1] 0, :f2 0, :f0 0, :f6 0, :f4 0}, Clojure {:f0 0, :f1 0, :f2 0, :f3 0, :f4 0, :f5 0, :f6 0, '(1) 0}
+    [count] 2860 timelines; shrunk (12 decisions): (def m0 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} '(1) 0)); (def m1 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} 1 0)); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (assoc m1 1N 0)) ⇒ (count m4) jank 9, Clojure 8
+    [get] 25976 timelines; shrunk (12 decisions): (def m0 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} '(1) 0)); (def m1 (assoc {:f0 0 :f1 0 :f2 0 :f3 0 :f4 0 :f5 0 :f6 0} 1 0)); (def m2 (assoc m0 :a 0)); (def m3 (assoc m0 :a 0)); (def m4 (assoc m0 1 0)) ⇒ (get m4 1N) jank nil (absent), Clojure 0
+  (15 s)
+### exit 0
+### jank3-immer maps M3r
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M3r: D12 keys removed; find-key and key-identity set aside
+  census: complete, 105434 timelines, nothing
+  (23 s)
+### exit 0
+### jank3-immer maps M4
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M4 CHAMP: persistent ops, designed-hash keys (depths 1, 6, collision nodes), 4 steps
+  checkpoint: 250000 timelines, 73 s, no violations
+  checkpoint: 500000 timelines, 142 s, no violations
+  checkpoint: 750000 timelines, 214 s, no violations
+  checkpoint: 1000000 timelines, 284 s, no violations
+  checkpoint: 1250000 timelines, 376 s, no violations
+  checkpoint: 1500000 timelines, 499 s, no violations
+  checkpoint: 1750000 timelines, 616 s, no violations
+  checkpoint: 2000000 timelines, 725 s, no violations
+  checkpoint: 2250000 timelines, 817 s, no violations
+  checkpoint: 2500000 timelines, 900 s, no violations
+  checkpoint: 2750000 timelines, 982 s, no violations
+  checkpoint: 3000000 timelines, 1086 s, no violations
+  census: stopped at 3000000 timelines (time budget; resumed in the next job), nothing
+  resume: 0.0.0.0.0.2.3.1.2.2.1.6.0.2.4.1.1.1
+  (1086 s)
+### exit 0
+### jank3-immer maps M4>0.0.0.0.0.2.3.1.2.2.1.6.0.2.4.1.1.1
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M4 CHAMP: persistent ops, designed-hash keys (depths 1, 6, collision nodes), 4 steps [resumed from 0.0.0.0.0.2.3.1.2.2.1.6.0.2.4.1.1.1]
+  checkpoint: 250000 timelines, 113 s, no violations
+  checkpoint: 500000 timelines, 196 s, no violations
+  checkpoint: 750000 timelines, 260 s, no violations
+  checkpoint: 1000000 timelines, 322 s, no violations
+  checkpoint: 1250000 timelines, 393 s, no violations
+  checkpoint: 1500000 timelines, 483 s, no violations
+  checkpoint: 1750000 timelines, 585 s, no violations
+  checkpoint: 2000000 timelines, 650 s, no violations
+  checkpoint: 2250000 timelines, 714 s, no violations
+  checkpoint: 2500000 timelines, 780 s, no violations
+  checkpoint: 2750000 timelines, 854 s, no violations
+  checkpoint: 3000000 timelines, 947 s, no violations
+  checkpoint: 3250000 timelines, 1037 s, no violations
+  checkpoint: 3500000 timelines, 1107 s, no violations
+  census: stopped at 3500000 timelines (time budget; resumed in the next job), nothing
+  resume: 0.0.0.0.2.0.1.0.0.0.2.3.0.2.3.1.1.1
+  (1107 s)
+### exit 0
+### jank3-immer maps M4>0.0.0.0.2.0.1.0.0.0.2.3.0.2.3.1.1.1
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M4 CHAMP: persistent ops, designed-hash keys (depths 1, 6, collision nodes), 4 steps [resumed from 0.0.0.0.2.0.1.0.0.0.2.3.0.2.3.1.1.1]
+  checkpoint: 250000 timelines, 67 s, no violations
+  checkpoint: 500000 timelines, 146 s, no violations
+  checkpoint: 750000 timelines, 239 s, no violations
+  checkpoint: 1000000 timelines, 319 s, no violations
+  checkpoint: 1250000 timelines, 381 s, no violations
+  checkpoint: 1500000 timelines, 441 s, no violations
+  checkpoint: 1750000 timelines, 506 s, no violations
+  checkpoint: 2000000 timelines, 582 s, no violations
+  checkpoint: 2250000 timelines, 654 s, no violations
+  checkpoint: 2500000 timelines, 713 s, no violations
+  checkpoint: 2750000 timelines, 769 s, no violations
+  checkpoint: 3000000 timelines, 828 s, no violations
+  checkpoint: 3250000 timelines, 886 s, no violations
+  checkpoint: 3500000 timelines, 943 s, no violations
+  checkpoint: 3750000 timelines, 1010 s, no violations
+  checkpoint: 4000000 timelines, 1067 s, no violations
+  checkpoint: 4250000 timelines, 1137 s, no violations
+  census: stopped at 4250000 timelines (time budget; resumed in the next job), nothing
+  resume: 0.0.0.0.2.2.0.4.0.2.2.1.0.0.1.2.2
+  (1137 s)
+### exit (segment job ended)
+### jank3-immer maps M6
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M6 explore: all operations, identity and designed keys together, 8 steps (find-key, D12 keys, key-identity, dead-read set aside)
+  explore (20000 seeds): nothing
+  (13 s)
+### exit 0
+### jank3-immer maps M5
+designed hashes (jank hash, key): [(1, 3912401338), (33, 2891797613), (2147483649, 2257408629), (1, 5036627362), (1, 12729593413), (1073741825, 104041869), (2171559710, :a)]
+== M5 CHAMP transients: designed-hash keys, 4 steps (dead-read set aside)
+  checkpoint: 250000 timelines, 61 s, no violations
+  checkpoint: 500000 timelines, 130 s, no violations
+  checkpoint: 750000 timelines, 187 s, no violations
+  checkpoint: 1000000 timelines, 242 s, no violations
+  checkpoint: 1250000 timelines, 300 s, no violations
+  checkpoint: 1500000 timelines, 358 s, no violations
+  checkpoint: 1750000 timelines, 413 s, no violations
+  checkpoint: 2000000 timelines, 468 s, no violations
+  checkpoint: 2250000 timelines, 526 s, no violations
+  checkpoint: 2500000 timelines, 584 s, no violations
+  checkpoint: 2750000 timelines, 644 s, no violations
+  checkpoint: 3000000 timelines, 704 s, no violations
+  checkpoint: 3250000 timelines, 762 s, no violations
+  checkpoint: 3500000 timelines, 818 s, no violations
+  checkpoint: 3750000 timelines, 873 s, no violations
+  checkpoint: 4000000 timelines, 924 s, no violations
+  checkpoint: 4250000 timelines, 976 s, no violations
+  checkpoint: 4500000 timelines, 1052 s, no violations
+  checkpoint: 4750000 timelines, 1127 s, no violations
+  census: stopped at 4750000 timelines (time budget; resumed in the next job), nothing
+  resume: 5.1.1.0.5.0.1.1.5.0.4.1.3
+  (1127 s)
+### exit 0

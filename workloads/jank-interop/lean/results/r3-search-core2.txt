@@ -1,0 +1,29 @@
+== census sorted set: (sorted-set …) of 0–3 elements over 12 keys, every operation, the second set of `=` 0–3 elements (round 2: 0–2 over 9): 42797040 timelines (complete), 151560 violate
+   R104: 151560; first: (= (sorted-set 0) (sorted-set "")): Clojure false, jank throws
+  (112 s)
+== census sorted map: (sorted-map …) of 0–2 entries over 12 keys, every operation, the second map of `=` 0–2 entries (round 2: 0–2 over 9): 8841912 timelines (complete), 280272 violate
+   R104: 279360; first: (= (sorted-map 0 :x) (sorted-map "" :x)): Clojure false, jank throws
+   R105: 912; first: (find (sorted-map 1 :x) 1.0): Clojure [1 :x], jank [1.0 :x]
+  (29 s)
+== census sorted map: (sorted-map …) of 0–3 entries over 12 keys, every operation, the second map of `=` 0–1 entries (round 2: 0–2 over 9): 12809400 timelines (complete), 138384 violate
+   R104: 125376; first: (= (sorted-map 0 :x) (sorted-map "" :x)): Clojure false, jank throws
+   R105: 13008; first: (find (sorted-map 1 :x) 1.0): Clojure [1 :x], jank [1.0 :x]
+  (41 s)
+== census destructuring: (let [form 'value] [a b c]), forms nested 1, values nested 1, trailing (seq m) with: 435132 timelines (complete), 15840 violate
+   R107 or unexplained: 15840; first: (let [{} '(:a nil (seq {:c 3}))] [a b c]): Clojure {}, jank throws (invalid map entry: (seq {:c 3}))
+  (2 s)
+== census destructuring: (let [form 'value] [a b c]), forms nested 1, values nested 1, trailing (seq m) without: 384183 timelines (complete), 0 violate
+  (2 s)
+== destructuring explore, forms nested 2, values nested 2, no trailing (seq m), 2000000 mixed seeds: unexplained after 123 timelines, 24 decisions: (let [{:keys [a] {:keys [a b]} :c :or {a 9} :as b} '([1 1 1] {:a 1} ())] [a b c]): Clojure {a 9, b nil}, jank throws (invalid map entry: ())
+  (0 s)
+== destructuring explore, forms nested 2, values nested 1, no trailing (seq m) (R107 aside), 2000000 mixed seeds: nothing
+  (13 s)
+== destructuring explore, forms nested 1, values nested 2, no trailing (seq m), 2000000 mixed seeds: unexplained after 1081 timelines, 20 decisions: (let [{:as c} '((:a nil :b :b) :b ())] [a b c]): Clojure {c {(:a nil :b :b) :b}}, jank throws (invalid map entry: ())
+  (0 s)
+== (destructuring explores again, with R107's conj path recognized and set aside: the first explore above found its new instance, W2)
+== destructuring explore, forms nested 1, values nested 2, no trailing (seq m), R107's conj path set aside, 2000000 mixed seeds: nothing
+  (9 s)
+== destructuring explore, forms nested 2, values nested 2, no trailing (seq m), R107's conj path set aside, 2000000 mixed seeds: nothing
+  (12 s)
+== destructuring explore, forms nested 2, values nested 1, no trailing (seq m), R107's conj path set aside, 2000000 mixed seeds: nothing
+  (10 s)

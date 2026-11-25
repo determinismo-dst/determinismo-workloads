@@ -1,0 +1,196 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 3 (main 7135b7708): predictions about the libraries jank uses
+; (boost multiprecision, libstdc++'s regex, immer, bdwgc, CppInterOp) and its code generator, each
+; test asserting Clojure's documented result (a failure confirms one). Forms jank may refuse to
+; read or compile are read and evaluated at run time (`ev`, `re-pattern`), so a refusal fails its
+; own test. The `cpp` tests are jank only (C++'s result). Predicted hangs are in
+; deviations_r3_hangs_test.jank. Run under a UTF-8 locale.
+(ns jank-lean.deviations-r3-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]))
+
+(defn- ev [s] (eval (read-string s)))
+
+;; Reader and numbers (boost multiprecision)
+
+(deftest s01-var-quote-of-a-non-symbol
+  (is (= '(var 1) (read-string "#'1"))))
+
+(deftest s02-bigdecimal-division-is-exact
+  (is (= 2M (/ 6M 3M)))
+  (is (= 0.5M (/ 3 6M))))
+
+(deftest s03-non-terminating-quotient-throws
+  (is (thrown? (/ 1M 3))))
+
+(deftest s04-bigdecimals-keep-every-digit
+  (is (not= 1M (- 1M 1E-130M))))
+
+(deftest s05-small-bigdecimals-print-plainly
+  (is (= "0.00001" (str 0.00001M)))
+  (is (= 0.00001M (read-string (pr-str 0.00001M)))))
+
+(deftest s06-bigdecimal-and-double-give-a-double
+  (is (double? (+ 1M 0.5))))
+
+(deftest s07-rem-of-a-big-bigdecimal
+  (is (= 1M (rem 1E130M 3))))
+
+(deftest s08-rem-of-a-bigdecimal-and-a-ratio
+  (is (= 0.25M (rem 1.75M 1/2))))
+
+(deftest s09-bigdec-of-a-double-uses-its-shortest-text
+  (is (= 0.1M (bigdec 0.1))))
+
+(deftest s10-equal-bigdecimals-hash-alike
+  (let [a 1M b 1.0000000000000000001M]
+    (is (or (not= a b) (= (hash a) (hash b))))))
+
+(deftest s11-double-of-a-tiny-bigdecimal
+  (is (= 1.0E-310 (double 1E-310M))))
+
+(deftest s12-long-of-a-huge-bigdecimal-throws
+  (is (thrown? (long 1E130M))))
+
+(deftest s14-bigdec-of-text-follows-javas-grammar
+  (is (thrown? (bigdec "inf"))))
+
+(deftest s15-bigint-of-text-is-decimal
+  (is (= 10N (bigint "010"))))
+
+(deftest s16-ratio-parts-are-decimal
+  (is (= 10/3 (read-string "0010/3"))))
+
+(deftest s17-bigdecimal-exponent-overflow-throws
+  (is (thrown? (read-string "1e4294967296M"))))
+
+(deftest s18-bigint-of-a-big-ratio
+  (is (= 33333333333333333333N (bigint 100000000000000000000/3))))
+
+(deftest s19-bigint-division-is-a-ratio
+  (is (= 7/2 (/ 7N 2))))
+
+(deftest s20-ratio-arithmetic-with-a-bigint-stays-big
+  (is (= "0N" (pr-str (* 0N 1/2)))))
+
+(deftest s21-double-of-a-ratio
+  (is (= -2.333333333333333 (double -7/3))))
+
+;; Regex (libstdc++)
+
+(deftest s22-quantifier-after-a-non-ascii-character
+  (is (= "" (re-matches (re-pattern "é*") "")))
+  (is (= "éé" (re-find (re-pattern "é+") "éé"))))
+
+(deftest s23-u-escape-above-0xff
+  (is (nil? (re-find (re-pattern "\\u0141") "A"))))
+
+(deftest s24-range-to-a-non-ascii-character
+  (is (= "b" (re-find (re-pattern "[a-é]") "b"))))
+
+(deftest s25-possessive-quantifier
+  (is (nil? (re-find (re-pattern "a++a") "aaa"))))
+
+(deftest s26-repeat-of-a-repeat
+  (is (= "aa" (re-find (re-pattern "a{2}{3}") "aaaaaa"))))
+
+(deftest s27-quantified-assertion
+  (is (= "a" (re-find (re-pattern "^*a") "a"))))
+
+(deftest s28-backreference-inside-its-group
+  (is (some? (re-pattern "(a\\1)"))))
+
+(deftest s29-posix-bracket-is-not-a-class
+  (is (nil? (re-find (re-pattern "[[:alpha:]]") "x"))))
+
+(deftest s30-closing-bracket-first-in-a-class
+  (is (= "a" (re-find (re-pattern "[]a]") "a"))))
+
+(deftest s31-java-control-escape
+  (is (= "\n" (re-find (re-pattern "\\cJ") "\n"))))
+
+(deftest s32-class-escape-before-a-dash
+  (is (= "-" (re-find (re-pattern "[\\w-a]") "-"))))
+
+(deftest s33-lookahead-sees-the-left-character
+  (is (nil? (re-find (re-pattern "a(?=\\b)") "ab"))))
+
+(deftest s34-a-long-input
+  (is (= 3000000 (count (re-find (re-pattern "a*") (apply str (repeat 3000000 \a)))))))
+
+(deftest s35-a-large-counted-repeat
+  (is (some? (re-pattern "a{99999}"))))
+
+;; Analyzer and code generator
+
+(deftest s36-literal-local-in-a-call-never-made
+  (is (= :ok (ev "(let [x 1] (if false (x) :ok))"))))
+
+(deftest s37-case-analyzes-its-clauses-first
+  (is (var? (ev "(case 1 1 (def s37-h 1) (s37-h))"))))
+
+(deftest s38-macro-expansion-headed-by-a-local
+  (is (= "// hi" (let [comment (fn [x] (str "// " x))] (-> "hi" comment)))))
+
+(deftest s40-int-of-a-long-past-int32-throws
+  (is (thrown? (int 2147483648))))
+
+(deftest s41-runtime-duplicate-map-keys-throw
+  (is (thrown? (let [a 1 b 1] {a :x b :y}))))
+
+(deftest s42-eleven-parameters
+  (is (= 11 ((ev "(fn [a b c d e f g h i j k] k)") 1 2 3 4 5 6 7 8 9 10 11))))
+
+(deftest s44-eval-of-a-quoted-object-keeps-its-meta
+  (let [v (with-meta [1] {:m 1})]
+    (eval (list 'quote v))
+    (is (= {:m 1} (meta v)))))
+
+;; C++ interop (jank only: C++'s result)
+
+(deftest s49-cpp-explicit-template-arguments
+  (is (= 3.0 (ev "(do (cpp/raw \"template <typename T> T s49_add(T a, T b) { return a + b; }\") (#cpp (s49_add double) 1 2))"))))
+
+(deftest s50-cpp-function-pointer-with-a-reference-parameter
+  (is (= 42 (ev "(do (cpp/raw \"long s50_twice(long const &x) { return 2 * x; } long (*s50_ptr)(long const &) = s50_twice;\") (cpp/s50_ptr 21))"))))
+
+(deftest s53-cpp-built-in-operator-on-a-converting-class
+  (is (= 2.5 (ev "(do (cpp/raw \"struct s53_meters { double v; operator double() const { return v; } }; s53_meters s53_mk() { return {1.5}; }\") (cpp/+ (cpp/s53_mk) 1.0))"))))
+
+(deftest s57-cpp-if-keeps-a-reference-branchs-value
+  (is (= 2.5 (ev "(do (cpp/raw \"double s57_gd = 2.5;\") (if false 1 cpp/s57_gd))"))))
+
+;; Collections (immer)
+
+(deftest s59-an-equal-key-keeps-the-stored-key
+  (is (list? (first (keys (assoc (hash-map '(1) :a) [1] :b))))))
+
+(deftest s60-array-map-transient-after-persistent
+  (is (thrown? (let [t (transient {:a 1})] (persistent! t) (get t :a :nf)))))
+
+(deftest s61-conj-of-an-empty-list-onto-a-map
+  (is (= {} (conj {} ()))))
+
+;; Runtime and GC (bdwgc)
+
+(deftest s69-ex-info-survives-a-collection-in-finally
+  (is (= {:k [0 1 2]}
+         (try (try (throw (ex-info "boom" {:k (vec (range 3))}))
+                   (finally (dotimes [_ 100000] (vec (range 8)))))
+              (catch cpp/jank.runtime.object_ref e (ex-data e))))))
+
+(def s70-x)
+(def s70-u @#'s70-x)
+
+(deftest s70-an-unbound-root-survives-its-var
+  (ns-unmap 'jank-lean.deviations-r3-test 's70-x)
+  (dotimes [_ 100000] (vec (range 8)))
+  (is (= "Unbound: #'jank-lean.deviations-r3-test/s70-x" (str s70-u))))
+
+;; Evaluation
+
+(deftest s71-a-top-level-do-sees-its-own-macros
+  (is (= 2 (ev "(do (defmacro s71-m [] 2) (s71-m))"))))
+
+(deftest s73-pr-str-of-a-namespace
+  (is (string/starts-with? (pr-str *ns*) "#object[")))

@@ -1,0 +1,787 @@
+# jank3-regex (round 3, Regex): driver output. jank 7135b7708, libstdc++ 15.3.0.
+== the report's programs (locale UTF-8): Clojure's answer, the replica's, the class
+  R78 bytes
+    (re-find #"." "é"): Clojure "é", jank "\xc3" (invalid UTF-8)  [bytes (R78)]
+    (re-matches #"é*" ""): Clojure "", jank nil  [bytes (R78)]
+    (re-find #"é+" "éé"): Clojure "éé", jank "é"  [bytes (R78)]
+    (re-find #"\u00e9" "é"): Clojure "é", jank nil  [syntax: escape with another meaning]
+    (re-find #"\xe9" "é"): Clojure "é", jank nil  [syntax: escape with another meaning]
+    (re-seq #"." "😀"): Clojure ("😀"), jank ("\xf0" (invalid UTF-8) "\x9f" (invalid UTF-8) "\x98" (invalid UTF-8) "\x80" (invalid UTF-8))  [bytes (R78)]
+    (re-find #"[^a]" "é"): Clojure "é", jank "\xc3" (invalid UTF-8)  [bytes (R78)]
+    (re-find #"." ""): Clojure nil, jank "\xc2" (invalid UTF-8)  [bytes (R78)]
+    (clojure.string/split "é" #"" 0): Clojure ("é"), jank ("\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8))  [bytes (R78)]
+  RX range
+    (re-find #"[a-é]" "b"): Clojure "b", jank throws (Invalid range in bracket expression.)  [jank rejects: Invalid range in bracket expression.]
+    (re-find #"[ -\xff]" "b"): Clojure "b", jank throws (Invalid range in bracket expression.)  [jank rejects: Invalid range in bracket expression.]
+    (re-find #"[\x80-\xff]" "é"): Clojure "é", jank "\xc3" (invalid UTF-8)  [syntax: escape with another meaning]
+  RX \u
+    (re-find #"\u0141" "A"): Clojure nil, jank "A"  [syntax: escape with another meaning]
+    (re-find #"\u0100" "\u0000"): Clojure nil, jank nil  [agree]
+  R79
+    (re-find #"a$" "a\n"): Clojure "a", jank nil  [dollar-final-newline (R79)]
+    (clojure.string/split "a\n" #"$" 0): Clojure ("a" "\n"), jank ("a\n")  [dollar-final-newline (R79)]
+  R80
+    (re-find #"(a)?b" "b"): Clojure ["b" nil], jank ["b" ""]  [unmatched-group-empty (R80)]
+    (re-find #"(a)|b" "b"): Clojure ["b" nil], jank ["b" ""]  [unmatched-group-empty (R80)]
+  R81
+    (re-seq #"^a" "aa"): Clojure ("a"), jank ("a" "a")  [re-seq-new-string (R81)]
+    (re-seq #"a*" "b"): Clojure ("" ""), jank ("" "" …) infinite  [re-seq-new-string (R81)]
+    (re-seq #"\b\w" "ab cd"): Clojure ("a" "c"), jank ("a" "b" "c" "d")  [re-seq-new-string (R81)]
+    (re-seq #"\Ba" "aaa"): Clojure ("a" "a"), jank ("a")  [re-seq-new-string (R81)]
+  R82
+    (re-matches #"a|ab" "ab"): Clojure "ab", jank nil  [re-matches-first-match (R82)]
+    (re-matches #"a*?" "a"): Clojure "a", jank nil  [re-matches-first-match (R82)]
+  R83
+    (re-find #"b" "a\u0000b"): Clojure "b", jank nil  [nul-cut (R83)]
+    (clojure.string/replace "a\u0000b" #"x" "y"): Clojure "a\u0000b", jank "a"  [nul-cut (R83)]
+    (clojure.string/replace-first "a\u0000b" #"x" "y"): Clojure "a\u0000b", jank "a"  [nul-cut (R83)]
+    (clojure.string/replace "a\u0000b" #"a" f): Clojure "<a>\u0000b", jank "<a>"  [nul-cut (R83)]
+    (clojure.string/split "a\u0000b" #"b" 0): Clojure ("a\u0000"), jank ("a\u0000")  [agree]
+  R84
+    (clojure.string/replace "a" #"(a)" "$12"): Clojure "a2", jank ""  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"a" "$$"): Clojure throws (Illegal group reference), jank "$"  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"a" "\\$"): Clojure "$", jank "\\$"  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"a" "$&"): Clojure throws (Illegal group reference), jank "a"  [ecmascript-template (R84)]
+    (clojure.string/replace "x" #"a" "$"): Clojure "x", jank "x"  [agree]
+    (clojure.string/replace "ab" #"(a)(b)" f): Clojure "<ab|a|b>", jank "<ab>"  [fn-gets-match-string (R84)]
+    (clojure.string/replace "a" #"a" "$01"): Clojure "a1", jank ""  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"(a)" "$2"): Clojure throws (No group 2), jank ""  [ecmascript-template (R84)]
+  R85
+    (clojure.string/replace "aa" #"a*?" "-"): Clojure "-a-a-", jank "-----"  [regex-iterator-retry (R85)]
+    (clojure.string/split "ab" #"b?|a" 0): Clojure ("a"), jank ()  [regex-iterator-retry (R85)]
+  R18
+    (re-find #"(?i)a" "A"): Clojure <spec: flags>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: flags (R18)]
+    (re-find #"(?<=a)b" "ab"): Clojure <spec: lookbehind>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: lookbehind (R18)]
+    (re-find #"(?<n>a)" "a"): Clojure ["a" "a"], jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: Invalid '(?...)' zero-width assertion in regular expression]
+    (re-find #"(?>a)" "a"): Clojure "a", jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: atomic group (R18)]
+    (re-find #"a*+" "aa"): Clojure "aa", jank "aa"  [agree]
+  RX possessive
+    (re-find #"a++a" "aaa"): Clojure nil, jank "aaa"  [syntax: possessive quantifier read as a nested repeat]
+    (re-find #"a{2}+" "aaaa"): Clojure "aa", jank "aaaa"  [syntax: possessive quantifier read as a nested repeat]
+    (re-find #"a?+a" "a"): Clojure nil, jank "a"  [syntax: possessive quantifier read as a nested repeat]
+    (re-matches #"\d*+\d" "12"): Clojure nil, jank "12"  [syntax: possessive quantifier read as a nested repeat]
+  RX quantified assertion
+    (re-find #"^*a" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+    (re-find #"\b+a" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+    (re-find #"(?=a)*a" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+    (re-find #"a$?" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+  RX backref
+    (re-find #"\1" "a"): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)  [jank rejects: backreference: Back-reference index exceeds current sub-expression count.]
+    (re-find #"(a)\10" "aa0"): Clojure ["aa0" "a"], jank throws (Back-reference index exceeds current sub-expression count.)  [jank rejects: backreference: Back-reference index exceeds current sub-expression count.]
+    (re-find #"\1(a)" "a"): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)  [jank rejects: backreference: Back-reference index exceeds current sub-expression count.]
+    (re-find #"(a\1)" "a"): Clojure nil, jank throws (Back-reference referred to an opened sub-expression.)  [jank rejects: backreference: Back-reference referred to an opened sub-expression.]
+  RX posix bracket
+    (re-find #"[[:alpha:]]" "x"): Clojure nil, jank "x"  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[[:alpha:]]" ":"): Clojure ":", jank nil  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[[a]]" "a"): Clojure "a", jank nil  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[a-z&&[^b]]" "c"): Clojure "c", jank nil  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[[:foo:]]" "f"): Clojure "f", jank throws (Invalid character class.)  [jank rejects: Invalid character class.]
+    (re-find #"[[.a.]]" "."): Clojure ".", jank nil  [syntax: nested class / intersection / POSIX bracket]
+  RX ] first
+    (re-find #"[]a]" "a"): Clojure "a", jank nil  [syntax: ] first in a class]
+    (re-find #"[^]" "\n"): Clojure throws (Unclosed character class), jank "\n"  [Java rejects (Unclosed character class)]
+    (re-find #"[]" "a"): Clojure throws (Unclosed character class), jank nil  [Java rejects (Unclosed character class)]
+  RX escapes
+    (re-find #"\cJ" "\n"): Clojure "\n", jank nil  [syntax: escape with another meaning]
+    (re-find #"\cJ" "J"): Clojure nil, jank "J"  [syntax: escape with another meaning]
+    (re-find #"\v" "\n"): Clojure "\n", jank nil  [syntax: escape with another meaning]
+    (re-find #"\Aa" "a"): Clojure "a", jank nil  [syntax: escape with another meaning]
+    (re-find #"a\z" "a"): Clojure "a", jank nil  [syntax: escape with another meaning]
+    (re-find #"a\Z" "a"): Clojure "a", jank nil  [syntax: escape with another meaning]
+    (re-find #"\Q.\E" "."): Clojure ".", jank nil  [syntax: escape with another meaning]
+    (re-find #"\e" "e"): Clojure nil, jank "e"  [syntax: escape with another meaning]
+    (re-find #"\a" "a"): Clojure nil, jank "a"  [syntax: escape with another meaning]
+    (re-find #"\h" " "): Clojure " ", jank nil  [syntax: escape with another meaning]
+    (re-find #"\R" "\n"): Clojure "\n", jank nil  [syntax: escape with another meaning]
+    (re-find #"\pL" "x"): Clojure "x", jank nil  [syntax: escape with another meaning]
+    (re-find #"\p{L}" "x"): Clojure "x", jank throws (Invalid range in '{}' in regular expression)  [jank rejects: Invalid range in '{}' in regular expression]
+    (re-find #"\0" "a"): Clojure throws (Illegal octal escape sequence), jank nil  [Java rejects (Illegal octal escape sequence)]
+    (re-find #"\01" "\u0001"): Clojure "\u0001", jank nil  [syntax: escape with another meaning]
+    (re-find #"[\b]" "a"): Clojure throws (Illegal/unsupported escape sequence), jank nil  [Java rejects (Illegal/unsupported escape sequence)]
+    (re-find #"\y" "y"): Clojure throws (Illegal/unsupported escape sequence), jank "y"  [Java rejects (Illegal/unsupported escape sequence)]
+    (re-find #"\x{41}" "A"): Clojure "A", jank throws (Invalid '\xNN' control character in regular expression)  [jank rejects: Invalid '\xNN' control character in regular expression]
+    (re-find #"\G" "G"): Clojure "", jank "G"  [syntax: escape with another meaning]
+  RX class range
+    (re-find #"[\w-a]" "-"): Clojure "-", jank throws (Invalid start of '[x-x]' range in regular expression)  [jank rejects: Invalid start of '[x-x]' range in regular expression]
+    (re-find #"[\s-]" "-"): Clojure "-", jank "-"  [agree]
+  RX brace
+    (re-find #"{2}" "x"): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: {n} after nothing]
+    (re-find #"a{,2}" "a{,2}"): Clojure throws (Illegal repetition), jank throws (Invalid range in '{}' in regular expression)  [agree]
+  RX lookahead at start
+    (re-find #"a(?=\b)" "ab"): Clojure nil, jank "a"  [lookahead-at-start (RX)]
+    (re-find #"foo(?=\bbar)" "foobar"): Clojure nil, jank "foo"  [lookahead-at-start (RX)]
+    (re-find #"a(?=^b)" "ab"): Clojure nil, jank "a"  [lookahead-at-start (RX)]
+    (re-find #"a(?!\B)" "ab"): Clojure nil, jank "a"  [lookahead-at-start (RX)]
+    (re-seq #"a(?=\b)" "abab"): Clojure nil, jank ("a")  [lookahead-at-start (RX)]
+  RX lookahead not-null (inside R85)
+    (clojure.string/replace "bc" #"|b(?=a*)" "-"): Clojure "-b-c-", jank "-b-c-"  [agree]
+  RX limits and leniency
+    (re-find #"a{99999}" "a"): Clojure nil, jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.)  [jank rejects: Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.]
+    (re-find #"[é-a]" "a"): Clojure throws (Illegal character range), jank "a"  [Java rejects (Illegal character range)]
+    (re-find #"a{2}{3}" "aaaaaa"): Clojure "aa", jank "aaaaaa"  [syntax: {n} after nothing]
+    (re-find #"a**" "aa"): Clojure throws (Dangling meta character '*'), jank "aa"  [Java rejects (Dangling meta character '*')]
+== the report's programs (locale C): Clojure's answer, the replica's, the class
+  R78 bytes
+    (re-find #"." "é"): Clojure "é", jank "\xc3" (invalid UTF-8)  [bytes (R78)]
+    (re-matches #"é*" ""): Clojure "", jank nil  [bytes (R78)]
+    (re-find #"é+" "éé"): Clojure "éé", jank "é"  [bytes (R78)]
+    (re-find #"\u00e9" "é"): Clojure "é", jank nil  [syntax: escape with another meaning]
+    (re-find #"\xe9" "é"): Clojure "é", jank nil  [syntax: escape with another meaning]
+    (re-seq #"." "😀"): Clojure ("😀"), jank ("\xf0" (invalid UTF-8) "\x9f" (invalid UTF-8) "\x98" (invalid UTF-8) "\x80" (invalid UTF-8))  [bytes (R78)]
+    (re-find #"[^a]" "é"): Clojure "é", jank "\xc3" (invalid UTF-8)  [bytes (R78)]
+    (re-find #"." ""): Clojure nil, jank "\xc2" (invalid UTF-8)  [bytes (R78)]
+    (clojure.string/split "é" #"" 0): Clojure ("é"), jank ("\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8))  [bytes (R78)]
+  RX range
+    (re-find #"[a-é]" "b"): Clojure "b", jank throws (Invalid range in bracket expression.)  [jank rejects: Invalid range in bracket expression.]
+    (re-find #"[ -\xff]" "b"): Clojure "b", jank throws (Invalid range in bracket expression.)  [jank rejects: Invalid range in bracket expression.]
+    (re-find #"[\x80-\xff]" "é"): Clojure "é", jank "\xc3" (invalid UTF-8)  [syntax: escape with another meaning]
+  RX \u
+    (re-find #"\u0141" "A"): Clojure nil, jank "A"  [syntax: escape with another meaning]
+    (re-find #"\u0100" "\u0000"): Clojure nil, jank nil  [agree]
+  R79
+    (re-find #"a$" "a\n"): Clojure "a", jank nil  [dollar-final-newline (R79)]
+    (clojure.string/split "a\n" #"$" 0): Clojure ("a" "\n"), jank ("a\n")  [dollar-final-newline (R79)]
+  R80
+    (re-find #"(a)?b" "b"): Clojure ["b" nil], jank ["b" ""]  [unmatched-group-empty (R80)]
+    (re-find #"(a)|b" "b"): Clojure ["b" nil], jank ["b" ""]  [unmatched-group-empty (R80)]
+  R81
+    (re-seq #"^a" "aa"): Clojure ("a"), jank ("a" "a")  [re-seq-new-string (R81)]
+    (re-seq #"a*" "b"): Clojure ("" ""), jank ("" "" …) infinite  [re-seq-new-string (R81)]
+    (re-seq #"\b\w" "ab cd"): Clojure ("a" "c"), jank ("a" "b" "c" "d")  [re-seq-new-string (R81)]
+    (re-seq #"\Ba" "aaa"): Clojure ("a" "a"), jank ("a")  [re-seq-new-string (R81)]
+  R82
+    (re-matches #"a|ab" "ab"): Clojure "ab", jank nil  [re-matches-first-match (R82)]
+    (re-matches #"a*?" "a"): Clojure "a", jank nil  [re-matches-first-match (R82)]
+  R83
+    (re-find #"b" "a\u0000b"): Clojure "b", jank nil  [nul-cut (R83)]
+    (clojure.string/replace "a\u0000b" #"x" "y"): Clojure "a\u0000b", jank "a"  [nul-cut (R83)]
+    (clojure.string/replace-first "a\u0000b" #"x" "y"): Clojure "a\u0000b", jank "a"  [nul-cut (R83)]
+    (clojure.string/replace "a\u0000b" #"a" f): Clojure "<a>\u0000b", jank "<a>"  [nul-cut (R83)]
+    (clojure.string/split "a\u0000b" #"b" 0): Clojure ("a\u0000"), jank ("a\u0000")  [agree]
+  R84
+    (clojure.string/replace "a" #"(a)" "$12"): Clojure "a2", jank ""  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"a" "$$"): Clojure throws (Illegal group reference), jank "$"  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"a" "\\$"): Clojure "$", jank "\\$"  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"a" "$&"): Clojure throws (Illegal group reference), jank "a"  [ecmascript-template (R84)]
+    (clojure.string/replace "x" #"a" "$"): Clojure "x", jank "x"  [agree]
+    (clojure.string/replace "ab" #"(a)(b)" f): Clojure "<ab|a|b>", jank "<ab>"  [fn-gets-match-string (R84)]
+    (clojure.string/replace "a" #"a" "$01"): Clojure "a1", jank ""  [ecmascript-template (R84)]
+    (clojure.string/replace "a" #"(a)" "$2"): Clojure throws (No group 2), jank ""  [ecmascript-template (R84)]
+  R85
+    (clojure.string/replace "aa" #"a*?" "-"): Clojure "-a-a-", jank "-----"  [regex-iterator-retry (R85)]
+    (clojure.string/split "ab" #"b?|a" 0): Clojure ("a"), jank ()  [regex-iterator-retry (R85)]
+  R18
+    (re-find #"(?i)a" "A"): Clojure <spec: flags>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: flags (R18)]
+    (re-find #"(?<=a)b" "ab"): Clojure <spec: lookbehind>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: lookbehind (R18)]
+    (re-find #"(?<n>a)" "a"): Clojure ["a" "a"], jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: Invalid '(?...)' zero-width assertion in regular expression]
+    (re-find #"(?>a)" "a"): Clojure "a", jank throws (Invalid '(?...)' zero-width assertion in regular expression)  [jank rejects: atomic group (R18)]
+    (re-find #"a*+" "aa"): Clojure "aa", jank "aa"  [agree]
+  RX possessive
+    (re-find #"a++a" "aaa"): Clojure nil, jank "aaa"  [syntax: possessive quantifier read as a nested repeat]
+    (re-find #"a{2}+" "aaaa"): Clojure "aa", jank "aaaa"  [syntax: possessive quantifier read as a nested repeat]
+    (re-find #"a?+a" "a"): Clojure nil, jank "a"  [syntax: possessive quantifier read as a nested repeat]
+    (re-matches #"\d*+\d" "12"): Clojure nil, jank "12"  [syntax: possessive quantifier read as a nested repeat]
+  RX quantified assertion
+    (re-find #"^*a" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+    (re-find #"\b+a" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+    (re-find #"(?=a)*a" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+    (re-find #"a$?" "a"): Clojure "a", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: quantifier on an assertion]
+  RX backref
+    (re-find #"\1" "a"): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)  [jank rejects: backreference: Back-reference index exceeds current sub-expression count.]
+    (re-find #"(a)\10" "aa0"): Clojure ["aa0" "a"], jank throws (Back-reference index exceeds current sub-expression count.)  [jank rejects: backreference: Back-reference index exceeds current sub-expression count.]
+    (re-find #"\1(a)" "a"): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)  [jank rejects: backreference: Back-reference index exceeds current sub-expression count.]
+    (re-find #"(a\1)" "a"): Clojure nil, jank throws (Back-reference referred to an opened sub-expression.)  [jank rejects: backreference: Back-reference referred to an opened sub-expression.]
+  RX posix bracket
+    (re-find #"[[:alpha:]]" "x"): Clojure nil, jank "x"  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[[:alpha:]]" ":"): Clojure ":", jank nil  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[[a]]" "a"): Clojure "a", jank nil  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[a-z&&[^b]]" "c"): Clojure "c", jank nil  [syntax: nested class / intersection / POSIX bracket]
+    (re-find #"[[:foo:]]" "f"): Clojure "f", jank throws (Invalid character class.)  [jank rejects: Invalid character class.]
+    (re-find #"[[.a.]]" "."): Clojure ".", jank nil  [syntax: nested class / intersection / POSIX bracket]
+  RX ] first
+    (re-find #"[]a]" "a"): Clojure "a", jank nil  [syntax: ] first in a class]
+    (re-find #"[^]" "\n"): Clojure throws (Unclosed character class), jank "\n"  [Java rejects (Unclosed character class)]
+    (re-find #"[]" "a"): Clojure throws (Unclosed character class), jank nil  [Java rejects (Unclosed character class)]
+  RX escapes
+    (re-find #"\cJ" "\n"): Clojure "\n", jank nil  [syntax: escape with another meaning]
+    (re-find #"\cJ" "J"): Clojure nil, jank "J"  [syntax: escape with another meaning]
+    (re-find #"\v" "\n"): Clojure "\n", jank nil  [syntax: escape with another meaning]
+    (re-find #"\Aa" "a"): Clojure "a", jank nil  [syntax: escape with another meaning]
+    (re-find #"a\z" "a"): Clojure "a", jank nil  [syntax: escape with another meaning]
+    (re-find #"a\Z" "a"): Clojure "a", jank nil  [syntax: escape with another meaning]
+    (re-find #"\Q.\E" "."): Clojure ".", jank nil  [syntax: escape with another meaning]
+    (re-find #"\e" "e"): Clojure nil, jank "e"  [syntax: escape with another meaning]
+    (re-find #"\a" "a"): Clojure nil, jank "a"  [syntax: escape with another meaning]
+    (re-find #"\h" " "): Clojure " ", jank nil  [syntax: escape with another meaning]
+    (re-find #"\R" "\n"): Clojure "\n", jank nil  [syntax: escape with another meaning]
+    (re-find #"\pL" "x"): Clojure "x", jank nil  [syntax: escape with another meaning]
+    (re-find #"\p{L}" "x"): Clojure "x", jank throws (Invalid range in '{}' in regular expression)  [jank rejects: Invalid range in '{}' in regular expression]
+    (re-find #"\0" "a"): Clojure throws (Illegal octal escape sequence), jank nil  [Java rejects (Illegal octal escape sequence)]
+    (re-find #"\01" "\u0001"): Clojure "\u0001", jank nil  [syntax: escape with another meaning]
+    (re-find #"[\b]" "a"): Clojure throws (Illegal/unsupported escape sequence), jank nil  [Java rejects (Illegal/unsupported escape sequence)]
+    (re-find #"\y" "y"): Clojure throws (Illegal/unsupported escape sequence), jank "y"  [Java rejects (Illegal/unsupported escape sequence)]
+    (re-find #"\x{41}" "A"): Clojure "A", jank throws (Invalid '\xNN' control character in regular expression)  [jank rejects: Invalid '\xNN' control character in regular expression]
+    (re-find #"\G" "G"): Clojure "", jank "G"  [syntax: escape with another meaning]
+  RX class range
+    (re-find #"[\w-a]" "-"): Clojure "-", jank throws (Invalid start of '[x-x]' range in regular expression)  [jank rejects: Invalid start of '[x-x]' range in regular expression]
+    (re-find #"[\s-]" "-"): Clojure "-", jank "-"  [agree]
+  RX brace
+    (re-find #"{2}" "x"): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)  [jank rejects: {n} after nothing]
+    (re-find #"a{,2}" "a{,2}"): Clojure throws (Illegal repetition), jank throws (Invalid range in '{}' in regular expression)  [agree]
+  RX lookahead at start
+    (re-find #"a(?=\b)" "ab"): Clojure nil, jank "a"  [lookahead-at-start (RX)]
+    (re-find #"foo(?=\bbar)" "foobar"): Clojure nil, jank "foo"  [lookahead-at-start (RX)]
+    (re-find #"a(?=^b)" "ab"): Clojure nil, jank "a"  [lookahead-at-start (RX)]
+    (re-find #"a(?!\B)" "ab"): Clojure nil, jank "a"  [lookahead-at-start (RX)]
+    (re-seq #"a(?=\b)" "abab"): Clojure nil, jank ("a")  [lookahead-at-start (RX)]
+  RX lookahead not-null (inside R85)
+    (clojure.string/replace "bc" #"|b(?=a*)" "-"): Clojure "-b-c-", jank "-b-c-"  [agree]
+  RX limits and leniency
+    (re-find #"a{99999}" "a"): Clojure nil, jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.)  [jank rejects: Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.]
+    (re-find #"[é-a]" "a"): Clojure throws (Illegal character range), jank "a"  [Java rejects (Illegal character range)]
+    (re-find #"a{2}{3}" "aaaaaa"): Clojure "aa", jank "aaaaaa"  [syntax: {n} after nothing]
+    (re-find #"a**" "aa"): Clojure throws (Dangling meta character '*'), jank "aa"  [Java rejects (Dangling meta character '*')]
+== round 2's regex tables on the replica (locale UTF-8)
+  re-find: 39312 questions; deviate: round 2 8557, round 3 8969 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 412; deviate in both with another jank answer: 0
+    round 2's jank model differs from the replica on 412; round 2's Java model differs from round 3's on 0
+      added: (re-find #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-find #"é*" "a"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-find #"é*" "b"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-find #"é*" "\n"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" "a"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" "b"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" "\n"): Clojure "", jank nil (round 2: Clojure "", jank "")
+  re-seq: 39312 questions; deviate: round 2 20640, round 3 20640 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 0; deviate in both with another jank answer: 468
+    round 2's jank model differs from the replica on 468; round 2's Java model differs from round 3's on 0
+      jank model vs replica: (re-seq #"é*" ""): Clojure (""), jank nil (round 2: Clojure (""), jank ("" "" …) infinite)
+      jank model vs replica: (re-seq #"é*" "a"): Clojure ("" ""), jank nil (round 2: Clojure ("" ""), jank ("" "" …) infinite)
+      jank model vs replica: (re-seq #"é*" "b"): Clojure ("" ""), jank nil (round 2: Clojure ("" ""), jank ("" "" …) infinite)
+      jank model vs replica: (re-seq #"é*" "\n"): Clojure ("" ""), jank nil (round 2: Clojure ("" ""), jank ("" "" …) infinite)
+  re-matches: 39312 questions; deviate: round 2 4424, round 3 4335 (not compared now: 0)
+    retracted (deviated, now agree): 94; added (agreed, now deviate): 5; deviate in both with another jank answer: 0
+    round 2's jank model differs from the replica on 99; round 2's Java model differs from round 3's on 0
+      retracted: (re-matches #"é*" "\u0000"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      retracted: (re-matches #"é*" "\u0000a"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      retracted: (re-matches #"é*" "\u0000b"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      retracted: (re-matches #"é*" "\u0000\n"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      added: (re-matches #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-matches #"é*" "éé"): Clojure "éé", jank nil (round 2: Clojure "éé", jank "éé")
+      added: (re-matches #"é*" "ééé"): Clojure "ééé", jank nil (round 2: Clojure "ééé", jank "ééé")
+      added: (re-matches #"é*?" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-matches #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-matches #"é*" "\u0000"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      jank model vs replica: (re-matches #"é*" "éé"): Clojure "éé", jank nil (round 2: Clojure "éé", jank "éé")
+      jank model vs replica: (re-matches #"é*" "\u0000a"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+  replace "-": 16575 questions; deviate: round 2 4380, round 3 4589 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 209; deviate in both with another jank answer: 45
+    round 2's jank model differs from the replica on 254; round 2's Java model differs from round 3's on 0
+      added: (clojure.string/replace "" #"é*" "-"): Clojure "-", jank "" (round 2: Clojure "-", jank "-")
+      added: (clojure.string/replace "a" #"é*" "-"): Clojure "-a-", jank "a" (round 2: Clojure "-a-", jank "-a-")
+      added: (clojure.string/replace "b" #"é*" "-"): Clojure "-b-", jank "b" (round 2: Clojure "-b-", jank "-b-")
+      added: (clojure.string/replace "\n" #"é*" "-"): Clojure "-\n-", jank "\n" (round 2: Clojure "-\n-", jank "-\n-")
+      jank model vs replica: (clojure.string/replace "" #"é*" "-"): Clojure "-", jank "" (round 2: Clojure "-", jank "-")
+      jank model vs replica: (clojure.string/replace "a" #"é*" "-"): Clojure "-a-", jank "a" (round 2: Clojure "-a-", jank "-a-")
+      jank model vs replica: (clojure.string/replace "b" #"é*" "-"): Clojure "-b-", jank "b" (round 2: Clojure "-b-", jank "-b-")
+      jank model vs replica: (clojure.string/replace "\n" #"é*" "-"): Clojure "-\n-", jank "\n" (round 2: Clojure "-\n-", jank "-\n-")
+  split: 49725 questions; deviate: round 2 10007, round 3 10554 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 547; deviate in both with another jank answer: 111
+    round 2's jank model differs from the replica on 658; round 2's Java model differs from round 3's on 0
+      added: (clojure.string/split "a" #"é*" -1): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      added: (clojure.string/split "a" #"é*" 2): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      added: (clojure.string/split "b" #"é*" -1): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+      added: (clojure.string/split "b" #"é*" 2): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+      jank model vs replica: (clojure.string/split "a" #"é*" -1): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      jank model vs replica: (clojure.string/split "a" #"é*" 2): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      jank model vs replica: (clojure.string/split "b" #"é*" -1): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+      jank model vs replica: (clojure.string/split "b" #"é*" 2): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+== round 2's regex tables on the replica (locale C)
+  re-find: 39312 questions; deviate: round 2 8557, round 3 8969 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 412; deviate in both with another jank answer: 0
+    round 2's jank model differs from the replica on 412; round 2's Java model differs from round 3's on 0
+      added: (re-find #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-find #"é*" "a"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-find #"é*" "b"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-find #"é*" "\n"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" "a"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" "b"): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-find #"é*" "\n"): Clojure "", jank nil (round 2: Clojure "", jank "")
+  re-seq: 39312 questions; deviate: round 2 20640, round 3 20640 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 0; deviate in both with another jank answer: 468
+    round 2's jank model differs from the replica on 468; round 2's Java model differs from round 3's on 0
+      jank model vs replica: (re-seq #"é*" ""): Clojure (""), jank nil (round 2: Clojure (""), jank ("" "" …) infinite)
+      jank model vs replica: (re-seq #"é*" "a"): Clojure ("" ""), jank nil (round 2: Clojure ("" ""), jank ("" "" …) infinite)
+      jank model vs replica: (re-seq #"é*" "b"): Clojure ("" ""), jank nil (round 2: Clojure ("" ""), jank ("" "" …) infinite)
+      jank model vs replica: (re-seq #"é*" "\n"): Clojure ("" ""), jank nil (round 2: Clojure ("" ""), jank ("" "" …) infinite)
+  re-matches: 39312 questions; deviate: round 2 4424, round 3 4335 (not compared now: 0)
+    retracted (deviated, now agree): 94; added (agreed, now deviate): 5; deviate in both with another jank answer: 0
+    round 2's jank model differs from the replica on 99; round 2's Java model differs from round 3's on 0
+      retracted: (re-matches #"é*" "\u0000"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      retracted: (re-matches #"é*" "\u0000a"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      retracted: (re-matches #"é*" "\u0000b"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      retracted: (re-matches #"é*" "\u0000\n"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      added: (re-matches #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      added: (re-matches #"é*" "éé"): Clojure "éé", jank nil (round 2: Clojure "éé", jank "éé")
+      added: (re-matches #"é*" "ééé"): Clojure "ééé", jank nil (round 2: Clojure "ééé", jank "ééé")
+      added: (re-matches #"é*?" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-matches #"é*" ""): Clojure "", jank nil (round 2: Clojure "", jank "")
+      jank model vs replica: (re-matches #"é*" "\u0000"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+      jank model vs replica: (re-matches #"é*" "éé"): Clojure "éé", jank nil (round 2: Clojure "éé", jank "éé")
+      jank model vs replica: (re-matches #"é*" "\u0000a"): Clojure nil, jank nil (round 2: Clojure nil, jank "")
+  replace "-": 16575 questions; deviate: round 2 4380, round 3 4589 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 209; deviate in both with another jank answer: 45
+    round 2's jank model differs from the replica on 254; round 2's Java model differs from round 3's on 0
+      added: (clojure.string/replace "" #"é*" "-"): Clojure "-", jank "" (round 2: Clojure "-", jank "-")
+      added: (clojure.string/replace "a" #"é*" "-"): Clojure "-a-", jank "a" (round 2: Clojure "-a-", jank "-a-")
+      added: (clojure.string/replace "b" #"é*" "-"): Clojure "-b-", jank "b" (round 2: Clojure "-b-", jank "-b-")
+      added: (clojure.string/replace "\n" #"é*" "-"): Clojure "-\n-", jank "\n" (round 2: Clojure "-\n-", jank "-\n-")
+      jank model vs replica: (clojure.string/replace "" #"é*" "-"): Clojure "-", jank "" (round 2: Clojure "-", jank "-")
+      jank model vs replica: (clojure.string/replace "a" #"é*" "-"): Clojure "-a-", jank "a" (round 2: Clojure "-a-", jank "-a-")
+      jank model vs replica: (clojure.string/replace "b" #"é*" "-"): Clojure "-b-", jank "b" (round 2: Clojure "-b-", jank "-b-")
+      jank model vs replica: (clojure.string/replace "\n" #"é*" "-"): Clojure "-\n-", jank "\n" (round 2: Clojure "-\n-", jank "-\n-")
+  split: 49725 questions; deviate: round 2 10007, round 3 10554 (not compared now: 0)
+    retracted (deviated, now agree): 0; added (agreed, now deviate): 547; deviate in both with another jank answer: 111
+    round 2's jank model differs from the replica on 658; round 2's Java model differs from round 3's on 0
+      added: (clojure.string/split "a" #"é*" -1): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      added: (clojure.string/split "a" #"é*" 2): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      added: (clojure.string/split "b" #"é*" -1): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+      added: (clojure.string/split "b" #"é*" 2): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+      jank model vs replica: (clojure.string/split "a" #"é*" -1): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      jank model vs replica: (clojure.string/split "a" #"é*" 2): Clojure ("a" ""), jank ("a") (round 2: Clojure ("a" ""), jank ("a" ""))
+      jank model vs replica: (clojure.string/split "b" #"é*" -1): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+      jank model vs replica: (clojure.string/split "b" #"é*" 2): Clojure ("b" ""), jank ("b") (round 2: Clojure ("b" ""), jank ("b" ""))
+== syntax: 100 tokens × 6 contexts = 600 patterns, 49 inputs, re-find and re-matches, locale UTF-8
+  census: 58800 questions: 42401 agree, 2287 differ, 6468 jank rejects a valid pattern, 6174 jank accepts an invalid one, 1470 not compared
+    not compared (spec \k<name>): 490
+    not compared (spec \N{…}): 490
+    not compared (spec \X): 490
+    differ [syntax: escape with another meaning]: 1835
+      (re-find #"\A" ""): Clojure "", jank nil
+      (re-find #"\z" ""): Clojure "", jank nil
+      (re-find #"\Z" ""): Clojure "", jank nil
+    differ [syntax: quantifier on an assertion]: 6
+      (re-find #"\A*" "A"): Clojure "", jank "A"
+      (re-find #"\z*" "z"): Clojure "", jank "z"
+      (re-find #"\Z*" "Z"): Clojure "", jank "Z"
+    differ [syntax: nested class / intersection / POSIX bracket]: 168
+      (re-find #"[[]a]]" "a"): Clojure "a", jank nil
+      (re-find #"[[]a]]" "]"): Clojure "]", jank nil
+      (re-find #"[[a-]]" "a"): Clojure "a", jank nil
+    differ [bytes (R78)]: 190
+      (re-find #"é*" ""): Clojure "", jank nil
+      (re-find #"😀*" ""): Clojure "", jank nil
+      (re-find #"." "Ł"): Clojure "Ł", jank "\xc5" (invalid UTF-8)
+    differ [syntax: possessive quantifier read as a nested repeat]: 3
+      (re-find #"a?+" "aa"): Clojure "a", jank "aa"
+      (re-matches #"a?+" "aa"): Clojure nil, jank "aa"
+      (re-find #"a?+" "aa0"): Clojure "a", jank "aa"
+    differ [syntax: ] first in a class]: 83
+      (re-find #"[]]" "]"): Clojure "]", jank nil
+      (re-find #"[]a]" "a"): Clojure "a", jank nil
+      (re-find #"[]a]" "]"): Clojure "]", jank nil
+    differ [re-matches-first-match (R82)]: 1
+      (re-matches #"|a" "a"): Clojure "a", jank nil
+    differ [dollar-final-newline (R79)]: 1
+      (re-find #"a$" "a\n"): Clojure "a", jank nil
+    jank rejects [Invalid range in '{}' in regular expression]: 490
+      (re-find #"\p{L}" ""): Clojure nil, jank throws (Invalid range in '{}' in regular expression)
+      (re-find #"\p{L}" "a"): Clojure "a", jank throws (Invalid range in '{}' in regular expression)
+    jank rejects [Invalid '\xNN' control character in regular expression]: 588
+      (re-find #"\x{41}" ""): Clojure nil, jank throws (Invalid '\xNN' control character in regular expression)
+      (re-find #"\x{41}" "a"): Clojure nil, jank throws (Invalid '\xNN' control character in regular expression)
+    jank rejects [flags (R18)]: 392
+      (re-find #"(?i)" ""): Clojure <spec: flags>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+      (re-find #"(?i)" "a"): Clojure <spec: flags>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+    jank rejects [backreference: Back-reference index exceeds current sub-expression count.]: 1372
+      (re-find #"\2" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+      (re-find #"\1" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+    jank rejects [{n} after nothing]: 1470
+      (re-find #"{2}" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"{2}+" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [Invalid start of '[x-x]' range in regular expression]: 588
+      (re-find #"[\w-a]" ""): Clojure nil, jank throws (Invalid start of '[x-x]' range in regular expression)
+      (re-find #"[\w-a]" "a"): Clojure "a", jank throws (Invalid start of '[x-x]' range in regular expression)
+    jank rejects [Invalid range in bracket expression.]: 588
+      (re-find #"[a-é]" ""): Clojure nil, jank throws (Invalid range in bracket expression.)
+      (re-find #"[a-é]" "a"): Clojure "a", jank throws (Invalid range in bracket expression.)
+    jank rejects [Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.]: 490
+      (re-find #"a{99999}" ""): Clojure nil, jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.)
+      (re-find #"a{99999}" "a"): Clojure nil, jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.)
+    jank rejects [quantifier on an assertion]: 392
+      (re-find #"^*" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"$*" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [backreference: Back-reference referred to an opened sub-expression.]: 98
+      (re-find #"(\1)" ""): Clojure nil, jank throws (Back-reference referred to an opened sub-expression.)
+      (re-find #"(\1)" "a"): Clojure nil, jank throws (Back-reference referred to an opened sub-expression.)
+    jank accepts, Java rejects [Illegal/unsupported escape sequence]: 3234
+      (re-find #"\E" ""): Clojure throws (Illegal/unsupported escape sequence), jank nil
+      (re-find #"\y" ""): Clojure throws (Illegal/unsupported escape sequence), jank nil
+    jank accepts, Java rejects [Unclosed group]: 98
+      (re-find #"(\Q)" ""): Clojure throws (Unclosed group), jank nil
+      (re-find #"(\Q)" "a"): Clojure throws (Unclosed group), jank nil
+    jank accepts, Java rejects [Unclosed character class]: 1470
+      (re-find #"[]" ""): Clojure throws (Unclosed character class), jank nil
+      (re-find #"[^]" ""): Clojure throws (Unclosed character class), jank nil
+    jank accepts, Java rejects [Illegal octal escape sequence]: 588
+      (re-find #"\0" ""): Clojure throws (Illegal octal escape sequence), jank nil
+      (re-find #"\0" "a"): Clojure throws (Illegal octal escape sequence), jank nil
+    jank accepts, Java rejects [Bad class syntax]: 98
+      (re-find #"[&&]" ""): Clojure throws (Bad class syntax), jank nil
+      (re-find #"[&&]" "a"): Clojure throws (Bad class syntax), jank nil
+    jank accepts, Java rejects [Dangling meta character '*']: 98
+      (re-find #"a**" ""): Clojure throws (Dangling meta character '*'), jank ""
+      (re-find #"a**" "a"): Clojure throws (Dangling meta character '*'), jank "a"
+    jank accepts, Java rejects [Illegal character range]: 588
+      (re-find #"[é-a]" ""): Clojure throws (Illegal character range), jank nil
+      (re-find #"[é-a]" "a"): Clojure throws (Illegal character range), jank "a"
+  per token (alone): jank / Java
+    #"\v": jank compiles; Java compiles
+    #"\cJ": jank compiles; Java compiles
+    #"\A": jank compiles; Java compiles
+    #"\z": jank compiles; Java compiles
+    #"\Z": jank compiles; Java compiles
+    #"\G": jank compiles; Java compiles
+    #"\Q": jank compiles; Java compiles
+    #"\E": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"\e": jank compiles; Java compiles
+    #"\a": jank compiles; Java compiles
+    #"\h": jank compiles; Java compiles
+    #"\R": jank compiles; Java compiles
+    #"\pL": jank compiles; Java compiles
+    #"\p{L}": jank throws (Invalid range in '{}' in regular expression); Java compiles
+    #"\x41": jank compiles; Java compiles
+    #"\xe9": jank compiles; Java compiles
+    #"\u00e9": jank compiles; Java compiles
+    #"\u0141": jank compiles; Java compiles
+    #"\0": jank compiles; Java throws (Illegal octal escape sequence)
+    #"\01": jank compiles; Java compiles
+    #"\012": jank compiles; Java compiles
+    #"[:": jank throws (Unexpected character within '[...]' in regular expression); Java throws (Unclosed character class)
+    #":]": jank compiles; Java compiles
+    #"[[:alpha:]]": jank compiles; Java compiles
+    #"[[.a.]]": jank compiles; Java compiles
+    #"[[=a=]]": jank compiles; Java compiles
+    #"&&": jank compiles; Java compiles
+    #"é": jank compiles; Java compiles
+    #"\x{41}": jank throws (Invalid '\xNN' control character in regular expression); Java compiles
+    #"(?<=": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?<!": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?<n>": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?>": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?i)": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java compiles
+    #"\k<n>": jank compiles; Java compiles
+    #"{": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Illegal repetition)
+    #"}": jank compiles; Java compiles
+    #"\10": jank throws (Back-reference index exceeds current sub-expression count.); Java compiles
+    #"\2": jank throws (Back-reference index exceeds current sub-expression count.); Java compiles
+    #"*+": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '*')
+    #"++": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '+')
+    #"?+": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '?')
+    #"{2}+": jank throws (Mismatched '(' and ')' in regular expression); Java compiles
+    #"**": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '*')
+    #"\-": jank compiles; Java compiles
+    #"\/": jank compiles; Java compiles
+    #"\y": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"\i": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"\N": jank compiles; Java compiles
+    #"\H": jank compiles; Java compiles
+    #"\V": jank compiles; Java compiles
+    #"\X": jank compiles; Java compiles
+    #"\S": jank compiles; Java compiles
+    #"\W": jank compiles; Java compiles
+    #"\D": jank compiles; Java compiles
+    #"[^]": jank compiles; Java throws (Unclosed character class)
+    #"[]": jank compiles; Java throws (Unclosed character class)
+    #"[]a]": jank compiles; Java compiles
+    #"[a-]": jank compiles; Java compiles
+    #"[-a]": jank compiles; Java compiles
+    #"[\w-a]": jank throws (Invalid start of '[x-x]' range in regular expression); Java compiles
+    #"[a-\d]": jank throws (Invalid end of '[x-x]' range in regular expression); Java throws (Illegal character range)
+    #"[\b]": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"[\B]": jank throws (Unexpected character within '[...]' in regular expression); Java throws (Illegal/unsupported escape sequence)
+    #"[\1]": jank throws (Unexpected character within '[...]' in regular expression); Java throws (Illegal/unsupported escape sequence)
+    #"[a-é]": jank throws (Invalid range in bracket expression.); Java compiles
+    #"[é-a]": jank compiles; Java throws (Illegal character range)
+    #"[\x80-\xff]": jank compiles; Java compiles
+    #"\x80": jank compiles; Java compiles
+    #"😀": jank compiles; Java compiles
+    #"{,2}": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Illegal repetition)
+    #"{2,1}": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Illegal repetition range)
+    #"{99999}": jank throws (Mismatched '(' and ')' in regular expression); Java compiles
+    #"a{100000}": jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.); Java compiles
+== syntax: 100 tokens × 6 contexts = 600 patterns, 49 inputs, re-find and re-matches, locale C
+  census: 58800 questions: 42401 agree, 2287 differ, 6468 jank rejects a valid pattern, 6174 jank accepts an invalid one, 1470 not compared
+    not compared (spec \k<name>): 490
+    not compared (spec \N{…}): 490
+    not compared (spec \X): 490
+    differ [syntax: escape with another meaning]: 1835
+      (re-find #"\A" ""): Clojure "", jank nil
+      (re-find #"\z" ""): Clojure "", jank nil
+      (re-find #"\Z" ""): Clojure "", jank nil
+    differ [syntax: quantifier on an assertion]: 6
+      (re-find #"\A*" "A"): Clojure "", jank "A"
+      (re-find #"\z*" "z"): Clojure "", jank "z"
+      (re-find #"\Z*" "Z"): Clojure "", jank "Z"
+    differ [syntax: nested class / intersection / POSIX bracket]: 168
+      (re-find #"[[]a]]" "a"): Clojure "a", jank nil
+      (re-find #"[[]a]]" "]"): Clojure "]", jank nil
+      (re-find #"[[a-]]" "a"): Clojure "a", jank nil
+    differ [bytes (R78)]: 190
+      (re-find #"é*" ""): Clojure "", jank nil
+      (re-find #"😀*" ""): Clojure "", jank nil
+      (re-find #"." "Ł"): Clojure "Ł", jank "\xc5" (invalid UTF-8)
+    differ [syntax: possessive quantifier read as a nested repeat]: 3
+      (re-find #"a?+" "aa"): Clojure "a", jank "aa"
+      (re-matches #"a?+" "aa"): Clojure nil, jank "aa"
+      (re-find #"a?+" "aa0"): Clojure "a", jank "aa"
+    differ [syntax: ] first in a class]: 83
+      (re-find #"[]]" "]"): Clojure "]", jank nil
+      (re-find #"[]a]" "a"): Clojure "a", jank nil
+      (re-find #"[]a]" "]"): Clojure "]", jank nil
+    differ [re-matches-first-match (R82)]: 1
+      (re-matches #"|a" "a"): Clojure "a", jank nil
+    differ [dollar-final-newline (R79)]: 1
+      (re-find #"a$" "a\n"): Clojure "a", jank nil
+    jank rejects [Invalid range in '{}' in regular expression]: 490
+      (re-find #"\p{L}" ""): Clojure nil, jank throws (Invalid range in '{}' in regular expression)
+      (re-find #"\p{L}" "a"): Clojure "a", jank throws (Invalid range in '{}' in regular expression)
+    jank rejects [Invalid '\xNN' control character in regular expression]: 588
+      (re-find #"\x{41}" ""): Clojure nil, jank throws (Invalid '\xNN' control character in regular expression)
+      (re-find #"\x{41}" "a"): Clojure nil, jank throws (Invalid '\xNN' control character in regular expression)
+    jank rejects [flags (R18)]: 392
+      (re-find #"(?i)" ""): Clojure <spec: flags>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+      (re-find #"(?i)" "a"): Clojure <spec: flags>, jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+    jank rejects [backreference: Back-reference index exceeds current sub-expression count.]: 1372
+      (re-find #"\2" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+      (re-find #"\1" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+    jank rejects [{n} after nothing]: 1470
+      (re-find #"{2}" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"{2}+" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [Invalid start of '[x-x]' range in regular expression]: 588
+      (re-find #"[\w-a]" ""): Clojure nil, jank throws (Invalid start of '[x-x]' range in regular expression)
+      (re-find #"[\w-a]" "a"): Clojure "a", jank throws (Invalid start of '[x-x]' range in regular expression)
+    jank rejects [Invalid range in bracket expression.]: 588
+      (re-find #"[a-é]" ""): Clojure nil, jank throws (Invalid range in bracket expression.)
+      (re-find #"[a-é]" "a"): Clojure "a", jank throws (Invalid range in bracket expression.)
+    jank rejects [Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.]: 490
+      (re-find #"a{99999}" ""): Clojure nil, jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.)
+      (re-find #"a{99999}" "a"): Clojure nil, jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.)
+    jank rejects [quantifier on an assertion]: 392
+      (re-find #"^*" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"$*" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [backreference: Back-reference referred to an opened sub-expression.]: 98
+      (re-find #"(\1)" ""): Clojure nil, jank throws (Back-reference referred to an opened sub-expression.)
+      (re-find #"(\1)" "a"): Clojure nil, jank throws (Back-reference referred to an opened sub-expression.)
+    jank accepts, Java rejects [Illegal/unsupported escape sequence]: 3234
+      (re-find #"\E" ""): Clojure throws (Illegal/unsupported escape sequence), jank nil
+      (re-find #"\y" ""): Clojure throws (Illegal/unsupported escape sequence), jank nil
+    jank accepts, Java rejects [Unclosed group]: 98
+      (re-find #"(\Q)" ""): Clojure throws (Unclosed group), jank nil
+      (re-find #"(\Q)" "a"): Clojure throws (Unclosed group), jank nil
+    jank accepts, Java rejects [Unclosed character class]: 1470
+      (re-find #"[]" ""): Clojure throws (Unclosed character class), jank nil
+      (re-find #"[^]" ""): Clojure throws (Unclosed character class), jank nil
+    jank accepts, Java rejects [Illegal octal escape sequence]: 588
+      (re-find #"\0" ""): Clojure throws (Illegal octal escape sequence), jank nil
+      (re-find #"\0" "a"): Clojure throws (Illegal octal escape sequence), jank nil
+    jank accepts, Java rejects [Bad class syntax]: 98
+      (re-find #"[&&]" ""): Clojure throws (Bad class syntax), jank nil
+      (re-find #"[&&]" "a"): Clojure throws (Bad class syntax), jank nil
+    jank accepts, Java rejects [Dangling meta character '*']: 98
+      (re-find #"a**" ""): Clojure throws (Dangling meta character '*'), jank ""
+      (re-find #"a**" "a"): Clojure throws (Dangling meta character '*'), jank "a"
+    jank accepts, Java rejects [Illegal character range]: 588
+      (re-find #"[é-a]" ""): Clojure throws (Illegal character range), jank nil
+      (re-find #"[é-a]" "a"): Clojure throws (Illegal character range), jank "a"
+  per token (alone): jank / Java
+    #"\v": jank compiles; Java compiles
+    #"\cJ": jank compiles; Java compiles
+    #"\A": jank compiles; Java compiles
+    #"\z": jank compiles; Java compiles
+    #"\Z": jank compiles; Java compiles
+    #"\G": jank compiles; Java compiles
+    #"\Q": jank compiles; Java compiles
+    #"\E": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"\e": jank compiles; Java compiles
+    #"\a": jank compiles; Java compiles
+    #"\h": jank compiles; Java compiles
+    #"\R": jank compiles; Java compiles
+    #"\pL": jank compiles; Java compiles
+    #"\p{L}": jank throws (Invalid range in '{}' in regular expression); Java compiles
+    #"\x41": jank compiles; Java compiles
+    #"\xe9": jank compiles; Java compiles
+    #"\u00e9": jank compiles; Java compiles
+    #"\u0141": jank compiles; Java compiles
+    #"\0": jank compiles; Java throws (Illegal octal escape sequence)
+    #"\01": jank compiles; Java compiles
+    #"\012": jank compiles; Java compiles
+    #"[:": jank throws (Unexpected character within '[...]' in regular expression); Java throws (Unclosed character class)
+    #":]": jank compiles; Java compiles
+    #"[[:alpha:]]": jank compiles; Java compiles
+    #"[[.a.]]": jank compiles; Java compiles
+    #"[[=a=]]": jank compiles; Java compiles
+    #"&&": jank compiles; Java compiles
+    #"é": jank compiles; Java compiles
+    #"\x{41}": jank throws (Invalid '\xNN' control character in regular expression); Java compiles
+    #"(?<=": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?<!": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?<n>": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?>": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java throws (Unclosed group)
+    #"(?i)": jank throws (Invalid '(?...)' zero-width assertion in regular expression); Java compiles
+    #"\k<n>": jank compiles; Java compiles
+    #"{": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Illegal repetition)
+    #"}": jank compiles; Java compiles
+    #"\10": jank throws (Back-reference index exceeds current sub-expression count.); Java compiles
+    #"\2": jank throws (Back-reference index exceeds current sub-expression count.); Java compiles
+    #"*+": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '*')
+    #"++": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '+')
+    #"?+": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '?')
+    #"{2}+": jank throws (Mismatched '(' and ')' in regular expression); Java compiles
+    #"**": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Dangling meta character '*')
+    #"\-": jank compiles; Java compiles
+    #"\/": jank compiles; Java compiles
+    #"\y": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"\i": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"\N": jank compiles; Java compiles
+    #"\H": jank compiles; Java compiles
+    #"\V": jank compiles; Java compiles
+    #"\X": jank compiles; Java compiles
+    #"\S": jank compiles; Java compiles
+    #"\W": jank compiles; Java compiles
+    #"\D": jank compiles; Java compiles
+    #"[^]": jank compiles; Java throws (Unclosed character class)
+    #"[]": jank compiles; Java throws (Unclosed character class)
+    #"[]a]": jank compiles; Java compiles
+    #"[a-]": jank compiles; Java compiles
+    #"[-a]": jank compiles; Java compiles
+    #"[\w-a]": jank throws (Invalid start of '[x-x]' range in regular expression); Java compiles
+    #"[a-\d]": jank throws (Invalid end of '[x-x]' range in regular expression); Java throws (Illegal character range)
+    #"[\b]": jank compiles; Java throws (Illegal/unsupported escape sequence)
+    #"[\B]": jank throws (Unexpected character within '[...]' in regular expression); Java throws (Illegal/unsupported escape sequence)
+    #"[\1]": jank throws (Unexpected character within '[...]' in regular expression); Java throws (Illegal/unsupported escape sequence)
+    #"[a-é]": jank throws (Invalid range in bracket expression.); Java compiles
+    #"[é-a]": jank compiles; Java throws (Illegal character range)
+    #"[\x80-\xff]": jank compiles; Java compiles
+    #"\x80": jank compiles; Java compiles
+    #"😀": jank compiles; Java compiles
+    #"{,2}": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Illegal repetition)
+    #"{2,1}": jank throws (Mismatched '(' and ')' in regular expression); Java throws (Illegal repetition range)
+    #"{99999}": jank throws (Mismatched '(' and ')' in regular expression); Java compiles
+    #"a{100000}": jank throws (Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.); Java compiles
+== stack depth: `_M_dfs` frames of one regex_search (re-find), input of n characters
+   D = all `_M_dfs` frames (no sibling calls); NT = frames left when every tail call is a sibling call
+  #"a*": n=10: D=24 NT=23 steps=25; n=100: D=204 NT=203 steps=205; n=1000: D=2004 NT=2003 steps=2005; n=3000: D=6004 NT=6003 steps=6005;
+      slope per character (n 1000→3000): D 4000/2000 ≈ 2, NT 4000/2000 ≈ 2
+  #".*": n=10: D=24 NT=23 steps=25; n=100: D=204 NT=203 steps=205; n=1000: D=2004 NT=2003 steps=2005; n=3000: D=6004 NT=6003 steps=6005;
+      slope per character (n 1000→3000): D 4000/2000 ≈ 2, NT 4000/2000 ≈ 2
+  #"[^,]*": n=10: D=24 NT=23 steps=25; n=100: D=204 NT=203 steps=205; n=1000: D=2004 NT=2003 steps=2005; n=3000: D=6004 NT=6003 steps=6005;
+      slope per character (n 1000→3000): D 4000/2000 ≈ 2, NT 4000/2000 ≈ 2
+  #"\w+": n=10: D=23 NT=22 steps=24; n=100: D=203 NT=202 steps=204; n=1000: D=2003 NT=2002 steps=2004; n=3000: D=6003 NT=6002 steps=6004;
+      slope per character (n 1000→3000): D 4000/2000 ≈ 2, NT 4000/2000 ≈ 2
+  #"a*?$": n=10: D=25 NT=24 steps=35; n=100: D=205 NT=204 steps=305; n=1000: D=2005 NT=2004 steps=3005; n=3000: D=6005 NT=6004 steps=9005;
+      slope per character (n 1000→3000): D 4000/2000 ≈ 2, NT 4000/2000 ≈ 2
+  #"(a|b)*": n=10: D=55 NT=55 steps=58; n=100: D=505 NT=505 steps=508; n=1000: D=5005 NT=5005 steps=5008; n=3000: D=15005 NT=15005 steps=15008;
+      slope per character (n 1000→3000): D 10000/2000 ≈ 5, NT 10000/2000 ≈ 5
+  #"(?:ab)*": n=10: D=19 NT=18 steps=20; n=100: D=154 NT=153 steps=155; n=1000: D=1504 NT=1503 steps=1505; n=3000: D=4504 NT=4503 steps=4505;
+      slope per character (n 1000→3000): D 3000/2000 ≈ 1, NT 3000/2000 ≈ 1
+  #"(a)*": n=10: D=44 NT=44 steps=46; n=100: D=404 NT=404 steps=406; n=1000: D=4004 NT=4004 steps=4006; n=3000: D=12004 NT=12004 steps=12006;
+      slope per character (n 1000→3000): D 8000/2000 ≈ 4, NT 8000/2000 ≈ 4
+  #"[a-z]+@": n=10: D=22 NT=22 steps=187; n=100: D=202 NT=202 steps=15352; n=1000: D=2002 NT=2002 steps=1503502; n=3000: D=6002 NT=6002 steps=13510502;
+      slope per character (n 1000→3000): D 4000/2000 ≈ 2, NT 4000/2000 ≈ 2
+  #"(?:a|b)*?c": n=10: D=35 NT=35 steps=45; n=100: D=305 NT=305 steps=405; n=1000: D=3005 NT=3005 steps=4005; n=3000: D=9005 NT=9005 steps=12005;
+      slope per character (n 1000→3000): D 6000/2000 ≈ 3, NT 6000/2000 ≈ 3
+== grammar: core tokens ≤ 2 (702 patterns in part 0/1), inputs ascii3 (50), 14 calls, locale UTF-8
+  census: 491400 questions: 381159 agree, 24841 differ, 84700 jank rejects a valid pattern, 700 jank accepts an invalid one, 0 not compared
+    differ [ecmascript-template (R84)]: 14127
+      (clojure.string/replace "" #"|" "$1"): Clojure throws (No group 1), jank ""
+      (clojure.string/replace "" #"|" "$$"): Clojure throws (Illegal group reference), jank "$"
+      (clojure.string/replace "" #"^" "$1"): Clojure throws (No group 1), jank ""
+    differ [nul-cut (R83)]: 2688
+      (re-seq #"a" "\u0000a"): Clojure ("a"), jank nil
+      (re-seq #"." "\u0000a"): Clojure ("\u0000" "a"), jank nil
+      (re-find #"a" "\u0000a"): Clojure "a", jank nil
+    differ [bytes (R78)]: 3168
+      (re-seq #"." "é"): Clojure ("é"), jank ("\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8))
+      (re-seq #"." "😀"): Clojure ("😀"), jank ("\xf0" (invalid UTF-8) "\x9f" (invalid UTF-8) "\x98" (invalid UTF-8) "\x80" (invalid UTF-8))
+      (re-seq #"." ""): Clojure nil, jank ("\xc2" (invalid UTF-8) "\x85" (invalid UTF-8))
+    differ [re-seq-new-string (R81)]: 2936
+      (re-seq #"|" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"^" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"$" ""): Clojure (""), jank ("" "" …) infinite
+    differ [dollar-final-newline (R79)]: 971
+      (re-seq #"a$" "a\n"): Clojure ("a"), jank nil
+      (re-seq #"b$" "b\n"): Clojure ("b"), jank nil
+      (re-seq #".$" "a\n"): Clojure ("a"), jank nil
+    differ [re-matches-first-match (R82)]: 7
+      (re-matches #"|a" "a"): Clojure "a", jank nil
+      (re-matches #"|b" "b"): Clojure "b", jank nil
+      (re-matches #"|." "a"): Clojure "a", jank nil
+    differ [regex-iterator-retry (R85)]: 900
+      (clojure.string/split "a" #"|a" 0): Clojure ("a"), jank ()
+      (clojure.string/split "a" #"|a" 2): Clojure ("a" ""), jank ("" "")
+      (clojure.string/split "b" #"|b" 0): Clojure ("b"), jank ()
+    differ [fn-gets-match-string (R84)]: 44
+      (clojure.string/replace "" #"()" f): Clojure "<|>", jank "<>"
+      (clojure.string/replace "a" #"()" f): Clojure "<|>a<|>", jank "<>a<>"
+      (clojure.string/replace "b" #"()" f): Clojure "<|>b<|>", jank "<>b<>"
+    jank rejects [backreference: Back-reference index exceeds current sub-expression count.]: 23800
+      (re-seq #"\1" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+      (re-find #"\1" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+    jank rejects [{n} after nothing]: 44100
+      (re-seq #"{2}" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"{2}" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [quantifier on an assertion]: 16800
+      (re-seq #"^*" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-seq #"^+" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+    jank accepts, Java rejects [Unclosed character class]: 700
+      (re-seq #"[]" ""): Clojure throws (Unclosed character class), jank nil
+      (re-find #"[]" ""): Clojure throws (Unclosed character class), jank nil
+== grammar: core tokens ≤ 2 (702 patterns in part 0/1), inputs ascii3 (50), 14 calls, locale C
+  census: 491400 questions: 381159 agree, 24841 differ, 84700 jank rejects a valid pattern, 700 jank accepts an invalid one, 0 not compared
+    differ [ecmascript-template (R84)]: 14127
+      (clojure.string/replace "" #"|" "$1"): Clojure throws (No group 1), jank ""
+      (clojure.string/replace "" #"|" "$$"): Clojure throws (Illegal group reference), jank "$"
+      (clojure.string/replace "" #"^" "$1"): Clojure throws (No group 1), jank ""
+    differ [nul-cut (R83)]: 2688
+      (re-seq #"a" "\u0000a"): Clojure ("a"), jank nil
+      (re-seq #"." "\u0000a"): Clojure ("\u0000" "a"), jank nil
+      (re-find #"a" "\u0000a"): Clojure "a", jank nil
+    differ [bytes (R78)]: 3168
+      (re-seq #"." "é"): Clojure ("é"), jank ("\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8))
+      (re-seq #"." "😀"): Clojure ("😀"), jank ("\xf0" (invalid UTF-8) "\x9f" (invalid UTF-8) "\x98" (invalid UTF-8) "\x80" (invalid UTF-8))
+      (re-seq #"." ""): Clojure nil, jank ("\xc2" (invalid UTF-8) "\x85" (invalid UTF-8))
+    differ [re-seq-new-string (R81)]: 2936
+      (re-seq #"|" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"^" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"$" ""): Clojure (""), jank ("" "" …) infinite
+    differ [dollar-final-newline (R79)]: 971
+      (re-seq #"a$" "a\n"): Clojure ("a"), jank nil
+      (re-seq #"b$" "b\n"): Clojure ("b"), jank nil
+      (re-seq #".$" "a\n"): Clojure ("a"), jank nil
+    differ [re-matches-first-match (R82)]: 7
+      (re-matches #"|a" "a"): Clojure "a", jank nil
+      (re-matches #"|b" "b"): Clojure "b", jank nil
+      (re-matches #"|." "a"): Clojure "a", jank nil
+    differ [regex-iterator-retry (R85)]: 900
+      (clojure.string/split "a" #"|a" 0): Clojure ("a"), jank ()
+      (clojure.string/split "a" #"|a" 2): Clojure ("a" ""), jank ("" "")
+      (clojure.string/split "b" #"|b" 0): Clojure ("b"), jank ()
+    differ [fn-gets-match-string (R84)]: 44
+      (clojure.string/replace "" #"()" f): Clojure "<|>", jank "<>"
+      (clojure.string/replace "a" #"()" f): Clojure "<|>a<|>", jank "<>a<>"
+      (clojure.string/replace "b" #"()" f): Clojure "<|>b<|>", jank "<>b<>"
+    jank rejects [backreference: Back-reference index exceeds current sub-expression count.]: 23800
+      (re-seq #"\1" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+      (re-find #"\1" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+    jank rejects [{n} after nothing]: 44100
+      (re-seq #"{2}" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"{2}" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [quantifier on an assertion]: 16800
+      (re-seq #"^*" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-seq #"^+" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+    jank accepts, Java rejects [Unclosed character class]: 700
+      (re-seq #"[]" ""): Clojure throws (Unclosed character class), jank nil
+      (re-find #"[]" ""): Clojure throws (Unclosed character class), jank nil

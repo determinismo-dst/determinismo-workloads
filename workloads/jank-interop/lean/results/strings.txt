@@ -1,0 +1,364 @@
+== strings: every operation, texts ≤ 3 code points, both locales
+  explore (3000 seeds): jank's string and character functions agree with Clojure's after 3 timelines, 6 decisions: (nth "a€Σ" 2) [C locale]: Clojure \Σ, jank \<byte 82>
+  shrunk to 6 decisions: (count "aaΣ") [UTF-8 locale]: Clojure 3, jank 4
+  tape:
+    {"name":"env.locale","options":2,"value":0}
+    {"name":"str.s.len","options":4,"value":3}
+    {"name":"str.s.char0","options":10,"value":0}
+    {"name":"str.s.char1","options":10,"value":0}
+    {"name":"str.s.char2","options":10,"value":5}
+    {"name":"str.op","options":144,"value":0}
+  exhaust: found after 95 timelines: (clojure.string/index-of "" "" -1) [UTF-8 locale]: Clojure 0, jank nil
+  exhaust's counterexample shrunk to 3 decisions: (clojure.string/index-of "" "" -1) [UTF-8 locale]: Clojure 0, jank nil
+  tape:
+    {"name":"env.locale","options":2,"value":0}
+    {"name":"str.s.len","options":4,"value":0}
+    {"name":"str.op","options":144,"value":94}
+  table: 175638 questions (texts ≤ 3 code points over 10 code points; compare: ≤ 2 × ≤ 2)
+  count [UTF-8 locale]: 1071 of 1111 deviate
+      (count "€"): Clojure 1, jank 3
+      (count "é"): Clojure 1, jank 2
+      (count "ß"): Clojure 1, jank 2
+  seq [UTF-8 locale]: 291 of 1111 deviate
+      (seq "😀"): Clojure (\ud83d \ude00), jank (\😀)
+      (seq "😀a"): Clojure (\ud83d \ude00 \a), jank (\😀 \a)
+      (seq "a😀"): Clojure (\a \ud83d \ude00), jank (\a \😀)
+  count of seq [UTF-8 locale]: 291 of 1111 deviate
+      (count (seq "😀")): Clojure 2, jank 1
+      (count (seq "😀a")): Clojure 3, jank 2
+      (count (seq "a😀")): Clojure 3, jank 2
+  int of first [UTF-8 locale]: 111 of 1111 deviate
+      (int (first "😀")): Clojure 55357, jank 128512
+      (int (first "😀ß")): Clojure 55357, jank 128512
+      (int (first "😀a")): Clojure 55357, jank 128512
+  int of first [C locale]: 777 of 1111 deviate
+      (int (first "€")): Clojure 8364, jank 0
+      (int (first "é")): Clojure 233, jank 0
+      (int (first "ß")): Clojure 223, jank 0
+  trim [UTF-8 locale]: 428 of 1111 deviate
+      (clojure.string/trim "\u2003"): Clojure "", jank "\u2003"
+      (clojure.string/trim "\u001f"): Clojure "", jank "\u001f"
+      (clojure.string/trim "ß\u2003"): Clojure "ß", jank "ß\u2003"
+  triml [UTF-8 locale]: 246 of 1111 deviate
+      (clojure.string/triml "\u2003"): Clojure "", jank "\u2003"
+      (clojure.string/triml "\u001f"): Clojure "", jank "\u001f"
+      (clojure.string/triml "\u001fＡ"): Clojure "Ａ", jank "\u001fＡ"
+  trimr [UTF-8 locale]: 246 of 1111 deviate
+      (clojure.string/trimr "\u2003"): Clojure "", jank "\u2003"
+      (clojure.string/trimr "\u001f"): Clojure "", jank "\u001f"
+      (clojure.string/trimr "ß\u2003"): Clojure "ß", jank "ß\u2003"
+  blank? [UTF-8 locale]: 36 of 1111 deviate
+      (clojure.string/blank? "\u2003"): Clojure true, jank false
+      (clojure.string/blank? "\u001f"): Clojure true, jank false
+      (clojure.string/blank? " \u2003"): Clojure true, jank false
+  upper-case [UTF-8 locale]: 291 of 1111 deviate
+      (clojure.string/upper-case "ß"): Clojure "SS", jank "ß"
+      (clojure.string/upper-case "ßΣ"): Clojure "SSΣ", jank "ßΣ"
+      (clojure.string/upper-case "aß"): Clojure "ASS", jank "Aß"
+  upper-case [C locale]: 526 of 1111 deviate
+      (clojure.string/upper-case "ß"): Clojure "SS", jank "ß"
+      (clojure.string/upper-case "é"): Clojure "É", jank "é"
+      (clojure.string/upper-case "ß "): Clojure "SS ", jank "ß "
+  lower-case [UTF-8 locale]: 80 of 1111 deviate
+      (clojure.string/lower-case "ßΣ"): Clojure "ßς", jank "ßσ"
+      (clojure.string/lower-case "aΣ"): Clojure "aς", jank "aσ"
+      (clojure.string/lower-case "éΣ"): Clojure "éς", jank "éσ"
+  lower-case [C locale]: 526 of 1111 deviate
+      (clojure.string/lower-case "Ａ"): Clojure "ａ", jank "Ａ"
+      (clojure.string/lower-case "Σ"): Clojure "σ", jank "Σ"
+      (clojure.string/lower-case "Σ€"): Clojure "σ€", jank "Σ€"
+  capitalize [UTF-8 locale]: 474 of 1111 deviate
+      (clojure.string/capitalize "Σ"): Clojure "Σ", jank "σ"
+      (clojure.string/capitalize "é"): Clojure "É", jank "é"
+      (clojure.string/capitalize "ß"): Clojure "SS", jank "ß"
+  capitalize [C locale]: 526 of 1111 deviate
+      (clojure.string/capitalize "ß"): Clojure "SS", jank "ß"
+      (clojure.string/capitalize "é"): Clojure "É", jank "é"
+      (clojure.string/capitalize "ß "): Clojure "SS ", jank "ß "
+  replace "" [UTF-8 locale]: 1071 of 1111 deviate
+      (clojure.string/replace "€" "" "-"): Clojure "-€-", jank "-\xe2-\x82-\xac-" (invalid UTF-8)
+      (clojure.string/replace "é" "" "-"): Clojure "-é-", jank "-\xc3-\xa9-" (invalid UTF-8)
+      (clojure.string/replace "ß" "" "-"): Clojure "-ß-", jank "-\xc3-\x9f-" (invalid UTF-8)
+  reverse [UTF-8 locale]: 0 of 1111 deviate
+  (= x x) on a string seq [UTF-8 locale]: 1071 of 1111 deviate
+      (let [x (seq "€")] (= x x)): Clojure true, jank false
+      (let [x (seq "é")] (= x x)): Clojure true, jank false
+      (let [x (seq "ß")] (= x x)): Clojure true, jank false
+  (= (seq s) (vec s)) [UTF-8 locale]: 1071 of 1111 deviate
+      (= (seq "€") (vec "€")): Clojure true, jank false
+      (= (seq "é") (vec "é")): Clojure true, jank false
+      (= (seq "ß") (vec "ß")): Clojure true, jank false
+  hash of (seq s) vs (vec s) [UTF-8 locale]: 1110 of 1111 deviate
+      (= (hash (seq "Σ")) (hash (vec "Σ"))): Clojure true, jank false
+      (= (hash (seq "a")) (hash (vec "a"))): Clojure true, jank false
+      (= (hash (seq " ")) (hash (vec " "))): Clojure true, jank false
+  nth [UTF-8 locale]: 5581 of 7777 deviate
+      (nth "€" 2): Clojure throws (StringIndexOutOfBoundsException), jank \<byte ac>
+      (nth "é" 0): Clojure \é, jank \<byte c3>
+      (nth "é" 1): Clojure throws (StringIndexOutOfBoundsException), jank \<byte a9>
+  get [UTF-8 locale]: 5581 of 7777 deviate
+      (get "€" 2): Clojure nil, jank \<byte ac>
+      (get "é" 0): Clojure \é, jank \<byte c3>
+      (get "é" 1): Clojure nil, jank \<byte a9>
+  contains? [UTF-8 locale]: 2518 of 7777 deviate
+      (contains? "€" 2): Clojure false, jank true
+      (contains? "é" 1): Clojure false, jank true
+      (contains? "ß" 1): Clojure false, jank true
+  subs/2 [UTF-8 locale]: 4838 of 7777 deviate
+      (subs "€" 3): Clojure throws (StringIndexOutOfBoundsException), jank ""
+      (subs "é" 1): Clojure "", jank "\xa9" (invalid UTF-8)
+      (subs "é" 2): Clojure throws (StringIndexOutOfBoundsException), jank ""
+  subs/3 [UTF-8 locale]: 16633 of 54439 deviate
+      (subs "Ａ" 0 1): Clojure "Ａ", jank "\xef" (invalid UTF-8)
+      (subs "é" 0 1): Clojure "é", jank "\xc3" (invalid UTF-8)
+      (subs "é" 0 2): Clojure throws (StringIndexOutOfBoundsException), jank "é"
+  index-of [UTF-8 locale]: 4487 of 22220 deviate
+      (clojure.string/index-of "" "" 2): Clojure 0, jank nil
+      (clojure.string/index-of "" "" 1): Clojure 0, jank nil
+      (clojure.string/index-of "" "" 9): Clojure 0, jank nil
+  last-index-of [UTF-8 locale]: 5725 of 22220 deviate
+      (clojure.string/last-index-of "€" ""): Clojure 1, jank 3
+      (clojure.string/last-index-of "é" ""): Clojure 1, jank 2
+      (clojure.string/last-index-of "ß" ""): Clojure 1, jank 2
+  escape [UTF-8 locale]: 1746 of 11110 deviate
+      (clojure.string/escape "Σ" {\Σ "X"}): Clojure "X", jank "Σ"
+      (clojure.string/escape "é" {\é "X"}): Clojure "X", jank "é"
+      (clojure.string/escape "ß" {\ß "X"}): Clojure "X", jank "ß"
+  compare [UTF-8 locale]: 262 of 12321 deviate
+      (compare "😀" "Ａ"): Clojure -1, jank 1
+      (compare "Ａ" "😀"): Clojure 1, jank -1
+      (compare "😀" "Ａ😀"): Clojure -1, jank 1
+  total: 57614 deviating questions
+  by hand:
+    (count "é") [UTF-8 locale]: Clojure 1, jank 2
+    (subs "aé" 0 1) [UTF-8 locale]: Clojure "a", jank "a"
+    (seq "aé") [UTF-8 locale]: Clojure (\a \é), jank (\a \é)
+    (compare "Ａ" "😀") [UTF-8 locale]: Clojure 1, jank -1
+    (clojure.string/upper-case "ß") [UTF-8 locale]: Clojure "SS", jank "ß"
+    (clojure.string/upper-case "é") [C locale]: Clojure "É", jank "é"
+    (clojure.string/lower-case "aΣ") [UTF-8 locale]: Clojure "aς", jank "aσ"
+    (clojure.string/trim "\u2003a") [UTF-8 locale]: Clojure "a", jank "\u2003a"
+    (clojure.string/blank? "\u001f") [UTF-8 locale]: Clojure true, jank false
+    (let [x (seq "é")] (= x x)) [UTF-8 locale]: Clojure true, jank false
+    (= (hash (seq "a")) (hash (vec "a"))) [UTF-8 locale]: Clojure true, jank false
+    (clojure.string/index-of "éa" "a") [UTF-8 locale]: Clojure 1, jank 2
+    (clojure.string/index-of "a" "a" -1) [UTF-8 locale]: Clojure 0, jank nil
+    (clojure.string/last-index-of "aa" "a" -1) [UTF-8 locale]: Clojure nil, jank 1
+    (clojure.string/capitalize "Éa") [UTF-8 locale]: Clojure "Éa", jank "éa"
+    (clojure.string/capitalize "Éa") [C locale]: Clojure "Éa", jank "Éa"
+    (seq (subs "aé" 0 2)): jank undefined behavior (next() went past the end (index 3 of 2 bytes): first() reads out of bounds)
+    (char -1): Clojure throws (Value out of range for char), jank UTF-8 throws (Unfinished character (wcrtomb EILSEQ)), jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char 97): Clojure \a, jank UTF-8 \a, jank C \a
+    (char 233): Clojure \é, jank UTF-8 \é, jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char 55296): Clojure \ud800, jank UTF-8 throws (Unfinished character (wcrtomb EILSEQ)), jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char 65535): Clojure \￿, jank UTF-8 \￿, jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char 65536): Clojure throws (Value out of range for char), jank UTF-8 \𐀀, jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char 128512): Clojure throws (Value out of range for char), jank UTF-8 \😀, jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char 1114112): Clojure throws (Value out of range for char), jank UTF-8 throws (Value out of range for char), jank C throws (Value out of range for char)
+    (char -2147483648): Clojure throws (Value out of range for char), jank UTF-8 throws (Unfinished character (wcrtomb EILSEQ)), jank C throws (Unfinished character (wcrtomb EILSEQ))
+    (char -4294967296): Clojure throws (Value out of range for char), jank UTF-8 \u0000, jank C \u0000
+    (char -4294967231): Clojure throws (Value out of range for char), jank UTF-8 \A, jank C \A
+    "\u0061": Clojure "a", jank UTF-8 "a", jank C "a"
+    "\u00e9": Clojure "é", jank UTF-8 "é", jank C "?"
+    "\u20ac": Clojure "€", jank UTF-8 "€", jank C "?"
+    "\ud83d\ude00": Clojure "😀", jank UTF-8 "😀", jank C throws (Unfinished character (to_char throws))
+    (int \a): jank UTF-8 97, jank C 97
+    (int \é): jank UTF-8 233, jank C 0
+    (int (nth "é" 0)): jank UTF-8 0, jank C 0
+== printing: doubles (str and pr-str)
+  442 of 574 doubles print differently (digits [1, 2, 15, 123, 1234567, 12345678, 123456789012345], exponents -18..22, both signs)
+    magnitude 1e-8: 0 of 6 agree, e.g. 1.0E-8: Clojure "1.0E-8", jank "1e-08"
+    magnitude 1e-7: 0 of 6 agree, e.g. 1.0E-7: Clojure "1.0E-7", jank "1e-07"
+    magnitude 1e-6: 0 of 6 agree, e.g. 1.0E-6: Clojure "1.0E-6", jank "1e-06"
+    magnitude 1e-5: 0 of 6 agree, e.g. 1.0E-5: Clojure "1.0E-5", jank "1e-05"
+    magnitude 1e-4: 0 of 7 agree, e.g. 1.0E-4: Clojure "1.0E-4", jank "1e-04"
+    magnitude 1e-3: 7 of 7 agree, e.g. 0.001: Clojure "0.001", jank "0.001"
+    magnitude 1e-2: 7 of 7 agree, e.g. 0.01: Clojure "0.01", jank "0.01"
+    magnitude 1e-1: 7 of 7 agree, e.g. 0.1: Clojure "0.1", jank "0.1"
+    magnitude 1e0: 7 of 7 agree, e.g. 1.0: Clojure "1.0", jank "1.0"
+    magnitude 1e1: 7 of 7 agree, e.g. 10.0: Clojure "10.0", jank "10.0"
+    magnitude 1e2: 7 of 7 agree, e.g. 100.0: Clojure "100.0", jank "100.0"
+    magnitude 1e3: 7 of 7 agree, e.g. 1000.0: Clojure "1000.0", jank "1000.0"
+    magnitude 1e4: 7 of 7 agree, e.g. 10000.0: Clojure "10000.0", jank "10000.0"
+    magnitude 1e5: 5 of 7 agree, e.g. 100000.0: Clojure "100000.0", jank "1e+05"
+    magnitude 1e6: 5 of 7 agree, e.g. 1000000.0: Clojure "1000000.0", jank "1e+06"
+    magnitude 1e7: 0 of 7 agree, e.g. 1.0E7: Clojure "1.0E7", jank "1e+07"
+    magnitude 1e8: 0 of 7 agree, e.g. 1.0E8: Clojure "1.0E8", jank "1e+08"
+    magnitude 1e9: 0 of 7 agree, e.g. 1.0E9: Clojure "1.0E9", jank "1e+09"
+    magnitude 1e10: 0 of 7 agree, e.g. 1.0E10: Clojure "1.0E10", jank "1e+10"
+    magnitude 1e11: 0 of 7 agree, e.g. 1.0E11: Clojure "1.0E11", jank "1e+11"
+    magnitude 1e12: 0 of 7 agree, e.g. 1.0E12: Clojure "1.0E12", jank "1e+12"
+    magnitude 1e13: 0 of 7 agree, e.g. 1.0E13: Clojure "1.0E13", jank "1e+13"
+    magnitude 1e14: 0 of 7 agree, e.g. 1.0E14: Clojure "1.0E14", jank "1e+14"
+    magnitude 1e15: 0 of 7 agree, e.g. 1.0E15: Clojure "1.0E15", jank "1e+15"
+    magnitude 1e16: 0 of 7 agree, e.g. 1.0E16: Clojure "1.0E16", jank "1e+16"
+    magnitude 1e17: 0 of 7 agree, e.g. 1.0E17: Clojure "1.0E17", jank "1e+17"
+    magnitude 1e18: 0 of 7 agree, e.g. 1.0E18: Clojure "1.0E18", jank "1e+18"
+    magnitude 1e19: 0 of 7 agree, e.g. 1.0E19: Clojure "1.0E19", jank "1e+19"
+    magnitude 1e20: 0 of 7 agree, e.g. 1.0E20: Clojure "1.0E20", jank "1e+20"
+    magnitude 1e21: 0 of 7 agree, e.g. 1.0E21: Clojure "1.0E21", jank "1e+21"
+    (str 100000.0): Clojure "100000.0", jank "1e+05"
+    (str 3000000.0): Clojure "3000000.0", jank "3e+06"
+    (str 1.0E7): Clojure "1.0E7", jank "1e+07"
+    (str 1.23456789E8): Clojure "1.23456789E8", jank "123456789.0"
+    (str 1.0E-4): Clojure "1.0E-4", jank "1e-04"
+    (str 1.5E-4): Clojure "1.5E-4", jank "0.00015"
+    (str 1.0E21): Clojure "1.0E21", jank "1e+21"
+    (str 1.0): Clojure "1.0", jank "1.0"
+    (str 123.45): Clojure "123.45", jank "123.45"
+    (str 0.0): Clojure "0.0", jank "0.0"
+    (str -0.0): Clojure "-0.0", jank "-0.0"
+== printing: strings in pr-str (each code point 0..127 and é, € alone)
+  2 of 130 differ:
+    (pr-str (str (char 7))): Clojure "\"\x07\"", jank "\"\\a\""
+    (pr-str (str (char 11))): Clojure "\"\x0b\"", jank "\"\\v\""
+== printing: str, pr-str, print-str of values of depth ≤ 2
+  str: 85 of 130 values differ, e.g.:
+    (str (\a)): Clojure "(\\a)", jank "(a)"
+    (str [\a]): Clojure "[\\a]", jank "[a]"
+    (str ("a")): Clojure "(\"a\")", jank "(a)"
+    (str #{\a}): Clojure "#{\\a}", jank "#{a}"
+    (str ["a"]): Clojure "[\"a\"]", jank "[a]"
+    (str [1 \a]): Clojure "[1 \\a]", jank "[1 a]"
+  print-str: 0 of 130 values differ
+== printing: regex patterns in pr-str (patterns over a, ", \, Q, E up to 3 characters)
+  63 of 156 print differently; of the 130 valid patterns, jank's text is not one regex literal for 55, Clojure's for 0
+    (pr-str (re-pattern "\"")): Clojure #"\"", jank #"""
+    (pr-str (re-pattern "\"\\")): Clojure #"\"\", jank #""\"
+    (pr-str (re-pattern "a\"")): Clojure #"a\"", jank #"a""
+== printing: BigDecimal (str; pr-str adds M on both sides)
+    BigDecimal 1×10^-0: Clojure "1", jank "1.0"
+    BigDecimal 150×10^-2: Clojure "1.50", jank "1.5"
+    BigDecimal 10×10^-1: Clojure "1.0", jank "1.0"
+    BigDecimal -5×10^-0: Clojure "-5", jank "-5.0"
+    BigDecimal 15×10^-1: Clojure "1.5", jank "1.5"
+    BigDecimal 0×10^-2: Clojure "0.00", jank "0.0"
+== regex: re-find, re-seq, re-matches (patterns of depth ≤ 2, inputs ≤ 3)
+  explore (3000 seeds): jank's re-find, re-seq and re-matches agree with Clojure's after 1 timelines, 8 decisions: (re-matches #"\n?|b*" "b"): Clojure "b", jank nil
+  shrunk to 8 decisions: (re-matches #"a?|b" "b"): Clojure "b", jank nil
+  tape:
+    {"name":"re.api","options":3,"value":2}
+    {"name":"re.kind","options":7,"value":2}
+    {"name":"re.kind","options":7,"value":5}
+    {"name":"re.atom","options":9,"value":0}
+    {"name":"re.kind","options":7,"value":0}
+    {"name":"re.atom","options":9,"value":1}
+    {"name":"re.input.len","options":4,"value":1}
+    {"name":"re.input.char0","options":5,"value":1}
+  exhaust: found after 27 timelines: (re-find #"a" "\u0000a"): Clojure "a", jank nil
+  exhaust's counterexample shrunk to 6 decisions: (re-find #"a" "\u0000a"): Clojure "a", jank nil
+  tape:
+    {"name":"re.api","options":3,"value":0}
+    {"name":"re.kind","options":7,"value":0}
+    {"name":"re.atom","options":9,"value":0}
+    {"name":"re.input.len","options":4,"value":2}
+    {"name":"re.input.char0","options":5,"value":4}
+    {"name":"re.input.char1","options":5,"value":0}
+  table: 117936 questions (252 patterns × 156 inputs × 3 functions)
+  re-find: 8557 of 39312 deviate
+      (re-find #"." "é"): Clojure "é", jank "\xc3" (invalid UTF-8)
+      (re-find #".." "é"): Clojure nil, jank "é"
+      (re-find #".?" "é"): Clojure "é", jank "\xc3" (invalid UTF-8)
+      (re-find #"." "éa"): Clojure "é", jank "\xc3" (invalid UTF-8)
+  re-seq: 20640 of 39312 deviate
+      (re-seq #"$" ""): Clojure (""), jank ("" "" …) an infinite seq: realizing it never ends
+      (re-seq #"^" ""): Clojure (""), jank ("" "" …) an infinite seq: realizing it never ends
+      (re-seq #"b*" ""): Clojure (""), jank ("" "" …) an infinite seq: realizing it never ends
+      (re-seq #"^" "a"): Clojure (""), jank ("" "" …) an infinite seq: realizing it never ends
+  re-matches: 4424 of 39312 deviate
+      (re-matches #"." "é"): Clojure "é", jank nil
+      (re-matches #".." "é"): Clojure nil, jank "é"
+      (re-matches #".?" "é"): Clojure "é", jank nil
+      (re-matches #".$" "é"): Clojure "é", jank nil
+  by cause:
+    (re-find #"." "é"): Clojure "é", jank "\xc3" (invalid UTF-8)
+    (re-matches #"[é]" "é"): Clojure "é", jank nil
+    (re-find #"a$" "a\n"): Clojure "a", jank nil
+    (re-find #"(a)?b" "b"): Clojure ["b" nil], jank ["b" ""]
+    (re-seq #"^a" "aa"): Clojure ("a"), jank ("a" "a")
+    (re-seq #"a*" "b"): Clojure ("" ""), jank ("" "" …) an infinite seq: realizing it never ends
+    (re-matches #"a|ab" "ab"): Clojure "ab", jank nil
+    (re-matches #"a*?" "a"): Clojure "a", jank nil
+    (re-find #"b" "a\u0000b"): Clojure "b", jank nil
+    (re-matches #"a" "a\u0000b"): Clojure nil, jank "a"
+== regex: replacement templates (clojure.string/replace s #"(a)" template), one match, 1 group
+    "$1": Clojure "<g1>", jank "<g1>"
+    "$0": Clojure "<g0>", jank "<g0>"
+    "$&": Clojure throws (Illegal group reference), jank "<g0>"
+    "$$": Clojure throws (Illegal group reference), jank "$"
+    "\\$": Clojure "$", jank "\\$"
+    "$12": Clojure "<g1>2", jank ""
+    "$x": Clojure throws (Illegal group reference), jank "$x"
+    "$": Clojure throws (Illegal group reference: group index is missing), jank "$"
+    "x\\y": Clojure "xy", jank "x\\y"
+    "$1$1": Clojure "<g1><g1>", jank "<g1><g1>"
+== keywords from a namespace and a name (core.cpp keyword 521 → context.cpp intern_keyword 561/584/588 → symbol.cpp separate 8)
+    (keyword nil "b/c"): namespace Clojure nil, jank "b"; name Clojure "b/c", jank "c"
+    (keyword nil "a/"): namespace Clojure nil, jank "a"; name Clojure "a/", jank ""
+    (keyword "" "c"): namespace Clojure "", jank nil; name Clojure "c", jank "c"
+    (keyword "" "b/c"): namespace Clojure "", jank "b"; name Clojure "b/c", jank "c"
+    (keyword "" "a/"): namespace Clojure "", jank "a"; name Clojure "a/", jank ""
+    (keyword "a/b" "c"): namespace Clojure "a/b", jank "a"; name Clojure "c", jank "b/c"
+    (keyword "a/b" "b/c"): namespace Clojure "a/b", jank "a"; name Clojure "b/c", jank "b/b/c"
+    (keyword "a/b" "a/"): namespace Clojure "a/b", jank "a"; name Clojure "a/", jank "b/a/"
+  8 of 12 keywords have another namespace or name than Clojure's
+    (= (keyword nil "c") (keyword "" "c")): Clojure false, jank true
+    (= (keyword nil "b/c") (keyword "" "b/c")): Clojure false, jank true
+    (= (keyword nil "a/") (keyword "" "a/")): Clojure false, jank true
+    (= (keyword "" "c") (keyword nil "c")): Clojure false, jank true
+  8 of 144 keyword pairs: `=` differs from Clojure's
+== symbols from strings (core.jank symbol 517 → core.cpp to_unqualified_symbol 84 / to_qualified_symbol 118 → symbol.cpp separate 8)
+    (symbol nil "b/c"): namespace Clojure nil, jank "b"; name Clojure "b/c", jank "c"
+    (symbol nil "a/"): namespace Clojure nil, jank "a"; name Clojure "a/", jank ""
+    (symbol "" "c"): namespace Clojure "", jank nil; name Clojure "c", jank "c"
+    (symbol "" "b/c"): namespace Clojure "", jank nil; name Clojure "b/c", jank "b/c"
+    (symbol "" "a/"): namespace Clojure "", jank nil; name Clojure "a/", jank "a/"
+    (symbol "/a"): namespace Clojure "", jank nil; name Clojure "a", jank "a"
+  6 of 17 symbols differ
+== (char n) past the range check (core.cpp to_char 1311 → character.cpp 57 → utf8.cpp to_char 170/178)
+    (char -1): Clojure throws (Value out of range for char), jank (UTF-8 locale) throws (Unfinished character: -1)
+    (char -2147483648): Clojure throws (Value out of range for char), jank (UTF-8 locale) throws (Unfinished character: -2147483648)
+    (char -4294967296): Clojure throws (Value out of range for char), jank (UTF-8 locale) \"\x00"
+    (char -4294967295): Clojure throws (Value out of range for char), jank (UTF-8 locale) \"\x01"
+    (char -4294967231): Clojure throws (Value out of range for char), jank (UTF-8 locale) \"A"
+    (char -4294967063): Clojure throws (Value out of range for char), jank (UTF-8 locale) \"é"
+    (char -8589806080): Clojure throws (Value out of range for char), jank (UTF-8 locale) \"😀"
+== = on string seqs, lists, strings and nil (seq_ext.hpp equal 13; seq.cpp sequence_equal 881; 7135b7708 requires is_sequential)
+    (= (seq "a") "a"): Clojure false, jank false
+    (= '(\a) "a"): Clojure false, jank false
+    (= [] nil): Clojure false, jank false
+    (= [\a] "a"): Clojure false, jank false
+    (let [x (seq "é")] (= x x)): Clojure true, jank false
+    (= (seq "é") [\é]): Clojure true, jank false
+    (= [\é] (seq "é")): Clojure true, jank true; jank hashes 2997761404 vs 501777105
+    (= (seq "a") [\a]): Clojure true, jank true; jank hashes 873615215 vs 3091590493
+    (empty (seq "ab")): jank Jank.Strings.Obj.list [] (persistent_string_sequence.cpp empty 157, new); Clojure ()
+== regex: clojure.string/replace and split with a pattern (std::regex_iterator vs Matcher.find)
+  explore (3000 seeds): jank's clojure.string/replace and split with a pattern agree with Clojure's after 2 timelines, 5 decisions: (clojure.string/split "é" #"[^a]" -1): Clojure ("" ""), jank ("" "" "")
+  shrunk to 5 decisions: (clojure.string/replace "é" #"[^a]" "-"): Clojure "-", jank "--"
+  tape:
+    {"name":"re.kind","options":5,"value":0}
+    {"name":"re.atom","options":8,"value":6}
+    {"name":"re.input.len","options":4,"value":1}
+    {"name":"re.input.char0","options":4,"value":3}
+    {"name":"re.iter.api","options":4,"value":0}
+  exhaust: found after 1377 timelines: (clojure.string/replace "é" #"." "-"): Clojure "-", jank "--"
+  exhaust's counterexample shrunk to 5 decisions: (clojure.string/replace "é" #"." "-"): Clojure "-", jank "--"
+  tape:
+    {"name":"re.kind","options":5,"value":0}
+    {"name":"re.atom","options":8,"value":4}
+    {"name":"re.input.len","options":4,"value":1}
+    {"name":"re.input.char0","options":4,"value":3}
+    {"name":"re.iter.api","options":4,"value":0}
+  table: 14387 of 66300 questions deviate (patterns of depth ≤ 2 without ^, inputs ≤ 3 over a b \n é; replace "-", split 0/-1/2)
+  ASCII letters only, no $ (only the iteration rule left): 176 of 4920 deviate
+    (clojure.string/split "b" #"b*?" 2): Clojure ("b" ""), jank ("" "")
+    (clojure.string/split "b" #".*?" 2): Clojure ("b" ""), jank ("" "")
+    (clojure.string/split "a" #"a*?" 0): Clojure ("a"), jank ()
+    (clojure.string/split "a" #"a*?" 2): Clojure ("a" ""), jank ("" "")
+    (clojure.string/split "b" #"b*?" 0): Clojure ("b"), jank ()
+    (clojure.string/split "a" #".*?" 2): Clojure ("a" ""), jank ("" "")
+  replace with Matcher.find's rule instead of regex_iterator's, ASCII: 0 of 1230 still differ
+    (clojure.string/replace "aa" #"a*?" "-"): Clojure "-a-a-", jank "-----"
+    (clojure.string/split "ab" #"b?|a" 0): Clojure ("a"), jank ()
+    (clojure.string/replace "baa" #"a*" "-"): Clojure "-b--", jank "-b--"

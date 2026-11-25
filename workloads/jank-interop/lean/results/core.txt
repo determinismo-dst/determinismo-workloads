@@ -1,0 +1,519 @@
+== compare: jank vs Clojure on every pair of the universe
+  explore (3000 seeds): compare as Clojure's after 5 timelines, 2 decisions: (compare :x/a [1 2]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [1 2] as a keyword (expect_object, keyword.cpp 52))
+  shrunk to 2 decisions: (compare :x/a [1 2]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [1 2] as a keyword (expect_object, keyword.cpp 52))
+  tape:
+    {"name":"compare.a","options":24,"value":17}
+    {"name":"compare.b","options":24,"value":20}
+  exhaust: found after 26 timelines: (compare true true): Clojure 0, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+  exhaust's counterexample shrunk to 2 decisions: (compare true true): Clojure 0, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+  tape:
+    {"name":"compare.a","options":24,"value":1}
+    {"name":"compare.b","options":24,"value":1}
+  table: 71 of 576 ordered pairs disagree
+    (compare true true): Clojure 0, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+    (compare true false): Clojure 1, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+    (compare true 0): Clojure throws (ClassCastException), jank 1
+    (compare true 1): Clojure throws (ClassCastException), jank 0
+    (compare true 9007199254740993): Clojure throws (ClassCastException), jank -1
+    (compare true 0.0): Clojure throws (ClassCastException), jank 1
+    (compare true 1.5): Clojure throws (ClassCastException), jank -1
+    (compare true 0.1): Clojure throws (ClassCastException), jank 1
+    (compare true ##NaN): Clojure throws (ClassCastException), jank 0
+    (compare true 9007199254740992.0): Clojure throws (ClassCastException), jank -1
+    (compare true 0.1M): Clojure throws (ClassCastException), jank 1
+    (compare true 1M): Clojure throws (ClassCastException), jank 0
+    (compare false true): Clojure -1, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+    (compare false false): Clojure 0, jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+    (compare false 0): Clojure throws (ClassCastException), jank 0
+    (compare false 1): Clojure throws (ClassCastException), jank -1
+    (compare false 9007199254740993): Clojure throws (ClassCastException), jank -1
+    (compare false 0.0): Clojure throws (ClassCastException), jank 0
+    (compare false 1.5): Clojure throws (ClassCastException), jank -1
+    (compare false 0.1): Clojure throws (ClassCastException), jank -1
+    (compare false ##NaN): Clojure throws (ClassCastException), jank 0
+    (compare false 9007199254740992.0): Clojure throws (ClassCastException), jank -1
+    (compare false 0.1M): Clojure throws (ClassCastException), jank -1
+    (compare false 1M): Clojure throws (ClassCastException), jank -1
+    (compare 0.1 0.1M): Clojure 0, jank 1
+    (compare 0.1M 0.1): Clojure 0, jank -1
+    (compare :a true): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads true as a keyword (expect_object, keyword.cpp 52))
+    (compare :a false): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads false as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 1): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 9007199254740993): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 9007199254740993 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 0.0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0.0 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 1.5): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1.5 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 0.1): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0.1 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a ##NaN): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads ##NaN as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 9007199254740992.0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 9007199254740992.0 as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 0.1M): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0.1M as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 1M): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1M as a keyword (expect_object, keyword.cpp 52))
+    (compare :a "a"): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads "a" as a keyword (expect_object, keyword.cpp 52))
+    (compare :a "b"): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads "b" as a keyword (expect_object, keyword.cpp 52))
+    (compare :a \a): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads \a as a keyword (expect_object, keyword.cpp 52))
+    (compare :a 'a): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 'a as a keyword (expect_object, keyword.cpp 52))
+    (compare :a [1]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [1] as a keyword (expect_object, keyword.cpp 52))
+    (compare :a [1 2]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [1 2] as a keyword (expect_object, keyword.cpp 52))
+    (compare :a [:a]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [:a] as a keyword (expect_object, keyword.cpp 52))
+    (compare :a '(1)): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads '(1) as a keyword (expect_object, keyword.cpp 52))
+    (compare :a {}): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads {} as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a true): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads true as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a false): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads false as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 1): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 9007199254740993): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 9007199254740993 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 0.0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0.0 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 1.5): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1.5 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 0.1): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0.1 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a ##NaN): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads ##NaN as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 9007199254740992.0): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 9007199254740992.0 as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 0.1M): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 0.1M as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 1M): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1M as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a "a"): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads "a" as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a "b"): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads "b" as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a \a): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads \a as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a 'a): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 'a as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a [1]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [1] as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a [1 2]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [1 2] as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a [:a]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads [:a] as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a '(1)): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads '(1) as a keyword (expect_object, keyword.cpp 52))
+    (compare :x/a {}): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads {} as a keyword (expect_object, keyword.cpp 52))
+    (compare [:a] [1]): Clojure throws (ClassCastException), jank undefined behavior (keyword::compare reads 1 as a keyword (expect_object, keyword.cpp 52))
+    (compare '(1) '(1)): Clojure 0, jank throws (runtime_unsupported_behavior: compare)
+    (compare {} {}): Clojure 0, jank throws (runtime_unsupported_behavior: compare)
+== sort: jank vs Clojure, vectors of 0-3 atoms
+  explore (3000 seeds): sort as Clojure's after 16 timelines, 4 decisions: (sort [false true false]): Clojure (false false true), jank throws (Objects of type `boolean` are not comparable to `boolean`.)
+  shrunk to 4 decisions: (sort [1 1 false]): Clojure throws (ClassCastException), jank (false 1 1)
+  tape:
+    {"name":"sort.length","options":4,"value":3}
+    {"name":"sort.elem","options":9,"value":0}
+    {"name":"sort.elem","options":9,"value":0}
+    {"name":"sort.elem","options":9,"value":3}
+  exhaust: found after 13 timelines: (sort [1 true]): Clojure throws (ClassCastException), jank (1 true)
+  exhaust's counterexample shrunk to 3 decisions: (sort [1 true]): Clojure throws (ClassCastException), jank (1 true)
+  tape:
+    {"name":"sort.length","options":4,"value":2}
+    {"name":"sort.elem","options":9,"value":0}
+    {"name":"sort.elem","options":9,"value":2}
+== sort with a comparator fn (excluding Clojure's int narrowing)
+  explore (3000 seeds): nothing
+  exhaust: complete, 780 timelines, nothing
+== sort with a comparator fn (including Clojure's int narrowing)
+  explore (3000 seeds): sort with a comparator fn as Clojure's after 9 timelines, 5 decisions: (sort (fn [a b] (- a b)) [3000000000, 2, 2]): Clojure [3000000000, 2, 2], jank [2, 2, 3000000000]
+  shrunk to 5 decisions: (sort (fn [a b] (- a b)) [3000000000, 0, 0]): Clojure [3000000000, 0, 0], jank [0, 0, 3000000000]
+  tape:
+    {"name":"sortfn.kind","options":5,"value":3}
+    {"name":"sortfn.length","options":4,"value":3}
+    {"name":"sortfn.elem","options":5,"value":3}
+    {"name":"sortfn.elem","options":5,"value":0}
+    {"name":"sortfn.elem","options":5,"value":0}
+  exhaust: found after 478 timelines: (sort (fn [a b] (- a b)) [0, 3000000000]): Clojure [3000000000, 0], jank [0, 3000000000]
+  exhaust's counterexample shrunk to 4 decisions: (sort (fn [a b] (- a b)) [0, 3000000000]): Clojure [3000000000, 0], jank [0, 3000000000]
+  tape:
+    {"name":"sortfn.kind","options":5,"value":3}
+    {"name":"sortfn.length","options":4,"value":2}
+    {"name":"sortfn.elem","options":5,"value":0}
+    {"name":"sortfn.elem","options":5,"value":3}
+== multimethods: 2 derives, 2 defmethods, 1 prefer-method, a call
+  explore (3000 seeds): multimethod dispatch as Clojure's after 1617 timelines, 9 decisions: (defmulti f identity) (derive ::t1 ::t2) (derive ::t0 ::t1) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t2 ::t1) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  shrunk to 9 decisions: (defmulti f identity) (derive ::t1 ::t2) (derive ::t0 ::t1) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t2 ::t0) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  tape:
+    {"name":"multi.derive.child","options":4,"value":1}
+    {"name":"multi.derive.parent","options":4,"value":2}
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":1}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.defmethod","options":5,"value":1}
+    {"name":"multi.prefer.x","options":4,"value":2}
+    {"name":"multi.prefer.y","options":4,"value":0}
+    {"name":"multi.call","options":4,"value":0}
+  exhaust: found after 28889 timelines: (defmulti f identity) (derive ::t0 ::t1) (derive ::t0 ::t2) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t2) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  exhaust's counterexample shrunk to 9 decisions: (defmulti f identity) (derive ::t0 ::t1) (derive ::t0 ::t2) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t2) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  tape:
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":1}
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":2}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.defmethod","options":5,"value":1}
+    {"name":"multi.prefer.x","options":4,"value":1}
+    {"name":"multi.prefer.y","options":4,"value":2}
+    {"name":"multi.call","options":4,"value":0}
+== multimethods: 3 derives, 3 defmethods, 2 prefer-methods, a call
+  explore (3000 seeds): multimethod dispatch as Clojure's after 19 timelines, 14 decisions: (defmulti f identity) (derive ::t1 ::t3) (derive ::t0 ::t1) (derive ::t2 ::t1) (defmethod f ::t3 [_] :3) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t3) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  shrunk to 14 decisions: (defmulti f identity) (derive ::t0 ::t3) (derive ::t0 ::t1) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t3) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  tape:
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":3}
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":1}
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":0}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.defmethod","options":5,"value":1}
+    {"name":"multi.prefer.x","options":4,"value":1}
+    {"name":"multi.prefer.y","options":4,"value":3}
+    {"name":"multi.prefer.x","options":4,"value":0}
+    {"name":"multi.prefer.y","options":4,"value":0}
+    {"name":"multi.call","options":4,"value":0}
+  exhaust: found after 2305049 timelines: (defmulti f identity) (derive ::t0 ::t1) (derive ::t0 ::t2) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t2) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  exhaust's counterexample shrunk to 14 decisions: (defmulti f identity) (derive ::t0 ::t1) (derive ::t0 ::t2) (defmethod f ::t0 [_] :0) (defmethod f ::t1 [_] :1) (prefer-method f ::t1 ::t2) (f ::t0): Clojure the ::t1 method, jank the ::t0 method
+  tape:
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":0}
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":1}
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":2}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.defmethod","options":5,"value":1}
+    {"name":"multi.prefer.x","options":4,"value":0}
+    {"name":"multi.prefer.y","options":4,"value":0}
+    {"name":"multi.prefer.x","options":4,"value":1}
+    {"name":"multi.prefer.y","options":4,"value":2}
+    {"name":"multi.call","options":4,"value":0}
+== multimethods: 3 derives, 3 defmethods, no prefer-method, a call
+  explore (3000 seeds): nothing
+  exhaust: complete, 2048000 timelines, nothing
+== multimethods: get-method after 1 derive, 1 defmethod
+  explore (300 seeds): get-method as Clojure's after 1 timelines, 4 decisions: (defmulti f identity) (derive ::t3 ::t1) (defmethod f ::t3 [_] :3) (get-method f ::t2): Clojure nil (or the :default method), jank throws: no method
+  shrunk to 4 decisions: (defmulti f identity) (defmethod f ::t0 [_] :0) (get-method f ::t2): Clojure nil (or the :default method), jank throws: no method
+  tape:
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":0}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.call","options":4,"value":2}
+  exhaust: found after 2 timelines: (defmulti f identity) (defmethod f ::t0 [_] :0) (get-method f ::t1): Clojure nil (or the :default method), jank throws: no method
+  exhaust's counterexample shrunk to 4 decisions: (defmulti f identity) (defmethod f ::t0 [_] :0) (get-method f ::t1): Clojure nil (or the :default method), jank throws: no method
+  tape:
+    {"name":"multi.derive.child","options":4,"value":0}
+    {"name":"multi.derive.parent","options":4,"value":0}
+    {"name":"multi.defmethod","options":5,"value":0}
+    {"name":"multi.call","options":4,"value":1}
+== namespaces: 1 operation in user
+  explore (500 seeds): namespaces as Clojure's after 3 timelines, 1 decisions: (in-ns 'user) (remove-ns 'clojure.core): Clojure throws; map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) nil
+  shrunk to 1 decisions: (in-ns 'user) (remove-ns 'clojure.core): Clojure throws; map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) nil
+  tape:
+    {"name":"ns.op","options":5,"value":4}
+  exhaust: found after 1 timelines: (in-ns 'user) (intern 'user 'map 7): Clojure map→#'user/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=7 clojure.core/inc=2; (find-ns 'clojure.core) found
+  exhaust's counterexample shrunk to 2 decisions: (in-ns 'user) (intern 'user 'map 7): Clojure map→#'user/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=7 clojure.core/inc=2; (find-ns 'clojure.core) found
+  tape:
+    {"name":"ns.op","options":5,"value":0}
+    {"name":"ns.sym","options":4,"value":0}
+== namespaces: 3 operations in user
+  explore (3000 seeds): namespaces as Clojure's after 3 timelines, 1 decisions: (in-ns 'user) (remove-ns 'clojure.core): Clojure throws; map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) nil
+  shrunk to 1 decisions: (in-ns 'user) (remove-ns 'clojure.core): Clojure throws; map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=1 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) nil
+  tape:
+    {"name":"ns.op","options":5,"value":4}
+  exhaust: found after 1 timelines: (in-ns 'user) (intern 'user 'map 7): Clojure map→#'user/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=7 clojure.core/inc=2; (find-ns 'clojure.core) found
+  exhaust's counterexample shrunk to 2 decisions: (in-ns 'user) (intern 'user 'map 7): Clojure map→#'user/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=1 clojure.core/inc=2; (find-ns 'clojure.core) found; jank map→#'clojure.core/map=7 inc→#'clojure.core/inc=2 f→unbound y→unbound; clojure.core/map=7 clojure.core/inc=2; (find-ns 'clojure.core) found
+  tape:
+    {"name":"ns.op","options":5,"value":0}
+    {"name":"ns.sym","options":4,"value":0}
+== namespaces: 3 operations, jank with intern and remove-ns fixed
+  explore (3000 seeds): nothing
+  exhaust: complete, 2744 timelines, nothing
+== nREPL capture: two connections, one eval each, stdout fully buffered
+  explore (3000 seeds): each evaluation's :out is its own output after 2 timelines, 14 decisions: client t0's :out is [o1, o0], expected [o0]; client t1's :out is [], expected [o1]
+  shrunk to 12 decisions: client t1's :out is [], expected [o1]
+  tape:
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 10 timelines: fd 1 is left on temp1 (unlinked): everything the server prints from now on is lost
+  exhaust's counterexample shrunk to 9 decisions: fd 1 is left on temp1 (unlinked): everything the server prints from now on is lost
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  census: 12870 interleavings; broken: [(fd 1 is the terminal again, 390), (each evaluation's :out is its own output, 9222)]
+  story of the shrunk timeline (9 decisions):
+    t0: bak-fd = dup(1) → the terminal
+    t0: mkstemp → temp1
+    t0: fflush(stdout) → [] to the terminal
+    t0: dup2(temp, 1): fd 1 → temp1
+    t0: (println "o0") (buffered)
+    t0: fflush(stdout) → [o0] to temp1
+    t1: bak-fd = dup(1) → temp1
+    t0: dup2(bak-fd, 1): fd 1 → the terminal
+    t0: readback temp1 = [o0]; unlink
+    t1: mkstemp → temp2
+    t1: fflush(stdout) → [] to the terminal
+    t1: dup2(temp, 1): fd 1 → temp2
+    t1: (println "o1") (buffered)
+    t1: fflush(stdout) → [o1] to temp2
+    t1: dup2(bak-fd, 1): fd 1 → temp1
+    t1: readback temp2 = [o1]; unlink
+== nREPL capture, spec (*out* per session): two connections, one eval each, stdout fully buffered
+  explore (100 seeds): nothing
+  exhaust: complete, 2 timelines, nothing
+== nREPL capture: two connections, one eval each, stdout line-buffered (a terminal)
+  explore (3000 seeds): each evaluation's :out is its own output after 6 timelines, 14 decisions: client t0's :out is [o0, o1], expected [o0]; client t1's :out is [], expected [o1]
+  shrunk to 12 decisions: client t1's :out is [], expected [o1]
+  tape:
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  exhaust: found after 10 timelines: fd 1 is left on temp1 (unlinked): everything the server prints from now on is lost
+  exhaust's counterexample shrunk to 9 decisions: fd 1 is left on temp1 (unlinked): everything the server prints from now on is lost
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  census: 12870 interleavings; broken: [(fd 1 is the terminal again, 528), (each evaluation's :out is its own output, 6290)]
+  story of the shrunk timeline (9 decisions):
+    t0: bak-fd = dup(1) → the terminal
+    t0: mkstemp → temp1
+    t0: fflush(stdout) → [] to the terminal
+    t0: dup2(temp, 1): fd 1 → temp1
+    t0: (println "o0") → temp1
+    t0: fflush(stdout) → [] to temp1
+    t1: bak-fd = dup(1) → temp1
+    t0: dup2(bak-fd, 1): fd 1 → the terminal
+    t0: readback temp1 = [o0]; unlink
+    t1: mkstemp → temp2
+    t1: fflush(stdout) → [] to the terminal
+    t1: dup2(temp, 1): fd 1 → temp2
+    t1: (println "o1") → temp2
+    t1: fflush(stdout) → [] to temp2
+    t1: dup2(bak-fd, 1): fd 1 → temp1
+    t1: readback temp2 = [o1]; unlink
+== nREPL capture, spec (*out* per session): two connections, one eval each, stdout line-buffered (a terminal)
+  explore (100 seeds): nothing
+  exhaust: complete, 2 timelines, nothing
+== nREPL capture: one eval beside a printer outside any capture (jank repl's terminal, a future), line-buffered
+  explore (3000 seeds): nothing
+  exhaust: found after 4 timelines: client t0's :out is [o0, o1], expected [o0]
+  exhaust's counterexample shrunk to 9 decisions: client t0's :out is [o0, o1], expected [o0]
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+  census: 45 interleavings; broken: [(each evaluation's :out is its own output, 12)]
+  story of the shrunk timeline (9 decisions):
+    t0: bak-fd = dup(1) → the terminal
+    t0: mkstemp → temp1
+    t0: fflush(stdout) → [] to the terminal
+    t0: dup2(temp, 1): fd 1 → temp1
+    t0: (println "o0") → temp1
+    t0: fflush(stdout) → [] to temp1
+    t1: (println "o1") outside any capture → temp1
+    t0: dup2(bak-fd, 1): fd 1 → the terminal
+    t0: readback temp1 = [o0, o1]; unlink
+    t1: fflush(stdout) → [] to the terminal
+== nREPL capture, spec (*out* per session): one eval beside a printer outside any capture (jank repl's terminal, a future), line-buffered
+  explore (100 seeds): nothing
+  exhaust: complete, 2 timelines, nothing
+== nREPL capture: one eval beside a printer outside any capture, fully buffered
+  explore (3000 seeds): nothing
+  exhaust: found after 6 timelines: client t0's :out is [o0, o1], expected [o0]
+  exhaust's counterexample shrunk to 8 decisions: client t0's :out is [o0, o1], expected [o0]
+  tape:
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":0}
+    {"name":"thread.next","options":2,"value":1}
+    {"name":"thread.next","options":2,"value":1}
+  census: 45 interleavings; broken: [(each evaluation's :out is its own output, 15)]
+  story of the shrunk timeline (8 decisions):
+    t0: bak-fd = dup(1) → the terminal
+    t0: mkstemp → temp1
+    t0: fflush(stdout) → [] to the terminal
+    t0: dup2(temp, 1): fd 1 → temp1
+    t0: (println "o0") (buffered)
+    t0: fflush(stdout) → [o0] to temp1
+    t1: (println "o1") outside any capture (buffered)
+    t1: fflush(stdout) → [o1] to temp1
+    t0: dup2(bak-fd, 1): fd 1 → the terminal
+    t0: readback temp1 = [o0, o1]; unlink
+== nREPL capture, spec (*out* per session): one eval beside a printer outside any capture, fully buffered
+  explore (100 seeds): nothing
+  exhaust: complete, 2 timelines, nothing
+== nREPL capture: the fixed race schedule (t0 starts, t1 starts, t0 prints and ends, t1 prints and ends), fully buffered
+  each evaluation's :out is its own output: client t0's :out is [], expected [o0]; client t1's :out is [o0], expected [o1]
+    t0: bak-fd = dup(1) → the terminal
+    t0: mkstemp → temp1
+    t0: fflush(stdout) → [] to the terminal
+    t0: dup2(temp, 1): fd 1 → temp1
+    t1: bak-fd = dup(1) → temp1
+    t1: mkstemp → temp2
+    t1: fflush(stdout) → [] to temp1
+    t1: dup2(temp, 1): fd 1 → temp2
+    t0: (println "o0") (buffered)
+    t0: fflush(stdout) → [o0] to temp2
+    t0: dup2(bak-fd, 1): fd 1 → the terminal
+    t0: readback temp1 = []; unlink
+    t1: (println "o1") (buffered)
+    t1: fflush(stdout) → [o1] to the terminal
+    t1: dup2(bak-fd, 1): fd 1 → temp1
+    t1: readback temp2 = [o0]; unlink
+== nREPL sessions, 3 messages with interrupts, jank as written
+  explore (3000 seeds): nREPL responses as nREPL's after 1 timelines, 2 decisions: {op interrupt, session s2}: the last answered by nREPL with session-idle, by jank with unknown-op
+  shrunk to 2 decisions: {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  tape:
+    {"name":"nrepl.msg","options":2,"value":1}
+    {"name":"nrepl.session","options":2,"value":0}
+  exhaust: found after 22 timelines: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s1, code "(map (fn [_] (throw (ex-info \"p\" {}))) [1])"}: the last answered by nREPL with eval-error p, by jank with error (handler exception)
+  exhaust's counterexample shrunk to 12 decisions: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s1, code "(map (fn [_] (throw (ex-info \"p\" {}))) [1])"}: the last answered by nREPL with eval-error p, by jank with error (handler exception)
+  tape:
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":7}
+    {"name":"nrepl.ns","options":3,"value":0}
+== nREPL sessions, 3 messages with interrupts, missing ns fixed
+  explore (3000 seeds): nREPL responses as nREPL's after 1 timelines, 2 decisions: {op interrupt, session s2}: the last answered by nREPL with session-idle, by jank with unknown-op
+  shrunk to 2 decisions: {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  tape:
+    {"name":"nrepl.msg","options":2,"value":1}
+    {"name":"nrepl.session","options":2,"value":0}
+  exhaust: found after 22 timelines: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s1, code "(map (fn [_] (throw (ex-info \"p\" {}))) [1])"}: the last answered by nREPL with eval-error p, by jank with error (handler exception)
+  exhaust's counterexample shrunk to 12 decisions: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s1, code "(map (fn [_] (throw (ex-info \"p\" {}))) [1])"}: the last answered by nREPL with eval-error p, by jank with error (handler exception)
+  tape:
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":7}
+    {"name":"nrepl.ns","options":3,"value":0}
+== nREPL sessions, 3 messages with interrupts, missing ns and printing errors fixed
+  explore (3000 seeds): nREPL responses as nREPL's after 1 timelines, 2 decisions: {op interrupt, session s2}: the last answered by nREPL with session-idle, by jank with unknown-op
+  shrunk to 2 decisions: {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  tape:
+    {"name":"nrepl.msg","options":2,"value":1}
+    {"name":"nrepl.session","options":2,"value":0}
+  exhaust: found after 28 timelines: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s1, code "((fn f [n] (inc (f n))) 0)"}: the last answered by nREPL with eval-error StackOverflowError, by jank with no response
+  exhaust's counterexample shrunk to 12 decisions: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s1, code "((fn f [n] (inc (f n))) 0)"}: the last answered by nREPL with eval-error StackOverflowError, by jank with no response
+  tape:
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":9}
+    {"name":"nrepl.ns","options":3,"value":0}
+== nREPL sessions, 3 messages with interrupts, ... and stack overflow fixed
+  explore (3000 seeds): nREPL responses as nREPL's after 1 timelines, 2 decisions: {op interrupt, session s2}: the last answered by nREPL with session-idle, by jank with unknown-op
+  shrunk to 2 decisions: {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  tape:
+    {"name":"nrepl.msg","options":2,"value":1}
+    {"name":"nrepl.session","options":2,"value":0}
+  exhaust: found after 37 timelines: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s2, code "*1"}: the last answered by nREPL with value nil (ns user), by jank with value 1 (ns user)
+  exhaust's counterexample shrunk to 12 decisions: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op eval, session s2, code "*1"}: the last answered by nREPL with value nil (ns user), by jank with value 1 (ns user)
+  tape:
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":1}
+    {"name":"nrepl.code","options":10,"value":2}
+    {"name":"nrepl.ns","options":3,"value":0}
+== nREPL sessions, 3 messages with interrupts, ... and per-session ns/*1/*e fixed
+  explore (3000 seeds): nREPL responses as nREPL's after 1 timelines, 2 decisions: {op interrupt, session s2}: the last answered by nREPL with session-idle, by jank with unknown-op
+  shrunk to 2 decisions: {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  tape:
+    {"name":"nrepl.msg","options":2,"value":1}
+    {"name":"nrepl.session","options":2,"value":0}
+  exhaust: found after 61 timelines: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  exhaust's counterexample shrunk to 10 decisions: {op eval, session s1, code "1"} {op eval, session s1, code "1"} {op interrupt, session s1}: the last answered by nREPL with session-idle, by jank with unknown-op
+  tape:
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":0}
+    {"name":"nrepl.session","options":2,"value":0}
+    {"name":"nrepl.code","options":10,"value":0}
+    {"name":"nrepl.ns","options":3,"value":0}
+    {"name":"nrepl.msg","options":2,"value":1}
+    {"name":"nrepl.session","options":2,"value":0}
+== nREPL sessions, 3 messages with interrupts, ... and interrupt fixed (all five: jank = nREPL expected)
+  explore (3000 seeds): nothing
+  exhaust: complete, 238328 timelines, nothing
+== nREPL sessions: hand-picked sequences (jank as written vs nREPL)
+  {op eval, session s1, code "(in-ns 'foo)"} {op eval, session s1, code "(str *ns*)"}
+    nREPL: value #object[ns foo] (ns foo), value "foo" (ns foo)
+    jank:  value #object[ns foo] (ns foo), value "user" (ns user)
+  {op eval, session s1, code "1"} {op eval, session s2, code "2"} {op eval, session s1, code "*1"}
+    nREPL: value 1 (ns user), value 2 (ns user), value 1 (ns user)
+    jank:  value 1 (ns user), value 2 (ns user), value 2 (ns user)
+  {op eval, session s1, code "(throw (ex-info \"e\" {}))"} {op eval, session s2, code "(ex-message *e)"}
+    nREPL: eval-error e, value nil (ns user)
+    jank:  eval-error e, value e (ns user)
+  {op eval, session s1, code "(map (fn [_] (throw (ex-info \"p\" {}))) [1])"} {op eval, session s1, code "1"} {op eval, session s2, code "2"}
+    nREPL: eval-error p, value 1 (ns user), value 2 (ns user)
+    jank:  error (handler exception), value 1 (ns user), value 2 (ns user)
+  {op eval, session s1, code "(loop [] (recur))"} {op interrupt, session s1} {op eval, session s2, code "2"}
+    nREPL: no response, interrupted, value 2 (ns user)
+    jank:  no response, no response, no response
+  {op eval, session s1, code "1", ns foo}
+    nREPL: namespace-not-found
+    jank:  namespace-not-found
+  {op eval, session s1, code "((fn f [n] (inc (f n))) 0)"} {op eval, session s2, code "2"}
+    nREPL: eval-error StackOverflowError, value 2 (ns user)
+    jank:  no response, no response
+exit 0

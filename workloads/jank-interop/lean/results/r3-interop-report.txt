@@ -1,0 +1,200 @@
+ROUND 3 — INTEROP (CX): CppInterOp 28b0830d replicated under jank 7135b7708's interop paths
+
+Sources read: CppInterOp 28b0830d (deps/cppinterop/lib/CppInterOp/CppInterOp.cpp, CppInterOpInterpreter.h); jank compiler+runtime/src/cpp/jank/analyze/{cppinterop,cpp_util,processor}.cpp, codegen/cpp_processor.cpp, ir/processor.cpp, util/scope_exit.cpp; book/src/cpp-interop/{dsl,native-exceptions,native-functions}.md. The LLVM jank pins (nixpkgs 02f5696b, pkgs/development/compilers/llvm/default.nix: llvmPackages_23 = 23.1.0) was fetched file by file into deps/llvm-23.1.0/ for the Clang functions CppInterOp calls: clang/lib/AST/{Type,TemplateBase,DeclTemplate}.cpp, clang/lib/Sema/{SemaExpr,SemaOverload,SemaCast,SemaTypeTraits,SemaTemplate}.cpp, llvm/lib/Support/APSInt.cpp (only the cited lines were used). Output: results/r3-interop.txt (exe jank3-interop).
+
+1. DEVIATIONS
+
+CX1. The DSL cannot name `long long`: `(:long (:long T))` is `long`.
+  (cpp/cast (:long (:long int)) 1)        ; C++ `long long`   jank `long`
+  #cpp (:member (std.numeric_limits (:long (:long int))) max)   ; the book's own example: jank names numeric_limits<long>
+  - Expected (C++ [dcl.type.simple]): `long long`, `unsigned long long` for (:unsigned (:long (:long int))).
+  - Path: processor.cpp:analyze_cpp_dsl_impl:5205-5238 (`:long` → cppinterop::get_long_type); CppInterOp.cpp:3290 GetLongType: `Long`/`ULong` returned unchanged (3301), `LongLong` → `long`, `ULongLong` → `unsigned long`.
+  - Reach: any `:long` form. Same value range on LP64; a different type (overloads, `long long *` parameters, template arguments).
+  - Confidence: high. Status: new; changes R94 (round 2 modeled `long` of `long` = `long long`). Theorems dsl_never_long_long (every modifier chain, every base, every platform), long_long_int_is_long.
+
+CX2. `(:signed char)` is plain `char` on x86-64; `(:unsigned char)` is plain `char` on AArch64 Linux.
+  (cpp/raw "int f(signed char *p) { return 1; }")
+  (cpp/f (cpp/cast (:* (:signed char)) cpp/nullptr))   ; C++ 1   jank x86-64: `char *` → "No matching overload"
+  (:array (:unsigned char) 1024)                        ; the book's example: AArch64 Linux gives char[1024]
+  - Path: processor.cpp:5130-5170 → CppInterOp.cpp:3131 GetSignedType (`Char_S` returned unchanged, 3174), 3188 GetUnsignedType (`Char_U` "already unsigned", 3199).
+  - Confidence: high. Status: new. Theorems signed_char_is_char_x86, unsigned_char_is_char_aarch64 (and the other platform gives the distinct type: signed_char_aarch64, unsigned_char_x86).
+
+CX3. `(:member* T m)` takes a member *name*; the book defines it on a member *type*, and both book examples are rejected.
+  (cpp/cast (:member* Foo (:fn int [(:& (:const std.string))])) x)   ; book: int (Foo::*)(std::string const &)   jank "Member names need to be symbols."
+  (cpp/cast (:member* Foo int) x)                                      ; book: int Foo::*   jank "There is no `int` member within `Foo`."
+  (cpp/cast (:member* Foo x) y)                                        ; book: x is not a type   jank `int Foo::*`
+  - Path: processor.cpp:5490-5540 (symbol check 5502, get_named, get_pointer_to_member_type).
+  - Confidence: high (book vs code). Status: new. World X: 12 of 264.
+
+CX4. Smaller DSL member-form deviations (world X).
+  - `:&member` and `:member*` skip the private/protected check that `:member` makes: `#cpp (:&member Foo secret)` (private) is accepted; the generated `&Foo::secret` fails in the JIT.
+  - All three forms look through a pointer type: `#cpp (:member (:* Foo) count)` resolves `Foo::count` (CppInterOp.cpp:1111 GetScopeFromType strips a pointer); C++/book: a pointer type has no members.
+  - `#cpp (:member Foo sf)` where `sf` is an overloaded static member function: "There is no `sf` member" (CppInterOp.cpp:1181 GetNamed returns null for an overload set); `Foo::sf(1)` is a valid C++ call.
+  - `#cpp (:member Foo get)` of a non-static member function is typed `int (*)()` (CppInterOp.cpp:3537 GetTypeFromScope gives a function pointer; C++ has no such value).
+  - Path: processor.cpp:5372-5480, 5490-5560. Confidence: high; impact low. Status: new.
+
+CX5. Explicit template arguments of a function template are dropped when it is called; jank deduces again from the arguments.
+  (cpp/raw "template <typename T> T add(T a, T b) { return a + b; }")
+  (#cpp (add double) 1 2)       ; C++ add<double>(1, 2) = 3.0   jank 3 (add<int>)
+  (#cpp (add int) 1 2.5)        ; C++ 3                          jank "No matching overload of the `add` function"
+  (cpp/raw "template <typename T> T zero() { return T{}; }")
+  (#cpp (zero double))          ; C++ 0.0                        jank "No matching overload of the `zero` function"
+  (cpp/raw "template <typename R, typename T> R cast_to(T v) { return v; }")
+  (#cpp (cast_to int) 2.5)      ; C++ 2                          jank "Unable to instantiate this template with these arguments."
+  - Path: processor.cpp:5601-5735 instantiates from the explicit arguments only (CppInterOp.cpp:6580 DeduceTemplateArguments(FTD, &TLI, ..., IsAddressOfFunction) without call arguments: every parameter must be given); the call then goes analyze_cpp_call:4111 → build_cpp_call:551-553 `get_functions_using_name(get_parent_scope(spec), get_name(spec))`, which finds the template (not the specialization) → cpp_util.cpp:find_best_overload:1584 → CppInterOp.cpp:2203 BestOverloadMatch → 2114 AddTemplateOverloadCandidate with empty explicit arguments.
+  - Confidence: high. Status: new. World XII: 69 of 75 calls.
+
+CX6. Calls through function pointers and pointers to members reject arguments that a reference parameter binds after a conversion.
+  (cpp/raw "long twice(long const &x) { return 2 * x; } long (*twice_ptr)(long const &) = twice;")
+  (cpp/twice_ptr 21)   ; C++ 42   jank "Unable to call function since argument 0 is not convertible from `int` to `const long &`."
+  - Also `void (*)(std::string const &)` with "abc", and `long (Foo::*)(long const &)` with 1, 2.5, (cpp/size_t 3). Direct calls are unaffected (they use BestOverloadMatch).
+  - Path: processor.cpp:build_indirect_cpp_call:983-1000 (989) → cpp_util.cpp:is_implicitly_convertible:927-939 (same non-reference types only) → CppInterOp.cpp:639 IsImplicitlyConvertible: TryImplicitConversion of a prvalue to the reference type itself; no standard conversion reaches a reference type (SemaOverload.cpp:2663-2668) and a non-class source has no user-defined one.
+  - Confidence: high. Status: new. Theorems isImplicitlyConvertible_to_lref/_to_rref (every builtin source, every referenced type). World XI: 16 of 188.
+
+CX7. A call through a pointer to member on a pointer to a const object is rejected, also for const member functions and data members.
+  (cpp/raw "struct Foo { int x; int get() const { return x; } }; Foo gfoo{3}; Foo const *cfoo() { return &gfoo; }")
+  (#cpp (:&member Foo get) (cpp/cfoo))   ; C++ (p->*&Foo::get)() = 3   jank "argument 0 is not convertible from `const Foo *` to `Foo *`"
+  (#cpp (:&member Foo x) (cpp/cfoo))     ; same
+  - Path: processor.cpp:929 → CppInterOp.cpp:2889 GetFunctionTypeFromPointerToMember: `OT.isConstQualified()` (2900) tests the pointer's own qualifiers, so the object parameter is `Foo *`; then processor.cpp:989.
+  - Confidence: high. Status: new. Theorem pm_const_pointee_dropped (every class, return type and parameter list).
+
+CX8. Indirect calls accept what C++ rejects (then the JIT fails).
+  - Explicit constructors count as implicit conversions (CppInterOp.cpp:648 `AllowedExplicit::All`): `void (*fp_vector)(std::vector<int>)` called with (cpp/size_t 3), 1, 2.5 or (cpp/long 2).
+  - The pointer-to-member class check accepts a privately derived object (processor.cpp:903 uses IsTypeDerivedFrom = Sema::IsDerivedFrom, any access): `(#cpp (:&member Foo get) ppb)` with `struct PB : private Foo`.
+  - Confidence: high; impact low (a JIT compile error instead of an analysis error). Status: new. World XI: 4 + 7.
+
+CX9. Built-in operators are unavailable for class operands that convert to arithmetic types.
+  (cpp/raw "struct meters { double v; operator double() const { return v; } }; meters mk() { return {1.5}; }")
+  (cpp/+ (cpp/mk) 1.0)   ; C++ 2.5 (built-in operator+(double, double) through the conversion, [over.match.oper]/3, [over.built])   jank: "The operator `+` is not supported for the type `meters`."
+  - Same for -, <, == (12 of 42 cases); !, &&, || work through processor.cpp:466-500.
+  - Path: processor.cpp:367-511: a non-primitive first operand goes to cppinterop::get_operator (462); CppInterOp.cpp:6977 GetOperator returns declared operator functions only, and BestOverloadMatch (2203) adds only those; no built-in candidate is ever added.
+  - Confidence: high (CXA10). Status: new.
+
+CX10. An inherited static data member cannot be read through an instance.
+  (cpp/raw "struct Foo { static int count; }; int Foo::count = 3; struct Bar : Foo {};")
+  (let [b (cpp/Bar)] (cpp/.-count b))   ; C++ 3   jank "There is no `count` member within `Bar`."
+  - Path: processor.cpp:analyze_cpp_member_access:4766 lookup_datamember (CppInterOp.cpp:2502: a static member is a VarDecl → null) → 4798-4812 get_static_datamembers (CppInterOp.cpp:2480 → GetClassDecls:1337, the class's own declarations only).
+  - Confidence: high. Status: new.
+
+CX11. A data member of a privately inherited base is accessible: `(cpp/.-x pb)` with `struct PB : private Foo` passes analysis (CppInterOp.cpp:2797 IsPrivateVariable checks the member's own access, not the path); the generated `pb.x` fails in the JIT. Confidence high, impact low. Status: new.
+
+CX12. `cpp/unsafe-cast` judges the type, not the value: it rejects valid C-style casts and accepts invalid ones.
+  (cpp/raw "enum color { red, green };")
+  (cpp/unsafe-cast color 1.5)          ; C++ (color)1.5 valid ([expr.static.cast]/10)   jank "Invalid unsafe-cast"
+  (cpp/unsafe-cast long cpp/nullptr)   ; C++ (long)nullptr valid ([expr.reinterpret.cast]/4)   jank "Invalid unsafe-cast"
+  (cpp/unsafe-cast (:member* Foo x) (cpp/int 5))   ; C++ ill-formed for a non-constant int   jank accepts (then JIT error); same to std.nullptr_t
+  - Path: processor.cpp:4430-4456 (is_constructible first, then is_c_style_convertible) → CppInterOp.cpp:653-686: a floating, class, array or std::nullptr_t source is "conservatively" false (679); a pointer source is replaced by a null pointer and an integral one by the literal 0, both null pointer constants.
+  - Confidence: high for the rejections (theorems isCStyleConvertible_floating, _nullptr); medium for pointer-sourced acceptances (CXA11). Status: new. World XV: 19 of 144.
+
+CX13. An `if` whose branch is a reference-typed native (a cpp/ global, a member access) takes the other branch's narrower type.
+  (cpp/raw "double gd = 2.5; int gi = 7;")
+  (if false 1 cpp/gd)      ; Clojure 2.5 (C++ c ? 1 : gd is double)   jank: the if is `int` → 2
+  (if false true cpp/gi)   ; Clojure 7                                jank: the if is `bool` → true
+  - Also a member access `(if c 0 (cpp/.-v m))` with a `double v`; `(if c cpp/gi 1)` is typed `int &` in analysis (codegen strips the reference, cpp_processor.cpp:913).
+  - Path: cpp_util.cpp:find_branch_common_type:1909-1995: GetCommonType (CppInterOp.cpp:578) is null when either type is a reference (a reference type is not arithmetic, Type.cpp:2426); select_most_native_type (1099) then the swap at 1979-1984 picks the type the other branch implicitly converts to; ir/processor.cpp:658 one local of that type, each branch assigned to it.
+  - Confidence: high on the typing; medium on the printed value (assignment as in R23). Status: new variant of R23 (R23 widens to the common type; here the result narrows). Theorem getCommonType_ref_null (every builtin). World XVI: 16 + 3 of 81.
+
+CX14. Native exceptions: jank's handler differs from the written C++ handler for value, array and rvalue-reference catch types.
+  (cpp/raw "struct Err { int n; void bump() { ++n; } }; void throw_err() { throw Err{1}; }")
+  (try (try (cpp/throw_err) (catch Err e (.bump e) (throw))) (catch Err e (cpp/.-n e)))
+  ; C++ catch(Err e) catches a copy: 1   jank catches Err & (the exception object itself): 2
+  - `(catch (:array int 3) e ...)` becomes `catch(int (&)[3] e)` and never catches; C++ adjusts `int e[3]` to `int *` ([except.handle]/2) and catches a thrown `int *`. `(catch (:&& int) e ...)` becomes `catch(int & e)`; C++ forbids rvalue-reference handlers ([except.handle]/1).
+  - Path: processor.cpp:analyze_try:3056-3079 (every non-pointer catch type → get_lvalue_reference_type, which collapses `&&`); cpp_processor.cpp:1117.
+  - Book (native-exceptions.md): "just like in C++". Catching class types by reference is deliberate (code comment: avoids slicing; the book's `.what` example relies on it).
+  - Confidence: high on the code, medium on the program's printed value; impact low. Status: new. World XVII: 11 of 45.
+
+Corrections to round 2:
+  - R36 RETRACTED. GetBuiltinOperatorType(=, object_ref, object_ref) is `object_ref`: CreateBuiltinBinOp → CheckAssignmentOperands treats C++ classes like C structs and the same canonical type is Compatible (SemaExpr.cpp:10226-10229, 9693). Round 2's analyzer with this answer: (loop [x nil n 0] (if (= n 1) x (recur 5 1))) → 5 (Clojure 5).
+  - R87 RETRACTED. GetPointeeType of an array is its element type (CppInterOp.cpp:3015). determine_implicit_conversion(`const char (&)[4]`, `const char *`) is `none`, so (cpp/len "abc") analyzes and runs. Theorem getPointeeType_array (every element type and size).
+  - R94 CHANGED: round 2's 147 chains now give 53 deviations on both platforms (round 2: 46). Added: 8 `long long` chains (CX1), (:signed cpp/char) on x86-64 (CX2), (:short (:short bool)), (:long (:short bool)). Removed: (:short (:signed char)), (:long (:signed char)) (now rejected, since (:signed char) is `char`).
+  - R23 EXTENDED by CX13.
+  - Unchanged on the replica: R89 (IsBuiltin(enum) is false, confirmed), R90 (0 of 196 cpp/cast acceptance decisions change), R86, R88, R91, R92, R93, R95 (they do not depend on the replaced answers; world III has the same 10 of 312 deviations on AArch64 Linux as on x86-64).
+
+x86-64 vs AArch64 Linux: only CX2 differs (and the kinds of (:short/:long wchar_t), invalid C++ on both). World III (R86, R92, R95) gives the same 10 deviations on both platforms; world VIII gives 53 of 147 on both, with (:signed char) failing on x86-64 and (:unsigned char) on AArch64.
+
+2. WHAT WAS REPLICATED (Lean, all under Jank/R3/Interop/ and Run/R3/Interop.lean; 2,383 lines)
+  - Clang.lean: what Clang answers. From Type.cpp (exact): isBuiltinType, isIntegralType (C++: no enums), isArithmeticType (unscoped enums included), isIntegralOrUnscopedEnumerationType, getPointeeType (pointers, references, member pointers), isConstQualified. From Sema: enum promotion, UsualArithmeticConversions (SemaExpr.cpp:1707), IsStandardConversion ranks (SemaOverload.cpp:2340-2700), reference binding ([dcl.init.ref]), user-defined conversions (explicit when allowed), TryImplicitConversion as CppInterOp calls it, BuildTypeTrait is_constructible/is_assignable, FindCompositePointerType, C-style cast validity (static_cast, reinterpret_cast, const_cast), CreateBuiltinUnaryOp/BinOp result types, [over.ics.rank] comparison, and BestViableFunction (tournament, then the transitive Best set).
+  - CppInterOp.lean, line by line from CppInterOp.cpp: IsBuiltin, IsIntegral, IsVoid, IsEnumType, IsPointerType, IsPointerToMemberType, IsPointerToMemberFunctionType, IsArrayType, IsReferenceType, IsRvalueReferenceType, IsConstType, IsFunctionPointerType, GetNonReferenceType, GetCanonicalType, GetTypeWithoutCv, GetTypeWithConst, GetLValueReferenceType, GetPointerType, GetArrayElementType, GetPointeeType, GetUnderlyingType, GetSignedType, GetUnsignedType, GetShortType, GetLongType, IsShortType, GetScopeFromType, GetTypeFromScope, IsVariable, IsNonStaticVariable, IsStaticVariable, IsPrivate/ProtectedVariable, LookupDatamember (class member lookup with bases and ambiguity), GetStaticDatamembers, GetNamed in a class, GetCommonType, IsImplicitlyConvertible, IsConstructible, IsAssignable, IsCStyleConvertible (its synthesized operands), GetBuiltinOperatorType (operands as lvalues), GetFunctionTypeFromPointerToMember, GetFunctionArgTypeFromType, GetFunctionNumArgsFromType, AddOverloadCandidates (argument value kinds, member/static/constructor/deleted handling), BestOverloadMatch. Builtin kinds per platform (Char_S/Char_U, WChar_S/WChar_U).
+  - JankPaths.lean (jank 7135b7708 on the replica): cpp_util.cpp is_implicitly_convertible 927, is_implicitly_assignable 943, base_type 984, is_primitive 1025, is_constructible 1033, select_most_native_type 1099, non_void_type 1157, find_branch_common_type 1909, determine_implicit_conversion 2000; processor.cpp: the DSL modifiers (5130-5238), :fn, :member/:member*/:&member (5372-5560), build_indirect_cpp_call (874-1000), the operator path for class operands (367-511), analyze_cpp_member_access (4730-4840), analyze_cpp_unsafe_cast (4395-4460), analyze_try's catch types (3027-3080). Template calls (5601-5735 + 551-553) in Worlds.lean (tmplJank).
+  - Worlds.lean: worlds VIII', X-XVII with specs, world III with the platform as a parameter (round 2's pipeline), the residual-search helper. Census.lean: round 2's answers vs the replica's. Theorems.lean.
+
+3. LEFT OUT, AND WHY
+  - Class template instantiation in Lean: checked by reading instead. SemaTemplate.cpp:5639-5650 converts an Integral argument back to an expression and re-checks it against the parameter, so (std.array int 3) is the same specialization as C++'s std::array<int, 3>. Negative sizes and narrowing to `bool` fail as in C++. Nothing to search.
+  - GetOperator's real lookup (current scope, ADL namespaces, hidden friends): modeled as finding nothing for the user's classes (CXA10).
+  - GetTypeAsString and jank's qualified type names: round 2's printer is reused, for messages only.
+  - Ranking tie-breakers not modeled: derived-to-base distance, more-specialized templates, constraints. Variadic or defaulted template deduction, member function templates, and the order of overload sets in resolve_scope (no searched program depends on them).
+  - Codegen of the new worlds: types are searched, not the emitted C++. "JIT error" claims come from C++ rules.
+  - nREPL/eval paths for native exceptions: read, not searched (the nREPL agent's area).
+    - evaluate.cpp:safe_eval:733-778 has a catch-all. A native exception of any type becomes *e = ex-info "uncaught exception", and the native value is lost.
+    - nrepl/server/core.jank:handle-client:85-104 catches std::exception, object_ref and error_ref only. Another native exception escaping the handler reaches the client future's (catch :default _) (142), which ends that client's loop without a reply.
+    - D24 (a throwing finally after a throwing catch → std::terminate) holds for native exceptions too.
+  - `(:const (:array T n))`: CppInterOp's QualType::getCanonicalType keeps the const on the array node, while Clang-built arrays carry it on the elements. Not searched (CXA12).
+
+4. ASSUMPTIONS
+Round 2's interop assumptions, replaced:
+  - AN "GetCommonType is ?:'s type": CONTRADICTED. CppInterOp.cpp:578 applies UsualArithmeticConversions to two arithmetic types, so bool/bool, char/char and short/short give int. Two pointer-like types get the composite pointer type. Everything else is null: classes, references, void, bool with a pointer. Census: 280 of 3,025 pairs differ. Same-type pairs are never asked (find_branch_common_type checks is_same_type first). Reference pairs give CX13.
+  - AN "`=` on two object_refs is not a builtin": CONTRADICTED. R36 is retracted.
+  - IA11 "CppInterOp on array pointee types": CONTRADICTED (the element type). R87 is retracted.
+  - I "IsBuiltin is false for enums": CONFIRMED (Type::isBuiltinType). R89 stands.
+  - I "GetScopeFromType strips one pointer": CONFIRMED for pointers. It also strips every array dimension (getPointeeOrArrayElementType). References, function types and function pointers give null (round 2 gave the return type's class).
+  - I "overloads ranked per [over.match.best]": CONFIRMED (Clang's BestViableFunction), with CppInterOp's synthesis: builtin and pointer arguments are prvalues; class and array arguments are lvalues (jank makes them T&, processor.cpp:565-572); a deleted best is returned; an ambiguity returns the Best-flagged set.
+  - IA3 "IsIntegral includes enums": CONTRADICTED (Type.cpp:2160). Enums are now correctly rejected by :signed and the other integer modifiers.
+  - IA8 "Get{Signed,Unsigned,Short,Long}Type": CONTRADICTED. This gives CX1 and CX2. bool, charN_t and floating types come back unchanged; local cv is kept.
+  - IA5 "builtin operators need a reference argument for =/++": CONTRADICTED. Every operand except a non-reference nullptr_t is an lvalue (CppInterOp.cpp:7080-7087), so (cpp/= 1 2) type-checks. Pointer relational operators need a composite pointer type (census 150 differ for <).
+  - IsImplicitlyConvertible as copy-initialization: CONTRADICTED. Explicit conversions count (CX8), and a reference target is never reached (CX6).
+  - IsVariable(FieldDecl) = true: CONTRADICTED (VarDecl only).
+  - GetTypeFromScope(function) = the function type: CONTRADICTED (a pointer to it).
+  - IA20 IsAssignable: CONFIRMED (is_assignable<To&, From&&>).
+New or standing:
+  - CXA1: Clang 23.1.0's type predicates are as read. Sema answers not read line by line follow the C++20 standard.
+  - CXA2: an unscoped enum without a fixed type promotes to int when every enumerator fits int (Clang's BestPromotionType, [conv.prom]/3). Round 2 gave `color` the promotion unsigned int.
+  - CXA3: standard conversion kinds follow round 2's [conv] model, plus CXA2 and the null-pointer-constant rule: an expression of type nullptr_t is one; a synthesized operand of another type is not.
+  - CXA4: no C++20 parenthesized aggregate initialization in is_constructible.
+  - CXA5: is_assignable uses only the implicit copy/move assignment.
+  - CXA6: static_cast and reinterpret_cast validity per [expr.static.cast]/[expr.reinterpret.cast] (pointer → integer needs 64 bits).
+  - CXA7: built-in operator result types per [expr]. For classes only same-class `=` (read).
+  - CXA8: Clang 21+'s deferred template deduction gives the same best candidate as the full comparison.
+  - CXA9: wchar_t is unsigned on AArch64 Linux (WChar_U).
+  - CXA10: GetOperator finds no operator function for the user's classes (none declared, none viable by ADL in the global namespace).
+  - CXA11: Expr::isNullPointerConstant looks through the CK_NullToPointer implicit cast IsCStyleConvertible builds around `0` (only CX12's pointer-sourced acceptances depend on this).
+  - CXA12: canonical array qualifiers as in round 2 (pushed to the elements).
+  - CXA13: literal call arguments have their unboxed literal types (round 2's literal_type).
+
+5. PROPERTIES CHECKED
+  P1 a DSL type form names the C++ type its specifiers name (both platforms); P2 :member/:member*/:&member give what the book and C++ give; P3 calls through function pointers and pointers to members are accepted exactly when C++ accepts them; P4 (#cpp (f T...) args) calls f<T...>(args); P5 operators on class operands follow [over.match.oper]; P6 (cpp/.-name obj) resolves as C++ obj.name; P7 cpp/unsafe-cast accepts exactly the valid C-style casts; P8 an `if` with native branches has the C++ ?: type and keeps each branch's value; P9 catch handlers catch what the written C++ handler catches, with C++'s copy semantics; P10 round 2's CppInterOp answers equal CppInterOp's (census).
+
+6. SEARCH RUNS (results/r3-interop.txt; explore = mixed seeds; exhaust residual = each found class set aside, rerun until complete)
+  - census (P10): 19 query families over 55 types / 3,025 pairs. Differ: IsIntegral 2/55, GetPointeeType 3/55, GetUnderlyingType 2/55, GetSigned 4/25 (AArch64 3), GetUnsigned 3/25 (AArch64 4), GetShort 12/25, GetLong 16/25, GetCommonType 280/3,025, IsImplicitlyConvertible 63, IsConstructible 3, IsCStyleConvertible 336, builtin = 697, + 61, < 150, GetTypeFromScope/IsVariable 2/2; IsBuiltin and GetScopeFromType 0/55.
+  - Round 2 reruns: V acceptance 0/196 changed; VIII 53/147 (both platforms; 11 verdicts changed); III 10/312 on x86-64 and on AArch64 Linux (same cases); IX's literal type pairs: GetCommonType differs only on same-type pairs (never asked); R36 → 5; R87 → none.
+  - VIII' DSL modifiers: 11 bases × chains ≤ 3 of 5 modifiers × 2 platforms, 3,124 cases, 1,514 deviate (accepts-non-type 1,450 = R94's class, long-long 58, signed-char 3, unsigned-char 3). explore found after 1. exhaust: found after 12, 16, 48, 1,739; complete, 3,432 timelines, nothing.
+  - X member forms: 264 cases, 27 deviate. explore found after 15. exhaust: 6, 12, 50, 89, 180; complete, 264, nothing.
+  - XI indirect calls: 188 cases, 29 deviate. explore found after 4. exhaust: 25, 37, 128, 184; complete, 188, nothing.
+  - XII function templates: 75 calls, 69 deviate. explore found after 1. exhaust: 2; complete, 75, nothing.
+  - XIII class operators: 42 cases, 12 deviate. explore found after 4. exhaust: 1; complete, 42, nothing.
+  - XIV member access: 30 cases, 3 deviate. explore found after 9. exhaust: 8, 11; complete, 30, nothing.
+  - XV unsafe-cast: 144 cases, 19 deviate. explore found after 5. exhaust: 10, 29, 110; complete, 144, nothing.
+  - XVI if branches with references: 81 cases, 19 deviate. explore found after 15. exhaust: 6, 37; complete, 81, nothing.
+  - XVII catch handlers: 45 cases, 11 deviate. explore found after 14. exhaust: 1, 29, 31; complete, 45, nothing.
+
+7. THEOREMS (Jank/R3/Interop/Theorems.lean; no sorry, no native_decide; ★ = new for-every-input result for a round-2 bounded one)
+  - applyMod_keeps_notLongLong: no modifier turns a non-`long long` builtin into `long long`/`unsigned long long`, every kind, every platform.
+  - dsl_never_long_long ★: every modifier chain over every non-long-long base, every platform, never names `long long` (round 2's VIII: chains ≤ 2).
+  - long_long_int_is_long: (:long (:long int)) is `long` on both platforms.
+  - signed_char_is_char_x86, unsigned_char_is_char_aarch64, signed_char_aarch64, unsigned_char_x86: the platform split of CX2.
+  - short_long_bool: :short and :long return `bool` unchanged, both platforms.
+  - isIntegral_enum: IsIntegral is false for every enum.
+  - isBuiltin_enum ★: IsBuiltin is false for every enum (the reason for R89, round 2 checked cpp/red).
+  - getPointeeType_array ★: GetPointeeType of an array is its element type, for every element type and size (retracts R87, found at one size).
+  - getScopeFromType_fnptr: null for every function pointer.
+  - isImplicitlyConvertible_to_lref, _to_rref: false for every builtin source and every referenced type (CX6).
+  - isCStyleConvertible_floating, _nullptr: false for every target (CX12).
+  - pm_const_pointee_dropped: the object parameter loses the pointee's const, for every class and signature (CX7).
+  - getCommonType_small_same: bool/bool, short/short, char/char give int.
+  - getCommonType_ref_null: null for a reference with any builtin (CX13).
+
+8. LIBRARY GAPS FILLED (sdk/lean untouched)
+  - XWorld extends round 2's World with what CppInterOp's answers depend on: non-public bases, explicit conversion functions, static data members, fixed enums, function templates.
+  - Class member lookup with base ambiguity. Platform-dependent Clang builtin kinds (Char_S/U, WChar_S/U).
+  - An overload model with value categories: SCS/ICS ranks, reference binding, the Best closure.
+  - Worlds.residual: exhaust with automatic set-aside by the class tag in the property name, until a complete run. Round 2 set classes aside by hand.
+  - World III with the platform as a parameter (round 2's runProgram fixed x86-64).

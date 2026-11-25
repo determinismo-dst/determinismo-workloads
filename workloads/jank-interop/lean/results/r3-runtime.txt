@@ -1,0 +1,915 @@
+jank3-runtime: round 3, Runtime (folly SharedMutex/Synchronized/fbvector, bdwgc), jank 7135b7708
+
+## 1. folly::SharedMutex replica against the coarse lock and round 1's lock (state search, every reachable state)
+SharedMutex refinement, getMaxDeferredReaders = 2: 1360 programs (1296 two-thread over 36 shapes, 64 three-thread), 357689 fine states in all (largest 6537), incomplete 807
+  fine deadlocks 807, coarse deadlocks 807, mismatches 0, other violations 0
+  round 1's SharedMutex (Determinismo.RwLock, writer priority) on the 108 programs without upgrade: 0 disagree with the replica
+SharedMutex refinement, getMaxDeferredReaders = 4: 1360 programs (1296 two-thread over 36 shapes, 64 three-thread), 366851 fine states in all (largest 6537), incomplete 807
+  fine deadlocks 807, coarse deadlocks 807, mismatches 0, other violations 0
+  round 1's SharedMutex (Determinismo.RwLock, writer priority) on the 108 programs without upgrade: 0 disagree with the replica
+
+## 2. jank's locks: scenarios (state search, jank with the coarse lock and with the fine replica; Clojure)
+* a validator that calls set-validator! on its atom
+  program: validator vf = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)
+  Clojure: always completes (16 states)
+  jank (coarse SharedMutex): DEADLOCK after 11 steps, 12 states searched
+    thread 0 holds [atom validator shared] and waits for atom validator exclusive (readers to drain)
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (swap! a inc)
+      2: thread 0: atom validator rlock
+      4: thread 0: (set-validator! a vf)
+      6: thread 0: (set-validator! a vf)
+      8: thread 0: (set-validator! a vf)
+      10: thread 0: atom validator wlock sets kHasE
+  Clojure: always completes (16 states)
+  jank (fine SharedMutex replica): DEADLOCK after 16 steps, 17 states searched
+    thread 0 holds [atom validator shared] and waits for atom validator exclusive (kHasE)
+* a validator that calls get-validator, while another thread calls set-validator!
+  program: validator vf = (fn [..] (get-validator a)); thread 0: (swap! a inc); thread 1: (set-validator! a vf)
+  Clojure: always completes (48 states)
+  jank (coarse SharedMutex): DEADLOCK after 11 steps, 87 states searched
+    thread 0 holds [atom validator shared] and waits for atom validator shared; thread 1 holds [atom validator kHasE (draining)] and waits for atom validator exclusive (readers to drain)
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+    story:
+      0: thread 0: (swap! a inc)
+      2: thread 0: atom validator rlock
+      4: thread 0: (get-validator a)
+      5: thread 1: (set-validator! a vf)
+      7: thread 1: (get-validator a)
+      8: thread 1: atom validator rlock
+      9: thread 1: atom validator runlock
+      10: thread 1: atom validator wlock sets kHasE
+  Clojure: always completes (48 states)
+  jank (fine SharedMutex replica): DEADLOCK after 21 steps, 879 states searched
+    thread 0 holds [atom validator shared] and waits for atom validator shared; thread 1 holds [] and waits for atom validator exclusive (kHasE)
+* a validator that swap!s its atom, while another thread calls set-validator!
+  program: validator vf = (fn [..] (swap! a inc)); thread 0: (swap! a inc); thread 1: (set-validator! a vf)
+  Clojure: always completes (1832 states)
+  jank (coarse SharedMutex): DEADLOCK after 72 steps, 8819 states searched
+    thread 0 holds [atom validator shared] and waits for atom validator shared; thread 1 holds [atom validator kHasE (draining)] and waits for atom validator exclusive (readers to drain)
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+    story:
+      0: thread 0: (swap! a inc)
+      2: thread 0: atom validator rlock
+      4: thread 0: (swap! a inc)
+      6: thread 0: atom validator rlock
+      8: thread 0: (swap! a inc)
+      10: thread 0: atom validator rlock
+      12: thread 0: atom validator runlock
+      14: thread 0: atom watches rlock
+      16: thread 0: atom watches runlock
+      17: thread 0: atom validator runlock
+      18: thread 0: CAS failed, retry
+      19: thread 0: (swap! a inc)
+      21: thread 0: atom validator rlock
+      23: thread 0: (swap! a inc)
+      25: thread 0: atom validator rlock
+      27: thread 0: atom validator runlock
+      29: thread 0: atom watches rlock
+      31: thread 0: atom watches runlock
+      32: thread 0: atom validator runlock
+      33: thread 0: CAS failed, retry
+      34: thread 0: (swap! a inc)
+      36: thread 0: atom validator rlock
+      38: thread 0: (swap! a inc)
+      40: thread 0: atom validator rlock
+      42: thread 0: atom validator runlock
+      44: thread 0: atom watches rlock
+      46: thread 0: atom watches runlock
+      47: thread 0: atom validator runlock
+      48: thread 0: CAS failed, retry
+      49: thread 0: (swap! a inc)
+      51: thread 1: (set-validator! a vf)
+      53: thread 1: (swap! a inc)
+      55: thread 1: atom validator rlock
+      57: thread 1: (swap! a inc)
+      59: thread 1: atom validator rlock
+      61: thread 1: atom validator runlock
+      63: thread 1: atom watches rlock
+      65: thread 1: atom watches runlock
+      66: thread 1: atom validator runlock
+      68: thread 1: atom watches rlock
+      70: thread 1: atom watches runlock
+      71: thread 1: atom validator wlock sets kHasE
+  Clojure: always completes (1832 states)
+  jank (fine SharedMutex replica): stopped (500001 states)
+* a watch calls set-validator! while a validator calls add-watch (two threads, lock order)
+  program: validator vf = (fn [..] (add-watch a :k w)); watch w = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc); thread 1: (swap! a inc)
+  Clojure: always completes (515 states)
+  jank (coarse SharedMutex): DEADLOCK after 22 steps, 346 states searched
+    thread 0 holds [atom watches shared] and waits for atom watches exclusive (readers to drain); thread 1 holds [atom validator shared] and waits for atom watches exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (swap! a inc)
+      2: thread 0: atom validator rlock
+      4: thread 0: (add-watch a :k w)
+      5: thread 0: atom watches wlock sets kHasE
+      6: thread 0: atom watches wlock held
+      8: thread 0: atom watches unlock
+      9: thread 0: atom validator runlock
+      11: thread 0: atom watches rlock
+      13: thread 0: (set-validator! a vf)
+      15: thread 0: (add-watch a :k w)
+      16: thread 0: atom watches wlock sets kHasE
+      17: thread 1: (swap! a inc)
+      19: thread 1: atom validator rlock
+      21: thread 1: (add-watch a :k w)
+  Clojure: always completes (515 states)
+  jank (fine SharedMutex replica): DEADLOCK after 34 steps, 2872 states searched
+    thread 0 holds [atom watches shared] and waits for atom watches exclusive (kHasE); thread 1 holds [atom validator shared] and waits for atom watches exclusive (kHasE)
+* the future cancels itself while another thread derefs it
+  program: future f's body = (fn [..] (future-cancel f)); thread 0: @f
+  Clojure: always completes (26 states)
+  jank (coarse SharedMutex): DEADLOCK after 10 steps, 37 states searched
+    thread 0 holds [future thread exclusive] and waits for join of the future's thread; thread 1 holds [future state shared] and waits for future thread exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: @f
+      1: thread 0: future thread wlock sets kHasE
+      2: thread 0: future thread wlock held
+      3: thread 1: thread_binding_frames wlock sets kHasE
+      4: thread 1: thread_binding_frames wlock held
+      5: thread 1: thread_binding_frames unlock
+      7: thread 1: (future-cancel f)
+      8: thread 1: future state rlock
+  Clojure: always completes (26 states)
+  jank (fine SharedMutex replica): DEADLOCK after 17 steps, 97 states searched
+    thread 0 holds [future thread exclusive] and waits for join of the future's thread; thread 1 holds [future state shared] and waits for future thread exclusive (kHasE)
+* a delay's body derefs a future that asks (realized? d)
+  program: delay d's body = (fn [..] @f); future f's body = (fn [..] (realized? d)); thread 0: @d
+  Clojure: always completes (61 states)
+  jank (coarse SharedMutex): DEADLOCK after 11 steps, 59 states searched
+    thread 0 holds [future thread exclusive, delay std::mutex] and waits for join of the future's thread; thread 1 holds [] and waits for delay std::mutex
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: @d
+      1: thread 0: delay std::mutex lock
+      3: thread 0: @f
+      4: thread 0: future thread wlock sets kHasE
+      5: thread 0: future thread wlock held
+      6: thread 1: thread_binding_frames wlock sets kHasE
+      7: thread 1: thread_binding_frames wlock held
+      8: thread 1: thread_binding_frames unlock
+      10: thread 1: (realized? d)
+  Clojure: always completes (61 states)
+  jank (fine SharedMutex replica): DEADLOCK after 13 steps, 79 states searched
+    thread 0 holds [future thread exclusive, delay std::mutex] and waits for join of the future's thread; thread 1 holds [] and waits for delay std::mutex
+* (meta #'v) whose lazy meta source derefs a future that calls reset-meta! on v
+  program: var v's meta expression = (fn [..] @f); future f's body = (fn [..] (reset-meta! #'v {})); thread 0: (meta #'v)
+  Clojure: always completes (86 states)
+  jank (coarse SharedMutex): DEADLOCK after 16 steps, 109 states searched
+    thread 0 holds [var lazy_meta exclusive, future thread exclusive] and waits for join of the future's thread; thread 1 holds [] and waits for var lazy_meta exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (meta #'v)
+      1: thread 0: var lazy_meta wlock sets kHasE
+      2: thread 0: var lazy_meta wlock held
+      4: thread 0: thread_binding_frames wlock sets kHasE
+      5: thread 0: thread_binding_frames wlock held
+      6: thread 0: thread_binding_frames unlock
+      8: thread 0: @f
+      9: thread 0: future thread wlock sets kHasE
+      10: thread 0: future thread wlock held
+      11: thread 1: thread_binding_frames wlock sets kHasE
+      12: thread 1: thread_binding_frames wlock held
+      13: thread 1: thread_binding_frames unlock
+      15: thread 1: (reset-meta! #'v {})
+  Clojure: always completes (86 states)
+  jank (fine SharedMutex replica): DEADLOCK after 24 steps, 538 states searched
+    thread 0 holds [var lazy_meta exclusive, future thread exclusive] and waits for join of the future's thread; thread 1 holds [] and waits for var lazy_meta exclusive (kHasE)
+* a watch that removes itself (round 1 D16)
+  program: watch w = (fn [..] (remove-watch a :k)); thread 0: (swap! a inc)
+  Clojure: always completes (11 states)
+  jank (coarse SharedMutex): DEADLOCK after 10 steps, 11 states searched
+    thread 0 holds [atom watches shared] and waits for atom watches exclusive (readers to drain)
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (swap! a inc)
+      2: thread 0: atom validator rlock
+      4: thread 0: atom validator runlock
+      6: thread 0: atom watches rlock
+      8: thread 0: (remove-watch a :k)
+      9: thread 0: atom watches wlock sets kHasE
+  Clojure: always completes (11 states)
+  jank (fine SharedMutex replica): DEADLOCK after 16 steps, 17 states searched
+    thread 0 holds [atom watches shared] and waits for atom watches exclusive (kHasE)
+* a watch that swap!s, beside an add-watch (round 1 D16)
+  program: watch w = (fn [..] (swap! a inc)); thread 0: (swap! a inc); thread 1: (add-watch a :k w)
+  Clojure: always completes (132 states)
+  jank (coarse SharedMutex): DEADLOCK after 16 steps, 88 states searched
+    thread 0 holds [atom watches shared] and waits for atom watches shared; thread 1 holds [atom watches kHasE (draining)] and waits for atom watches exclusive (readers to drain)
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":1}
+{"name":"thread.next","options":2,"value":1}
+    story:
+      0: thread 0: (swap! a inc)
+      2: thread 0: atom validator rlock
+      4: thread 0: atom validator runlock
+      6: thread 0: atom watches rlock
+      8: thread 0: (swap! a inc)
+      10: thread 0: atom validator rlock
+      12: thread 0: atom validator runlock
+      14: thread 1: (add-watch a :k w)
+      15: thread 1: atom watches wlock sets kHasE
+  Clojure: always completes (132 states)
+  jank (fine SharedMutex replica): DEADLOCK after 27 steps, 342 states searched
+    thread 0 holds [atom watches shared] and waits for atom watches shared; thread 1 holds [] and waits for atom watches exclusive (kHasE)
+* alter-var-root whose fn defs the same var
+  program: alter-var-root fn f = (fn [..] (def v 1)); thread 0: (alter-var-root #'v f)
+  Clojure: always completes (11 states)
+  jank (coarse SharedMutex): DEADLOCK after 5 steps, 6 states searched
+    thread 0 holds [var write_mutex exclusive] and waits for var write_mutex exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (alter-var-root #'v f)
+      1: thread 0: var write_mutex wlock sets kHasE
+      2: thread 0: var write_mutex wlock held
+      4: thread 0: (def v 1)
+  Clojure: always completes (11 states)
+  jank (fine SharedMutex replica): DEADLOCK after 10 steps, 11 states searched
+    thread 0 holds [var write_mutex exclusive] and waits for var write_mutex exclusive (kHasE)
+* alter-var-root whose fn calls alter-var-root on the same var
+  program: alter-var-root fn f = (fn [..] (alter-var-root #'v f)); thread 0: (alter-var-root #'v f)
+  Clojure: always completes (22 states)
+  jank (coarse SharedMutex): DEADLOCK after 5 steps, 6 states searched
+    thread 0 holds [var write_mutex exclusive] and waits for var write_mutex exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (alter-var-root #'v f)
+      1: thread 0: var write_mutex wlock sets kHasE
+      2: thread 0: var write_mutex wlock held
+      4: thread 0: (alter-var-root #'v f)
+  Clojure: always completes (22 states)
+  jank (fine SharedMutex replica): DEADLOCK after 10 steps, 11 states searched
+    thread 0 holds [var write_mutex exclusive] and waits for var write_mutex exclusive (kHasE)
+* a delay whose body asks (realized? d)
+  program: delay d's body = (fn [..] (realized? d)); thread 0: @d
+  Clojure: always completes (10 states)
+  jank (coarse SharedMutex): DEADLOCK after 4 steps, 5 states searched
+    thread 0 holds [delay std::mutex] and waits for delay std::mutex
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: @d
+      1: thread 0: delay std::mutex lock
+      3: thread 0: (realized? d)
+  Clojure: always completes (10 states)
+  jank (fine SharedMutex replica): DEADLOCK after 4 steps, 5 states searched
+    thread 0 holds [delay std::mutex] and waits for delay std::mutex
+* a delay whose body derefs itself
+  program: delay d's body = (fn [..] @d); thread 0: @d
+  Clojure: always completes (30 states)
+  jank (coarse SharedMutex): DEADLOCK after 4 steps, 5 states searched
+    thread 0 holds [delay std::mutex] and waits for delay std::mutex
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: @d
+      1: thread 0: delay std::mutex lock
+      3: thread 0: @d
+  Clojure: always completes (30 states)
+  jank (fine SharedMutex replica): DEADLOCK after 4 steps, 5 states searched
+    thread 0 holds [delay std::mutex] and waits for delay std::mutex
+* future-cancel while another thread derefs the future
+  program: thread 0: @f; thread 1: (future-cancel f)
+  Clojure: always completes (108 states)
+  jank (coarse SharedMutex): DEADLOCK after 12 steps, 231 states searched
+    thread 0 holds [future thread exclusive] and waits for join of the future's thread; thread 1 holds [future state shared] and waits for future thread exclusive (kHasE); thread 2 holds [future state kHasE (draining)] and waits for future state exclusive (readers to drain)
+    tape:
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: @f
+      1: thread 0: future thread wlock sets kHasE
+      2: thread 0: future thread wlock held
+      3: thread 1: (future-cancel f)
+      4: thread 1: future state rlock
+      6: thread 2: thread_binding_frames wlock sets kHasE
+      7: thread 2: thread_binding_frames wlock held
+      8: thread 2: thread_binding_frames unlock
+      11: thread 2: future state wlock sets kHasE
+  Clojure: always completes (108 states)
+  jank (fine SharedMutex replica): DEADLOCK after 23 steps, 1866 states searched
+    thread 0 holds [future thread exclusive] and waits for join of the future's thread; thread 1 holds [future state shared] and waits for future thread exclusive (kHasE); thread 2 holds [] and waits for future state exclusive (kHasE)
+* future-cancelled? while another thread derefs the future
+  program: thread 0: @f; thread 1: (future-cancelled? f)
+  Clojure: always completes (54 states)
+  jank (coarse SharedMutex): DEADLOCK after 11 steps, 197 states searched
+    thread 0 holds [future thread exclusive] and waits for join of the future's thread; thread 1 holds [future state upgrade] and waits for future thread exclusive (kHasE); thread 2 holds [] and waits for future state exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: @f
+      1: thread 0: future thread wlock sets kHasE
+      2: thread 0: future thread wlock held
+      3: thread 1: (future-cancelled? f)
+      4: thread 1: future state ulock
+      6: thread 2: thread_binding_frames wlock sets kHasE
+      7: thread 2: thread_binding_frames wlock held
+      8: thread 2: thread_binding_frames unlock
+  Clojure: always completes (54 states)
+  jank (fine SharedMutex replica): DEADLOCK after 22 steps, 1765 states searched
+    thread 0 holds [future thread exclusive] and waits for join of the future's thread; thread 1 holds [future state upgrade] and waits for future thread exclusive (kHasE); thread 2 holds [] and waits for future state exclusive (kHasE)
+* two threads deref the same future
+  program: thread 0: @f; thread 1: @f
+  Clojure: always completes (60 states)
+  jank (coarse SharedMutex): always completes (302 states)
+  Clojure: always completes (60 states)
+  jank (fine SharedMutex replica): always completes (1238 states)
+* (meta #'v) whose lazy meta source reads (meta #'v)
+  program: var v's meta expression = (fn [..] (meta #'v)); thread 0: (meta #'v)
+  Clojure: always completes (26 states)
+  jank (coarse SharedMutex): DEADLOCK after 9 steps, 10 states searched
+    thread 0 holds [var lazy_meta exclusive] and waits for var lazy_meta exclusive (kHasE)
+    tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (meta #'v)
+      1: thread 0: var lazy_meta wlock sets kHasE
+      2: thread 0: var lazy_meta wlock held
+      4: thread 0: thread_binding_frames wlock sets kHasE
+      5: thread 0: thread_binding_frames wlock held
+      6: thread 0: thread_binding_frames unlock
+      8: thread 0: (meta #'v)
+  Clojure: always completes (26 states)
+  jank (fine SharedMutex replica): DEADLOCK after 15 steps, 16 states searched
+    thread 0 holds [var lazy_meta exclusive] and waits for var lazy_meta exclusive (kHasE)
+* a module with a managed load fn (AOT) whose top level derefs a future that requires another module
+  program: future f's body = (fn [..] (require 'N)); module M's top level = (fn [..] @f); thread 0: (require 'M)
+  Clojure: always completes (34 states)
+  jank (coarse SharedMutex): DEADLOCK after 11 steps, 59 states searched
+    thread 0 holds [future thread exclusive, loader recursive_mutex] and waits for join of the future's thread; thread 1 holds [] and waits for loader recursive_mutex
+    tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+    story:
+      0: thread 0: (require 'M)
+      1: thread 0: loader recursive_mutex lock
+      3: thread 0: @f
+      4: thread 0: future thread wlock sets kHasE
+      5: thread 0: future thread wlock held
+      6: thread 1: thread_binding_frames wlock sets kHasE
+      7: thread 1: thread_binding_frames wlock held
+      8: thread 1: thread_binding_frames unlock
+      10: thread 1: (require 'N)
+  Clojure: always completes (34 states)
+  jank (fine SharedMutex replica): DEADLOCK after 13 steps, 79 states searched
+    thread 0 holds [future thread exclusive, loader recursive_mutex] and waits for join of the future's thread; thread 1 holds [] and waits for loader recursive_mutex
+
+## 3. bdwgc reachability (exhaust over gc.collect decisions; Clojure = the JVM's roots)
+persistent_string typed descriptor: bitmap [false, false, true, false, false, false] → GC_make_descriptor = 2305843009213693953 (0x2000000000000001); scanned words [2]; store.large.data is word 2
+* a fresh ex-info thrown through a finally (1 allocations in the finally, 0 by another thread during the unwind)
+  jank: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  Clojure (the JVM's roots, also [C++ exception object (malloc)]): complete, 64 timelines, nothing
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    throw: the ex-info is in the C++ exception object; boom's frame is popped
+    a collection runs at the allocation of finally's object 0
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    catch: e copied from the exception object
+* a fresh ex-info thrown through a finally (2 allocations in the finally, 0 by another thread during the unwind)
+  jank: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  Clojure (the JVM's roots, also [C++ exception object (malloc)]): complete, 128 timelines, nothing
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    throw: the ex-info is in the C++ exception object; boom's frame is popped
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 1
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    catch: e copied from the exception object
+* a fresh ex-info thrown through a finally (3 allocations in the finally, 0 by another thread during the unwind)
+  jank: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  Clojure (the JVM's roots, also [C++ exception object (malloc)]): complete, 256 timelines, nothing
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    throw: the ex-info is in the C++ exception object; boom's frame is popped
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 2
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object, finally's object 0]
+    allocate finally's object 2 at 66064 (Jank.R3.Runtime.Gc.Kind.normal)
+    catch: e copied from the exception object
+* a fresh ex-info thrown through a finally (0 allocations in the finally, 1 by another thread during the unwind)
+  jank: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  Clojure (the JVM's roots, also [C++ exception object (malloc)]): complete, 64 timelines, nothing
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    throw: the ex-info is in the C++ exception object; boom's frame is popped
+    a collection runs at the allocation of another thread's object 0
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate another thread's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    catch: e copied from the exception object
+* a fresh ex-info thrown through a finally (0 allocations in the finally, 2 by another thread during the unwind)
+  jank: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  Clojure (the JVM's roots, also [C++ exception object (malloc)]): complete, 128 timelines, nothing
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    throw: the ex-info is in the C++ exception object; boom's frame is popped
+    allocate another thread's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of another thread's object 1
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object, another thread's object 0]
+    allocate another thread's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    catch: e copied from the exception object
+* control: the thrown value is also held by a var
+  jank: complete, 512 timelines, nothing
+  Clojure (the JVM's roots, also [C++ exception object (malloc)]): complete, 512 timelines, nothing
+* (def x) (def u @#'x) (ns-unmap *ns* 'x), 2 allocations, (str u)
+  jank: found after 2: var_unbound_root::to_string reads var->to_string() reads var x, freed by the collector
+  Clojure (the JVM's roots): complete, 4096 timelines, nothing
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol x at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var x at 65744 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate x's var_unbound_root at 65848 (Jank.R3.Runtime.Gc.Kind.atomic)
+    allocate vars map {x} at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol u at 66016 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var u at 66080 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate vars map {x, u} at 66184 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate vars map {u} at 66280 (Jank.R3.Runtime.Gc.Kind.normal)
+    (ns-unmap *ns* 'x)
+    allocate object 0 at 66360 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of object 1
+    collection 1: freed [symbol x, var x, vars map {x}, vars map {x, u}, object 0]
+    allocate object 1 at 66424 (Jank.R3.Runtime.Gc.Kind.normal)
+    use var u ((str u) reads u's root)
+    use x's var_unbound_root ((str u) reads the unbound root)
+* control: the same without ns-unmap
+  jank: complete, 2048 timelines, nothing
+  Clojure (the JVM's roots): complete, 2048 timelines, nothing
+* persistent_string of 0 bytes, jank's descriptor
+  jank: complete, 8 timelines, nothing
+  Clojure (the JVM's roots): complete, 8 timelines, nothing
+* persistent_string of 23 bytes, jank's descriptor
+  jank: complete, 8 timelines, nothing
+  Clojure (the JVM's roots): complete, 8 timelines, nothing
+* persistent_string of 24 bytes, jank's descriptor
+  jank: complete, 16 timelines, nothing
+  Clojure (the JVM's roots): complete, 16 timelines, nothing
+* persistent_string of 100 bytes, jank's descriptor
+  jank: complete, 16 timelines, nothing
+  Clojure (the JVM's roots): complete, 16 timelines, nothing
+* persistent_string of 100 bytes, sharing at offset 37, jank's descriptor
+  jank: complete, 16 timelines, nothing
+  Clojure (the JVM's roots): complete, 16 timelines, nothing
+* persistent_string of 600 bytes, sharing at offset 513, jank's descriptor
+  jank: complete, 16 timelines, nothing
+  Clojure (the JVM's roots): complete, 16 timelines, nothing
+* counterfactual: persistent_string with descriptor 0 (allocated before jank_init_base; jank never does)
+  jank: found after 2: (str s) reads the characters reads string buffer (GC_malloc_atomic), freed by the collector
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate string buffer (GC_malloc_atomic) at 65536 (Jank.R3.Runtime.Gc.Kind.atomic)
+    allocate persistent_string at 65704 (Jank.R3.Runtime.Gc.Kind.typed 0)
+    allocate object 0 at 65816 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of object 1
+    collection 1: freed [string buffer (GC_malloc_atomic), object 0]
+    allocate object 1 at 65880 (Jank.R3.Runtime.Gc.Kind.normal)
+    use persistent_string ((count s))
+* future thread registered (Linux path, core.cpp 1111-1115)
+  jank: complete, 32 timelines, nothing
+  Clojure (the JVM's roots): complete, 32 timelines, nothing
+* counterfactual: an unregistered thread running jank code
+  jank: found after 2: the future body reads its local reads a vector only the future's stack holds, freed by the collector
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate a vector only the future's stack holds at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate main's object 0 at 65744 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of main's object 1
+    collection 1: freed [a vector only the future's stack holds, main's object 0]
+    allocate main's object 1 at 65808 (Jank.R3.Runtime.Gc.Kind.normal)
+* module lifted constants laid out in declaration order
+  jank: complete, 32 timelines, nothing
+  Clojure (the JVM's roots): complete, 32 timelines, nothing
+* counterfactual: lifted constants laid out in reverse order
+  jank: found after 2: the module's code reads lifted constant 0 reads lifted constant 0, freed by the collector
+  shrunk tape:
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate lifted constant 0 at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate lifted constant 1 at 65600 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate lifted constant 2 at 65664 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate object 0 at 65728 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of object 1
+    collection 1: freed [lifted constant 0, lifted constant 1, lifted constant 2, object 0]
+    allocate object 1 at 65792 (Jank.R3.Runtime.Gc.Kind.normal)
+
+## 4. fbvector and immutable_string
+fbvector<object_ref, gc_allocator> against std::vector, every sequence of 5 operations: complete after 2570054
+  - 85140× std::vector contents: first after [Jank.R3.Runtime.Containers.VOp.push (Jank.R3.Runtime.Containers.Arg.fresh 100),
+ Jank.R3.Runtime.Containers.VOp.push (Jank.R3.Runtime.Containers.Arg.ref 0),
+ Jank.R3.Runtime.Containers.VOp.push (Jank.R3.Runtime.Containers.Arg.ref 0),
+ Jank.R3.Runtime.Containers.VOp.push (Jank.R3.Runtime.Containers.Arg.fresh 103),
+ Jank.R3.Runtime.Containers.VOp.emplace 0 (Jank.R3.Runtime.Containers.Arg.ref 3)]: fbvector holds [100, 100, 100, 100, 103], std::vector [103, 100, 100, 100, 103]
+    tape 10 decisions
+  residual (emplace's argument never an element): complete after 2679044, 0 classes
+immutable_string ownership, every sequence of 3 operations on 2 strings: complete after 32520
+  - 480× no use after GC_free: first [Jank.R3.Runtime.Containers.SOp.lit 0 30,
+ Jank.R3.Runtime.Containers.SOp.read 0,
+ Jank.R3.Runtime.Containers.SOp.read 1,
+ Jank.R3.Runtime.Containers.SOp.lit 0 30,
+ Jank.R3.Runtime.Containers.SOp.read 0,
+ Jank.R3.Runtime.Containers.SOp.read 1,
+ Jank.R3.Runtime.Containers.SOp.assignCStr 0 0,
+ Jank.R3.Runtime.Containers.SOp.read 0,
+ Jank.R3.Runtime.Containers.SOp.read 1]: s0 = s0.c_str() reads a buffer already GC_free'd
+  residual (no `s = s.c_str()`): complete after 32768, 0 classes
+
+## 5. lock census, one top-level thread (plus the future's thread)
+lock census: ≤1 threads × ≤1 ops, callback bodies ≤1 ops chosen to depth 1, alphabet 21 ops; excluded classes []; partition (decision prefix) #[]
+  [4] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared
+  [15] new class: var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [40] new class: var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [65] new class: delay std::mutex ⟂ delay std::mutex held
+  [80] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | join of the future's thread ⟂ the future's thread still running
+  [91] new class: future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [196] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared
+  [528] new class: atom validator exclusive (kHasE) ⟂ atom validator kHasE+atom validator shared | atom validator exclusive (readers to drain) ⟂ atom validator shared
+  [529] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | atom validator shared ⟂ atom validator kHasE
+  [1732] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [5640] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [6992] new class: join of the future's thread ⟂ the future's thread still running | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [9548] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | delay std::mutex ⟂ delay std::mutex held
+  [10907] new class: delay std::mutex ⟂ delay std::mutex held | join of the future's thread ⟂ the future's thread still running
+  [13305] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | join of the future's thread ⟂ the future's thread still running
+  [13307] new class: join of the future's thread ⟂ the future's thread still running | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [14992] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | atom watches shared ⟂ atom watches kHasE
+  [15204] new class: atom watches exclusive (kHasE) ⟂ atom watches kHasE+atom watches shared | atom watches exclusive (readers to drain) ⟂ atom watches shared
+  [15215] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [15240] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [15265] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | delay std::mutex ⟂ delay std::mutex held
+  [17089] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | loader recursive_mutex ⟂ loader recursive_mutex held
+  [17099] new class: join of the future's thread ⟂ the future's thread still running | loader recursive_mutex ⟂ loader recursive_mutex held
+  ... 20000 programs, 23 classes
+  [23375] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | loader recursive_mutex ⟂ loader recursive_mutex held
+  ... 40000 programs, 24 classes
+  ... 60000 programs, 24 classes
+  complete after 62391 programs; 24 classes of jank deadlocks that Clojure does not have
+  - 2914× atom watches exclusive (readers to drain) ⟂ atom watches shared
+      smallest: watch w = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 1316× var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: alter-var-root fn f = (fn [..] (alter-var-root #'v f)); thread 0: (alter-var-root #'v f)
+  - 1282× var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: var v's meta expression = (fn [..] (meta #'v)); thread 0: (meta #'v)
+  - 1302× delay std::mutex ⟂ delay std::mutex held
+      smallest: delay d's body = (fn [..] @d); thread 0: @d
+  - 424× atom watches exclusive (readers to drain) ⟂ atom watches shared | join of the future's thread ⟂ the future's thread still running
+      smallest: watch w = (fn [..] @f); future f's body = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 1090× future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: future f's body = (fn [..] (future-cancel f)); thread 0: @f
+  - 1690× atom validator exclusive (readers to drain) ⟂ atom validator shared
+      smallest: validator vf = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)
+  - 8× atom validator exclusive (kHasE) ⟂ atom validator kHasE+atom validator shared | atom validator exclusive (readers to drain) ⟂ atom validator shared
+      smallest: validator vf = (fn [..] (set-validator! a vf)); watch w = (fn [..] @f); future f's body = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)
+  - 156× atom validator exclusive (readers to drain) ⟂ atom validator shared | atom validator shared ⟂ atom validator kHasE
+      smallest: validator vf = (fn [..] (set-validator! a vf)); watch w = (fn [..] @f); future f's body = (fn [..] (get-validator a)); thread 0: (swap! a inc)
+  - 24× atom validator exclusive (readers to drain) ⟂ atom validator shared | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: validator vf = (fn [..] (alter-var-root #'v f)); watch w = (fn [..] @f); alter-var-root fn f = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)
+  - 24× atom validator exclusive (readers to drain) ⟂ atom validator shared | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: validator vf = (fn [..] (meta #'v)); watch w = (fn [..] @f); var v's meta expression = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)
+  - 47× join of the future's thread ⟂ the future's thread still running | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: var v's meta expression = (fn [..] @f); future f's body = (fn [..] (reset-meta! #'v {})); thread 0: (meta #'v)
+  - 24× atom validator exclusive (readers to drain) ⟂ atom validator shared | delay std::mutex ⟂ delay std::mutex held
+      smallest: validator vf = (fn [..] @d); watch w = (fn [..] @f); delay d's body = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)
+  - 23× delay std::mutex ⟂ delay std::mutex held | join of the future's thread ⟂ the future's thread still running
+      smallest: delay d's body = (fn [..] @f); future f's body = (fn [..] (realized? d)); thread 0: @d
+  - 48× atom validator exclusive (readers to drain) ⟂ atom validator shared | join of the future's thread ⟂ the future's thread still running
+      smallest: validator vf = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (swap! a inc)); thread 0: @f
+  - 10× join of the future's thread ⟂ the future's thread still running | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: alter-var-root fn f = (fn [..] (alter-var-root #'v f)); future f's body = (fn [..] (alter-var-root #'v f)); thread 0: @f
+  - 226× atom watches exclusive (readers to drain) ⟂ atom watches shared | atom watches shared ⟂ atom watches kHasE
+      smallest: validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] (add-watch a :k w)); future f's body = (fn [..] (swap! a inc)); thread 0: (swap! a inc)
+  - 120× atom watches exclusive (kHasE) ⟂ atom watches kHasE+atom watches shared | atom watches exclusive (readers to drain) ⟂ atom watches shared
+      smallest: validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] (add-watch a :k w)); future f's body = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 48× atom watches exclusive (readers to drain) ⟂ atom watches shared | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] (alter-var-root #'v f)); alter-var-root fn f = (fn [..] (alter-var-root #'v f)); future f's body = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 48× atom watches exclusive (readers to drain) ⟂ atom watches shared | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] (meta #'v)); var v's meta expression = (fn [..] (meta #'v)); future f's body = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 48× atom watches exclusive (readers to drain) ⟂ atom watches shared | delay std::mutex ⟂ delay std::mutex held
+      smallest: validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] @d); delay d's body = (fn [..] @d); future f's body = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 24× atom watches exclusive (readers to drain) ⟂ atom watches shared | loader recursive_mutex ⟂ loader recursive_mutex held
+      smallest: validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] (require 'M)); future f's body = (fn [..] (require 'M)); module M's top level = (fn [..] (add-watch a :k w)); thread 0: (swap! a inc)
+  - 41× join of the future's thread ⟂ the future's thread still running | loader recursive_mutex ⟂ loader recursive_mutex held
+      smallest: future f's body = (fn [..] (require 'N)); module M's top level = (fn [..] @f); thread 0: (require 'M)
+  - 24× atom validator exclusive (readers to drain) ⟂ atom validator shared | loader recursive_mutex ⟂ loader recursive_mutex held
+      smallest: validator vf = (fn [..] (require 'M)); watch w = (fn [..] @f); future f's body = (fn [..] (set-validator! a vf)); module M's top level = (fn [..] (set-validator! a vf)); thread 0: (swap! a inc)

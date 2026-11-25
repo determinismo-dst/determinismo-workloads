@@ -1,0 +1,48 @@
+== exhaust: core tokens ≤ 3, inputs ≤ 3 over [97, 98, 10], calls 5, locale UTF-8
+    found after 1647 timelines [dollar-final-newline (R79)]: (re-find #"a$" "a\n"): Clojure "a", jank nil
+    found after 33162 timelines [syntax: {n} after nothing]: (re-find #"a+{2}" "a"): Clojure "a", jank nil
+    found after 33445 timelines [syntax: possessive quantifier read as a nested repeat]: (re-find #"a?+" "aa"): Clojure "a", jank "aa"
+    found after 197921 timelines [unmatched-group-empty (R80)]: (re-find #"|()" ""): Clojure ["" nil], jank ["" ""]
+    found after 731361 timelines [re-seq-new-string (R81)]: (re-seq #"|" ""): Clojure (""), jank ("" "" …) infinite
+    found after 1469522 timelines [re-matches-first-match (R82)]: (re-matches #"|a" "a"): Clojure "a", jank nil
+    found after 2200642 timelines [regex-iterator-retry (R85)]: (clojure.string/replace "a" #"|a" "-"): Clojure "-a-", jank "---"
+    complete: 3655600 timelines, nothing (set aside: [dollar-final-newline (R79), syntax: {n} after nothing, syntax: possessive quantifier read as a nested repeat, unmatched-group-empty (R80), re-seq-new-string (R81), re-matches-first-match (R82), regex-iterator-retry (R85)])
+== exhaust: core tokens ≤ 2, inputs ≤ 2 over [97, 98, 10, 233, 128512, 0], calls 5, locale UTF-8
+    found after 38 timelines [nul-cut (R83)]: (re-find #"a" "\u0000a"): Clojure "a", jank nil
+    found after 91 timelines [bytes (R78)]: (re-find #"." "é"): Clojure "é", jank "\xc3" (invalid UTF-8)
+    found after 1773 timelines [dollar-final-newline (R79)]: (re-find #"a$" "a\n"): Clojure "a", jank nil
+    found after 30445 timelines [re-seq-new-string (R81)]: (re-seq #"|" ""): Clojure (""), jank ("" "" …) infinite
+    found after 68200 timelines [re-matches-first-match (R82)]: (re-matches #"|a" "a"): Clojure "a", jank nil
+    found after 98386 timelines [regex-iterator-retry (R85)]: (clojure.string/replace "a" #"|a" "-"): Clojure "-a-", jank "---"
+    complete: 150930 timelines, nothing (set aside: [nul-cut (R83), bytes (R78), dollar-final-newline (R79), re-seq-new-string (R81), re-matches-first-match (R82), regex-iterator-retry (R85)])
+== explore: core tokens ≤ 7, inputs ≤ 6 over a b newline, 14 calls, seeds 0..19999, locale UTF-8, set aside []
+  20000 timelines
+    [ecmascript-template (R84)] 376 timelines; shortest: (clojure.string/replace "" #"$" "\\$"): Clojure "$", jank "\\$"
+    [syntax: {n} after nothing] 7 timelines; shortest: (re-seq #"-{1,}{0,1}\s{1,}b" "\n\nbaa"): Clojure nil, jank ("\n\nb")
+    [re-seq-new-string (R81)] 83 timelines; shortest: (re-seq #"$^" "\n"): Clojure (""), jank nil
+    [regex-iterator-retry (R85)] 15 timelines; shortest: (clojure.string/replace "bbb" #"^|." "-"): Clojure "-b--", jank "----"
+    [dollar-final-newline (R79)] 28 timelines; shortest: (re-find #"$\b" "ba\n"): Clojure "", jank nil
+    [fn-gets-match-string (R84)] 1 timelines; shortest: (clojure.string/replace "b" #".+()" f): Clojure "<b|>", jank "<b>"
+    [syntax: possessive quantifier read as a nested repeat] 1 timelines; shortest: (clojure.string/replace-first "\nabaa\n" #".\w{0,1}+\b" "-"): Clojure "\nab-\n", jank "\n-\n"
+== exhaust: core tokens ≤ 3, inputs ≤ 3 over [97, 98, 10], calls 5, locale C
+    found after 1647 timelines [dollar-final-newline (R79)]: (re-find #"a$" "a\n"): Clojure "a", jank nil
+    found after 33162 timelines [syntax: {n} after nothing]: (re-find #"a+{2}" "a"): Clojure "a", jank nil
+    found after 33445 timelines [syntax: possessive quantifier read as a nested repeat]: (re-find #"a?+" "aa"): Clojure "a", jank "aa"
+    found after 197921 timelines [unmatched-group-empty (R80)]: (re-find #"|()" ""): Clojure ["" nil], jank ["" ""]
+    found after 731361 timelines [re-seq-new-string (R81)]: (re-seq #"|" ""): Clojure (""), jank ("" "" …) infinite
+    found after 1469522 timelines [re-matches-first-match (R82)]: (re-matches #"|a" "a"): Clojure "a", jank nil
+    found after 2200642 timelines [regex-iterator-retry (R85)]: (clojure.string/replace "a" #"|a" "-"): Clojure "-a-", jank "---"
+    complete: 3655600 timelines, nothing (set aside: [dollar-final-newline (R79), syntax: {n} after nothing, syntax: possessive quantifier read as a nested repeat, unmatched-group-empty (R80), re-seq-new-string (R81), re-matches-first-match (R82), regex-iterator-retry (R85)])
+== exhaust: core tokens ≤ 3, inputs ≤ 3 over [97, 98, 10], calls 5, locale UTF-8, rejected patterns reported
+    found after 881 timelines [rejects:backreference: Back-reference index exceeds current sub-expression count.]: (re-find #"\1" ""): Java compiles it, jank throws (Back-reference index exceeds current sub-expression count.)
+    found after 921 timelines [rejects:{n} after nothing]: (re-find #"{2}" ""): Java compiles it, jank throws (Mismatched '(' and ')' in regular expression)
+    found after 1647 timelines [dollar-final-newline (R79)]: (re-find #"a$" "a\n"): Clojure "a", jank nil
+    found after 15721 timelines [rejects:quantifier on an assertion]: (re-find #"^*" ""): Java compiles it, jank throws (Mismatched '(' and ')' in regular expression)
+    found after 33162 timelines [syntax: {n} after nothing]: (re-find #"a+{2}" "a"): Clojure "a", jank nil
+    found after 33445 timelines [syntax: possessive quantifier read as a nested repeat]: (re-find #"a?+" "aa"): Clojure "a", jank "aa"
+    found after 197921 timelines [unmatched-group-empty (R80)]: (re-find #"|()" ""): Clojure ["" nil], jank ["" ""]
+    found after 240561 timelines [rejects:backreference: Back-reference referred to an opened sub-expression.]: (re-find #"(\1)" ""): Java compiles it, jank throws (Back-reference referred to an opened sub-expression.)
+    found after 731361 timelines [re-seq-new-string (R81)]: (re-seq #"|" ""): Clojure (""), jank ("" "" …) infinite
+    found after 1469522 timelines [re-matches-first-match (R82)]: (re-matches #"|a" "a"): Clojure "a", jank nil
+    found after 2200642 timelines [regex-iterator-retry (R85)]: (clojure.string/replace "a" #"|a" "-"): Clojure "-a-", jank "---"
+    complete: 3655600 timelines, nothing (set aside: [rejects:backreference: Back-reference index exceeds current sub-expression count., rejects:{n} after nothing, dollar-final-newline (R79), rejects:quantifier on an assertion, syntax: {n} after nothing, syntax: possessive quantifier read as a nested repeat, unmatched-group-empty (R80), rejects:backreference: Back-reference referred to an opened sub-expression., re-seq-new-string (R81), re-matches-first-match (R82), regex-iterator-retry (R85)])

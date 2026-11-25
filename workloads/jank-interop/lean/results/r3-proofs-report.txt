@@ -1,0 +1,290 @@
+ROUND 3 — PROOFS FOR QUIET COMPONENTS (area Proofs; exe jank3-proofs; prefix P)
+
+Files: Jank/R3/Proofs/{Lin, Threads, AtomLin, AtomStep, AtomMain, AtomDeadlock, Multi, Vector,
+Delay, Destructure, Range, ArrayMap, Lex}.lean; driver Run/R3/Proofs.lean (its output:
+results/r3-proofs.txt); this report: results/r3-proofs-report.txt.
+No sorry, no native_decide, no new axioms: `#print axioms` on the headline theorems lists only
+propext, Classical.choice, Quot.sound (one closed evaluation, `llscRun_code`, is `decide +kernel`,
+checked by the kernel). `lake build jank3-proofs` builds every module; the exe runs (exit 0).
+
+1. DEVIATIONS
+
+P1. A trailing EMPTY seqable in keyword arguments (and in a map `conj`) throws in jank.
+    ((fn [& {:as m}] m) :a 1 ())        ; Clojure {:a 1}  jank throws "invalid map entry"
+    ((fn [& {:keys [a]}] a) :a 1 #{})   ; Clojure 1       jank throws
+    (conj {:a 1} ())                    ; Clojure {:a 1}  jank throws
+    (conj {} #{})  (conj {} "")         ; Clojure {}      jank throws
+  Replica: Jank.R3.Proofs.Destructure.p1_jank_conj_throws (`rtMapConj`, the replica of
+  base_persistent_map::conj, throws on `()`), p1_clj_adds_nothing (`cljCreateAsIfByAssoc
+  [:a 1 ()]` = {:a 1}); the driver evaluates the whole expansion (`kwargs`): over the 585
+  argument lists ≤ 3 of 8 elements, 64 end in `()` and differ, e.g. `((fn [& {:as m}] m) :a 1 ())`:
+  Clojure {:a 1}, jank throws "invalid map entry: ()".
+  Path at 7135b7708: src/jank/clojure/core.jank pmap 3427–3436 `(conj (apply hash-map (butlast g))
+  (last g))` → src/cpp/jank/runtime/core/seq.cpp:387 `conj` → src/cpp/jank/runtime/obj/detail/
+  base_persistent_map.cpp:169 `base_persistent_map::conj` (accepts nil, a map, a two-element
+  vector; anything else throws "invalid map entry"). Clojure: APersistentMap.cons (27–49) walks
+  RT.seq of any other argument as Map.Entry's (an empty one adds nothing); createAsIfByAssoc
+  (PersistentArrayMap.java 86–200) conjoins the trailing element that way.
+  Status: new inputs on R107's code path (R107: a non-empty `(seq m)` trailing element); the
+  direct `(conj m ())`/`(conj m #{})` forms are not in REPORT-2. Found when `odd_agrees` (the
+  conversion for every argument list) failed exactly on a trailing `(seq m)` (R107) and `()`.
+  Note on round 2's spec: its Clojure-side `cljCreateAsIfByAssoc` treats a trailing set or string
+  as not seqable (throws); Clojure walks them (`#{}`/`""` add nothing; a non-empty one throws
+  ClassCastException unless its elements are map entries). Round 2's "agree" on a trailing set is
+  that artifact; jank throws on every set.
+
+2. WHAT WAS MADE TERMINATING, AND THE RE-CHECK
+
+- Jank/Lex.lean `next`, `lexNumber` (mutual `partial`): the bodies became the non-recursive
+  `nextCore lexNum p0` (the number case passed in as `lexNum`; the only change in its text is
+  `match lexNumber depth p tokenStart` → `match lexNum p tokenStart`) and
+  `lexNumberCore den p0 tokenStart` (the denominator's lexer passed in: `if depth == 0 then return
+  hang; let (den, p') := next (depth - 1) p` → `let some lexDen := den | return hang; let (den, p')
+  := lexDen p`). `next` is structural in `depth`: `next 0 = nextCore (lexNumberCore none)`,
+  `next (d+1) = nextCore (lexNumberCore (some (next d)))`; `lexNumber depth` = `lexNumberCore`
+  with `none` at 0, `some (next (depth-1))` above (theorem `next_eq`). Names and signatures of
+  `next` and `lexNumber` unchanged; new: `nextCore`, `lexNumberCore`, `next_eq`. (A
+  well-founded version on (depth, rank) elaborated for over 4 minutes; the structural form
+  compiles in seconds.)
+- Jank/Read.lean `nextForm`, `wrap`, `parseUpto`, `parseColl`, `parseMeta`,
+  `parseReaderMacro` (mutual `partial`): well-founded on (depth, rank) with ranks 3/1/1/2/1/2
+  (and 0 for the new `nextFormBelow`).
+  Every `nextForm (depth - 1)` became `nextFormBelow depth`, a new member of the block:
+  `match depth with | 0 => pure (.crash "parser recursion never ends (stack overflow)") | d + 1 =>
+  nextForm d`, which is what `nextForm 0` returns (its first line, before any state change).
+  `jankEqual`, `jankSameKey` (`partial`): well-founded on the two values' sizes; the elementwise
+  `(xs.zip ys).all` goes through `List.attach` (same values).
+- Jank/Core/Destructure.lean: `Val.code`, `F.code` (a map's `fun (k, v) => …` → `fun kv => …kv.1…
+  kv.2`), `valEq` (sizes; zip through `attach`), `eval`/`evalCall` (sizes; Lean's automatic attach
+  through `mapM`), `evalE` (fuel, then term size; `if fuel == 0 then throw "fuel"` … `fuel - 1` →
+  `match fuel with | 0 => throw "fuel" | fuel' + 1 => …` with the same arguments). New helper
+  lemmas `sizeOf_fst_lt`, `sizeOf_snd_lt`, `sizeOf_zip_fst`, `sizeOf_zip_snd`.
+- Jank/Core/Sorted.lean `cvEq`: well-founded on the first value's size; zip through `attach`;
+  the same helper lemmas.
+- Re-check: jank-reader rebuilt (Jank.Lex and Jank.Read recompiled from the new sources) and rerun
+  (89 s): its 418 lines are identical to results/reader.txt (whose extra last line "exit 0" was
+  written by round 2's run script, not by the exe). jank-core2 rebuilt (Jank.Core.Destructure
+  and Jank.Core.Sorted recompiled) and rerun: identical to results/core2.txt except its timing
+  line ("== total run time: 18 s" then, 30 s now).
+- Not edited: Atom.lean, Sync.lean, Vector.lean, ArrayMap.lean, Delay.lean, Multi.lean (no
+  `partial` definitions in them), LexBytes.lean (no `partial`). So jank-model and jank-core need
+  no rerun. Jank/LexTheorems.lean's module doc still says the lexer and parser are `partial`
+  (a round-2 file outside my edit list).
+
+3. STILL PARTIAL OR UNPROVEN, AND WHY
+
+- Destructure `pb`/`pvec`/`pmap` (still `partial`): `pmap` recurses on the entries `bes` that its
+  `:keys`/`:syms`/`:strs` transforms build. Their keys are the binding map's keys or elements of
+  its vector values, so they are subterms, but showing it needs an invariant through the
+  `formAssoc`/`formDissoc` folds (and a measure that ignores the transformed values, which can be
+  larger). Not done; `drawVal`/`drawBinding` (the search's generators) recurse on `depth - 1`
+  guarded only by a one-option decision returning 0, so making them terminating means restructuring
+  around `decide`; left as they are. Consequently the for-every-binding-form theorem is proved for
+  the conversion (where jank's code differs from Clojure's), not for whole expansions: the rest of
+  `destructure` is the same code in both flavors except gensym names. The conversion is proved on
+  the runtime functions the expansion calls (`rtHashMap`, `rtMapConj`, `cljCreateAsIfByAssoc`);
+  the same statement through `eval` of the two expansion forms (now possible, `eval` terminates)
+  stops at simp evaluating the derived `BEq F` tests in `evalCall`; not finished.
+- Lexer: `next` terminates; "no loop of `next` hangs on input without NUL" is proved for the symbol
+  token (`lexSymbol_never_hangs`) and, for every loop, per iteration (`symF_spec`, `charF_spec`,
+  `comF_spec`, `defF_spec`, `stringStep_next`) with the generic `flag_loop_done`; tying the eight
+  loops of `nextCore` together (and `lexNumberCore`'s early returns) is not done.
+- Parser: terminating; "reading returns a form or an error without NUL" is not proved. Note that
+  `readAll` stops at 64 forms, so a NUL-free input with 65 forms "hangs" in the replica (a model
+  bound, not jank).
+- Array maps: the persistence theorem covers one transient and any sequence of its `assoc!`/
+  `dissoc!`; the full world of round 1 (several maps and transients interleaved, `persistent!`,
+  promotion, `check` over every map) is not proved.
+- Sorted collections: only `cvEq` made terminating; no for-every-program theorem. The comparator
+  pair `jankCompare`/`cljCompare` differs on R96–R99's classes, so such a theorem must be stated
+  for keys on which the comparators agree.
+- `Determinismo.linearizable` (sdk, `partial`) is not related to `Lin.Linearizable` by proof.
+
+4. ASSUMPTIONS USED BY THE PROOFS
+
+PA1. Linearizability is `Lin.Linearizable`: some order of a subset of the history's operations
+     contains every answered (non-failed) one, respects real time (an operation answered before
+     another was invoked comes first), and runs legally from the initial value with the
+     acknowledged answers; an unanswered operation may be in it (any answer) or not (Herlihy–Wing
+     with Jepsen's reading). It stands in for sdk's `Determinismo.linearizable`, which is
+     `partial` (a search) and could not be reasoned about.
+PA2. Atom fragment: clients run `swap! inc`, `@`, `compare-and-set!`, `reset!` and `add-watch`
+     with a watch that only records (`WatchFn.record`); history ids distinct and ≠ 1000 (the id
+     the replica gives a watch's nested `swap!`). Watches that call back into the atom (D16) are
+     outside it. Any initial value, any number of threads and operations.
+PA3. LL/SC: a weak compare-and-set may answer false without effect at any moment (C++
+     [atomics.types.operations]: "may fail spuriously"); the weak register `weak` encodes exactly
+     that; x86-64's `lock cmpxchg` never fails spuriously (the replica's `llsc = false`).
+PA4. Deadlock means the replica's report (`interleave`: every live thread blocked); a run that
+     reaches its decision limit ends normally.
+PA5. delay: each thread derefs at least once before asking `realized?` (with none, `realized?` is
+     false in both).
+PA6. promise: "exactly one deliver returned the promise" is stated once every thread has ended
+     (`maxSteps` can stop a run earlier; then "at most one" still holds).
+PA7. Range: the fix is round 2's `countExact` (the count on exact integers); walks are compared
+     for every number of elements taken.
+PA8. P1's Clojure side is Clojure 1.12's APersistentMap.cons and PersistentArrayMap.createAsIfByAssoc
+     as read in clojure-ref; jank's is base_persistent_map.cpp as read at 7135b7708 (not run).
+PA9. Lexer: "without NUL" means every byte of the file is non-zero; either locale.
+PA10. Multimethods: the replica's `prefers` walks at most 16 levels (round 2's fuel); the theorems
+     compare jank's and Clojure's replicas with that same walk.
+
+5. PROPERTIES PROVED (for every input of the stated fragment)
+
+- Atoms (target 1): every interleaving's history is linearizable against the register, on x86-64
+  and in the Clojure mode, for any number of threads and operations; on LL/SC against the register
+  with a weak compare-and-set, and against the strong register when no `compare-and-set!` is used
+  (spurious failures only make `swap!` retry); round 1's LL/SC tape gives a history the strong
+  register cannot explain (D17). With recording watches the run never deadlocks (D16 needs a
+  watch that calls back).
+- Multimethods (target 2): without preferences (round 2's theorem, every input); with any
+  preferences when every method is on a parentless tag; in general whenever jank's and Clojure's
+  dominance agree on method tags; jank's preference walk is exactly the direct lookup (R100).
+- Destructuring (target 3): the kwargs conversion agrees with Clojure for every argument list
+  whose trailing element (odd count) is not a seq of entries or `()`; P1 found on the way.
+- Vectors (target 5): every index law, including when `nth`, `assoc`, `pop`, `subvec` throw and
+  what `subvec` returns; transient `nth` answers as Clojure's for every transient and index.
+- Array maps (target 5): after the clone fix, any sequence of `assoc!`/`dissoc!` on
+  `(transient m)` leaves `m`'s entries unchanged, for every array map.
+- delay/promise (target 5): a delay with a value body (and the Clojure mode, any body) runs once
+  and is realized after a deref, any threads and derefs; at most one `deliver` returns the promise,
+  exactly one once all threads ended.
+- Lexer (target 6): every successful decode of a non-NUL byte advances; every loop iteration
+  stops or advances inside the file; the symbol token never reports a hang without NUL.
+- Integer range with the exact count (target 7): Clojure's elements and ending for every i64
+  start, end, step, in the 1-, 2- and 3-argument forms.
+
+6. SEARCH RUNS
+
+- P1 table (jank3-proofs): `((fn [& {:as m}] m) args…)` for every argument list of length ≤ 3 over
+  8 elements (:a, 1, {:b 2}, nil, [:c 3], (seq {:d 4}), (), #{}): 585 lists, 128 disagree:
+  64 end in `(seq {:d 4})` (R107), 64 end in `()` (P1), none other (a trailing `#{}` "agrees"
+  only because round 2's Clojure side wrongly throws on sets, see P1's note). Every disagreement
+  is a length-3 list; `odd_agrees` shows the conversion has no other disagreement at any length.
+- Re-runs: jank-reader (identical, 418 lines); jank-core2 (identical but the run-time line).
+
+7. THEOREMS (N: a new for-every-input proof of a round-1/2 bounded result; H: helper)
+
+Headline statements (Lean, abbreviated namespaces):
+  linearizable_x86 (name) (ts : List (List COp)) (v0 : Nat) (clj : Bool) (hN : (allIds ts).Nodup)
+      (h1000 : 1000 ∉ allIds ts) (source : Source) (maxSteps limit : Nat) :
+    Linearizable strong v0 (runProcess (start (ofThreads name ts v0) false clj)
+      (interleave prog maxSteps) source limit).2.memory.history.toList
+  (`start`, `prog`, `interleave`, `runProcess`, `applyOp` are the replica's and sdk's own; `strong`
+  is `fun v op v' r => applyOp v op = (v', r)`; `ofThreads` builds the replica's `Scenario` from
+  the replica's own `swapInc`/`derefOp`/`casOp`/`resetTo`/`addWatch` instruction lists.)
+  no_deadlock (…same scenario arguments…) (llsc clj : Bool) … :
+    ∀ e, (runProcess (start (ofThreads name ts v0) llsc clj) (interleave prog maxSteps) source
+      limit).1 = .error e → e = .limit
+  root_methods_same (mm : MM) (h : H) (dv : Tag) (hroot : ∀ k, some k ∈ mm.methods →
+    look h.parents k = []) : jankCall mm h dv = cljCall mm h dv
+  odd_agrees (xs : List Val) (t : Val) (h : xs.length % 2 = 0) (ht : TrailOK t) :
+    Same (do match ← rtHashMap xs with | .map kvs => rtMapConj kvs t | _ => throw "conj")
+         (cljCreateAsIfByAssoc (xs ++ [t]))
+  delay_value_runs_once (threads derefs) (hD : 1 ≤ derefs) (source) (maxSteps limit) :
+    let p := (runProcess (delayStart .returnsValue false threads derefs)
+      (interleave {step := delayStep} maxSteps) source limit).2
+    p.memory.runs ≤ 1 ∧ ∀ b ∈ p.memory.realizedAfter, b = true
+  transient_keeps_source (h : Heap) (nm : NativeMap) (hnm : nm.length = 0 ∨ nm.data < h.arrays.size)
+      (ops : List (Bool × Key × Val)) :
+    nm.entries (applyOps (jTransient (.array nm) h).1 (jTransient (.array nm) h).2 ops).1 = nm.entries h
+  fixed_walk_agrees (s e st : I64) (f : Nat) :
+    (match create3 s e st with | .emptyList => ⟨[], .done⟩ | .repeatInf v => ⟨List.replicate f v.toInt,
+      .more⟩ | .range r => walkExact f r []) = cljWalk s.toInt e.toInt st.toInt f
+  lexSymbol_never_hangs (p : P) (hnf : NulFree p.file) (fs : Bool) (w : String) :
+    (lexSymbol p fs).1 ≠ .hang w
+
+Atoms (Jank/R3/Proofs/AtomMain.lean, AtomDeadlock.lean; invariant in AtomLin.lean, AtomStep.lean)
+- N linearizable_x86: for every scenario of the fragment (any threads and operations), every source
+  and maxSteps, jank's code on x86-64: the history is linearizable against `applyOp` (round 1:
+  two swap! inc complete over 217,500; two swap! inc plus deref stopped at 500,000; two
+  compare-and-set! complete over 4,228).
+- N linearizable_clojure: the same in the Clojure mode on either platform (round 1: complete over
+  48,610 / 2,116; stopped at 500,000 with a deref).
+- N linearizable_llsc_weak: LL/SC, jank's code: linearizable against the register whose
+  compare-and-set may answer false without effect.
+- N linearizable_llsc_no_cas: LL/SC without compare-and-set!: linearizable against the register
+  (round 1: two swap! inc on LL/SC stopped at 500,000).
+- N llsc_cas_not_linearizable: round 1's tape `cpu.cas_spurious = 1` on `(compare-and-set!
+  (atom 0) 0 1)` gives a history no register order explains (D17); llscRun_weak: it is
+  weak-linearizable.
+- N no_deadlock: with recording watches, the run never reports a deadlock (it ends or hits the
+  decision limit) — every interleaving, either platform and mode.
+- N counter_linearizable / counter2_linearizable / casRace_linearizable_x86: round 1's own
+  scenarios (`counter`, `counter2`, `casRace` are `ofThreads …` by rfl), linearizable and (counter)
+  deadlock-free for every timeline.
+- H history_linearizable (any specification satisfying SpecOK), stepKeeps (each instruction of each
+  phase keeps the invariant), GInv.{neutral, invoke, lp, ret, done, step}, MInv.{same, cljMode,
+  lockShared, unlockShared, announce, lock, unlock}, live_step, step_blocked, step_err,
+  spurious_eq, spurious_err, init_ginv, init_minv, strong_ok, weak_ok, llscRun_code
+  (decide +kernel), counter_eq, counter2_eq, casRace_eq, casFresh_eq.
+
+Linearizability and threads (Lin.lean, Threads.lean)
+- H linearizable_of_witness: linearization points (ordered, each between invocation and answer,
+  legal) make a history linearizable.
+- H interleave_inv: an invariant kept by every step and by decisions holds after interleave, for
+  every source and maxSteps.
+- H interleave_no_deadlock: if every blocked thread still blocks after other blocked steps, some
+  live thread can always step, and steps only throw at the decision limit, interleave never
+  reports a deadlock.
+- H forIn_inv, forIn_inv3, forIn_err, bind_inv, bind_err, pick_res, pick_res', next_error, getD_set,
+  getD_some_lt, size_set, runProcess_snd.
+
+Multimethods (Multi.lean)
+- N root_methods_same: methods on parentless tags: jank's dispatch = Clojure's, for every
+  hierarchy, method table, preference table and dispatch value (round 2: no prefers, 2,048,000).
+- N agree_of_dominates_agree: the two dispatches agree whenever their dominance agrees on method tags.
+- N jank_prefers_direct: jank's preference walk is the direct lookup (R100's cause, every input).
+- H clj_prefers_of_direct, clj_prefers_roots, dominates_roots, bestD, bestMethod_eq (rfl),
+  forIn_congr_inv, bestD_congr, no_prefs_same' (round 2's theorem restated).
+
+Destructuring (Destructure.lean)
+- N even_agrees: every even argument list: `(apply hash-map g)` = createAsIfByAssoc.
+- N odd_agrees: every odd list `xs ++ [t]` with t not a seq of entries or `()`: jank's conversion
+  and Clojure's give the same map or both throw (round 2: the trailing-seq-free search, complete
+  over 384,183 programs, bounded to atoms in lists).
+- N p1_jank_conj_throws, p1_clj_adds_nothing (P1).
+- H go_eq.
+
+Vectors (Vector.lean)
+- N nth_iff, assoc_none_iff, assoc_set, pop_none_iff, subvec_none_iff, subvec_spec,
+  transient_nth_agrees (round 1's laws completed with the throwing sides; round 2's D15 example
+  generalized); H nth_other, get_other, contains_other, assoc_other.
+
+delay and promise (Delay.lean)
+- N delay_value_runs_once: value body, any threads and derefs (round 1: complete, 1 and 168).
+- N delay_clojure_runs_once: Clojure mode, any body (round 1: complete, 168).
+- N deliver_once: at most one deliver returns the promise; exactly one once all threads ended
+  (round 1 after D20's fix: complete over 40).
+- H delay_step, delay_init, delay_end, promise_step, promise_init, promise_thread, promise_some,
+  filter_id_append, getD_replicate, delayStart_eq.
+
+Array maps (ArrayMap.lean)
+- N transient_keeps_source: after the clone fix, for every array map (whose array is in the heap)
+  and every sequence of assoc!/dissoc! on its transient, the map's entries are unchanged (round 1:
+  complete over 33,849 timelines of 3 operations).
+- H read_write, read_alloc, slots_alloc, slots_write, read_write_ne, read_alloc_lt,
+  makeNextArray_frame, insertOrAssign_frame, erase_frame, fold_frame, fold_size, assocBang_res,
+  dissocBang_res, applyOps_frame.
+
+Integer range (Range.lean)
+- N fixed_walk_agrees, fixed_walk_agrees2, fixed_walk_agrees1: with the exact count, every i64
+  start/end/step walks Clojure's elements and ending (round 2: complete over 5,219 questions).
+- H walk_pos, walk_neg, go_stop, ceil_le_one, add_exact, bounds, create1_eq.
+
+Lexer (Lex.lean)
+- N lexSymbol_never_hangs: the symbol token never reports its loop hanging, every NUL-free file and
+  position (round 2: complete over 1,222,981 strings ≤ 4).
+- H mbrtowc_len_pos, go_len, peek_len, symbolStep_next, commentStep_next, stringStep_next,
+  symbolStep_end, decode_lt, symF_spec, charF_spec, comF_spec, defF_spec (the default symbol loop
+  advances or stops even on a NUL), loop_stops, flag_loop_done, symbol_loop_done, forIn_body_eq,
+  range_forIn_body_eq.
+
+8. LIBRARY GAPS FILLED (in Jank/R3/Proofs; sdk/lean untouched)
+- Linearizability as a proposition, with the linearization-point method (Lin.lean): sdk's
+  `linearizable` is a `partial` search, opaque to proofs.
+- Proofs over every interleaving (Threads.lean): `interleave` invariants and deadlock-freedom,
+  with the EStateM/forIn/pick/Array lemmas they need; the sdk offers only bounded searches.
+- Termination of fuelled `for _ in [0:n]` loops in `Id` (Lex.lean `loop_stops`,
+  `flag_loop_done`): a loop whose iterations stop or decrease a measure ends by stopping.
+- Heap read/write/alloc lemmas for the array-map replica (ArrayMap.lean).

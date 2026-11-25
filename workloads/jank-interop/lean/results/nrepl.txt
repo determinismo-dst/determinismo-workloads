@@ -1,0 +1,2244 @@
+== bencode: parse (write v) = v over 132 values (longs, strings with \0 \n and UTF-8, vectors, string-keyed maps, nested)
+  0 fail
+  unsigned char: 0 fail
+== bencode: every byte string of length ≤ 4 over "dlie012:-+ x\n" (30941 buffers), parse vs the spec decoder
+  agree 1662, stall (spec invalid, jank waits forever) 29270, lenient (spec invalid, jank a message) 9, wrong message 0, crash 0
+  stall e.g. ["e", ":", "-", "+", " ", "x", "\n", "d:"]
+  lenient e.g. ["i+0e", "i+1e", "i+2e", "i 0e", "i 1e", "i 2e", "i\n0e", "i\n1e"]
+== bencode: every byte string of length ≤ 5 over "dlie012:-+ x\n" (402234 buffers), parse vs the spec decoder
+  agree 17443, stall (spec invalid, jank waits forever) 384614, lenient (spec invalid, jank a message) 177, wrong message 0, crash 0
+  stall e.g. ["e", ":", "-", "+", " ", "x", "\n", "d:"]
+  lenient e.g. ["i+0e", "i+1e", "i+2e", "i 0e", "i 1e", "i 2e", "i\n0e", "i\n1e"]
+  "d2:op8:describee\n": spec Jank.NreplServer.Dec.msg
+  (Jank.NreplServer.JVal.map
+    [(Jank.NreplServer.JVal.str [111, 112], Jank.NreplServer.JVal.str [100, 101, 115, 99, 114, 105, 98, 101])])
+  [10], jank Jank.NreplServer.Parsed.value
+  (Jank.NreplServer.JVal.map
+    [(Jank.NreplServer.JVal.str [111, 112], Jank.NreplServer.JVal.str [100, 101, 115, 99, 114, 105, 98, 101])])
+  (some [10])
+  "i 5e": spec Jank.NreplServer.Dec.invalid, jank Jank.NreplServer.Parsed.value (Jank.NreplServer.JVal.int 5) none
+  "i+5e": spec Jank.NreplServer.Dec.invalid, jank Jank.NreplServer.Parsed.value (Jank.NreplServer.JVal.int 5) none
+  "i9999999999999999999e": spec Jank.NreplServer.Dec.msg (Jank.NreplServer.JVal.int 9999999999999999999) [], jank Jank.NreplServer.Parsed.none
+  "3x:abc": spec Jank.NreplServer.Dec.invalid, jank Jank.NreplServer.Parsed.none
+  "ie": spec Jank.NreplServer.Dec.invalid, jank Jank.NreplServer.Parsed.none
+  "d1:ai1ee": spec Jank.NreplServer.Dec.msg (Jank.NreplServer.JVal.map [(Jank.NreplServer.JVal.str [97], Jank.NreplServer.JVal.int 1)]) [], jank Jank.NreplServer.Parsed.value
+  (Jank.NreplServer.JVal.map [(Jank.NreplServer.JVal.str [97], Jank.NreplServer.JVal.int 1)])
+  none
+  "d1:ai1e1:ai2ee": spec Jank.NreplServer.Dec.msg (Jank.NreplServer.JVal.map [(Jank.NreplServer.JVal.str [97], Jank.NreplServer.JVal.int 2)]) [], jank Jank.NreplServer.Parsed.value
+  (Jank.NreplServer.JVal.map [(Jank.NreplServer.JVal.str [97], Jank.NreplServer.JVal.int 2)])
+  none
+  "li1el": spec Jank.NreplServer.Dec.incomplete, jank Jank.NreplServer.Parsed.none
+  "l": spec Jank.NreplServer.Dec.incomplete, jank Jank.NreplServer.Parsed.none
+== bencode: nesting (parse-recur recurses once per level)
+  63 × 'l' with a 64-frame stack: Jank.NreplServer.Parsed.none
+  64 × 'l' with a 64-frame stack: Jank.NreplServer.Parsed.none
+  65 × 'l' with a 64-frame stack: Jank.NreplServer.Parsed.crash
+  1000 × 'l' with a 64-frame stack: Jank.NreplServer.Parsed.crash
+== read-message across partial reads: two requests (57 bytes)
+  explore (3000 seeds, up to 40 reads): nothing
+  exhaust (every cut into ≤ 4 reads): complete, 29317 chunkings, all decode the same
+== read-message across partial reads: a list then a request (37 bytes)
+  explore (3000 seeds, up to 40 reads): nothing
+  exhaust (every cut into ≤ 4 reads): complete, 7807 chunkings, all decode the same
+== read-message across partial reads: a request, a newline, a request (58 bytes)
+  explore (3000 seeds, up to 40 reads): found after 1: chunks [d4:code7:(+ 1 2)2:id1:72:op4:evale\nd2:id1:82:op8:describ, e, e]: after 1 messages the server holds "\nd2:id1:82:op8:describee" and waits for more; no continuation can make it a message
+  exhaust (every cut into ≤ 4 reads): found after 1 timelines: chunks [d, 4, :, code7:(+ 1 2)2:id1:72:op4:evale\nd2:id1:82:op8:describee]: after 1 messages the server holds "\nd2:id1:82:op8:describee" and waits for more; no continuation can make it a message
+== N1: lookup of clojure.core/iteration (its :arglists hold nil)
+  explore (300 seeds): lookup finds what ns-resolve finds in that namespace after 1 timelines, 23 decisions: c0-0 lookup clojure.core iteration: Clojure's ns-resolve gives clojure.core/iteration, the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  shrunk to 23 decisions: c0-0 lookup clojure.core iteration: Clojure's ns-resolve gives clojure.core/iteration, the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op6:lookup2:id4:c0-02:ns12:clojure.core3:sym9:iteratione"
+      5: conn 0: read_some → 59 bytes "d2:op6:lookup2:id4:c0-02:ns12:clojure.core3:sym9:iteratione"
+      7: conn 0: handle-message lookup (id c0-0)
+      8: conn 0: bencode/write throws "cannot write nil as bencode"
+      9: conn 0: handler exception "cannot write nil as bencode": answered with status [error done]
+      10: conn 0: write "d3:err96:An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}2:id4:c0-06:statusl5:error4:doneee"
+      11: client 0: c0-0 done
+      12: client 0: sends c0-1 "d2:op8:describe2:id4:c0-1e"
+      14: conn 0: read_some → 26 bytes "d2:op8:describe2:id4:c0-1e"
+      16: conn 0: handle-message describe (id c0-1)
+      17: conn 0: write "d3:auxde2:id4:c0-13:opsd5:clonede5:closede8:completede11:completionsde8:describede4:evalde4:infode9:load-filede6:lookupdee6:statusl4:donee8:versionsd4:jankd14:version-string12:jank-versioneee"
+      18: client 0: c0-1 done
+      20: client 0: closes
+      22: conn 0: read_some → "" (eof): connected_ = false
+      23: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 23 decisions: lookup finds what ns-resolve finds in that namespace
+  (4 ms)
+== N1: lookup of user/f, whose :arglists hold false
+  explore (300 seeds): lookup finds what ns-resolve finds in that namespace after 1 timelines, 15 decisions: c0-0 lookup user f: Clojure's ns-resolve gives user/f, the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"Unexpected data type for bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  shrunk to 15 decisions: c0-0 lookup user f: Clojure's ns-resolve gives user/f, the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"Unexpected data type for bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op6:lookup2:id4:c0-02:ns4:user3:sym1:fe"
+      5: conn 0: read_some → 42 bytes "d2:op6:lookup2:id4:c0-02:ns4:user3:sym1:fe"
+      7: conn 0: handle-message lookup (id c0-0)
+      8: conn 0: bencode/write throws "Unexpected data type for bencode"
+      9: conn 0: handler exception "Unexpected data type for bencode": answered with status [error done]
+      10: conn 0: write "d3:err101:An exception was thrown from the nREPL handler:#error {:cause \"Unexpected data type for bencode\" ...}2:id4:c0-06:statusl5:error4:doneee"
+      11: client 0: c0-0 done
+      13: client 0: closes
+      15: conn 0: read_some → "" (eof): connected_ = false
+      16: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 15 decisions: lookup finds what ns-resolve finds in that namespace
+  (2 ms)
+== N1: lookup of user/g, whose :arglists hold a double
+  explore (300 seeds): replies are well-formed bencode after 1 timelines, 12 decisions: client 0 cannot decode the bytes it received: "d2:id4:c0-04:infod8:arglistsll1:&d4:keysl1:xe2:ord1:xi1.5eeeee12:arglists-str30:([& {:keys [x], :or {x 1.5}}])4:name1:g2:ns4:usere6:statusl4:doneee"
+  shrunk to 11 decisions: client 0 cannot decode the bytes it received: "d2:id4:c0-04:infod8:arglistsll1:&d4:keysl1:xe2:ord1:xi1.5eeeee12:arglists-str30:([& {:keys [x], :or {x 1.5}}])4:name1:g2:ns4:usere6:statusl4:doneee"
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op6:lookup2:id4:c0-02:ns4:user3:sym1:ge"
+      5: conn 0: read_some → 42 bytes "d2:op6:lookup2:id4:c0-02:ns4:user3:sym1:ge"
+      7: conn 0: handle-message lookup (id c0-0)
+      8: conn 0: write "d2:id4:c0-04:infod8:arglistsll1:&d4:keysl1:xe2:ord1:xi1.5eeeee12:arglists-str30:([& {:keys [x], :or {x 1.5}}])4:name1:g2:ns4:usere6:statusl4:doneee"
+  exhaust: found after 1 timelines; shrunk to 11 decisions: replies are well-formed bencode
+  (2 ms)
+== N2: lookup through the namespace's alias (str/join in my.app)
+  explore (300 seeds): lookup finds what ns-resolve finds in that namespace after 1 timelines, 14 decisions: c0-0 lookup my.app str/join: Clojure's ns-resolve gives clojure.string/join, the reply is [{"id" "c0-0", "status" ["no-info" "done"]}]
+  shrunk to 13 decisions: c0-0 lookup my.app str/join: Clojure's ns-resolve gives clojure.string/join, the reply is [{"id" "c0-0", "status" ["no-info" "done"]}]
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op6:lookup2:id4:c0-02:ns6:my.app3:sym8:str/joine"
+      5: conn 0: read_some → 51 bytes "d2:op6:lookup2:id4:c0-02:ns6:my.app3:sym8:str/joine"
+      7: conn 0: handle-message lookup (id c0-0)
+      8: conn 0: write "d2:id4:c0-06:statusl7:no-info4:doneee"
+      9: client 0: c0-0 done
+      11: client 0: closes
+      13: conn 0: read_some → "" (eof): connected_ = false
+      14: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 13 decisions: lookup finds what ns-resolve finds in that namespace
+  (1 ms)
+== N11: lookup and info of a var of a project namespace (my.app/h)
+  explore (300 seeds): lookup finds what ns-resolve finds in that namespace after 1 timelines, 27 decisions: c0-0 lookup my.app h: Clojure's ns-resolve gives my.app/h, the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  shrunk to 25 decisions: c0-0 lookup my.app h: Clojure's ns-resolve gives my.app/h, the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op6:lookup2:id4:c0-02:ns6:my.app3:sym1:he"
+      5: conn 0: read_some → 44 bytes "d2:op6:lookup2:id4:c0-02:ns6:my.app3:sym1:he"
+      7: conn 0: handle-message lookup (id c0-0)
+      8: conn 0: bencode/write throws "cannot write nil as bencode"
+      9: conn 0: handler exception "cannot write nil as bencode": answered with status [error done]
+      10: conn 0: write "d3:err96:An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}2:id4:c0-06:statusl5:error4:doneee"
+      11: client 0: c0-0 done
+      12: client 0: sends c0-1 "d2:op4:info2:id4:c0-12:ns6:my.app3:sym1:he"
+      14: conn 0: read_some → 42 bytes "d2:op4:info2:id4:c0-12:ns6:my.app3:sym1:he"
+      16: conn 0: handle-message info (id c0-1)
+      17: conn 0: bencode/write throws "cannot write nil as bencode"
+      18: conn 0: handler exception "cannot write nil as bencode": answered with status [error done]
+      19: conn 0: write "d3:err96:An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}2:id4:c0-16:statusl5:error4:doneee"
+      20: client 0: c0-1 done
+      22: client 0: closes
+      24: conn 0: read_some → "" (eof): connected_ = false
+      25: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 25 decisions: lookup finds what ns-resolve finds in that namespace
+  (3 ms)
+== lookup and info in core modules (control)
+  explore (300 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (7929 ms)
+== eval of the empty string (control: no-code since 7135b7708)
+  explore (300 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (5939 ms)
+== N3: eval of a comment only (release build)
+  explore (300 seeds): eval value after 1 timelines, 52 decisions: c0-1 eval ";; nothing here" (no form): values [0.0], Clojure none (load-string: nil)
+  shrunk to 49 decisions: c0-1 eval ";; nothing here" (no form): values [0.0], Clojure none (load-string: nil)
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code15:;; nothing here2:ns4:usere"
+      12: conn 0: read_some → 73 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code15:;; nothing here2:ns4:usere"
+      14: conn 0: handle-message eval (id c0-1)
+      27: conn 0: eval_string returned none; unwrap() reads the zeroed storage: 0.0
+      40: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      41: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      42: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:0.0e"
+      43: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      44: client 0: c0-1 done
+      46: client 0: closes
+      48: conn 0: read_some → "" (eof): connected_ = false
+      49: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 52 decisions: eval value
+  (5 ms)
+== N3: load-file of a comment-only file (release build)
+  explore (300 seeds): eval value after 1 timelines, 52 decisions: c0-1 load-file ";; nothing here" (no form): values [0.0], Clojure nil
+  shrunk to 49 decisions: c0-1 load-file ";; nothing here" (no form): values [0.0], Clojure nil
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op9:load-file2:id4:c0-17:session6:uuid-04:file15:;; nothing heree"
+      12: conn 0: read_some → 68 bytes "d2:op9:load-file2:id4:c0-17:session6:uuid-04:file15:;; nothing heree"
+      14: conn 0: handle-message load-file (id c0-1)
+      27: conn 0: eval_string returned none; unwrap() reads the zeroed storage: 0.0
+      40: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      41: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      42: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:0.0e"
+      43: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      44: client 0: c0-1 done
+      46: client 0: closes
+      48: conn 0: read_some → "" (eof): connected_ = false
+      49: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 52 decisions: eval value
+  (5 ms)
+== N3: eval of a #_ discard only (debug build)
+  explore (300 seeds): the process stays up after 1 timelines, 30 decisions: eval of code with no form: safe_eval's eval_string(...).unwrap() on none aborts the process (debug build)
+  shrunk to 30 decisions: eval of code with no form: safe_eval's eval_string(...).unwrap() on none aborts the process (debug build)
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code7:#_(foo)2:ns4:usere"
+      12: conn 0: read_some → 64 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code7:#_(foo)2:ns4:usere"
+      14: conn 0: handle-message eval (id c0-1)
+      27: conn 0: eval_string returned none; unwrap() asserts: abort()
+  exhaust: found after 1 timelines; shrunk to 30 decisions: the process stays up
+  (3 ms)
+== N8: eval printing only a newline
+  explore (300 seeds): eval output reaches its client after 1 timelines, 53 decisions: c0-1 eval "(println)": :out "", Clojure "\n"
+  shrunk to 52 decisions: c0-1 eval "(println)": :out "", Clojure "\n"
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code9:(println)2:ns4:usere"
+      12: conn 0: read_some → 66 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code9:(println)2:ns4:usere"
+      14: conn 0: handle-message eval (id c0-1)
+      42: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      43: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      44: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:nile"
+      46: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      47: client 0: c0-1 done
+      49: client 0: closes
+      51: conn 0: read_some → "" (eof): connected_ = false
+      52: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 54 decisions: eval output reaches its client
+  (6 ms)
+== N8: eval printing only spaces
+  explore (300 seeds): eval output reaches its client after 1 timelines, 53 decisions: c0-1 eval "(print \"  \")": :out "", Clojure "  "
+  shrunk to 50 decisions: c0-1 eval "(print \"  \")": :out "", Clojure "  "
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code12:(print \"  \")2:ns4:usere"
+      12: conn 0: read_some → 70 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code12:(print \"  \")2:ns4:usere"
+      14: conn 0: handle-message eval (id c0-1)
+      41: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      42: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      43: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value3:nile"
+      44: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      45: client 0: c0-1 done
+      47: client 0: closes
+      49: conn 0: read_some → "" (eof): connected_ = false
+      50: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 53 decisions: eval output reaches its client
+  (5 ms)
+== N10: eval with inspect="true" that prints
+  explore (300 seeds): eval output reaches its client after 1 timelines, 52 decisions: c0-1 eval "(println \"hi\")" (inspect): :out "", Clojure "hi\n"
+  shrunk to 48 decisions: c0-1 eval "(println \"hi\")" (inspect): :out "", Clojure "hi\n"
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code14:(println \"hi\")2:ns4:user7:inspect4:truee"
+      12: conn 0: read_some → 87 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code14:(println \"hi\")2:ns4:user7:inspect4:truee"
+      14: conn 0: handle-message eval (id c0-1)
+      42: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:donee5:value35:(\"--- Type\" ... (:value \"nil\") ...)e"
+      43: client 0: c0-1 done
+      45: client 0: closes
+      47: conn 0: read_some → "" (eof): connected_ = false
+      48: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 48 decisions: eval output reaches its client
+  (4 ms)
+== eval with inspect sent as an integer (control: answered with an error since 7135b7708)
+  explore (300 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (3405 ms)
+== describe (control: lists every handled op since 7135b7708)
+  explore (300 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (2581 ms)
+== N13: a request without an op
+  explore (300 seeds): an unknown op is answered unknown-op after 1 timelines, 15 decisions: c0-0 op none: the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  shrunk to 15 decisions: c0-0 op none: the reply is [{"err" "An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}", "id" "c0-0", "status" ["error" "done"]}]
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:id4:c0-0e"
+      5: conn 0: read_some → 12 bytes "d2:id4:c0-0e"
+      7: conn 0: handle-message nil (id c0-0)
+      8: conn 0: bencode/write throws "cannot write nil as bencode"
+      9: conn 0: handler exception "cannot write nil as bencode": answered with status [error done]
+      10: conn 0: write "d3:err96:An exception was thrown from the nREPL handler:#error {:cause \"cannot write nil as bencode\" ...}2:id4:c0-06:statusl5:error4:doneee"
+      11: client 0: c0-0 done
+      13: client 0: closes
+      15: conn 0: read_some → "" (eof): connected_ = false
+      16: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 15 decisions: an unknown op is answered unknown-op
+  (2 ms)
+== an unknown op, interrupt (control)
+  explore (300 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (2371 ms)
+== N5: a stray newline after a request
+  explore (300 seeds): every request gets a done reply (no hang) after 1 timelines, 16 decisions: client 0 waits for the done of c0-1; conn 0 blocked in read_some with 27 buffered bytes "\nd2:op8:describe2:id4:c0-1e"
+  shrunk to 15 decisions: client 0 waits for the done of c0-1; conn 0 blocked in read_some with 27 buffered bytes "\nd2:op8:describe2:id4:c0-1e"
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.eintr","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends raw "d2:op8:describe2:id1:xe\n"
+      4: client 0: sends c0-1 "d2:op8:describe2:id4:c0-1e"
+      6: conn 0: read_some → 50 bytes "d2:op8:describe2:id1:xe\nd2:op8:describe2:id4:c0-1e"
+      8: conn 0: handle-message describe (id x)
+      9: conn 0: write "d3:auxde2:id1:x3:opsd5:clonede5:closede8:completede11:completionsde8:describede4:evalde4:infode9:load-filede6:lookupdee6:statusl4:donee8:versionsd4:jankd14:version-string12:jank-versioneee"
+  exhaust: found after 1 timelines; shrunk to 15 decisions: every request gets a done reply (no hang)
+  (3 ms)
+== N6: deeply nested bencode (stack of 64 frames)
+  explore (300 seeds): the process stays up after 1 timelines, 8 decisions: bencode parse-recur overflowed the stack on connection 0 (input of 65 bytes)
+  shrunk to 7 decisions: bencode parse-recur overflowed the stack on connection 0 (input of 65 bytes)
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends raw "lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll"
+      5: client 0: closes
+      7: conn 0: read_some → 65 bytes "lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll"
+  exhaust: found after 1 timelines; shrunk to 7 decisions: the process stays up
+  (1 ms)
+== N12: EINTR on a blocked read_some, one client
+  explore (500 seeds): every request gets a done reply (no hang) after 1 timelines, 54 decisions: client 0 waits for the done of c0-2; conn 0's loop ended (connected_ false) while its client is still connected; the socket stays open
+  shrunk to 54 decisions: client 0 waits for the done of c0-2; conn 0's loop ended (connected_ false) while its client is still connected; the socket stays open
+  tape:
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"net.read.split","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":1}
+      {"name":"net.read.eintr","options":2,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      3: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      5: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      7: conn 0: handle-message clone (id c0-0)
+      8: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      9: client 0: c0-0 done
+      10: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code18:(do (print \"a\") 3)2:ns4:usere"
+      12: conn 0: read_some → 76 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code18:(do (print \"a\") 3)2:ns4:usere"
+      14: conn 0: handle-message eval (id c0-1)
+      42: conn 0: write "d2:id4:c0-13:out1:a7:session6:uuid-0e"
+      43: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      44: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value1:3e"
+      45: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      47: client 0: c0-1 done
+      48: conn 0: read_some → "" (EINTR): connected_ = false
+      49: client 0: sends c0-2 "d2:op6:lookup2:id4:c0-22:ns4:user3:sym3:mape"
+      50: conn 0: not connected: handle-client returns (its socket stays open)
+  exhaust: stopped at 20000 timelines, nothing
+  (8889 ms)
+== partial reads, one client, every op (control)
+  explore (500 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (10484 ms)
+== two connections: clone, lookup, completions, close concurrently (control)
+  explore (500 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (7769 ms)
+== two connections, one evaluating, partial reads (control)
+  explore (500 seeds): nothing
+  exhaust: stopped at 20000 timelines, nothing
+  (11341 ms)
+== N7: connections one after the other, each evaluating: RLIMIT_NOFILE = 12, 4 held before
+  explore (20 seeds): every request gets a done reply (no hang) after 1 timelines, 969 decisions: client 6 waits for the done of c6-0; conn 5 answered a handler exception: Assert failed: temp file could not be created; accept loop over: accept: EMFILE (boost::system::system_error); fd 1 (stdout) is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-10")
+  shrunk to 969 decisions: client 6 waits for the done of c6-0; conn 5 answered a handler exception: Assert failed: temp file could not be created; accept loop over: accept: EMFILE (boost::system::system_error); fd 1 (stdout) is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-10")
+  tape:
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":3}
+      {"name":"thread.next","options":7,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":9,"value":1}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":9,"value":1}
+      {"name":"thread.next","options":9,"value":5}
+      {"name":"thread.next","options":8,"value":1}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":9,"value":8}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":9,"value":4}
+      {"name":"thread.next","options":8,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":5}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":4}
+      {"name":"thread.next","options":8,"value":2}
+      {"name":"thread.next","options":7,"value":2}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":1}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":8,"value":7}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":8,"value":5}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":1}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":8,"value":1}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":1}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":1}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":4}
+      {"name":"thread.next","options":5,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":3}
+      {"name":"thread.next","options":5,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":6,"value":1}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":2}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":6,"value":1}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      2: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      4: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      6: conn 0: handle-message clone (id c0-0)
+      7: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      8: client 0: c0-0 done
+      9: client 0: sends c0-1 "d2:op4:eval2:id4:c0-17:session6:uuid-04:code1:12:ns4:usere"
+      11: conn 0: read_some → 58 bytes "d2:op4:eval2:id4:c0-17:session6:uuid-04:code1:12:ns4:usere"
+      13: conn 0: handle-message eval (id c0-1)
+      40: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      41: conn 0: write "d2:id4:c0-17:session6:uuid-0e"
+      42: conn 0: write "d2:id4:c0-12:ns4:user7:session6:uuid-05:value1:1e"
+      44: conn 0: write "d2:id4:c0-17:session6:uuid-06:statusl4:doneee"
+      45: client 0: c0-1 done
+      47: client 0: closes
+      48: client 1: connects
+      49: accept loop: client 1 on fd 5; a future runs handle-client
+      50: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+      53: conn 0: read_some → "" (eof): connected_ = false
+      54: conn 0: not connected: handle-client returns (its socket stays open)
+      55: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+      57: conn 1: handle-message clone (id c1-0)
+      58: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+      59: client 1: c1-0 done
+      61: client 1: sends c1-1 "d2:op4:eval2:id4:c1-17:session6:uuid-14:code1:12:ns4:usere"
+      62: conn 1: read_some → 58 bytes "d2:op4:eval2:id4:c1-17:session6:uuid-14:code1:12:ns4:usere"
+      64: conn 1: handle-message eval (id c1-1)
+      91: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      93: conn 1: write "d2:id4:c1-17:session6:uuid-1e"
+      94: conn 1: write "d2:id4:c1-12:ns4:user7:session6:uuid-15:value1:1e"
+      96: conn 1: write "d2:id4:c1-17:session6:uuid-16:statusl4:doneee"
+      97: client 1: c1-1 done
+      99: client 1: closes
+      100: client 2: connects
+      101: accept loop: client 2 on fd 6; a future runs handle-client
+      102: client 2: sends c2-0 "d2:op5:clone2:id4:c2-0e"
+      104: conn 1: read_some → "" (eof): connected_ = false
+      105: conn 1: not connected: handle-client returns (its socket stays open)
+      107: conn 2: read_some → 23 bytes "d2:op5:clone2:id4:c2-0e"
+      109: conn 2: handle-message clone (id c2-0)
+      110: conn 2: write "d2:id4:c2-011:new-session6:uuid-26:statusl4:doneee"
+      111: client 2: c2-0 done
+      112: client 2: sends c2-1 "d2:op4:eval2:id4:c2-17:session6:uuid-24:code1:12:ns4:usere"
+      114: conn 2: read_some → 58 bytes "d2:op4:eval2:id4:c2-17:session6:uuid-24:code1:12:ns4:usere"
+      116: conn 2: handle-message eval (id c2-1)
+      143: conn 2: write "d2:id4:c2-17:session6:uuid-2e"
+      145: conn 2: write "d2:id4:c2-17:session6:uuid-2e"
+      146: conn 2: write "d2:id4:c2-12:ns4:user7:session6:uuid-25:value1:1e"
+      147: conn 2: write "d2:id4:c2-17:session6:uuid-26:statusl4:doneee"
+      148: client 2: c2-1 done
+      150: client 2: closes
+      151: client 3: connects
+      152: client 3: sends c3-0 "d2:op5:clone2:id4:c3-0e"
+      153: accept loop: client 3 on fd 7; a future runs handle-client
+      155: conn 2: read_some → "" (eof): connected_ = false
+      156: conn 2: not connected: handle-client returns (its socket stays open)
+      158: conn 3: read_some → 23 bytes "d2:op5:clone2:id4:c3-0e"
+      160: conn 3: handle-message clone (id c3-0)
+      161: conn 3: write "d2:id4:c3-011:new-session6:uuid-36:statusl4:doneee"
+      163: client 3: c3-0 done
+      164: client 3: sends c3-1 "d2:op4:eval2:id4:c3-17:session6:uuid-34:code1:12:ns4:usere"
+      165: conn 3: read_some → 58 bytes "d2:op4:eval2:id4:c3-17:session6:uuid-34:code1:12:ns4:usere"
+      167: conn 3: handle-message eval (id c3-1)
+      194: conn 3: write "d2:id4:c3-17:session6:uuid-3e"
+      195: conn 3: write "d2:id4:c3-17:session6:uuid-3e"
+      196: conn 3: write "d2:id4:c3-12:ns4:user7:session6:uuid-35:value1:1e"
+      197: conn 3: write "d2:id4:c3-17:session6:uuid-36:statusl4:doneee"
+      198: client 3: c3-1 done
+      200: client 3: closes
+      201: client 4: connects
+      202: accept loop: client 4 on fd 8; a future runs handle-client
+      203: client 4: sends c4-0 "d2:op5:clone2:id4:c4-0e"
+      206: conn 3: read_some → "" (eof): connected_ = false
+      207: conn 3: not connected: handle-client returns (its socket stays open)
+      208: conn 4: read_some → 23 bytes "d2:op5:clone2:id4:c4-0e"
+      210: conn 4: handle-message clone (id c4-0)
+      211: conn 4: write "d2:id4:c4-011:new-session6:uuid-46:statusl4:doneee"
+      213: client 4: c4-0 done
+      214: client 4: sends c4-1 "d2:op4:eval2:id4:c4-17:session6:uuid-44:code1:12:ns4:usere"
+      215: conn 4: read_some → 58 bytes "d2:op4:eval2:id4:c4-17:session6:uuid-44:code1:12:ns4:usere"
+      217: conn 4: handle-message eval (id c4-1)
+      244: conn 4: write "d2:id4:c4-17:session6:uuid-4e"
+      245: conn 4: write "d2:id4:c4-17:session6:uuid-4e"
+      246: conn 4: write "d2:id4:c4-12:ns4:user7:session6:uuid-45:value1:1e"
+      247: conn 4: write "d2:id4:c4-17:session6:uuid-46:statusl4:doneee"
+      248: client 4: c4-1 done
+      250: client 4: closes
+      252: client 5: connects
+      253: accept loop: client 5 on fd 9; a future runs handle-client
+      254: conn 4: read_some → "" (eof): connected_ = false
+      255: conn 4: not connected: handle-client returns (its socket stays open)
+      256: client 5: sends c5-0 "d2:op5:clone2:id4:c5-0e"
+      258: conn 5: read_some → 23 bytes "d2:op5:clone2:id4:c5-0e"
+      260: conn 5: handle-message clone (id c5-0)
+      261: conn 5: write "d2:id4:c5-011:new-session6:uuid-56:statusl4:doneee"
+      263: client 5: c5-0 done
+      264: client 5: sends c5-1 "d2:op4:eval2:id4:c5-17:session6:uuid-54:code1:12:ns4:usere"
+      265: conn 5: read_some → 58 bytes "d2:op4:eval2:id4:c5-17:session6:uuid-54:code1:12:ns4:usere"
+      267: conn 5: handle-message eval (id c5-1)
+      274: conn 5: mkstemp → -1 (EMFILE) while capturing fd 2: the assert throws
+      275: conn 5: handler exception "Assert failed: temp file could not be created": answered with status [error done]
+      276: conn 5: write "d3:err114:An exception was thrown from the nREPL handler:#error {:cause \"Assert failed: temp file could not be created\" ...}2:id4:c5-17:session6:uuid-56:statusl5:error4:doneee"
+      277: client 5: c5-1 done
+      279: client 5: closes
+      281: conn 5: read_some → "" (eof): connected_ = false
+      282: conn 5: not connected: handle-client returns (its socket stays open)
+      283: client 6: connects
+      284: accept loop: accept() fails with EMFILE: system_error leaves -main; the accept loop is over
+      285: client 6: sends c6-0 "d2:op5:clone2:id4:c6-0e"
+  exhaust: found after 1 timelines; shrunk to 1441 decisions: every request gets a done reply (no hang)
+  (1840 ms)
+== N7: connections one after the other, each only cloning: RLIMIT_NOFILE = 10, 4 held before
+  explore (20 seeds): every request gets a done reply (no hang) after 1 timelines, 245 decisions: client 6 waits for the done of c6-0; accept loop over: accept: EMFILE (boost::system::system_error)
+  shrunk to 243 decisions: client 6 waits for the done of c6-0; accept loop over: accept: EMFILE (boost::system::system_error)
+  tape:
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":2}
+      {"name":"thread.next","options":6,"value":3}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":9,"value":1}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":9,"value":1}
+      {"name":"thread.next","options":9,"value":1}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":5}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":9,"value":1}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":3}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":9,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":2}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":8,"value":5}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":8,"value":6}
+      {"name":"thread.next","options":7,"value":3}
+      {"name":"thread.next","options":6,"value":3}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"net.read.eintr","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":7,"value":3}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":3}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":8,"value":0}
+      {"name":"thread.next","options":7,"value":5}
+      {"name":"thread.next","options":8,"value":6}
+      {"name":"thread.next","options":7,"value":1}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":6}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":5}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":1}
+      {"name":"thread.next","options":7,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":1}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":4}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":6,"value":2}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":6,"value":0}
+      {"name":"thread.next","options":5,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":5,"value":0}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":5,"value":1}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":1}
+      {"name":"thread.next","options":4,"value":2}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":4,"value":3}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":2}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":4,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":3,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+      {"name":"thread.next","options":2,"value":0}
+  story:
+      0: client 0: connects
+      1: accept loop: client 0 on fd 4; a future runs handle-client
+      2: client 0: sends c0-0 "d2:op5:clone2:id4:c0-0e"
+      4: conn 0: read_some → 23 bytes "d2:op5:clone2:id4:c0-0e"
+      6: conn 0: handle-message clone (id c0-0)
+      7: conn 0: write "d2:id4:c0-011:new-session6:uuid-06:statusl4:doneee"
+      8: client 0: c0-0 done
+      11: client 0: closes
+      12: conn 0: read_some → "" (eof): connected_ = false
+      13: client 1: connects
+      14: accept loop: client 1 on fd 5; a future runs handle-client
+      15: client 1: sends c1-0 "d2:op5:clone2:id4:c1-0e"
+      16: conn 0: not connected: handle-client returns (its socket stays open)
+      18: conn 1: read_some → 23 bytes "d2:op5:clone2:id4:c1-0e"
+      20: conn 1: handle-message clone (id c1-0)
+      21: conn 1: write "d2:id4:c1-011:new-session6:uuid-16:statusl4:doneee"
+      23: client 1: c1-0 done
+      25: client 1: closes
+      26: client 2: connects
+      27: accept loop: client 2 on fd 6; a future runs handle-client
+      29: conn 1: read_some → "" (eof): connected_ = false
+      30: conn 1: not connected: handle-client returns (its socket stays open)
+      31: client 2: sends c2-0 "d2:op5:clone2:id4:c2-0e"
+      32: conn 2: read_some → 23 bytes "d2:op5:clone2:id4:c2-0e"
+      34: conn 2: handle-message clone (id c2-0)
+      35: conn 2: write "d2:id4:c2-011:new-session6:uuid-26:statusl4:doneee"
+      36: client 2: c2-0 done
+      38: client 2: closes
+      39: client 3: connects
+      40: accept loop: client 3 on fd 7; a future runs handle-client
+      41: client 3: sends c3-0 "d2:op5:clone2:id4:c3-0e"
+      44: conn 2: read_some → "" (eof): connected_ = false
+      45: conn 2: not connected: handle-client returns (its socket stays open)
+      46: conn 3: read_some → 23 bytes "d2:op5:clone2:id4:c3-0e"
+      48: conn 3: handle-message clone (id c3-0)
+      49: conn 3: write "d2:id4:c3-011:new-session6:uuid-36:statusl4:doneee"
+      50: client 3: c3-0 done
+      52: client 3: closes
+      53: client 4: connects
+      55: conn 3: read_some → "" (eof): connected_ = false
+      56: accept loop: client 4 on fd 8; a future runs handle-client
+      57: client 4: sends c4-0 "d2:op5:clone2:id4:c4-0e"
+      58: conn 3: not connected: handle-client returns (its socket stays open)
+      60: conn 4: read_some → 23 bytes "d2:op5:clone2:id4:c4-0e"
+      62: conn 4: handle-message clone (id c4-0)
+      63: conn 4: write "d2:id4:c4-011:new-session6:uuid-46:statusl4:doneee"
+      64: client 4: c4-0 done
+      67: client 4: closes
+      68: client 5: connects
+      69: conn 4: read_some → "" (eof): connected_ = false
+      70: client 5: sends c5-0 "d2:op5:clone2:id4:c5-0e"
+      71: conn 4: not connected: handle-client returns (its socket stays open)
+      72: accept loop: client 5 on fd 9; a future runs handle-client
+      74: conn 5: read_some → 23 bytes "d2:op5:clone2:id4:c5-0e"
+      76: conn 5: handle-message clone (id c5-0)
+      77: conn 5: write "d2:id4:c5-011:new-session6:uuid-56:statusl4:doneee"
+      78: client 5: c5-0 done
+      80: client 5: closes
+      81: client 6: connects
+      82: accept loop: accept() fails with EMFILE: system_error leaves -main; the accept loop is over
+      83: client 6: sends c6-0 "d2:op5:clone2:id4:c6-0e"
+      85: conn 5: read_some → "" (eof): connected_ = false
+      86: conn 5: not connected: handle-client returns (its socket stays open)
+  exhaust: found after 1 timelines; shrunk to 328 decisions: every request gets a done reply (no hang)
+  (75 ms)
+bin/job 1200 .lake/build/bin/jank-nrepl  63.54s user 0.11s system 99% cpu 1:03.80 total

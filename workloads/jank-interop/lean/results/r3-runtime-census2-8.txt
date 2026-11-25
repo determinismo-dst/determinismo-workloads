@@ -1,0 +1,20 @@
+lock census: ≤2 threads × ≤1 ops, callback bodies ≤1 ops chosen to depth 0, alphabet 12 ops; excluded classes []; partition (decision prefix) #[1, 8]
+  [3] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared
+  [40] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared
+  [202] new class: var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [218] new class: var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [232] new class: delay std::mutex ⟂ delay std::mutex held
+  [249] new class: future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  complete after 276 programs; 6 classes of jank deadlocks that Clojure does not have
+  - 12× atom watches exclusive (readers to drain) ⟂ atom watches shared
+      smallest: watch w = (fn [..] (add-watch a :k w)); thread 0: (realized? d); thread 1: (swap! a inc)
+  - 13× atom validator exclusive (readers to drain) ⟂ atom validator shared
+      smallest: validator vf = (fn [..] (set-validator! a vf)); thread 0: (realized? d); thread 1: (swap! a inc)
+  - 2× var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: alter-var-root fn f = (fn [..] (alter-var-root #'v f)); thread 0: (realized? d); thread 1: (alter-var-root #'v f)
+  - 1× var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: var v's meta expression = (fn [..] (meta #'v)); thread 0: (realized? d); thread 1: (meta #'v)
+  - 2× delay std::mutex ⟂ delay std::mutex held
+      smallest: delay d's body = (fn [..] @d); thread 0: (realized? d); thread 1: @d
+  - 2× future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: future f's body = (fn [..] (future-cancel f)); thread 0: (realized? d); thread 1: @f

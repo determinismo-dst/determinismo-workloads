@@ -1,0 +1,34 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 3 (main 7135b7708): the predicted hangs (folly's SharedMutex
+; and jank's locks), apart so that the time they take can't keep other tests from running. Each
+; asserts Clojure's result. S65 is jank only (its sleep).
+(ns jank-lean.deviations-r3-hangs-test
+  (:require [clojure.test :refer [deftest is]]))
+
+(deftest s62-a-validator-calling-set-validator
+  (let [a (atom 0)]
+    (set-validator! a (fn [v] (when (= v 1) (set-validator! a (fn [_] true))) true))
+    (is (= 1 (swap! a inc)))))
+
+(def s63-v 0)
+
+(deftest s63-alter-var-root-re-entering-its-var
+  (is (= 10 (alter-var-root #'s63-v (fn [x] (alter-var-root #'s63-v inc) (+ x 10))))))
+
+(def s64-d (delay (realized? s64-d)))
+
+(deftest s64-a-delay-asking-whether-it-is-realized
+  (is (false? @s64-d)))
+
+(deftest s65-future-cancel-while-another-thread-derefs
+  (let [f (future (cpp/jank.runtime.sleep 100) 1)
+        g (future (try @f (catch cpp/jank.runtime.object_ref _ :cancelled)))]
+    (cpp/jank.runtime.sleep 10)
+    (future-cancel f)
+    (is (future-cancelled? f))))
+
+(defn- s67-mk [] (def ^{:doc "v" :m (meta #'s67-v)} s67-v 1))
+
+(deftest s67-lazy-var-meta-reading-the-vars-meta
+  (s67-mk)
+  (is (= "v" (:doc (meta #'s67-v)))))

@@ -1,0 +1,358 @@
+I modeled compare/sort, multimethods, namespaces and the nREPL server: 15 deviations (C1–C15), all hypotheses. Every model builds (`lake build jank-core`), and the full run takes about 10 s; its output is in `results/core.txt`.
+
+Someone else changed `lakefile.toml` while I worked: the `jank-core` entry point is now `Run/Core.lean`, and `RunCore.lean` was deleted. I created `Run/Core.lean` (it calls `Jank.CoreSearch.searches`). Several new files and empty folders from another agent also appeared (`Jank/Core/`, `Jank/Nrepl/`, `bin/job`). I touched none of them, and I ran every build and search through `bin/job`.
+
+---
+
+# Core and nREPL (fork C): compare/sort, multimethods, namespaces, nREPL server
+
+Every item is a hypothesis: the C++ and `.jank` code were modeled as written, and jank was not built or run. Paths are under `upstream/compiler+runtime/`.
+
+## Deviations
+
+### C1. Booleans can't be compared with each other, but they compare with numbers as 0/1
+
+**Path:**
+- `obj/number.cpp: boolean::compare(object const&)` (line 56) passes the right operand to `visit_number_like` (`visit.hpp` 463–497).
+- That dispatch has no boolean case, so two booleans throw.
+- Against a number, the bool is compared as 0 or 1.
+- `runtime::compare` (`core/equal.cpp` 24) has no identity shortcut.
+- `sort` (`core/seq.cpp` 1091) and sorted collections (`detail/type.cpp` 8) inherit this.
+
+```clojure
+(compare true false)     ; Clojure 1                    jank throws "not comparable"
+(compare true true)      ; Clojure 0                    jank throws
+(sort [true false])      ; Clojure (false true)         jank throws
+(sorted-set true false)  ; Clojure #{false true}        jank throws
+(compare true 1)         ; Clojure ClassCastException   jank 0  (and (compare 1 true) throws: asymmetric)
+(sort [1 true])          ; Clojure ClassCastException   jank (1 true)
+(sort [1 1 false])       ; Clojure ClassCastException   jank (false 1 1)
+```
+
+**Found by:**
+- `exhaust` on compare pairs: 26 timelines; tape `compare.a=1, compare.b=1`.
+- `exhaust` on sort: 13 timelines; tape `sort.length=2, sort.elem=0, sort.elem=2`.
+- Theorems `bool_bool_throws` and `bool_bool_clojure`.
+
+### C2. A keyword compared with a non-keyword is undefined behavior, not an exception
+
+**Path:**
+- `obj/keyword.cpp: keyword::compare(object const&)` (line 50) calls `expect_object<keyword>`.
+- That cast is checked only by `jank_debug_assert` (`rtti.hpp` 50–58). The assert is compiled out under NDEBUG (`jtl/primitive.hpp` 3, `jtl/assert.hpp` 31–41).
+- The other object is then read as a keyword: its bytes at the `sym` offset (`keyword.hpp` 50) are used as a `symbol*`.
+- In a debug build the assert aborts instead. Neither build throws a catchable exception.
+
+```clojure
+(try (compare :a 1) (catch Exception _ :caught))
+; Clojure :caught
+; jank: debug build aborts; release build reads garbage (typically SIGSEGV, which kills the
+;       nREPL server and every session, see C14)
+```
+
+Also reached by `(sort [1 :a])` (the insertion sort calls `comp(:a, 1)`), `(compare [:a] [1])`, and sorted maps with mixed keys. 46 of the 71 disagreeing pairs are this case.
+
+**Found by:** `explore` seed 4 (`(compare :x/a [1 2])`, tape `compare.a=17, compare.b=20`); theorem `keyword_vs_other_ub`.
+
+### C3. `compare` has no identity shortcut
+
+**Path:** `core/equal.cpp: compare` (24) goes straight to `l.compare(r)`. Lists, maps and fns fall to `object::compare` (`object.cpp` 228), which throws. Clojure's `Util.compare` returns 0 first when `k1 == k2`.
+
+```clojure
+(compare '() '())          ; Clojure 0 (both are PersistentList/EMPTY)  jank throws
+(let [x '(1)] (compare x x)) ; Clojure 0                                jank throws
+```
+
+The second case is what the search's "same element drawn twice" pair stands for.
+
+### C4. BigDecimal against double compares exactly in jank, through doubles in Clojure
+
+This depends on assumption RC2.
+
+**Path:**
+- `obj/big_decimal.cpp: compare` (182) and the reverse `small_real::compare` (`number.cpp` 460) compute `(o < this) - (this < o)` between `cpp_dec_float<100>` (`type.hpp` 35) and `f64`.
+- Clojure's `Numbers.compare` uses `DoubleOps` whenever either operand is a double.
+
+```clojure
+(compare 0.1M 0.1)   ; Clojure 0       jank -1
+(sort [0.1 0.1M])    ; Clojure (0.1 0.1M)   jank (0.1M 0.1)
+```
+
+**Found by:** the full compare table (2 of the 71 disagreeing pairs).
+
+### C5. `prefer-method` declared on an ancestor is ignored at dispatch
+
+**Path:**
+- `obj/multi_function.cpp: reset_cache` (137) stores `cached_hierarchy = hierarchy`, which is the var `#'global-hierarchy`. Clojure stores `hierarchy.deref()`.
+- `find_and_cache_best_method` (261) calls `is_dominant(cached_hierarchy, …)`, which calls `is_preferred(var, x, y)` (189).
+- `is_preferred` walks `(parents var tag)`. `(:parents var)` is nil (`object::get`, `object.cpp` 190), so no parents are ever found.
+- Only preferences naming the two dispatch values themselves take effect. `prefer_method` itself (162) uses the deref'd map, which is correct.
+
+```clojure
+(defmulti f identity)
+(derive ::c ::a) (derive ::c ::b) (derive ::b ::b0)
+(defmethod f ::a [_] :a) (defmethod f ::b [_] :b)
+(prefer-method f ::a ::b0)
+(f ::c)  ; Clojure :a   jank throws "Multiple methods ... neither is preferred"
+
+(derive ::t0 ::t1) (derive ::t0 ::t2)
+(defmethod f ::t0 [_] :t0) (defmethod f ::t1 [_] :t1)
+(prefer-method f ::t1 ::t2)
+(f ::t0) ; Clojure :t1 (prefers walks t0's parents)   jank :t0
+```
+
+**Found by:**
+- `exhaust` (2 derives, 2 defmethods, 1 prefer, 1 call): found after 28,889 timelines (second example above).
+- `explore` (3/3/2): found after 19 timelines.
+- Theorems `example_clojure` and `example_jank` (by `decide`) for the first example.
+- Theorem `no_prefs_same`: without `prefer-method`, jank's dispatch equals Clojure's for every method table, hierarchy and dispatch value.
+
+Separately, as a performance note: the cache can never hit, because a var never equals its own value, so every call takes the recursive mutex and rescans the method table.
+
+### C6. `get-method` throws instead of returning nil
+
+**Path:** `core.jank: get-method` (4158) → `core.cpp: get_method` (613) → `multi_function::get_fn` (233), which throws when nothing applies. Clojure's `.getMethod` returns null, as the docstring says ("or nil if none apply and no default").
+
+```clojure
+(defmulti f identity) (defmethod f ::a [_] 1)
+(get-method f ::b)  ; Clojure nil   jank throws "does not define a method"
+```
+
+**Found by:** `exhaust`, 2 timelines.
+
+### C7. `intern` rebinds a var referred from another namespace, including clojure.core's
+
+**Path:** `core.jank: intern` (4984) → `core.cpp: intern_var` (789) → `context.cpp: intern_var` (492) → `ns.cpp: ns::intern_var` (26–38). That function returns whatever var the name is mapped to, and `intern` then `var_bind_root`s it. Clojure's `Namespace.intern` replaces a referred mapping with a new var of this namespace (`checkReplacement`).
+
+```clojure
+(in-ns 'user)
+(str (intern 'user 'map 7))  ; Clojure "#'user/map"   jank "#'clojure.core/map"
+@#'clojure.core/map          ; Clojure the fn         jank 7 (clojure.core/map clobbered process-wide)
+```
+
+**Found by:**
+- `exhaust`, first timeline (tape `ns.op=0, ns.sym=0`).
+- Theorems `jank_intern_binds_found` and `clj_intern_replaces_referred`.
+- With C7 and C8 fixed, `exhaust` over 3 operations is complete: 2,744 timelines, nothing else differs.
+
+### C8. `remove-ns` removes clojure.core
+
+**Path:** `core.cpp: remove_ns` (840) → `context.cpp: remove_ns` (420) has no name check. Clojure's `Namespace.remove` throws "Cannot remove clojure namespace", and the docstring of both says so.
+
+```clojure
+(remove-ns 'clojure.core) (find-ns 'clojure.core)
+; Clojure: throws, ns still found    jank: nil (later (refer 'clojure.core) fails)
+```
+
+**Found by:** `explore` seed 2.
+
+### C9. nREPL output capture is process-global and races (concurrency)
+
+**Path:**
+- `nrepl/server/capture.jank`: `start` (17) does `dup(1)`, `mkstemp`, `fflush`, `dup2(temp, 1)`. `end` (40) does `fflush`, `dup2(bak, 1)`. `readback` (51) does slurp then unlink.
+- File descriptor 1 and `FILE* stdout` belong to the whole process. Prints go there via `print`/`println` (`core.cpp` 141–211, `fwrite` to `*out*`).
+- Each connection runs in its own `future` (`core.jank` 117).
+- `jank repl` runs this server on a background thread beside the terminal REPL (`terminal_repl_client.cpp` 245–256).
+
+Two clients evaluate at once (fully buffered), the fixed schedule:
+1. t0 starts.
+2. t1 starts; its `bak-fd` is t0's temp file.
+3. t0 prints `o0`, ends, reads back. Its `:out` is `[]`: `o0` went to t1's temp file.
+4. t1 prints; `o1` goes to the terminal.
+5. t1 ends. Its `:out` is `["o0"]`, and fd 1 now points at t0's unlinked temp file.
+
+From then on everything the process writes to fd 1 is lost, including later output of `jank repl`'s own terminal.
+
+Shrunk tape: 9 decisions, `thread.next` = `0,0,0,0,0,0,1,0,0`. Story: t0 completes its capture up to its final flush; t1 runs `dup(1)` while fd 1 is still t0's temp file; t0 restores and unlinks; t1 then restores fd 1 to t0's unlinked file.
+
+`jank repl` terminal plus one nREPL eval, line-buffered: the terminal's `println` that lands between the eval's `dup2` and `end` appears in the editor's `:out` and never on the terminal. Tape: `thread.next` = `0,0,0,0,0,0,1,0,0`.
+
+**Census:**
+- Two connections, fully buffered: of 12,870 interleavings, 9,222 give a wrong `:out` and another 390 leave fd 1 on a temp file.
+- Two connections, line-buffered: 6,290 wrong `:out` plus 528 with fd 1 left on a temp file.
+- Eval beside an outside printer: 12 of 45 interleavings (line-buffered) and 15 of 45 (fully buffered) are wrong.
+- The spec, `*out*` bound per session, is complete with nothing found.
+
+stderr is captured with the same code, so fd 2 has the same race.
+
+### C10. An error while printing the value kills the connection
+
+**Path:**
+- `handler/eval.jank: do-eval` calls `(pr-str *1)` outside `safe-eval`'s handlers.
+- The exception leaves `handle-message` and the `handle-client` loop (`core.jank` 84). The future's `catch` only prints it.
+- No response is sent, and nothing on that connection is read again. The socket is never closed: `native_client` is leaked (`server.cpp` 120).
+
+```
+{op eval, code "(map (fn [_] (throw (ex-info \"p\" {}))) [1])"} {op eval, code "1"} {op eval, session s2, code "2"}
+nREPL: eval-error p, value 1, value 2       jank: no response, no response, no response
+```
+
+**Found by:** `explore` seed 1; `exhaust` after 22 timelines (with C12 fixed). Theorem `dead_stays_dead`: once dead, no message is ever answered.
+
+### C11. Sessions keep no state
+
+**Path:**
+- `handler/clone.jank` returns a fresh UUID and nothing else.
+- `*1`, `*2`, `*3`, `*e` are set with `var::set` on the connection thread's binding (`evaluate.cpp` 697–741, `var.cpp` 113), so every session of a connection shares them.
+- `*ns*` is only `binding`-bound around each eval, so `in-ns` is not kept.
+
+```
+s1: 1   s2: 2   s1: *1               nREPL 1           jank 2
+s1: (in-ns 'foo)   s1: (str *ns*)    nREPL "foo"       jank "user"
+s1: (throw ...)    s2: (ex-message *e)  nREPL nil      jank "e"
+```
+
+**Found by:** `exhaust` after 37 timelines (with C10, C12, C14 fixed).
+
+### C12. Eval with an unknown `ns` runs in `user`
+
+**Path:** `do-eval` uses `(or (some-> ns symbol find-ns) default-ns)`. nREPL says the supplied namespace must exist and answers `:namespace-not-found`.
+
+```
+{op eval, code "1", ns foo}   ; nREPL namespace-not-found   jank value 1 (ns user)
+```
+
+**Found by:** `exhaust`, 3 timelines.
+
+### C13. No `interrupt`, and one connection is handled strictly in order
+
+**Path:** `handler.jank` answers `:default` with `unknown-op`, and `describe.jank` lists no `interrupt` op. `handle-client` reads the next message only after the current one finishes.
+
+```
+{eval s1 "(loop [] (recur))"} {interrupt s1} {eval s2 "2"}
+nREPL: (running), interrupted, value 2      jank: nothing, ever, on this connection
+```
+
+An idle `interrupt` gets `unknown-op` instead of `session-idle`. **Found by:** `exhaust` after 61 timelines (with C10, C11, C12, C14 fixed).
+
+### C14. A stack overflow, crash or OOM in an eval kills the whole server
+
+**Path:**
+- `safe_eval`'s `cpptrace::try_catch` handlers catch C++ exceptions, not signals.
+- Nothing in `src/` guards stack depth (no `sigaltstack`, no depth check).
+- Nothing sets an OOM handler for bdwgc (`c_api.cpp` 1122 only calls `GC_init`).
+- So unbounded recursion (SIGSEGV), C2, first-round D9 and OOM end every connection and `jank repl`'s terminal.
+
+```
+{eval s1 "((fn f [n] (inc (f n))) 0)"} {eval s2 "2"}
+nREPL: eval-error StackOverflowError, value 2      jank: no response, no response
+```
+
+**Found by:** `exhaust` after 28 timelines (with C10, C12 fixed). With C10–C14 all fixed, `exhaust` over 3 messages is complete: 238,328 timelines, nothing.
+
+### C15. Resources held per connection and per evaluation
+
+**Per connection, never released:**
+- the `native_client`: `server.cpp` 120 "This leaks memory". Its zero-initialized 1 MiB `rx_buf_` is resident (54), and its socket is never closed;
+- the client `future`'s thread: never joined, because `future::deref` (`future.cpp` 20) is the only join and nobody derefs it;
+- its thread-binding frame (`context.cpp` 719; mechanism of first-round D22).
+
+**Per evaluation:** the JIT-compiled wrapper function and its module (`evaluate.cpp` 149 `wrap_expression` → `jit/processor_dynamic.cpp` 583 `ParseAndExecute`). Nothing in `jit/` unloads code.
+
+**Also:** `read-message` re-parses its whole buffer each time (quadratic, acknowledged in a `bencode.jank` comment). A malformed byte is treated as an incomplete message forever: the connection hangs and its buffer grows.
+
+Theorem `held_unbounded` covers the accounting model `jankHeld` (spec: 0).
+
+## What was modeled
+
+| Source (jank) | Lean (jank) | Lean (Clojure spec) |
+|---|---|---|
+| `core/equal.cpp compare`; `oref.hpp` 830–884; `compare` of nil, number (×4), boolean, big_decimal, string, character, keyword, symbol, vector; `object::compare` | `Compare.jankCompare`, `cppNumCmp`, `symCmp` | `cljCompare` (`Util.compare`, `Numbers.compare` → `cljNumCompare`, `compareTo`s), `identical` |
+| `core/seq.cpp sort` (1091, 1124): `std::stable_sort` | `insertionSort` (libstdc++ `__insertion_sort` for n ≤ 7), `jankSort`, `jankFnLess` | `timSortSmall` (`countRunAndMakeAscending` + `binarySort`), `cljSort`, `cljFnCompare` (`AFunction.compare`) |
+| `core.jank derive`/`isa?`/`parents`; `multi_function.cpp` `is_preferred`, `is_dominant`, `find_and_cache_best_method`, `prefer_method`, `get_fn` | `Multi.derive`, `isa`, `prefers` (hierarchy `none`), `bestMethod`, `jankCall`, `jankGetMethod` | `prefers` (hierarchy `some h`), `cljCall`, `cljGetMethod` (`MultiFn.java`) |
+| `ns.cpp intern_var`, `intern_owned_var`, `refer`, `unmap`; `context.cpp remove_ns` | `Ns.jankStep` | `cljStep` (`Namespace.intern`, `checkReplacement`, `reference`, `remove`) |
+| `capture.jank start`/`end`/`readback`; stdio buffer; fd table | `Nrepl.capStep` (`Threads`), `CapMem` | `specStep` (`*out*` per session) |
+| `core.jank handle-client`; `handler/eval.jank do-eval`; `evaluate.cpp safe_eval`; `clone`/`describe`/`handler.jank` | `Nrepl.jankStep` (with `Fixes` toggles) | `specStepN` (nREPL docs: sessions, ns, `*1`/`*e`, interrupt, namespace-not-found) |
+| `server.cpp` leak; future join; `wrap_expression`/`ParseAndExecute` | `jankHeld` | `specHeld` |
+
+## Assumptions
+
+- **RC1.** Release builds define NDEBUG, so `jank_debug_assert` is off. A debug build aborts instead; neither throws.
+- **RC2.** Boost `cpp_dec_float<100>` compares with a `double` by converting the double exactly. 0.1's exact expansion has 55 digits. Boost's sources are not in the tree; the submodules are empty.
+- **RC3.** Strings in the compare universe are ASCII. Ordering of UTF-8 vs UTF-16 strings belongs to the strings area.
+- **RC4.** Clojure narrowing a comparator's long result to `int` is a Clojure quirk, not a jank deviation. With it excluded, comparator sorts agree (see searches).
+- **RC5.** jank's `std::stable_sort` is modeled as insertion sort, as libstdc++ does for n ≤ 7. Inputs drawn have at most 3 elements.
+- **RC6.** The method table iterates in definition order in both models. Real hash-map orders differ; the deviations in C5 do not depend on order.
+- **RC7.** Capture is modeled for stdout only, one step per syscall or stdio call; glibc locks the `FILE` per call. Line buffering (terminal) and full buffering are both checked.
+- **RC8.** nREPL semantics come from its documentation: per-session `*ns*`/`*1`/`*e`, `interrupt`, `namespace-not-found`, a printing error reported as an error.
+- **RC9.** `refer` throwing on a name conflict follows `refer`'s docstring. Clojure 1.12's implementation warns or rejects instead; this is modeled identically on both sides.
+
+## Properties checked
+
+- `(compare a b)`: same sign, or both throw; undefined behavior always counts as a deviation.
+- `sort`: same result, or both throw; also with comparator fns.
+- Multimethod dispatch and `get-method` match Clojure's.
+- After every namespace operation: user's mappings, clojure.core's roots, and `find-ns` match.
+- nREPL capture:
+  - each eval's `:out` is its own output;
+  - output outside any eval reaches the terminal;
+  - fd 1 ends on the terminal.
+- nREPL sessions: every response matches nREPL's.
+
+## Search runs
+
+`explore n` uses seeds 0..n−1. "Complete" means every timeline within the bounds ran.
+
+| World | explore | exhaust | Table / census |
+|---|---|---|---|
+| compare, 24² pairs | 3000 seeds: found at seed 4 | found after 26 | 71 of 576 pairs disagree |
+| sort, length 0–3 over 9 atoms | found at 16 | found after 13 | — |
+| sort with comparator fns (5 kinds, 5 longs), narrowing excluded | nothing | complete, 780 | — |
+| same, narrowing included | found (RC4 quirk) | found after 478 | — |
+| multimethods 2/2/1 | found after 1617 | found after 28,889 | — |
+| multimethods 3/3/2 | found after 19 | found after 2,305,049 | — |
+| multimethods 3/3/0 | nothing | complete, 2,048,000 | — |
+| `get-method` 1/1 | found at 1 | found after 2 | — |
+| namespaces, 1 op / 3 ops | found at 3 | found after 1 | fixed jank: complete, 2,744 |
+| capture, 2 clients (full / line buffered) | found | found after 10 | 9,222 + 390 / 6,290 + 528 of 12,870 |
+| capture, client + printer (line / full) | nothing | found after 4 / 6 | 12 / 15 of 45 |
+| capture, spec | nothing | complete | — |
+| sessions, 3 messages, cumulative fixes | each found | 3 → 22 → 28 → 37 → 61 | all fixed: complete, 238,328 |
+
+## Theorems
+
+No `sorry`, no `native_decide`.
+
+- **Compare:**
+  - `long_compare_matches` (bv_decide): the inline `(r < l) - (l < r)` on any two i64 equals LongOps' sign.
+  - `bool_bool_throws`, `bool_bool_clojure`.
+  - `keyword_vs_other_ub`: every non-nil, non-keyword right operand.
+- **Multi:**
+  - `no_prefs_same`: for all method tables, hierarchies and dispatch values.
+  - `example_clojure`, `example_jank` (by `decide`).
+- **Ns:** `jank_intern_binds_found`, `clj_intern_replaces_referred`.
+- **Nrepl:** `dead_stays_dead` (all fix sets, all message lists), `held_unbounded`.
+
+## Library gaps filled
+
+- **`exhaust` stops at the first counterexample.** Added `census` (`CoreSearch`), which runs every timeline and counts violations per property. Added "fix toggles" (`Nrepl.Fixes`, `Ns.fixedStep`) so successive `exhaust` runs surface each difference, ending in a complete run with nothing.
+- **Kernel `decide` gets stuck on `String` equality.** Theorems over models that compare strings are stated structurally and proved with `simp` instead.
+- **Do-notation pitfall.** A `(← e)` inside a `while` condition's `&&` runs before the guard; loops were rewritten with an explicit `break`.
+- **`Threads` keeps no story.** The capture model logs its own story through `Process.log`.
+
+## Checked, agreeing or documented (not deviations)
+
+- **Agrees with Clojure:**
+  - nil ordering;
+  - NaN compares 0 both ways in both;
+  - long/double and long/BigDecimal comparisons;
+  - symbol and keyword order;
+  - vector order (length first);
+  - `sort` is stable in both, with the same boolean and int comparator coercion;
+  - `isa?`, `derive`, `underive` are Clojure's code;
+  - alias resolution order (alias, then namespace);
+  - `def` over a referred var;
+  - `ns-unmap`.
+- **Documented in `differences-from-clojure.md`:** no records, no protocols, so `defrecord`, `deftype`, `defprotocol` and `extend-protocol` are absent; no prefix lists in `require` ("No nested require").
+- **Out of my scope:** string `compare` magnitudes and UTF-8 vs UTF-16 order belong to the strings area.
+
+## Files
+
+- `Jank/Compare.lean`
+- `Jank/Multi.lean`
+- `Jank/Ns.lean`
+- `Jank/Nrepl.lean`
+- `Jank/CoreSearch.lean` (`searches` takes `compare`, `multi`, `ns` or `nrepl`)
+- `Run/Core.lean`
+- `results/core.txt`
+
+No commits were made.

@@ -1,0 +1,226 @@
+ROUND 3 — RUNTIME (folly SharedMutex/Synchronized/fbvector, bdwgc as jank uses them), jank 7135b7708
+Exe: jank3-runtime (`all`, `residual`, `census2 2 1 1 0 N 1 k`). Driver output: results/r3-runtime.txt (sections 1-5), results/r3-runtime-residual.txt, results/r3-runtime-census2-0..11.txt (two-thread lock census, one file per partition).
+Paths: jank under upstream-main/compiler+runtime/; folly = deps/folly (e54ca53d); bdwgc = deps/bdwgc (327ef1f8).
+Every item is a prediction from replicated code; jank was not built or run.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+
+RT1. A validator that calls set-validator! on its own atom hangs; one that reads/updates its atom (get-validator, swap!, reset!) hangs beside a concurrent set-validator!.
+  Program:
+    (def a (atom 0))
+    (set-validator! a (fn [v] (when (= v 1) (set-validator! a (fn [_] true))) true))
+    (swap! a inc)          ; Clojure 1      jank: hangs (one thread)
+    ;; two threads:
+    (def b (atom 0))
+    (set-validator! b (fn [v] (get-validator b) true))
+    (future (set-validator! b (fn [v] (get-validator b) true)))
+    (swap! b inc)          ; Clojure 1      jank: can hang (the writer sets kHasE between the two rlocks)
+  Path: obj/atom.cpp:atom::validate 261-265 holds validator.rlock() (263) across do_validate → vf.call; atom::set_validator 236-241 calls do_validate unlocked (238) then validator.wlock() (239); swap 81-95, reset 56-63, compare_and_set 215-226 all call validate. folly SharedMutex.h lockExclusiveImpl 1047-1110: lock() sets kHasE when no solo bit is set, then waitForZeroBits(kHasS) (1086-1088) — never returns while the caller holds S; lockSharedImpl 1488-1490 waits while kHasE is set, so a nested rlock behind a writer that has set kHasE waits too.
+  Reached: core.jank set-validator! 5404-5412 → core.cpp set_validator 1069; get-validator 5414-5417; swap!/reset! → atom::swap/reset.
+  Clojure: ARef.validate takes no lock; setValidator is not synchronized.
+  Tape/story (two threads, coarse lock, 11 steps; fine replica 21 steps, 879 states): thread 0 (swap! a inc) → validator rlock → validator body (get-validator a); thread 1 (set-validator! a vf) → runs vf unlocked (rlock/runlock) → validator wlock sets kHasE; thread 0's nested rlock waits for kHasE, thread 1 waits for thread 0's S. Tape: 11 × thread.next (results/r3-runtime.txt §2).
+  Search: one-thread census class "atom validator exclusive (readers to drain) ⟂ atom validator shared", 1,690 of 62,391 programs; two-thread census: the component "atom validator shared ⟂ atom validator kHasE" in 9 classes. Also a lock-order cycle with the watches lock: a validator that calls add-watch on a thread while a watch calls set-validator! on another (coarse 22 steps; fine 34 steps, 2,872 states).
+  Confidence: high. Status: new (the validator counterpart of round 1's D16).
+
+RT2. alter-var-root whose function re-enters the same var (alter-var-root or def of it) hangs.
+  Program:
+    (def v 0)
+    (alter-var-root #'v (fn [x] (alter-var-root #'v inc) (+ x 10)))   ; Clojure 10      jank: hangs
+    (alter-var-root #'v (fn [_] (def v 5) 6))                         ; Clojure 6       jank: hangs
+  Path: var.cpp:var::alter_root 106-112 holds std::lock_guard<folly::SharedMutex>{write_mutex} (108) across apply_to(f, …) (109); var::bind_root 98-104 takes the same lock (101) (def: evaluate.cpp eval(def) 333-360, or codegen gen(def) cpp_processor.cpp 527-557 → bind_root); var.hpp 146 write_mutex is a SharedMutex used only exclusively; folly lock() re-entered by its holder waits on kHasSolo forever (lockExclusiveImpl 1050-1053).
+  Reached: core.jank alter-var-root 2524-2528 → core.cpp alter_var_root 804-807.
+  Clojure: Var.alterRoot and Var.bindRoot are synchronized (reentrant): the inner call completes.
+  Search: one-thread census class "var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive", 1,316 programs; coarse 5 steps, fine 10 steps.
+  Confidence: high. Status: new.
+
+RT3. A delay whose body asks (realized? d) or derefs d hangs; so does one whose body waits on a thread that asks (realized? d).
+  Program:
+    (def d (delay (realized? d)))  @d                    ; Clojure false                jank: hangs
+    (def e (delay @(future (realized? e))))  @e          ; Clojure false                jank: hangs (two threads)
+    (def s (delay @s))  @s                               ; Clojure StackOverflowError   jank: hangs
+  Path: obj/delay.cpp:delay::deref 19-46 holds std::lock_guard<std::mutex> (21) across fn.call() (34); delay::is_realized 48-52 takes the same mutex (51); delay.hpp 27 `mutable std::mutex mutex` (non-recursive: relocking by the owner deadlocks on glibc, UB by the standard).
+  Reached: core.jank delay 1356-1362, force/deref, realized? 7563-7566 → core.cpp is_realized 719-737.
+  Clojure: Delay.isRealized() is `lock == null`, no lock; realize uses a ReentrantLock.
+  Search: one-thread census class "delay std::mutex ⟂ delay std::mutex held", 1,302 programs; cross-thread class 23 programs (delay → @f → (realized? d)); 4 steps (coarse and fine).
+  Confidence: high. Status: new (round 1's D19 — nil not cached, realized? false after a throw — still holds and is unrelated).
+
+RT4. future-cancel of a future that another thread is dereferencing hangs all three threads (and a future that cancels itself hangs while someone derefs it).
+  Program:
+    (def f (future (cpp/jank.runtime.sleep 100) 1))   ; Clojure: (future (Thread/sleep 100) 1)
+    (def g (future @f))
+    (cpp/jank.runtime.sleep 10)   ; g is now joining f
+    (future-cancel f)      ; Clojure true; @g throws CancellationException.   jank: the caller, g and f hang
+    ;; also: (def f (future (future-cancel f) 1)) with another thread derefing f → hangs
+  Path: obj/future.cpp:future::deref 12-31 holds thread.wlock() (17) across join() (18-21); core.cpp:cancel_future 1174-1185 holds state.rlock() (1178) while taking thread.wlock() (1181); the future's thread finishes with ret->state.wlock() (core.cpp 1132): folly lock() sets kHasE then waits for the canceller's S (SharedMutex.h 1086-1088). Cycle: f's thread → canceller (state S) → deref'er (thread lock, joining) → f's thread.
+  Reached: core.jank future-cancel 7373-7376 → cpp/jank.runtime.cancel_future; @ → deref → future::deref.
+  Clojure: FutureTask.cancel never blocks; get waits for completion or cancellation.
+  Tape/story (coarse, 12 steps; fine replica 23 steps, 1,866 states): thread 0 @f: thread wlock sets kHasE, held, joins; thread 1 (future-cancel f): state rlock, then thread wlock blocks; thread 2 (f): pushes bindings, body done, state wlock sets kHasE, waits for thread 1's S. Tape: thread.next 0,0,0,0,0,0,0,0,0,0,0,0 (options 3,3,3,2,2,2,1,…).
+  Search: two-thread census class "future state exclusive (readers to drain) ⟂ future state shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join …" (the component "future state exclusive (readers to drain) ⟂ future state shared" in 7 classes; 258 programs in the partition whose thread 0 runs (future-cancel f)); one-thread census: f's body (future-cancel f) with @f, 1,090 programs.
+  Confidence: high (once a deref is joining and future-cancel runs while f still runs, the cycle is certain; if the canceller takes the thread lock first, f is cancelled normally). Status: new.
+  Also by reading: cancel_future returns void, so (future-cancel f) returns nil (Clojure true/false); core.jank future-done? and pmap throw "TODO: port".
+
+RT5. future-cancelled? on a running future that another thread is dereferencing hangs (Linux; on macOS it returns false at once, core.cpp 1200-1205).
+  Program:
+    (def f (future (cpp/jank.runtime.sleep 100) 1))
+    (def g (future @f))
+    (cpp/jank.runtime.sleep 10)   ; g is now joining f
+    (future-cancelled? f)  ; Clojure false; @g 1.   jank: hangs
+  Path: core.cpp:is_future_cancelled 1187-1236 holds state.ulock() (1192) while taking thread.wlock() (1216) for pthread_tryjoin_np; the future's completion state.wlock() waits because kHasSolo includes kHasU (SharedMutex.h 905, 1050-1053); future::deref holds the thread lock while joining. Two concurrent future-cancelled? also queue on the upgrade bit (class "future state upgrade ⟂ future state upgrade").
+  Reached: core.jank future-cancelled? 7378-7381.
+  Tape/story (coarse 11 steps; fine 22 steps, 1,765 states): thread 0 @f: thread wlock held, joins; thread 1: state ulock, thread wlock blocks; thread 2 (f): body done, state wlock blocked by the upgrade bit.
+  Search: two-thread census: the component "future state exclusive (kHasE) ⟂ future state upgrade" in 6 classes, "future state upgrade ⟂ future state upgrade" in 6.
+  Confidence: high. Status: new.
+
+RT6. Reading a var's metadata that is still pending as source evaluates it under the var's exclusive lazy_meta lock: a meta expression that reads the same var's meta hangs; one that waits on a thread that touches that var's meta hangs.
+  Program (a def compiled through codegen: inside a fn or let, or any def of an AOT-compiled module):
+    (defn mk [] (def ^{:doc "v" :m (meta #'v)} v 1))
+    (mk)
+    (meta #'v)    ; Clojure {:doc "v", :m <v's meta at def time>, …}   jank: hangs
+    ;; two threads: meta expression @(future (reset-meta! #'v {})) → hangs (coarse 16 steps, fine 24 steps, 538 states)
+  Path: codegen cpp_processor.cpp gen(def) 527-557 emits `->with_lazy_meta("<meta source>")`; var.cpp with_lazy_meta 296-300; var.cpp get_meta 302 → lazy_meta.cpp:lazy_meta::get 30-46 holds state.wlock() (32) across binding_scope + _jank_eval_str(source) (39-42); a nested get_meta/set_meta (48-53) takes state.wlock() again; folly lock() re-entry waits forever.
+  Clojure: the meta map is evaluated when the var is defined; AReference.meta() is a short synchronized read.
+  Search: one-thread census class "var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive", 1,282 programs; cross-thread 47.
+  Confidence: medium-high (needs a codegen'd def; evaluate.cpp eval(def) at the REPL top level sets meta eagerly). Status: new; the lock consequence of round 2's R43 (meta stored as code text).
+
+RT7. A module loaded through a managed load fn holds the loader's recursive mutex while its top level runs: if that top level waits for a thread that loads any module, both hang.
+  Program (AOT-compiled program; every module is registered by aot/processor.cpp 110 → c_api.cpp jank_module_register 1089-1092; also clojure.core/string/walk and the nREPL modules, c_api_dynamic_phase_2.cpp 34-49):
+    (ns app.core)
+    (def x @(future (require 'app.other) 1))   ; Clojure x = 1      jank: hangs at startup
+  Path: runtime/module/loader_dynamic.cpp:loader::load 724-737 holds state.lock() (folly::Synchronized<mutable_state, std::recursive_mutex>, loader.hpp 223) across (*managed_load_fn->second)() (731-734); the future's require → core.jank load 4801-4811 → context.cpp load_module 325-340 → loader::load → state.lock() (727) / loader::find 549-554 blocks.
+  Clojure: require/load take no lock (serialized-require only for requiring-resolve).
+  Tape/story (coarse 11 steps; fine 13 steps, 79 states): thread 0 (require 'M): loader lock; M's top level @f: thread wlock, join; thread 1 (f): pushes bindings, (require 'N) blocks on the loader lock.
+  Search: one-thread census class "join … | loader recursive_mutex ⟂ loader recursive_mutex held", 41 programs.
+  Confidence: medium (by the managed-load path; the source-module path evaluates unlocked). Status: new.
+
+RT8. A value in flight as a C++ exception is not a GC root: a collection between throw and the catch that receives it frees a freshly built ex-info.
+  Program:
+    (defn boom [] (throw (ex-info "boom" {:k (vec (range 3))})))
+    (try
+      (try (boom)
+           (finally (dotimes [_ 100000] (vec (range 8)))))      ; allocates: a collection runs
+      (catch cpp/jank.runtime.object_ref e (ex-data e)))
+    ;; Clojure {:k [0 1 2]}   jank: e points to freed (reusable) memory: wrong value or crash
+    ;; no finally needed when another thread allocates during the unwind
+  Path: codegen cpp_processor.cpp gen(throw) 1024-1050: `throw static_cast<jank::runtime::object_ref>(x)` copies the tagged word into the exception object (__cxa_allocate_exception: malloc, never scanned); gen(try) 1053-1101: the finally runs inside `catch(...) { guard.release(); fin_fn(); throw; }` while the value lives only there; catch(object_ref e) copies it back afterwards. bdwgc mark: roots are static data, registered stacks, GC_add_roots ranges, uncollectable objects (mark_rts.c, mark.c); docs/gcinterface.md 167-169: "the collector may not trace correctly from in-flight exception objects".
+  Search (exhaust over gc.collect decisions): found after 2 timelines with 1, 2 or 3 allocations in the finally and with 1 or 2 allocations by another thread; Clojure (the exception traced): complete, 64/128/256 timelines, nothing; control (the same value also held by a var): complete, 512, nothing. Story: throw; boom's frame popped; a collection at the finally's allocation frees the vector, the ex-data map and the ex-info; catch copies the dangling word; (ex-data e) reads freed memory.
+  Confidence: medium-high (assumes no stale copy of the pointer survives on the scanned stack; the docs say the same). Status: new.
+
+RT9. var_unbound_root is allocated pointer-free yet holds its var: printing an unbound root after its var was unmapped and collected reads a freed var.
+  Program:
+    (def x)
+    (def u @#'x)
+    (ns-unmap *ns* 'x)
+    (dotimes [_ 100000] (vec (range 8)))
+    (str u)       ; Clojure "Unbound: #'user/x"   jank: reads freed memory (garbage or crash)
+  Path: var.hpp 179-191 (var_unbound_root: pointer_free{ true }, `var_ref var`); oref.hpp 3086-3088 (pointer_free → new(PointerFreeGC) = GC_malloc_atomic, never scanned); var.cpp 15-21 (root = make_box<var_unbound_root>(this)), var::deref 279-287 returns the root, var_unbound_root::to_string 351-354 calls var->to_string(); ns.cpp unmap 105-115. Top-level forms are evaluated by evaluate.cpp without JIT, so no lifted root keeps x.
+  Search: found after 2 timelines (2 allocations); Clojure (Var$Unbound holds the var in a normal field): complete, 4,096, nothing; control without ns-unmap: complete, 2,048, nothing. Theorem atomic_scans_nothing.
+  Confidence: medium (needs no stale conservative reference). Status: new.
+
+Library-level, not reachable from jank (recorded, not deviations):
+  L1. folly fbvector::emplace(pos, args) has no dataIsInternal check (FBVector.h 1497-1506; insert has it, 1508-1516): with an argument that is an element of the vector and no reallocation, make_window shifts the elements first, so the shifted value is inserted ([1 2], emplace(begin, v[1]) → [1 1 2]; std::vector, LWG 2164: [2 1 2]). Census over every 5-operation sequence: 85,140 of 2,570,054 differ, all this class; residual with non-aliasing emplace arguments: complete, 2,679,044, nothing. jank's emplace calls (error/report_dynamic.cpp 207-332) take values from other vectors. Theorems emplace_alias_inserts_shifted, insert_alias_copies_first.
+  L2. jtl::immutable_string `s = s.c_str()` on a large owned string: operator=(const_pointer_type) (immutable_string.hpp 505-520) calls destroy() (GC_free) before reading the characters. 480 of 32,520 three-operation sequences; residual without it: complete, 32,768, nothing. No such assignment in jank. Theorem self_cstr_assign_reads_freed.
+  Latent (round 1 note confirmed with folly's semantics): context.cpp push_thread_bindings() 678-692 holds thread_binding_frames.rlock() and calls the deprecated non-const Synchronized::operator-> (Synchronized.h 845: returns LockedPtr, exclusive) → lock() under its own S, a self-deadlock; its only caller binding_scope() is unused (all 13 binding_scope uses pass a map).
+
+Round 1/2 entries re-checked:
+  D16 (watches under the watches lock) holds with the folly replica: self-removing/adding watch (fine replica 16 steps), watch that swap!s beside add-watch (fine 27 steps, 342 states); census classes "atom watches exclusive ⟂ atom watches shared" (2,914 one-thread programs) and "atom watches shared ⟂ atom watches kHasE". Unchanged, not retracted.
+  D17-D25, R43: unchanged; RT6 adds the locking consequence of R43.
+
+======================================================================
+2. WHAT WAS REPLICATED (Jank/R3/Runtime/, Run/R3/Runtime.lean)
+======================================================================
+- Folly.lean: folly SharedMutexImpl<false> (write priority, SharedMutexPolicyDefault) one atomic op per step: state_ word and every bit (857-938), lockSharedImpl fast/slow paths with deferred readers, slots shared by all mutexes, tls_lastDeferredReaderSlot, AccessSpreader as a decision, kDeferredSearchDistance (1352-1604); unlock_shared(Token&), tryUnlockSharedDeferred, unlockSharedInline (566-588, 1388-1405); lockExclusiveImpl with applyDeferredReaders (1034-1110, 1261-1337); unlock; lockUpgradeImpl, unlock_upgrade, unlock_upgrade_and_lock (= moveFromUpgradeToWrite); futexWaitForZeroBits, futexWait/futexWake with masks, wakeRegisteredWaiters (1112-1243). The std::shared_lock specialization (tokenful, 1618-1749). The coarse lock CSM and round 1's lock (= Determinismo.RwLock) for comparison.
+- Locks.lean: Synchronized as jank uses it — rlock (ConstRLockedPtr/RLockedPtr → shared_lock), wlock (unique_lock → lock()), ulock (upgrade_lock), moveFromUpgradeToWrite, operator=(T&&) (exclusive), non-const operator-> (exclusive), Synchronized<T, std::recursive_mutex>::lock() (reentrant); std::mutex; condition_variable_any (registered before the lock is released). jank operations with their exact lock sequences: atom.cpp swap/reset/compare_and_set/validate/set_validator/get_validator/add_watch/remove_watch/notify_watches; var.cpp alter_root/bind_root/get_meta; lazy_meta.cpp get/set; delay.cpp deref/is_realized; core.cpp future (thread body with push bindings, catch handlers, unregister), cancel_future, is_future_cancelled; future.cpp deref/is_realized; promise.cpp deref/call; loader_dynamic.cpp load (managed fn) and find; context.cpp push/pop_thread_bindings, register/unregister_future. pthread_cancel at cancellation points with unwinding (guards release), std::thread::join on itself throwing. Clojure 1.12 beside it (Atom/ARef, Var, AReference, Delay, FutureTask, CountDownLatch, require).
+- Gc.lean: bdwgc reachability as jank builds it: POINTER_MASK fixup (heap/roots masked; stacks raw and masked), interior pointers (+1 byte), object kinds (normal, atomic, uncollectable, explicitly typed), GC_make_descriptor (typd_mlc.c 209-284) and the GC_DS_LENGTH/GC_DS_BITMAP mark decoding (mark.c 789-819), roots (static data, registered stacks, GC_add_roots), unscanned memory (malloc incl. C++ exception objects, atomic objects, unregistered stacks), collection as a decision at each allocation, GC_free. persistent_string's layout (object.hpp 411-614, immutable_string.hpp 686-723) and c_api.cpp 1126-1129's descriptor.
+- Containers.lean: fbvector<T, gc_allocator<T>> (usingStdAllocator false; GC_MALLOC/GC_FREE; copy relocation): computePushBackCapacity, emplace_back/push_back/emplace_back_aux, reserve, erase, do_real_insert/make_window/wrap_frame/insert_use_fresh, insert(pos,const T&), emplace, pop_back, clear, shrink_to_fit; std::vector spec. jtl::immutable_string ownership: small/owned/shared, constructors, copy/move constructors, operator= (both), substr (sharing ≤ 512), c_str, destroy (GC_free).
+- Common.lean: state-space search for Threads programs, census with classes and partitions.
+- Theorems.lean: 20 theorems (§7).
+
+======================================================================
+3. LEFT OUT, AND WHY
+======================================================================
+- folly spin/yield phases and applyDeferredReaders' spin phase (only delay; folded into the futex path / forced path, RTA1-RTA2); try_lock*/timed variants and token-less lock_shared (unused by jank); reader-priority instantiation (unused).
+- Synchronized::copy/swap/withRLock/withWLock/contextualLock: no uses in jank (grep); copy/swap semantics read from Synchronized.h 943-946 (copy under ConstLockedPtr) and 896-907 (swap locks both exclusively in address order).
+- The JIT interpreter recursive mutex (jit/processor.hpp 102): held only around Clang calls and declarations (processor_dynamic.cpp 362-735, cpp_util/cppinterop), no jank callbacks except user cpp/raw code; multi_function's recursive mutex: no callbacks under it (dispatch and methods run unlocked); its method_cache read in get_fn without the lock (a word-sized race; Clojure uses a rwlock) noted, not modeled; lazy_sequence/range recursive mutexes match Clojure's synchronized (round 1).
+- native_array_blocking_queue, codegen/JIT object Synchronized maps: compile time, no jank callbacks.
+- bdwgc internals beyond reachability (block allocation, free-list reuse, parallel marking, black-listing): a freed object is reported at its next use, without modeling reuse. Incremental mode: on Linux bdwgc uses SOFT_VDB (gcconfig.h 1256-1257, 2141-2142; kernel soft-dirty bits) so no client write barrier is needed; not searched further.
+- The two-thread lock census uses 12 of the 21 operations (alphabet2) and bodies of one operation chosen for the top level only; 143 of 37,488 programs exceeded the 20,000-state bound (class "(search stopped)", mostly validators that swap! the atom beside a future) and are undecided.
+- macOS: futures are not registered (core.cpp 1109-1121) on the claim that bdwgc does it; not modeled (RTA9).
+
+======================================================================
+4. ASSUMPTIONS
+======================================================================
+Replaced:
+- Round 1 A7 ("wlock() is two steps: announce, which blocks new readers, then acquire") → folly's: lock() sets kHasE only once no kHasE/kBegunE/kHasU is set, then drains readers; a writer still waiting for another writer blocks no reader; deferred readers count as readers. Confirmed for deadlocks: on all 108 S/E programs of the table, round 1's lock (= Determinismo.RwLock with writer priority) deadlocks exactly when the replica does; round 1 has no upgrade mode.
+- Round 1 "folly's SharedMutex is non-reentrant and gives writers priority (SharedMutex.h 1421)" → confirmed by the replica (refinement table, theorems).
+- Round 2 RC "folly fbvector has null storage when empty" → refined: b_ = e_ = z_ = nullptr for a vector that never allocated (Impl 98-104, init(0)) or after shrink_to_fit of an empty vector (983-987) or a move; clear()/erase/pop_back keep the block (1146), so data() of such an empty vector is non-null and data()[0] is a stale element, not a null read (affects only the wording of round 2's native_vector_sequence::first note).
+New:
+- RTA1. Spinning in waitForZeroBits and sched_yield phases are loads that only delay; the futex loop's own load stands for them.
+- RTA2. applyDeferredReaders: its forced path (load and CAS every slot) stands for the spin-then-force path.
+- RTA3. getMaxDeferredReaders() = 2 or 4 (both run); AccessSpreader::current is a decision; futexWake(1) wakes any eligible sleeper (decision); no spurious futex wakeups.
+- RTA4. The jank-level searches use the coarse lock CSM, justified by the refinement table (1,360 programs, both slot counts, 0 mismatches); every finding was re-run with the fine replica (all confirmed except the validator-swap!-beside-set-validator! variant, stopped at 500,001 fine states; its sibling with get-validator is confirmed).
+- RTA5. Callback bodies run at a depth budget; at depth 0 a callback does nothing, in jank and Clojure alike (Clojure's StackOverflowError on a self-deref is reported from the docs, not modeled).
+- RTA6. Clojure's var metadata expression is compared as if run lock-free at first read (its timing is R43's matter).
+- RTA7. pthread_cancel acts only at (sleep); unwinding releases the guards still held; std::thread::join on itself throws (EDEADLK) and unwinds to the future's catch handlers.
+- RTA8. GC: a collection may run at any allocation of any thread; conservative scanning finds no stale copy of a dead frame's pointers; malloc memory (incl. the C++ runtime's exception objects) is never scanned (no REDIRECT_MALLOC in jank's bdwgc build).
+- RTA9. Linux: future threads register (core.cpp 1111-1115); the macOS path is not modeled.
+- RTA10. Module-target lifted globals are laid out in declaration order (the GC_add_roots(&first, &last + 1) ranges, cpp_processor.cpp 2120-2170, then cover them; reversed order would leave them unrooted — counterfactual found after 2).
+- RTA11. persistent_string layout: vptr 8, object_type u8 at 8, object_behavior u16 at 10, data at 16 (storage 24 bytes + u32 hash, 32 bytes): 48 bytes, 6 words.
+
+======================================================================
+5. PROPERTIES CHECKED
+======================================================================
+- SharedMutex replica: mutual exclusion (E excludes S and U; U unique) at every reachable state; every completed acquisition is one the coarse lock allows (refinement); deadlock iff the coarse lock deadlocks.
+- jank programs: no deadlock that Clojure does not have (locking is internal and never deadlocks a program without cyclic waits of its own).
+- GC: an object that Clojure keeps alive is never used after the collector freed it.
+- fbvector: contents equal std::vector's after every operation; no use after GC_FREE.
+- immutable_string: no read or free of a GC_free'd buffer.
+
+======================================================================
+6. SEARCH RUNS (state search = every reachable state; complete unless "stopped")
+======================================================================
+| World | Bounds | Result |
+| SharedMutex refinement, maxSlots 2 | 1,296 two-thread (36 shapes²) + 64 three-thread programs | 357,689 fine states (largest 6,537); 807 deadlocks fine = 807 coarse; 0 mismatches; 0 safety violations |
+| SharedMutex refinement, maxSlots 4 | same | 366,851 states; 807 = 807; 0; 0 |
+| Round 1's lock vs replica | 108 S/E programs | 0 disagree |
+| 18 lock scenarios (§2 of r3-runtime.txt) | state search ≤ 500,000, coarse and fine, jank and Clojure | 17 jank deadlocks where Clojure always completes (2 are D16's); the fine replica confirms 16, 1 stopped at 500,001; two derefs of one future: complete, nothing (302 coarse / 1,238 fine states) |
+| One-thread lock census | 1 thread × 1 op (21 ops), bodies ≤ 1 op to depth 1, + the future's thread; ≤ 20,000 states each | complete, 62,391 programs; 24 classes, each containing one of: watches E⟂S (D16), validator E⟂S (RT1), write_mutex E⟂E (RT2), lazy_meta E⟂E (RT6), delay mutex (RT3), future thread lock + join (RT4/RT5), loader (RT7). Residual with all ten mechanisms set aside (results/r3-runtime-residual.txt): complete, 62,391 programs, nothing |
+| Two-thread lock census | 2 threads × 1 op (12 ops), bodies ≤ 1 op, 12 partitions by thread 0's op | complete, 37,488 programs; 11,034 jank-only deadlocks in classes built from the mechanisms above plus validator/watches S⟂kHasE (RT1, D16), future state E⟂S (RT4), E⟂U and U⟂U (RT5); 143 stopped at 20,000 states |
+| Exception in flight | exhaust over gc.collect, 1-3 finally allocations / 1-2 other-thread allocations | jank found after 2 (×5); Clojure complete 64-256, nothing; control complete 512, nothing |
+| Unbound root | 2 allocations | jank found after 2; Clojure complete 4,096; control complete 2,048 |
+| persistent_string descriptor | sizes 0, 23, 24, 100, 100 shared @37, 600 shared @513 | complete (8-16 each), nothing; counterfactual descriptor 0: found after 2 |
+| Future thread registration | registered / unregistered | complete 32, nothing / counterfactual found after 2 |
+| Module lifted roots | declaration order / reversed | complete 32 / counterfactual found after 2 |
+| fbvector vs std::vector | every sequence of 5 ops (8 kinds, aliasing args, reserve 1-4) | complete 2,570,054: 85,140 emplace-alias (L1); residual complete 2,679,044, nothing |
+| immutable_string | every sequence of 3 ops on 2 strings | complete 32,520: 480 `s = s.c_str()` (L2); residual complete 32,768, nothing |
+
+======================================================================
+7. THEOREMS (Jank/R3/Runtime/Theorems.lean; no sorry, no native_decide, no axioms)
+======================================================================
+For every lock state (new for-every-input forms of round 1's bounded D16 results, and of RT1/RT2/RT4/RT5/RT6's mechanisms):
+- exclusive_after_shared_never_drains: a thread holding the mutex shared never completes its own lock().
+- pending_writer_blocks_readers: once a writer set kHasE, lock_shared fails for every thread (also one already holding S).
+- writer_waits_for_reader / reader_blocks_writer_drain: a writer cannot drain while any reader holds S.
+- exclusive_reentry_blocked: the exclusive holder's second lock() never sets kHasE.
+- upgrade_blocks_writer: a held upgrade lock keeps every writer from setting kHasE.
+Replica control flow:
+- shared_waits_while_kHasE, lock_waits_while_solo, drain_waits_for_readers; state_bits_disjoint (decide).
+bdwgc:
+- ps_descriptor_value: jank's persistent_string bitmap gives 0x2000000000000001.
+- ps_descriptor_scans_data: the collector scans exactly word 2 (store.large.data).
+- make_descriptor_exact: for all 64 bitmaps of 6 words, GC_make_descriptor + the mark decoding scan exactly the set words.
+- atomic_scans_nothing.
+fbvector / immutable_string:
+- first_capacity (8 for object_ref), doubles_below_512, grows_by_half_between (512 ≤ c ≤ 16,384: (3c+1)/2) — for every capacity.
+- emplace_alias_inserts_shifted, insert_alias_copies_first, self_cstr_assign_reads_freed (rfl witnesses of L1/L2).
+
+======================================================================
+8. LIBRARY GAPS FILLED (sdk/lean untouched)
+======================================================================
+- No state-space search: added BFS over Threads processes with a visited set keyed by (memory, threads), in-step decisions enumerated exhaustively, invariants, deadlock detection, shortest counterexample with tape (thread.next = index among threads able to step) and story replay (Common.lean).
+- No folly SharedMutex: the fine replica (Folly.lean); Determinismo.RwLock compared and found equal on deadlocks for S/E (it lacks upgrade mode and deferred readers; its waiting writers block readers before they could set kHasE).
+- No reentrant/recursive locks, condition variables, thread join or cancellation in Threads: built in Locks.lean.
+- No heap/GC model: Gc.lean (kinds, descriptors, masking, interior pointers, roots, collection decisions).
+- exhaust stops at the first counterexample: census with classes, smallest program per class, partitions by decision prefix, progress lines (Run/R3/Runtime.lean).
+- Hashable for Determinismo.RwLock (orphan instance) to key states.

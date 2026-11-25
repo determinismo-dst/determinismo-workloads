@@ -1,0 +1,176 @@
+== integer_range: (range ...) over longs agrees with Clojure
+  explore (3000 seeds): range agrees with Clojure after 2 timelines, 4 decisions: (range 5 -9223372036854775808 -3): Clojure [5, 2, -1, -4, -7, -10, -13, -16] ..., jank [5, 2, -1] then throws "integer_range overflow occurred in arithmetic."
+  shrunk to 4 decisions: (range 5 -9223372036854775808 -9223372036854775808): Clojure [5, -9223372036854775803] end, jank [5] end
+  tape:
+    {"name":"range.arity","options":3,"value":2}
+    {"name":"range.arg0","options":17,"value":11}
+    {"name":"range.arg1","options":17,"value":0}
+    {"name":"range.arg2","options":17,"value":0}
+  exhaust: found after 16 timelines: (range 9223372036854775806): Clojure [0, 1, 2, 3, 4, 5, 6, 7] ..., jank [0] then throws "integer_range overflow occurred in arithmetic."
+  exhaust's counterexample shrunk to 2 decisions: (range 9223372036854775806): Clojure [0, 1, 2, 3, 4, 5, 6, 7] ..., jank [0] then throws "integer_range overflow occurred in arithmetic."
+  tape:
+    {"name":"range.arity","options":3,"value":0}
+    {"name":"range.arg0","options":17,"value":15}
+== integer_range with an exact count() (the fix)
+  explore (3000 seeds): nothing
+  exhaust: complete, 5219 timelines, nothing
+  table: 1364 of 5219 questions deviate
+    walk throws: 988; walk ends early or differs without a throw: 264
+    (range 9223372036854775806): Clojure [0, 1, 2, 3, 4, 5, 6, 7] ..., jank [0] then throws "integer_range overflow occurred in arithmetic."
+    (range 9223372036854775807): Clojure [0, 1, 2, 3, 4, 5, 6, 7] ..., jank [0] then throws "integer_range overflow occurred in arithmetic."
+    (range -9223372036854775808 -2): Clojure [-9223372036854775808, -9223372036854775807, -9223372036854775806, -9223372036854775805, -9223372036854775804, -9223372036854775803, -9223372036854775802, -9223372036854775801] ..., jank [-9223372036854775808] then throws "integer_range overflow occurred in arithmetic."
+    (range -9223372036854775808 -1): Clojure [-9223372036854775808, -9223372036854775807, -9223372036854775806, -9223372036854775805, -9223372036854775804, -9223372036854775803, -9223372036854775802, -9223372036854775801] ..., jank [-9223372036854775808] then throws "integer_range overflow occurred in arithmetic."
+    (range -9223372036854775808 0): Clojure [-9223372036854775808, -9223372036854775807, -9223372036854775806, -9223372036854775805, -9223372036854775804, -9223372036854775803, -9223372036854775802, -9223372036854775801] ..., jank [-9223372036854775808, -9223372036854775807] then throws "integer_range overflow occurred in arithmetic."
+    (range -9223372036854775808 1): Clojure [-9223372036854775808, -9223372036854775807, -9223372036854775806, -9223372036854775805, -9223372036854775804, -9223372036854775803, -9223372036854775802, -9223372036854775801] ..., jank [-9223372036854775808, -9223372036854775807, -9223372036854775806] then throws "integer_range overflow occurred in arithmetic."
+    (range -9223372036854775808 0 9223372036854775805): Clojure [-9223372036854775808, -3] end, jank [-9223372036854775808] end
+    (range -9223372036854775808 0 9223372036854775806): Clojure [-9223372036854775808, -2] end, jank [-9223372036854775808] end
+    (range -9223372036854775808 0 9223372036854775807): Clojure [-9223372036854775808, -1] end, jank [-9223372036854775808] end
+    (range -9223372036854775808 1 9223372036854775805): Clojure [-9223372036854775808, -3] end, jank [-9223372036854775808] end
+    (range -9223372036854775808 1 9223372036854775806): Clojure [-9223372036854775808, -2] end, jank [-9223372036854775808] end
+    (range -9223372036854775808 1 9223372036854775807): Clojure [-9223372036854775808, -1] end, jank [-9223372036854775808] end
+    ranges whose count() has a signed overflow (UB in ISO C++): 519
+  with an exact count() (the fix): 0 of 5219 deviate
+== range (a real end): elements agree with Clojure (first 80)
+  explore (3000 seeds): range agrees with Clojure after 1 timelines, 3 decisions: (range 2147483646 2147483677.5 1073741824): Clojure [2147483646] (ends), jank [2147483646, -1073741826, -2, 1073741822, 2147483646, -1073741826, -2, 1073741822, 2147483646, -1073741826, -2, 1073741822] ... (more than 80)
+  shrunk to 3 decisions: (range 2147483646 2147483677.5 1): Clojure [2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651, 2147483652, 2147483653, 2147483654, 2147483655, 2147483656, 2147483657] ... (ends), jank [2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645, -2147483644, -2147483643, -2147483642, -2147483641, -2147483640, -2147483639] ... (more than 80)
+  tape:
+    {"name":"range.start","options":8,"value":3}
+    {"name":"range.step","options":6,"value":0}
+    {"name":"range.end_offset","options":10,"value":3}
+  exhaust: found after 124 timelines: (range 2147483640 2147483671.5 1): Clojure [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651] ... (ends), jank [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645] ... (more than 80)
+  exhaust's counterexample shrunk to 3 decisions: (range 2147483640 2147483671.5 1): Clojure [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651] ... (ends), jank [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645] ... (more than 80)
+  tape:
+    {"name":"range.start","options":8,"value":2}
+    {"name":"range.step","options":6,"value":0}
+    {"name":"range.end_offset","options":10,"value":3}
+== range with addP in place of add (the fix)
+  explore (3000 seeds): nothing
+  exhaust: complete, 480 timelines, nothing
+  table: 86 of 480 questions deviate
+    (range 2147483640 2147483671.5 1): Clojure [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651] ... (ends), jank [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645] ... (more than 80)
+    (range 2147483640 2147483672.0 1): Clojure [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651] ... (ends), jank [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645] ... (more than 80)
+    (range 2147483640 2147483672.5 1): Clojure [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651] ... (ends), jank [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645] ... (more than 80)
+    (range 2147483640 2147483704.5 1): Clojure [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, 2147483648, 2147483649, 2147483650, 2147483651] ... (ends), jank [2147483640, 2147483641, 2147483642, 2147483643, 2147483644, 2147483645, 2147483646, 2147483647, -2147483648, -2147483647, -2147483646, -2147483645] ... (more than 80)
+  with addP in place of add (the fix): 0 of 480 deviate
+== doseq over a held sequence changes no value
+  explore (3000 seeds): doseq changes no value after 2 timelines, 3 decisions: (let [b (range 1 4) w (cons 0 b)] (doseq [x w] (record x)) (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3, 0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3, 0, 3], counts 1 2, vecs [3] [0, 3]
+  shrunk to 3 decisions: (let [b (seq [1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[3] read past the end (size 3)>
+  tape:
+    {"name":"seq.base","options":7,"value":0}
+    {"name":"seq.wrap","options":5,"value":1}
+    {"name":"seq.doseq_twice","options":2,"value":0}
+  exhaust: found after 3 timelines: (let [b (seq [1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[3] read past the end (size 3)>
+  exhaust's counterexample shrunk to 3 decisions: (let [b (seq [1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[3] read past the end (size 3)>
+  tape:
+    {"name":"seq.base","options":7,"value":0}
+    {"name":"seq.wrap","options":5,"value":1}
+    {"name":"seq.doseq_twice","options":2,"value":0}
+== doseq stepping by next (the fix)
+  explore (3000 seeds): nothing
+  exhaust: complete, 70 timelines, nothing
+  table: 36 of 70 programs deviate
+    (let [b (seq [1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[3] read past the end (size 3)>
+    (let [b (seq [1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3, 0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank: UB: persistent_vector_sequence data[3] read past the end (size 3)
+    (let [b (seq [1 2 3]) w (concat [0] b)] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[3] read past the end (size 3)>
+    (let [b (seq [1 2 3]) w (concat [0] b)] (doseq [x w] (record x)) (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3, 0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank: UB: persistent_vector_sequence data[3] read past the end (size 3)
+    (let [b (seq [1 2 3]) w (cons 0 (lazy-seq b))] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[3] read past the end (size 3)>
+    (let [b (seq [1 2 3]) w (cons 0 (lazy-seq b))] (doseq [x w] (record x)) (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3, 0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank: UB: persistent_vector_sequence data[3] read past the end (size 3)
+    (let [b (rest [0 1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank recorded [0, 1, 2, 3], counts 0 does not terminate, vecs <UB: persistent_vector_sequence data[4] read past the end (size 4)>
+    (let [b (rest [0 1 2 3]) w (cons 0 b)] (doseq [x w] (record x)) (doseq [x w] (record x)) [(count b) (count w) (vec b) (vec w)]): Clojure recorded [0, 1, 2, 3, 0, 1, 2, 3], counts 3 4, vecs [1, 2, 3] [0, 1, 2, 3], jank: UB: persistent_vector_sequence data[4] read past the end (size 4)
+  with doseq stepping by next instead of next-in-place (the fix): 0 of 70 deviate
+== transducers: transduce agrees with Clojure
+  explore (5000 seeds): transduce agrees with Clojure after 17 timelines, 8 decisions: (transduce (comp (partition-by odd?) (interpose 9)) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 2) (reduced a) a)))) [] [2, 1, 0]): Clojure [[2] 9], jank [[2] 9 9]
+  shrunk to 8 decisions: (transduce (comp (partition-by odd?) (interpose 9)) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 2) (reduced a) a)))) [] [0, 1, 0]): Clojure [[0] 9], jank [[0] 9 9]
+  tape:
+    {"name":"xf.count","options":2,"value":1}
+    {"name":"xf.0","options":15,"value":8}
+    {"name":"xf.1","options":15,"value":13}
+    {"name":"coll.length","options":5,"value":3}
+    {"name":"coll.0","options":3,"value":0}
+    {"name":"coll.1","options":3,"value":1}
+    {"name":"coll.2","options":3,"value":0}
+    {"name":"rf.stop","options":3,"value":2}
+  exhaust: found after 2921 timelines: (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [0, 1]): Clojure [[0]], jank [[0] [0]]
+  exhaust's counterexample shrunk to 6 decisions: (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [0, 1]): Clojure [[0]], jank [[0] [0]]
+  tape:
+    {"name":"xf.count","options":2,"value":0}
+    {"name":"xf.0","options":15,"value":8}
+    {"name":"coll.length","options":5,"value":2}
+    {"name":"coll.0","options":3,"value":0}
+    {"name":"coll.1","options":3,"value":1}
+    {"name":"rf.stop","options":3,"value":1}
+  table: 367 of 28800 (pipeline, input, rf) deviate
+    (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [0, 1]): Clojure [[0]], jank [[0] [0]]
+    (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [1, 0]): Clojure [[1]], jank [[1] [1]]
+    (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [1, 2]): Clojure [[1]], jank [[1] [1]]
+    (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [2, 1]): Clojure [[2]], jank [[2] [2]]
+    (transduce (partition-by odd?) (fn ([acc] acc) ([acc x] (let [a (conj acc x)] (if (>= (count a) 1) (reduced a) a)))) [] [0, 0, 1]): Clojure [[0 0]], jank [[0 0] [0 0]]
+== seq.cpp dispatch (empty, coll?, get-in, find) and byte arrays agree with Clojure
+  explore (3000 seeds): agrees with Clojure after 1 timelines, 2 decisions: (aget (byte-array [128]) 0): Clojure -128, jank 128
+  shrunk to 2 decisions: (aget (byte-array [128]) 0): Clojure -128, jank 128
+  tape:
+    {"name":"core.function","options":6,"value":5}
+    {"name":"core.byte","options":10,"value":3}
+  exhaust: found after 16 timelines: (empty (cons 0 [1])): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+  exhaust's counterexample shrunk to 2 decisions: (empty (cons 0 [1])): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+  tape:
+    {"name":"core.function","options":6,"value":0}
+    {"name":"core.type","options":22,"value":15}
+  table: 29 of 128 questions deviate
+    (empty (cons 0 [1])): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+    (empty (seq (map inc (range 0.5 2.0)))): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+    (empty (repeat 2 :x)): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+    (empty (sort [2 1])): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+    (empty (seq (long-array 2))): Clojure Jank.Seq.Core.Empty.emptyList, jank Jank.Seq.Core.Empty.nil
+    (coll? (cons 0 [1])): Clojure true, jank false
+    (coll? (seq (map inc (range 0.5 2.0)))): Clojure true, jank false
+    (coll? (repeat 2 :x)): Clojure true, jank false
+    (coll? (sort [2 1])): Clojure true, jank false
+    (coll? (seq (long-array 2))): Clojure true, jank false
+    (get-in 5 []): Clojure 5, jank nil
+    (get-in :k []): Clojure :k, jank nil
+    (get-in 5 [] :nf): Clojure 5, jank nil
+    (get-in 5 [:a] :nf): Clojure :nf, jank nil
+    (get-in 5 [0] :nf): Clojure :nf, jank nil
+    (get-in 5 [:a :a] :nf): Clojure :nf, jank nil
+    (get-in 5 [:a 0] :nf): Clojure :nf, jank nil
+    (get-in :k [] :nf): Clojure :k, jank nil
+    (get-in :k [:a] :nf): Clojure :nf, jank nil
+    (get-in :k [0] :nf): Clojure :nf, jank nil
+    (get-in :k [:a :a] :nf): Clojure :nf, jank nil
+    (get-in :k [:a 0] :nf): Clojure :nf, jank nil
+    (key (find {[1] :v} '(1))): Clojure [1], jank '(1)
+    (key (find {'(1) :v} [1])): Clojure '(1), jank [1]
+    (aget (byte-array [128]) 0): Clojure -128, jank 128
+    (aget (byte-array [200]) 0): Clojure -56, jank 200
+    (aget (byte-array [255]) 0): Clojure -1, jank 255
+    (aget (byte-array [-1]) 0): Clojure -1, jank 255
+    (aget (byte-array [-128]) 0): Clojure -128, jank 128
+== chunked seqs: (first (map f src)) maps one chunk
+  explore (200 seeds): (first (map f ...)) maps one chunk after 1 timelines, 2 decisions: (first (map f (map f (range 0.0 33.0)))): Clojure 2, f called 64 times; jank 2, f called 66 times
+  shrunk to 2 decisions: (first (map f (range 0.0 33.0))): Clojure 1, f called 32 times; jank 1, f called 33 times
+  tape:
+    {"name":"source.length","options":8,"value":3}
+    {"name":"map.depth","options":2,"value":0}
+  exhaust: found after 7 timelines: (first (map f (range 0.0 33.0))): Clojure 1, f called 32 times; jank 1, f called 33 times
+  exhaust's counterexample shrunk to 2 decisions: (first (map f (range 0.0 33.0))): Clojure 1, f called 32 times; jank 1, f called 33 times
+  tape:
+    {"name":"source.length","options":8,"value":3}
+    {"name":"map.depth","options":2,"value":0}
+    (first (map f (range 0.0 1.0))): Clojure 1, f called 1 times; jank 1, f called 1 times
+    (first (map f (map f (range 0.0 1.0)))): Clojure 2, f called 2 times; jank 2, f called 2 times
+    (first (map f (range 0.0 31.0))): Clojure 1, f called 31 times; jank 1, f called 31 times
+    (first (map f (map f (range 0.0 31.0)))): Clojure 2, f called 62 times; jank 2, f called 62 times
+    (first (map f (range 0.0 32.0))): Clojure 1, f called 32 times; jank 1, f called 32 times
+    (first (map f (map f (range 0.0 32.0)))): Clojure 2, f called 64 times; jank 2, f called 64 times
+    (first (map f (range 0.0 33.0))): Clojure 1, f called 32 times; jank 1, f called 33 times
+    (first (map f (map f (range 0.0 33.0)))): Clojure 2, f called 64 times; jank 2, f called 66 times
+    (first (map f (range 0.0 64.0))): Clojure 1, f called 32 times; jank 1, f called 64 times
+    (first (map f (map f (range 0.0 64.0)))): Clojure 2, f called 64 times; jank 2, f called 128 times
+    (first (map f (range 0.0 100.0))): Clojure 1, f called 32 times; jank 1, f called 100 times
+    (first (map f (map f (range 0.0 100.0)))): Clojure 2, f called 64 times; jank 2, f called 200 times
+    (first (map f (range 0.0 1000.0))): Clojure 1, f called 32 times; jank 1, f called 1000 times
+    (first (map f (map f (range 0.0 1000.0)))): Clojure 2, f called 64 times; jank 2, f called 2000 times
+    (first (map f (range 0.0 ##Inf))): Clojure 1, f called 32 times; jank does not terminate (fuel): one nested realization per chunk
+    (first (map f (map f (range 0.0 ##Inf)))): Clojure 2, f called 64 times; jank does not terminate (fuel): one nested realization per chunk
+  table: 10 of 16 programs deviate

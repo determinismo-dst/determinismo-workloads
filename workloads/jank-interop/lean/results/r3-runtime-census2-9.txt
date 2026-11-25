@@ -1,0 +1,65 @@
+lock census: ≤2 threads × ≤1 ops, callback bodies ≤1 ops chosen to depth 0, alphabet 12 ops; excluded classes []; partition (decision prefix) #[1, 9]
+  [3] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared
+  [12] new class: future state exclusive (readers to drain) ⟂ future state shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [13] new class: future state exclusive (kHasE) ⟂ future state upgrade | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [40] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared
+  [202] new class: var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [218] new class: var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [232] new class: delay std::mutex ⟂ delay std::mutex held
+  [243] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | atom watches shared ⟂ atom watches kHasE | join of the future's thread ⟂ the future's thread still running
+  [280] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | atom validator shared ⟂ atom validator kHasE | join of the future's thread ⟂ the future's thread still running
+  [483] new class: atom watches exclusive (kHasE) ⟂ atom watches kHasE+atom watches shared | atom watches exclusive (readers to drain) ⟂ atom watches shared | join of the future's thread ⟂ the future's thread still running
+  [491] new class: atom watches exclusive (readers to drain) ⟂ atom watches shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [760] new class: atom validator exclusive (kHasE) ⟂ atom validator kHasE+atom validator shared | atom validator exclusive (readers to drain) ⟂ atom validator shared | join of the future's thread ⟂ the future's thread still running
+  [851] new class: atom validator exclusive (readers to drain) ⟂ atom validator shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [1402] new class: join of the future's thread ⟂ the future's thread still running | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [1408] new class: future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+  [1898] new class: join of the future's thread ⟂ the future's thread still running | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [1901] new class: future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+  [2152] new class: delay std::mutex ⟂ delay std::mutex held | join of the future's thread ⟂ the future's thread still running
+  [2155] new class: delay std::mutex ⟂ delay std::mutex held | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [2412] new class: future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  [2893] new class: future state upgrade ⟂ future state upgrade | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+  complete after 3120 programs; 21 classes of jank deadlocks that Clojure does not have
+  - 79× atom watches exclusive (readers to drain) ⟂ atom watches shared
+      smallest: watch w = (fn [..] (add-watch a :k w)); thread 0: @f; thread 1: (swap! a inc)
+  - 241× future state exclusive (readers to drain) ⟂ future state shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: thread 0: @f; thread 1: (future-cancel f)
+  - 241× future state exclusive (kHasE) ⟂ future state upgrade | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: thread 0: @f; thread 1: (future-cancelled? f)
+  - 91× atom validator exclusive (readers to drain) ⟂ atom validator shared
+      smallest: validator vf = (fn [..] (set-validator! a vf)); thread 0: @f; thread 1: (swap! a inc)
+  - 16× var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: alter-var-root fn f = (fn [..] (alter-var-root #'v f)); thread 0: @f; thread 1: (alter-var-root #'v f)
+  - 9× var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: var v's meta expression = (fn [..] (meta #'v)); thread 0: @f; thread 1: (meta #'v)
+  - 16× delay std::mutex ⟂ delay std::mutex held
+      smallest: delay d's body = (fn [..] @d); thread 0: @f; thread 1: @d
+  - 18× atom watches exclusive (readers to drain) ⟂ atom watches shared | atom watches shared ⟂ atom watches kHasE | join of the future's thread ⟂ the future's thread still running
+      smallest: watch w = (fn [..] (add-watch a :k w)); future f's body = (fn [..] (swap! a inc)); thread 0: @f; thread 1: (swap! a inc)
+  - 52× atom validator exclusive (readers to drain) ⟂ atom validator shared | atom validator shared ⟂ atom validator kHasE | join of the future's thread ⟂ the future's thread still running
+      smallest: validator vf = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (swap! a inc)); thread 0: @f; thread 1: (swap! a inc)
+  - 9× atom watches exclusive (kHasE) ⟂ atom watches kHasE+atom watches shared | atom watches exclusive (readers to drain) ⟂ atom watches shared | join of the future's thread ⟂ the future's thread still running
+      smallest: watch w = (fn [..] (add-watch a :k w)); future f's body = (fn [..] (add-watch a :k w)); thread 0: @f; thread 1: (swap! a inc)
+  - 45× atom watches exclusive (readers to drain) ⟂ atom watches shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: watch w = (fn [..] @f); future f's body = (fn [..] (add-watch a :k w)); thread 0: @f; thread 1: (swap! a inc)
+  - 13× atom validator exclusive (kHasE) ⟂ atom validator kHasE+atom validator shared | atom validator exclusive (readers to drain) ⟂ atom validator shared | join of the future's thread ⟂ the future's thread still running
+      smallest: validator vf = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (set-validator! a vf)); thread 0: @f; thread 1: (swap! a inc)
+  - 66× atom validator exclusive (readers to drain) ⟂ atom validator shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: validator vf = (fn [..] @f); future f's body = (fn [..] (set-validator! a vf)); thread 0: @f; thread 1: (swap! a inc)
+  - 4× join of the future's thread ⟂ the future's thread still running | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: alter-var-root fn f = (fn [..] (alter-var-root #'v f)); future f's body = (fn [..] (alter-var-root #'v f)); thread 0: @f; thread 1: (alter-var-root #'v f)
+  - 8× future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running | var write_mutex exclusive (kHasE) ⟂ var write_mutex exclusive
+      smallest: alter-var-root fn f = (fn [..] (future-cancel f)); future f's body = (fn [..] (alter-var-root #'v f)); thread 0: @f; thread 1: (alter-var-root #'v f)
+  - 1× join of the future's thread ⟂ the future's thread still running | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: var v's meta expression = (fn [..] (meta #'v)); future f's body = (fn [..] (meta #'v)); thread 0: @f; thread 1: (meta #'v)
+  - 5× future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running | var lazy_meta exclusive (kHasE) ⟂ var lazy_meta exclusive
+      smallest: var v's meta expression = (fn [..] @f); future f's body = (fn [..] (meta #'v)); thread 0: @f; thread 1: (meta #'v)
+  - 4× delay std::mutex ⟂ delay std::mutex held | join of the future's thread ⟂ the future's thread still running
+      smallest: delay d's body = (fn [..] @d); future f's body = (fn [..] @d); thread 0: @f; thread 1: @d
+  - 9× delay std::mutex ⟂ delay std::mutex held | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: delay d's body = (fn [..] (future-cancel f)); future f's body = (fn [..] @d); thread 0: @f; thread 1: @d
+  - 427× future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: future f's body = (fn [..] @f); thread 0: @f; thread 1: (future-cancel f)
+  - 27× future state upgrade ⟂ future state upgrade | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running
+      smallest: future f's body = (fn [..] (future-cancelled? f)); thread 0: @f; thread 1: (future-cancelled? f)

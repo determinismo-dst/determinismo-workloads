@@ -1,0 +1,1305 @@
+/-
+  Operations: table moves, hooks, observers, the command queue, deletion and
+  cleanup, and the public API, transcribed from flecs v4.2.0.  Each function
+  names the C function and lines it follows.
+-/
+import FlecsLean.World
+
+namespace Flecs
+open Std
+
+/-- `world` or a stage (`ecs_get_stage(world, k)`). -/
+inductive Tgt | world | stage (k : Nat)
+  deriving Repr, BEq, Inhabited, DecidableEq
+
+/-- Where `ecs_ensure` on a stage returned its pointer. -/
+inductive EnsurePtr | table (p : W.Ptr) | cmd (k lvl idx : Nat) | null
+  deriving Repr, Inhabited
+
+namespace W
+
+/-! ### Small storage helpers -/
+
+/-- Append `e` at row `count`; columns get a default-constructed value. -/
+def appendRaw (t : Nat) (e : UInt64) : M Nat := do
+  let x ← tbl t
+  let row := x.count
+  let ents := if row < x.ents.size then x.ents.set! row e else x.ents.push e
+  let cols := x.cols.map (fun c => if row < c.size then c.set! row 0 else c.push 0)
+  setTbl t { x with ents, cols, count := row + 1 }
+  return row
+
+/-- `ecs_get_alive` (entity.c 2713-2745) -/
+def ecsGetAlive (e : UInt64) : M UInt64 := do
+  if e == 0 then return 0
+  let ix ← getIx
+  if ix.isAlive e then return e
+  if lo32 e != e then return 0
+  let c := ix.getAlive e
+  if c == 0 || !ix.isAlive c then return 0
+  return c
+
+/-- `ecs_make_alive` (entity.c 2748-2804) -/
+def makeAlive (e : UInt64) : M Unit := do
+  if (← get).mt then fail .invalidOperation "entity.c 2763-2764" "make_alive in multithreaded mode"
+  let cur ← ecsGetAlive (lo32 e)
+  if cur == e then return
+  if cur != 0 then
+    fail .invalidOperation "entity.c 2774-2778" "make_alive: entity is alive with different generation"
+  let ix := (← getIx).makeAlive e
+  let ix ← liftE (ix.ensure e)
+  setIx ix
+  let r ← getRec e
+  if r.table.isSome then fail .internalError "entity.c 2796" "make_alive: record already has a table"
+  let row ← appendRaw 0 e
+  modRec e (fun r => { r with table := some 0, row := row })
+
+/-- `ecs_make_alive_id` (entity.c 2806-2839) -/
+def makeAliveId (id : Id) : M Unit := do
+  if isPair id then
+    let r := pairFirst id
+    let t := pairSecond id
+    if (← getAlive r) == 0 then
+      if (← getIx).exists_ r then
+        fail .invalidParameter "entity.c 2821-2822" "first element of pair is not alive"
+      makeAlive r
+    if (← getAlive t) == 0 then
+      if (← getIx).exists_ t then
+        fail .invalidParameter "entity.c 2828-2829" "second element of pair is not alive"
+      makeAlive t
+  else
+    if (← getAlive id) == 0 then makeAlive id
+
+/-- `flecs_type_new_with` + exclusive replacement (table_graph.c 104-134, 792-867) -/
+def typeWith (type : Array Id) (with_ : Id) : M (Option (Array Id)) := do
+  if isPair with_ then
+    let r := pairFirst with_
+    if (← isExclusive r) then
+      match type.findIdx? (fun i => isPair i && pairFirst i == r) with
+      | some k => return some (type.set! k with_)
+      | none => pure ()
+  if type.contains with_ then return none
+  let lt := type.filter (· < with_)
+  let gt := type.filter (· > with_)
+  return some (lt ++ #[with_] ++ gt)
+
+/-- `flecs_type_new_without` (table_graph.c 136-194) -/
+def typeWithout (type : Array Id) (without : Id) : Option (Array Id) :=
+  match type.findIdx? (fun i => idMatch i without) with
+  | none => none
+  | some _ =>
+    if isWildcard without then some (type.filter (fun i => !idMatch i without))
+    else some (type.filter (· != without))
+
+structure Diff where
+  added : Array Id := #[]
+  removed : Array Id := #[]
+  deriving Repr, Inhabited
+
+def diffOf (src dst : Array Id) : Diff :=
+  { added := dst.filter (fun i => !src.contains i), removed := src.filter (fun i => !dst.contains i) }
+
+/-- `flecs_table_traverse_add` (table_graph.c 1047-1070) through
+    `flecs_table_traverse_dont_fragment` (923-977) and
+    `flecs_find_table_with` (792-867).  Graph edges are not cached: the only
+    behaviour that depends on an edge existing is `ecs_make_alive_id`, which
+    for a pair whose target is dead runs on every path (an edge to a table
+    with a dead target is removed when that table is freed, table.c 1306). -/
+def traverseAdd (t : Nat) (id : Id) : M (Nat × Diff) := do
+  if (← crGet id).isNone then
+    makeAliveId id
+    discard <| crEnsure id
+  makeAliveId id
+  if isPair id then discard <| crEnsure (mkPair (pairFirst id) EcsWildcard)
+  else discard <| crEnsure id
+  let x ← tbl t
+  match (← typeWith x.type id) with
+  | none => return (t, {})
+  | some ty =>
+    let d ← tableEnsure ty
+    return (d, diffOf x.type ty)
+
+/-- `flecs_table_traverse_remove` (table_graph.c 1023-1045) -/
+def traverseRemove (t : Nat) (id : Id) : M (Nat × Diff) := do
+  if (← crGet id).isNone then return (t, {})
+  let x ← tbl t
+  match typeWithout x.type id with
+  | none => return (t, {})
+  | some ty =>
+    let d ← tableEnsure ty
+    return (d, diffOf x.type ty)
+
+/-- `flecs_get_component_ptr` (entity.c 48-96), non-sparse part. -/
+def componentPtr (t : Nat) (row : Nat) (id : Id) : M (Option Ptr) := do
+  if (← crGet id).isNone then return none
+  let x ← tbl t
+  match colIndex x id with
+  | some c => return some { t, col := c, row }
+  | none => return none
+
+/-- the record memory of `e`, without the liveness asserts of
+    `flecs_entities_get` (C code that already holds `ecs_record_t *r` reads it
+    after calls that may have deleted the entity) -/
+def rawRec (e : UInt64) : M Rec := return (← getIx).recOf e
+
+/-- `flecs_get_mut` (entity.c 580-623), on a record the caller holds. -/
+def getMutR (r : Rec) (id : Id) : M (Option Ptr) := do
+  let some t := r.table | fail .internalError "entity.c 601" "flecs_get_mut: record has no table (entity deleted)"
+  if id < HI then
+    let x ← tbl t
+    return (colIndex x id).map (fun c => { t, col := c, row := r.row })
+  componentPtr t r.row id
+
+/-- `flecs_get_mut` (entity.c 580-623) -/
+def getMut (e : UInt64) (id : Id) : M (Option Ptr) := do
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 601" "flecs_get_mut: record has no table"
+  if id < HI then
+    let x ← tbl t
+    return (colIndex x id).map (fun c => { t, col := c, row := r.row })
+  componentPtr t r.row id
+
+/-! ### Command queue plumbing (stage.h 74-85, commands.c 113-133, 1577-1588) -/
+
+def stageCur (k : Nat) : M Nat := return ((← get).stages.getD k default).cur
+def getCmds (k lvl : Nat) : M Cmds := return (((← get).stages.getD k default).levels.getD lvl default)
+def setCmds (k lvl : Nat) (c : Cmds) : M Unit := modify fun w =>
+  { w with stages := w.stages.modify k (fun s => { s with levels := s.levels.set! lvl c }) }
+def modCmds (k lvl : Nat) (f : Cmds → Cmds) : M Unit := do setCmds k lvl (f (← getCmds k lvl))
+
+def commandsBegin (k : Nat) : M Unit := modify fun w =>
+  { w with stages := w.stages.modify k (fun s =>
+      let s := if s.levels.size <= s.cur + 1 then { s with levels := s.levels.push {} } else s
+      { s with cur := s.cur + 1 }) }
+
+def setStageCur (k lvl : Nat) : M Unit := modify fun w =>
+  { w with stages := w.stages.modify k (fun s => { s with cur := lvl }) }
+
+def getEntry (c : Cmds) : ERef → Option Entry
+  | .inl0 => some c.entry
+  | .inl1 => some c.secondEntry
+  | .sp k => c.entries[k]?
+def putEntry (c : Cmds) (r : ERef) (e : Entry) : Cmds :=
+  match r with
+  | .inl0 => { c with entry := e }
+  | .inl1 => { c with secondEntry := e }
+  | .sp k => { c with entries := c.entries.insert k e }
+
+/-- `flecs_cmd_new_batched` (commands.c 38-111).  Appends `mk` and returns its
+    index and entry. -/
+def cmdNewBatched (k : Nat) (e : UInt64) (mk : Cmd) : M (Nat × ERef) := do
+  let lvl ← stageCur k
+  let mut c ← getCmds k lvl
+  let cur := c.queue.size
+  if cur == 0 then
+    c := { c with entity := e, entry := { c.entry with first := -1 }, second := 0, lastEntity := 0 }
+  let mut eref : Option ERef := none
+  if e == c.lastEntity then eref := c.lastEntry
+  else if e == c.entity then eref := some .inl0
+  else if e == c.second then eref := some .inl1
+  else if cur == 1 then
+    c := { c with second := e, secondEntry := { c.secondEntry with first := -1 } }
+    eref := some .inl1
+  else
+    eref := if c.entries.contains (lo32 e) then some (.sp (lo32 e)) else none
+  let mut cmd := { mk with next := 0, entry := none }
+  let mut isNew := false
+  let mut ref : ERef := .sp (lo32 e)
+  match eref with
+  | some er =>
+    ref := er
+    let ent := (getEntry c er).getD {}
+    if ent.first == -1 then
+      c := putEntry c er { ent with first := cur, removed := 0 }
+      cmd := { cmd with entry := some er }
+    else
+      let last := ent.last
+      let lastOp := c.queue.getD last default
+      if lastOp.entity == e then
+        let nxt : Int := if (last : Int) == ent.first then -(cur : Int) else cur
+        c := { c with queue := c.queue.set! last { lastOp with next := nxt } }
+      else
+        isNew := true
+  | none => isNew := true
+  if isNew then
+    ref := .sp (lo32 e)
+    let ent := (c.entries[lo32 e]?).getD {}
+    c := { c with entries := c.entries.insert (lo32 e) { ent with first := cur, removed := 0 } }
+    cmd := { cmd with entry := some ref }
+  let ent := (getEntry c ref).getD {}
+  c := putEntry c ref { ent with last := cur }
+  c := { c with lastEntity := e, lastEntry := some ref, queue := c.queue.push cmd }
+  setCmds k lvl c
+  return (cur, ref)
+
+/-- `flecs_cmd_new` (commands.c 25-36) -/
+def cmdNew (k : Nat) (mk : Cmd) : M Nat := do
+  let lvl ← stageCur k
+  let c ← getCmds k lvl
+  setCmds k lvl { c with queue := c.queue.push { mk with next := 0, entry := none } }
+  return c.queue.size
+
+/-- `flecs_cmd_entry_get` (commands.c 335-354) -/
+def cmdEntryGet (c : Cmds) (e : UInt64) : Option Entry :=
+  let er : Option ERef :=
+    if e == c.lastEntity then c.lastEntry
+    else if e == c.entity then some .inl0
+    else if e == c.second then some .inl1
+    else if c.entries.contains (lo32 e) then some (.sp (lo32 e)) else none
+  match er.bind (getEntry c) with
+  | none => none
+  | some ent =>
+    if ent.first == -1 then none
+    else if (c.queue.getD ent.last default).entity != e then none
+    else some ent
+
+def absI (i : Int) : Nat := i.natAbs
+
+/-- `flecs_defer_has_remove` (commands.c 356-377) -/
+def deferHasRemove (c : Cmds) (ent : Entry) (id : Id) : Bool := _root_.Id.run do
+  let mut cur := ent.first.toNat
+  for _ in [0:c.queue.size + 1] do
+    let cmd := c.queue.getD cur default
+    if cmd.kind == .clear then return true
+    if cmd.kind == .remove && idMatch id cmd.id then return true
+    cur := absI cmd.next
+    if cur == 0 then return false
+  return false
+
+/-- `flecs_defer_skip_removed` (commands.c 379-406) -/
+def deferSkipRemoved (k : Nat) (e : UInt64) (id : Id) (p : Option Ptr) : M (Bool × Option Ptr) := do
+  let c ← getCmds k (← stageCur k)
+  if p.isNone || !c.hasRemove then return (false, p)
+  match cmdEntryGet c e with
+  | none => return (false, p)
+  | some ent =>
+    if ent.removed == 0 then return (false, p)
+    if ent.removed != REMOVED_MANY then
+      if id != ent.removed then return (false, p)
+    else if !deferHasRemove c ent id then return (false, p)
+    return (true, none)
+
+/-- `flecs_defer_find_cmd_value` (commands.c 489-545): index of the command
+    whose storage holds the value. -/
+def deferFindCmdValue (k : Nat) (e : UInt64) (id : Id) : M (Option Nat) := do
+  let c ← getCmds k (← stageCur k)
+  match cmdEntryGet c e with
+  | none => return none
+  | some ent =>
+    let mut cur := ent.first.toNat
+    let mut result : Option Nat := none
+    for _ in [0:c.queue.size + 1] do
+      let cmd := c.queue.getD cur default
+      match cmd.kind with
+      | .set | .ensure => if cmd.id == id then result := some cur
+      | .remove => if idMatch id cmd.id then result := none
+      | .clear | .delete => result := none
+      | _ => pure ()
+      cur := absI cmd.next
+      if cur == 0 then break
+    return result
+
+/-- `flecs_remove_invalid` (commands.c 893-942).  `none`: the entity must be
+    deleted; `some 0`: drop the id; `some id`: keep it. -/
+def removeInvalid (id : Id) : M (Option Id) := do
+  if isPair id then
+    let rel := pairFirst id
+    if !(← isValid rel) then return some 0
+    let tgt := pairSecond id
+    if !(← isValid tgt) then
+      match (← crGet (mkPair rel EcsWildcard)) with
+      | some _ =>
+        match (← policyOf rel) with
+        | .delete => return none
+        | .panic =>
+          fail .constraintViolated "on_delete.c 777-779 via commands.c 917-920"
+            "(OnDelete, Panic) constraint violated (flecs_throw_invalid_delete)"
+        | .remove => return some 0
+      | none => return some 0
+    return some id
+  else
+    if !(← isValid (id &&& COMPONENT_MASK)) then return some 0
+    return some id
+
+end W
+
+/-! ### The re-entrant core -/
+namespace W
+
+def whoOf (self : UInt64) : Who → M UInt64
+  | .self => pure self
+  | .slot i => return (← get).slots.getD i 0
+def idOf (self : UInt64) : IdRef → M Id
+  | .id x => pure x
+  | .pair r t => return mkPair r (← whoOf self t)
+
+def tgtOf : Via → Tgt
+  | .world => .world
+  | .stage => .stage 0
+
+def logEv (hook : Bool) (ev : Ev) (e : UInt64) (id : Id) (v : Option Nat) : M Unit :=
+  modify fun w => { w with log := w.log.push { hook, ev, entity := e, id, val := v } }
+
+def obsFor (ev : Ev) (id : Id) : M (Array Obs) := do
+  return (← get).obs.filter (fun o => o.event == ev && idMatch id o.pattern)
+
+/-- `ecs_new_from_range` (entity_ranges.c 228-267) -/
+def newFromRange (h : Nat) : M UInt64 := do
+  if (← get).mt then fail .invalidOperation "addons/entity_ranges.c 239-240" "cannot create entities in multithreaded mode"
+  let ix ← getIx
+  let r := ix.ranges.getD h default
+  let mut e : UInt64 := 0
+  if ix.active == some h then
+    let (ix', e') ← liftE ix.newId
+    setIx ix'
+    e := e'
+  else if r.recycled.size != 0 then
+    e := r.recycled.back!
+    let ix := ix.modRange h (fun r => { r with recycled := r.recycled.pop })
+    setIx (← liftE (ix.ensure e))
+  else
+    let lim := if r.max != 0 then r.max else 0xFFFFFFFF
+    if !(r.cur < lim) then fail .outOfRange "addons/entity_ranges.c 254-255" "range exhausted"
+    e := r.cur + 1
+    let ix := ix.modRange h (fun r => { r with cur := e })
+    if ix.exists_ e then fail .invalidOperation "addons/entity_ranges.c 257-259" s!"new entity {e} id already in use"
+    setIx (← liftE (ix.ensure e))
+  let r ← getRec e
+  if r.table.isSome then fail .internalError "entity.c 660" "add_to_root_table: record already has a table"
+  let row ← appendRaw 0 e
+  modRec e (fun r => { r with table := some 0, row := row })
+  return e
+
+def checkAlive (e : UInt64) (fn : String) : M Unit := do
+  if e == 0 || !(← isAlive e) then
+    fail .invalidParameter "entity.h 18-23" s!"invalid entity passed to {fn}()"
+
+/-- Alive entities that hold `(R, e)` for a relationship `R` with the
+    (OnDeleteTarget, Panic) trait (ComponentTraits.md, OnDeleteTarget). -/
+def panicHolders (e : UInt64) : M (Array UInt64) := do
+  let w ← get
+  let panics := w.odt.toList.filter (fun (_, p) => p == .panic) |>.map (·.1)
+  let mut out := #[]
+  for i in [1:w.ix.alive] do
+    let x := w.ix.denseAt i
+    let r := w.ix.recOf x
+    if let some t := r.table then
+      let ty := (w.tables.getD t default).type
+      if ty.any (fun id => isPair id && pairSecond id == lo32 e && panics.contains (pairFirst id)) then
+        out := out.push x
+  return out
+
+mutual
+
+/-- Run a hook/observer body for one entity. -/
+partial def runActs (self : UInt64) (val : Option Nat) : List Act → M Unit
+  | [] => pure ()
+  | a :: rest => do
+    tick
+    match a with
+    | .add v w x => apiAdd (tgtOf v) (← whoOf self w) (← idOf self x)
+    | .remove v w x => apiRemove (tgtOf v) (← whoOf self w) (← idOf self x)
+    | .set v w x n => apiSet (tgtOf v) (← whoOf self w) (← idOf self x) n
+    | .delete v w => apiDelete (tgtOf v) (← whoOf self w)
+    | .whenVal n b => if val == some n then runActs self val [b] else pure ()
+    runActs self val rest
+
+/-- `flecs_invoke_hook` (component_actions.c 16-69): locks the table for
+    OnAdd/OnRemove only. -/
+partial def invokeHook (t : Nat) (ents : Array UInt64) (row : Nat) (id : Id) (ev : Ev)
+    (acts : List Act) (ptr : Option Ptr) : M Unit := do
+  let lockIt := ev == .onAdd || ev == .onRemove
+  if lockIt then lockT t
+  for i in [0:ents.size] do
+    let e := ents.getD i 0
+    let v ← match ptr with
+      | some p => some <$> readPtr p
+      | none => do
+        let x ← tbl t
+        match colIndex x id with
+        | some c => pure ((x.cols.getD c #[])[row + i]?)
+        | none => pure none
+    logEv true ev e id v
+    if ev == .onAdd && (← get).checkHookView then
+      let r ← rawRec e
+      let w ← get
+      let inTable := match r.table with
+        | some tt => ((w.tables.getD tt default).type.contains id)
+        | none => false
+      if !inTable then
+        modify fun w => { w with viol := w.viol.push s!"view: inside the on_add hook for {id}, entity {e} does not have it (record still in its old table)" }
+    runActs e v acts
+  if lockIt then unlockT t
+
+/-- `flecs_emit` (observable.c 1009-1376) for single-term, self-source
+    observers: for each id, the observers that match it; skipped when the
+    table has no record for the id (1265-1274).  The table is locked while
+    observers run (observer.c 488-525). -/
+partial def emit (ev : Ev) (ids : Array Id) (t : Nat) (row count : Nat) (setPtr : Option Ptr)
+    (expect : Option UInt64 := none) : M Unit := do
+  for id in ids do
+    if id != EcsAny && isWildcard id then continue
+    if (← crGet id).isNone then continue
+    let os ← obsFor ev id
+    if os.isEmpty then continue
+    let x ← tbl t
+    if !tableHas x id && !(isPair id && pairFirst id == EcsChildOf) then continue
+    lockT t
+    for o in os do
+      for i in [0:count] do
+        let e ← tableEnt t (row + i)
+        let v ← match setPtr with
+          | some p => if ids.size == 1 then some <$> readPtr p else pure none
+          | none => do
+            let x ← tbl t
+            match colIndex x id with
+            | some c => pure ((x.cols.getD c #[])[row + i]?)
+            | none => pure none
+        logEv false ev e id v
+        if ev == .onAdd || ev == .onRemove then
+          let w ← get
+          let r := w.ix.recOf e
+          let holds := w.ix.isAlive e && (match r.table with
+            | some tt => (w.tables.getD tt default).type.contains id
+            | none => false)
+          if !holds then
+            modify fun w => { w with viol := w.viol.push s!"{repr ev} observer for id {id} invoked for entity {e}, which does not have the id" }
+        if let some x := expect then
+          if x != e then
+            modify fun w => { w with viol := w.viol.push s!"OnSet observer for id {id} invoked for entity {e}, but the set was on entity {x}" }
+        runActs e v o.acts
+    unlockT t
+
+/-- `flecs_notify_on_set_w_cr` (component_actions.c 641-702) -/
+partial def notifyOnSet (t : Nat) (row : Nat) (id : Id) (invokeHook_ : Bool) (ptr : Option Ptr) : M Unit := do
+  let x ← tbl t
+  let ent := x.ents.getD row 0
+  if invokeHook_ then
+    if let some acts := (← hooksOf id).onSet then
+      if !(tableHas x id) then fail .internalError "component_actions.c 679" "on_set hook: table has no record"
+      invokeHook t #[ent] row id .onSet acts ptr
+  emit .onSet #[id] t row 1 ptr (some ent)
+
+/-- `flecs_table_grow_data` (table.c 1521-1589) for one entity. -/
+partial def tableAppend (t : Nat) (e : UInt64) (onAdd : Bool) : M Nat := do
+  let x ← tbl t
+  if x.lock != 0 then fail .lockedStorage "storage/table.c 1529-1530" "table append on locked table"
+  let row ← appendRaw t e
+  if (← isComplex x) && onAdd then
+    lockT t
+    for c in x.colIds do
+      if let some acts := (← hooksOf c).onAdd then
+        invokeHook t #[e] row c .onAdd acts none
+    unlockT t
+  return row
+
+/-- `flecs_table_delete` (table.c 1653-1784) -/
+partial def tableDelete (t : Nat) (row : Nat) (destruct : Bool) : M Unit := do
+  let x ← tbl t
+  if x.lock != 0 then fail .lockedStorage "storage/table.c 1661-1662" "table delete on locked table"
+  if x.count == 0 then fail .internalError "storage/table.c 1667" "delete from empty table"
+  let last := x.count - 1
+  if row > last then fail .internalError "storage/table.c 1669" "row out of range"
+  let toMove := x.ents.getD last 0
+  let toDelete := x.ents.getD row 0
+  setTbl t { x with ents := x.ents.set! row toMove }
+  if row != last then
+    let r ← getRec toMove
+    modRec toMove (fun r => { r with row := row })
+    if r.table != some t then fail .internalError "storage/table.c 1683-1684" "moved record not in table"
+  let x ← tbl t
+  let moveLast := fun (x : Table) => { x with cols := x.cols.map (fun c => c.set! row (c.getD last 0)) }
+  if !(← isComplex x) then
+    let x := if row != last then moveLast x else x
+    setTbl t { x with count := last }
+    return
+  lockT t
+  if row == last then
+    if destruct && (← hasDtors x) then
+      for c in x.colIds do
+        if let some acts := (← hooksOf c).onRemove then
+          invokeHook t #[toDelete] row c .onRemove acts none
+  else
+    if (← hasDtors x) then
+      if destruct then
+        for c in x.colIds do
+          if let some acts := (← hooksOf c).onRemove then
+            invokeHook t #[toDelete] row c .onRemove acts none
+    modTbl t moveLast
+  unlockT t
+  modTbl t (fun x => { x with count := last })
+
+/-- `flecs_table_move` (table.c 1817-1922) -/
+partial def tableMove (e : UInt64) (dst : Nat) (dstRow : Nat) (src : Nat) (srcRow : Nat) : M Unit := do
+  let d ← tbl dst
+  let s ← tbl src
+  if d.lock != 0 || s.lock != 0 then fail .lockedStorage "storage/table.c 1829-1830" "move on locked table"
+  let copyCol : Id → Id → M Unit := fun did sid => do
+    let d ← tbl dst
+    let s ← tbl src
+    match colIndex d did, colIndex s sid with
+    | some dc, some sc =>
+      let v := (s.cols.getD sc #[]).getD srcRow 0
+      setTbl dst { d with cols := d.cols.modify dc (fun col => col.set! dstRow v) }
+    | _, _ => pure ()
+  if !(← isComplex d) && !(← isComplex s) then
+    for c in d.colIds do
+      if s.colIds.contains c then copyCol c c
+    return
+  lockT dst
+  lockT src
+  let mut i := 0
+  let mut j := 0
+  while i < d.colIds.size && j < s.colIds.size do
+    let did := d.colIds.getD i 0
+    let sid := s.colIds.getD j 0
+    if did == sid then copyCol did sid
+    else if did < sid then
+      if let some acts := (← hooksOf did).onAdd then invokeHook dst #[e] dstRow did .onAdd acts none
+    else
+      if let some acts := (← hooksOf sid).onRemove then invokeHook src #[e] srcRow sid .onRemove acts none
+    if did <= sid then i := i + 1
+    if did >= sid then j := j + 1
+  while i < d.colIds.size do
+    let did := d.colIds.getD i 0
+    if let some acts := (← hooksOf did).onAdd then invokeHook dst #[e] dstRow did .onAdd acts none
+    i := i + 1
+  while j < s.colIds.size do
+    let sid := s.colIds.getD j 0
+    if let some acts := (← hooksOf sid).onRemove then invokeHook src #[e] srcRow sid .onRemove acts none
+    j := j + 1
+  unlockT src
+  unlockT dst
+
+/-- `flecs_move_entity` (entity.c 150-207) -/
+partial def moveEntity (e : UInt64) (dst : Nat) (diff : Diff) : M Unit := do
+  let r ← getRec e
+  let some src := r.table | fail .internalError "entity.c 162" "move: no source table"
+  if src == dst then fail .internalError "entity.c 163" "move to same table"
+  -- flecs_actions_move_remove (component_actions.c 435-502): OnRemove observers
+  if !diff.removed.isEmpty then emit .onRemove diff.removed src r.row 1 none
+  let r ← getRec e
+  let srcRow := r.row
+  let dstRow := (← tbl dst).count
+  discard <| tableAppend dst e false
+  tableMove e dst dstRow src srcRow
+  modRec e (fun r => { r with table := some dst, row := dstRow })
+  tableDelete src srcRow false
+  -- flecs_actions_move_add (component_actions.c 404-433): OnAdd observers
+  if !diff.added.isEmpty then emit .onAdd diff.added dst dstRow 1 none
+
+/-- `flecs_commit` (entity.c 209-258) -/
+partial def commit (e : UInt64) (dst : Nat) (diff : Diff) : M Unit := do
+  if (← get).readonly then fail .internalError "entity.c 218" "commit while world is readonly"
+  let r ← getRec e
+  if r.table == some dst then return
+  moveEntity e dst diff
+
+/-- `flecs_add_id_now` (entity.c 421-435) -/
+partial def addIdNow (e : UInt64) (id : Id) : M Unit := do
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 427" "no table"
+  let (d, diff) ← traverseAdd t id
+  commit e d diff
+
+/-- `flecs_remove_id_now` (entity.c 452-465) -/
+partial def removeIdNow (e : UInt64) (id : Id) : M Unit := do
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 458" "no table"
+  let (d, diff) ← traverseRemove t id
+  commit e d diff
+
+/-- `flecs_add_id_w_record` (entity.c 395-419) -/
+partial def addIdWRecord (e : UInt64) (id : Id) : M Unit := do
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 404" "no table"
+  let (d, diff) ← traverseAdd t id
+  let prev := (← get).ensureAdd
+  modify fun w => { w with ensureAdd := some (e, #[id]) }
+  commit e d diff
+  modify fun w => { w with ensureAdd := prev }
+
+/-- `flecs_commands_end` (commands.c 1577-1588) -/
+partial def commandsEnd (k : Nat) : M Unit := do
+  let lvl ← stageCur k
+  if lvl == 0 then fail .internalError "commands.c 1582" "commands_end without begin"
+  if (← getCmds k lvl).queue.size != 0 then
+    discard <| flush k
+  setStageCur k (lvl - 1)
+
+/-- `flecs_ensure` (entity.c 507-578) -/
+partial def ensureNow (e : UInt64) (id : Id) : M (Option Ptr) := do
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 520" "ensure: no table"
+  let x ← tbl t
+  if id < HI then
+    if let some c := colIndex x id then return some { t, col := c, row := r.row }
+  else
+    if let some p ← componentPtr t r.row id then return some p
+  addIdWRecord e id
+  commandsEnd 0
+  commandsBegin 0
+  if (← crGet id).isNone then fail .internalError "entity.c 568" "ensure: record missing"
+  let r ← rawRec e
+  let some t := r.table | fail .internalError "entity.c 575" "ensure: r->table is NULL after the flush (entity deleted by a hook/observer)"
+  componentPtr t r.row id
+
+/-- `flecs_modified_id_if` (entity.c 1854-1887) -/
+partial def modifiedIdIf (e : UInt64) (id : Id) (invoke : Bool) : M Unit := do
+  if !(← isAlive e) then fail .invalidParameter "entity.c 1861" "modified: entity not alive"
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 1869" "no table"
+  let p ← componentPtr t r.row id
+  match p with
+  | none => return
+  | some p => notifyOnSet t r.row id invoke (some p)
+
+/-- `flecs_set_id_move` (entity.c 1931-1979) for Set/Ensure commands. -/
+partial def setIdMove (e : UInt64) (id : Id) (v : Nat) (isSet : Bool) : M Unit := do
+  let some p ← ensureNow e id | fail .invalidParameter "entity.c 1943" "set_id_move: no storage after ensure"
+  let r ← getRec e
+  let some t := r.table | fail .internalError "entity.c 1950" "no table"
+  lockT t
+  writePtr p v
+  unlockT t
+  if isSet then
+    let x ← tbl t
+    let hasObs := !(← obsFor .onSet id).isEmpty && tableHas x id
+    if hasObs || (← hooksOf id).onSet.isSome then
+      notifyOnSet t r.row id true (some p)
+
+/-- `flecs_cmd_batch_for_entity` (commands.c 968-1298).  Mutates the queue
+    level `lvl` of stage `k` in place, as the C code does. -/
+partial def batchForEntity (k lvl : Nat) (e : UInt64) (start : Nat) : M Unit := do
+  let r ← getRec e
+  let some startTable := r.table | fail .internalError "commands.c 979" "batch: no table"
+  let mut table := startTable
+  let mut setIds : Array Id := #[]
+  let mut hasSet := false
+  let mut cur := start
+  let mut split := 0
+  let mut added : Array Id := #[]
+  let mut removed : Array Id := #[]
+  let setKind := fun (i : Nat) (kind : CK) => modCmds k lvl (fun c =>
+    { c with queue := c.queue.modify i (fun cmd => { cmd with kind := kind }) })
+  for _ in [0:4096] do
+    let cmd := (← getCmds k lvl).queue.getD cur default
+    let id := cmd.id
+    let mut nextE := absI cmd.next
+    let mut skipRest := false
+    if id != 0 then
+      match (← removeInvalid id) with
+      | none =>
+        setKind cur .skip
+        apiDelete .world e
+        return
+      | some x =>
+        if x == 0 then
+          setKind cur .skip
+          skipRest := true
+    if !skipRest then
+      let kind := cmd.kind
+      let mut inTable := false
+      let mut doSplit := false
+      if kind == .add || kind == .addModified || kind == .set || kind == .ensure then
+        let x ← tbl table
+        let crId ← crGet id
+        if id < HI then inTable := tableHas x id
+        else if !removed.isEmpty then
+          inTable := crId.isSome && tableHas x id
+        if !inTable && !removed.isEmpty then
+          let sx ← tbl startTable
+          let crOk := if id < HI then true else crId.isSome
+          if crOk && tableHas sx id then doSplit := true
+      if doSplit then
+        split := cur
+        break
+      match kind with
+      | .addModified =>
+        setKind cur .modified
+        if !inTable then
+          let (d, df) ← traverseAdd table id
+          table := d
+          added := added ++ df.added
+          removed := removed ++ df.removed
+      | .add =>
+        if !inTable then
+          let (d, df) ← traverseAdd table id
+          table := d
+          added := added ++ df.added
+          removed := removed ++ df.removed
+        setKind cur .skip
+      | .set | .ensure =>
+        if !inTable then
+          let (d, df) ← traverseAdd table id
+          table := d
+          added := added ++ df.added
+          removed := removed ++ df.removed
+        setIds := setIds.push id
+        hasSet := true
+      | .remove =>
+        let (d, df) ← traverseRemove table id
+        table := d
+        added := added ++ df.added
+        removed := removed ++ df.removed
+        setKind cur .skip
+      | .clear =>
+        let x ← tbl table
+        removed := removed ++ x.type
+        table := 0
+        setKind cur .skip
+      | .delete => nextE := 0
+      | _ => pure ()
+    cur := nextE
+    if cur == 0 then break
+  -- commit without the added ids (commands.c 1138-1159)
+  let prev := (← get).ensureAdd
+  if !setIds.isEmpty then modify fun w => { w with ensureAdd := some (e, setIds) }
+  commandsBegin 0
+  commit e table { added := #[], removed := removed }
+  commandsEnd 0
+  modify fun w => { w with ensureAdd := prev }
+  -- copy values of set/ensure commands (commands.c 1179-1275)
+  if hasSet then
+    let mut cur2 := start
+    for _ in [0:4096] do
+      let cmd := (← getCmds k lvl).queue.getD cur2 default
+      let mut nextE := absI cmd.next
+      match cmd.kind with
+      | .set | .ensure =>
+        match (← getMutR (← rawRec e) cmd.id) with
+        | some p =>
+          let r ← rawRec e
+          let some t := r.table | fail .internalError "commands.c 1222" "no table"
+          lockT t
+          writePtr p (cmd.value.getD 0)
+          unlockT t
+          modCmds k lvl (fun c => { c with queue := c.queue.modify cur2 (fun cm =>
+            { cm with value := none, kind := if cm.kind == .set then .modified else .skip }) })
+        | none => setKind cur2 .skip
+      | .delete => nextE := 0
+      | _ => pure ()
+      cur2 := nextE
+      if cur2 == 0 || cur2 == split then break
+  let r ← rawRec e
+  let some t := r.table | fail .internalError "commands.c 1277" "batch: r->table is NULL after commit (entity deleted by a hook/observer)"
+  if !added.isEmpty then
+    commandsBegin 0
+    emit .onAdd added t r.row 1 none
+    commandsEnd 0
+  if split != 0 then
+    modCmds k lvl (fun c => { c with queue := c.queue.modify split (fun cm => { cm with next := -cm.next }) })
+
+/-- `flecs_commands_flush` (commands.c 1300-1575) -/
+partial def flush (k : Nat) : M Bool := do
+  let root ← stageCur k
+  if (← getCmds k root).queue.size == 0 then return false
+  let dst := 0
+  let mut commands := root
+  let mut i := 0
+  let mut entering := true
+  for _ in [0:100000] do
+    if entering then
+      commandsBegin k
+      if dst != k then commandsBegin dst
+      i := 0
+      entering := false
+    let count := (← getCmds k commands).queue.size
+    -- resume: process commands i..count
+    let mut nested := false
+    while i < count do
+      tick
+      let cmd := (← getCmds k commands).queue.getD i default
+      if cmd.kind == .skip && cmd.value.isNone then
+        if let some er := cmd.entry then
+          modCmds k commands (fun c => putEntry c er { (getEntry c er).getD {} with first := -1 })
+        i := i + 1
+        continue
+      let e := cmd.entity
+      let mut alive ← isAlive e
+      if cmd.next < 0 && !(← get).noBatch then
+        if alive then
+          batchForEntity k commands e i
+          alive ← isAlive e
+      let cmd := (← getCmds k commands).queue.getD i default
+      if let some er := cmd.entry then
+        modCmds k commands (fun c => putEntry c er { (getEntry c er).getD {} with first := -1 })
+      let kind := cmd.kind
+      if kind == .skip || (e != 0 && !alive) then
+        pure ()  -- discard
+      else
+        match kind with
+        | .add =>
+          let x ← tbl ((← getRec e).table.getD 0)
+          if cmd.id < HI && tableHas x cmd.id then pure ()
+          else
+            match (← removeInvalid cmd.id) with
+            | some id =>
+              if id != 0 then
+                commandsBegin 0
+                addIdNow e id
+                commandsEnd 0
+            | none => apiDelete .world e
+        | .remove => removeIdNow e cmd.id
+        | .set => setIdMove e cmd.id (cmd.value.getD 0) true
+        | .ensure => setIdMove e cmd.id (cmd.value.getD 0) false
+        | .modified => modifiedIdIf e cmd.id true
+        | .addModified =>
+          commandsBegin 0
+          addIdNow e cmd.id
+          commandsEnd 0
+          modifiedIdIf e cmd.id true
+        | .delete => apiDelete .world e
+        | .clear => apiClear .world e
+        | .onDeleteAction =>
+          commandsBegin 0
+          onDelete cmd.id (some cmd.action) false false
+          commandsEnd 0
+        | .skip => pure ()
+      -- next:
+      if dst != k then
+        let dl ← stageCur dst
+        if (← getCmds dst dl).queue.size != 0 then
+          discard <| flush dst
+      let sc ← stageCur k
+      if (← getCmds k sc).queue.size != 0 then
+        modCmds k commands (fun c => { c with cursor := i + 1 })
+        commands := sc
+        nested := true
+        break
+      i := i + 1
+    if nested then
+      entering := true
+      continue
+    -- end of this level
+    if dst != k then commandsEnd dst
+    setStageCur k commands
+    modCmds k commands (fun c => { c with queue := #[], hasRemove := false })
+    if commands != root then
+      commands := commands - 1
+      i := (← getCmds k commands).cursor
+      continue
+    return true
+  fail .internalError "model" "flush did not terminate"
+
+-- ### Cleanup (on_delete.c)
+
+/-- `flecs_marked_id_push` (on_delete.c 8-25) -/
+partial def markedPush (id : Id) (action : Option Policy) (deleteId : Bool) : M Unit := do
+  let some c ← crGet id | fail .internalError "on_delete.c 14" "mark: no record"
+  crSet { c with marked := true, refcount := c.refcount + 1 }
+  modify fun w => { w with marked := w.marked.push { id, action, deleteId } }
+
+/-- delete action for one table (`flecs_get_delete_action`, on_delete.c
+    111-152): the policies of the table's pairs matching `id`, in type order,
+    folded by `deleteAction`. -/
+partial def deleteActionFor (x : Table) (id : Id) (action : Option Policy) (deleteTarget : Bool) : M (Option Policy) := do
+  match action with
+  | some a => return some a
+  | none =>
+    if !deleteTarget then return none
+    let mut ps : List Policy := []
+    for i in x.type do
+      if idMatch i id then ps := ps ++ [← policyOf (pairFirst i)]
+    return deleteAction ps
+
+/-- `flecs_target_mark_for_delete` (on_delete.c 51-84) -/
+partial def targetMarkForDelete (e : UInt64) : M Unit := do
+  let r ← getRec e
+  if !hasFlag r.flags FIsId && !hasFlag r.flags FIsTarget then return
+  if hasFlag r.flags FIsId then
+    if let some _ ← crGet e then componentMarkForDelete e none true
+    if let some _ ← crGet (mkPair e EcsWildcard) then componentMarkForDelete (mkPair e EcsWildcard) none true
+  if hasFlag r.flags FIsTarget then
+    if let some _ ← crGet (mkPair EcsWildcard e) then
+      componentMarkForDelete (mkPair EcsWildcard e) none true
+
+/-- `flecs_component_mark_for_delete` (on_delete.c 346-430) -/
+partial def componentMarkForDelete (id : Id) (action : Option Policy) (deleteId : Bool) : M Unit := do
+  let some c ← crGet id | return
+  if c.marked then return
+  markedPush id action deleteId
+  let deleteTarget := action.isNone && isPair id && pairFirst id == EcsWildcard
+  let some c ← crGet id | return
+  for t in c.cache do
+    let x ← tbl t
+    if x.count == 0 then continue
+    if x.marked then continue
+    let cur ← deleteActionFor x id action deleteTarget
+    if cur == some .delete then
+      modTbl t (fun x => { x with marked := true })
+      for i in [0:x.count] do
+        targetMarkForDelete (x.ents.getD i 0)
+    else if cur == some .panic then
+      fail .constraintViolated "on_delete.c 395-397" "(OnDelete, Panic) constraint violated"
+  let some c ← crGet id | return
+  for t in c.cache do
+    let x ← tbl t
+    if x.count == 0 then modTbl t (fun x => { x with marked := true })
+  if isWildcard id && isPair id then
+    for ch in (← crChildren id) do
+      if let some cc ← crGet ch then crSet { cc with marked := true }
+
+/-- `flecs_on_delete_mark` (on_delete.c 432-463) -/
+partial def onDeleteMark (id : Id) (action : Option Policy) (deleteId : Bool) : M Unit := do
+  let some _ ← crGet id | return
+  let mut action := action
+  if action.isNone then
+    if !isPair id || pairSecond id == EcsWildcard then
+      action := none  -- ECS_ID_ON_DELETE: components/relationships default Remove
+  componentMarkForDelete id action deleteId
+
+/-- `flecs_remove_from_table` (on_delete.c 465-556) -/
+partial def removeFromTable (t : Nat) : M Unit := do
+  let x ← tbl t
+  if x.type.isEmpty then return
+  let ms := (← get).marked
+  let mut rm : Array Id := #[]
+  for m in ms do
+    for i in x.type do
+      if idMatch i m.id && !rm.contains i then rm := rm.push i
+  if rm.isEmpty then return
+  let dstType := x.type.filter (fun i => !rm.contains i)
+  let removed := x.type.filter (fun i => rm.contains i)
+  let d ← tableEnsure dstType
+  if d == t then fail .internalError "on_delete.c 525" "dst == src"
+  let x ← tbl t
+  if x.count != 0 then emit .onRemove removed t 0 x.count none
+  tableMerge d t
+
+/-- `flecs_table_merge` (table.c 2103-2205) -/
+partial def tableMerge (d s : Nat) : M Unit := do
+  let sx ← tbl s
+  let dx ← tbl d
+  if sx.lock != 0 || dx.lock != 0 then fail .lockedStorage "storage/table.c 2108-2111" "merge on locked table"
+  if sx.count == 0 then return
+  for i in [0:sx.count] do
+    let e := sx.ents.getD i 0
+    discard <| getRec e
+    modRec e (fun r => { r with table := some d, row := dx.count + i })
+  let mut dx := dx
+  for i in [0:sx.count] do
+    let e := sx.ents.getD i 0
+    dx := { dx with ents := if dx.count + i < dx.ents.size then dx.ents.set! (dx.count + i) e else dx.ents.push e }
+  let cols := dx.colIds.mapIdx (fun ci cid =>
+    let base := (dx.cols.getD ci #[]).extract 0 dx.count
+    let srcCol := match colIndex sx cid with
+      | some sc => (sx.cols.getD sc #[]).extract 0 sx.count
+      | none => Array.replicate sx.count 0
+    base ++ srcCol)
+  setTbl d { dx with cols, count := dx.count + sx.count }
+  setTbl s { sx with count := 0 }
+
+/-- `flecs_table_fini_data(world, table, true, false)` = clear entities
+    (table.c 1141-1226, 1070-1133) -/
+partial def tableClearEntities (t : Nat) : M Unit := do
+  let x ← tbl t
+  if x.lock != 0 then fail .lockedStorage "storage/table.c 1147" "table data cleanup while locked"
+  if x.count != 0 then
+    emit .onRemove x.type t 0 x.count none
+  let x ← tbl t
+  let count := x.count
+  if count == 0 then return
+  let ents := x.ents.extract 0 count
+  if (← hasDtors x) then
+    for c in x.colIds do
+      if let some acts := (← hooksOf c).onRemove then
+        invokeHook t ents 0 c .onRemove acts none
+  for e in ents do
+    if !(← isValid e) then fail .internalError "storage/table.c 1112-1113" "entity being cleared is not valid"
+    let ix ← liftE ((← getIx).remove e)
+    setIx ix
+  modTbl t (fun x => { x with count := 0 })
+
+/-- `flecs_on_delete_clear_entities` (on_delete.c 558-668) -/
+partial def onDeleteClearEntities : M Unit := do
+  let mut last := (← get).marked.size
+  let mut first := 0
+  for _ in [0:64] do
+    let mut i := last
+    while i > first do
+      i := i - 1
+      let m := (← get).marked.getD i default
+      let some c ← crGet m.id | continue
+      -- iterate a snapshot of the cache (flecs_table_cache_iter takes the
+      -- array pointer and count at the start, table_cache.c 255-269)
+      for t in c.cache do
+        let w ← get
+        let some x := w.tables[t]? | continue
+        if !x.live || x.count == 0 then continue
+        if m.action == some .remove || !x.marked then removeFromTable t
+        else tableClearEntities t
+    let newLast := (← get).marked.size
+    if newLast != last then
+      first := last
+      last := newLast
+    else break
+
+/-- `flecs_on_delete_clear_ids` (on_delete.c 688-768) -/
+partial def onDeleteClearIds : M Unit := do
+  for pass in [0:2] do
+    for m in (← get).marked do
+      let wc := isWildcard m.id
+      if pass == 0 && wc then continue
+      if pass == 1 && !wc then continue
+      let some c ← crGet m.id | continue
+      -- flecs_component_release_tables (component_index.c 753-776)
+      let mut remaining := false
+      for t in c.cache do
+        let x ← tbl t
+        if x.count != 0 then remaining := true
+        else tableFini t
+      if remaining then
+        if let some c ← crGet m.id then crSet { c with marked := false }
+        discard <| crRelease m.id
+      else
+        let rc ← crRelease m.id
+        if rc != 0 then
+          if m.deleteId then discard <| crRelease m.id
+          else if let some c ← crGet m.id then crSet { c with marked := false }
+
+/-- `flecs_on_delete` (on_delete.c 786-827) -/
+partial def onDelete (id : Id) (action : Option Policy) (deleteId : Bool) (force : Bool) : M Unit := do
+  let _ := force
+  let count := (← get).marked.size
+  onDeleteMark id action deleteId
+  if count == 0 && (← get).marked.size != 0 then
+    onDeleteClearEntities
+    onDeleteClearIds
+    modify fun w => { w with marked := #[] }
+
+-- ### Public API (entity.c)
+
+/-- `ecs_new` (entity.c 701-712) -/
+partial def apiNew (tg : Tgt) : M UInt64 := do
+  let _ := tg
+  if (← get).mt then fail .invalidOperation "entity.c 117-118" "cannot create entities in multithreaded mode"
+  let (ix, e) ← liftE ((← getIx).newId)
+  setIx ix
+  let r ← getRec e
+  if r.table.isSome then fail .internalError "entity.c 660" "new: record already has a table"
+  let row ← appendRaw 0 e
+  modRec e (fun r => { r with table := some 0, row := row })
+  return e
+
+/-- `ecs_add_id` / `flecs_add_id` (entity.c 1409-1420, 437-450) -/
+partial def apiAdd (tg : Tgt) (e : UInt64) (id : Id) : M Unit := do
+  checkAlive e "add"
+  match tg with
+  | .stage k =>
+    discard <| cmdNewBatched k e { kind := .add, id, entity := e }
+  | .world =>
+    commandsBegin 0
+    addIdNow e id
+    commandsEnd 0
+
+/-- `ecs_remove_id` / `flecs_remove_id` (entity.c 1422-1442, 467-480, commands.c 308-333) -/
+partial def apiRemove (tg : Tgt) (e : UInt64) (id : Id) : M Unit := do
+  checkAlive e "remove"
+  match tg with
+  | .stage k =>
+    let (_, er) ← cmdNewBatched k e { kind := .remove, id, entity := e }
+    let lvl ← stageCur k
+    modCmds k lvl (fun c =>
+      let ent := (getEntry c er).getD {}
+      let rem := if (ent.removed == 0 || ent.removed == id) && !isWildcard id then id else REMOVED_MANY
+      { (putEntry c er { ent with removed := rem }) with hasRemove := true })
+  | .world =>
+    commandsBegin 0
+    removeIdNow e id
+    commandsEnd 0
+
+/-- `ecs_set_id` (entity.c 1981-2033); staged: `flecs_defer_set_impl`
+    (commands.c 629-712). -/
+partial def apiSet (tg : Tgt) (e : UInt64) (id : Id) (v : Nat) : M Unit := do
+  checkAlive e "set"
+  if !hasTypeInfo id then fail .invalidParameter "commands.c 657-658" "provided component is not a type"
+  match tg with
+  | .stage k =>
+    discard <| getRec e
+    let mut p ← getMut e id
+    if p.isNone && (← crGet id).isNone && !(← get).mt then
+      discard <| crEnsure id
+    let (_, p') ← deferSkipRemoved k e id p
+    p := p'
+    let (idx, _) ← cmdNewBatched k e { kind := .add, id, entity := e }
+    let lvl ← stageCur k
+    if (← get).stages.size != 1 then p := none
+    let setCmd := fun (kind : CK) (val : Option Nat) =>
+      modCmds k lvl (fun c => { c with queue := c.queue.modify idx (fun cm => { cm with kind := kind, value := val }) })
+    if id < HI && !(← nonTrivialSet id) then
+      match p with
+      | none => setCmd .ensure (some v)
+      | some ptr =>
+        setCmd .add none
+        writePtr ptr v
+      return
+    match p with
+    | none => setCmd .set (some v)
+    | some ptr =>
+      setCmd .addModified none
+      let r ← getRec e
+      let t := r.table.getD 0
+      lockT t
+      writePtr ptr v
+      unlockT t
+  | .world =>
+    commandsBegin 0
+    let some p ← ensureNow e id | fail .invalidParameter "entity.c 2016" "set: ensure returned NULL"
+    if id < HI && !(← nonTrivialSet id) then
+      writePtr p v
+    else
+      -- flecs_copy_id (entity.c 810-840)
+      let r ← getRec e
+      let t := r.table.getD 0
+      lockT t
+      writePtr p v
+      unlockT t
+      let r ← getRec e
+      notifyOnSet (r.table.getD 0) r.row id true (some p)
+    commandsEnd 0
+
+/-- `ecs_ensure_id` followed by a write through the returned pointer
+    (entity.c 1722-1759; staged: commands.c 547-627). -/
+partial def apiEnsureWrite (tg : Tgt) (e : UInt64) (id : Id) (v : Nat) : M Unit := do
+  checkAlive e "ensure"
+  if !hasTypeInfo id then fail .invalidParameter "commands.c 562-563" "provided component is not a type"
+  match tg with
+  | .stage k =>
+    discard <| getRec e
+    let mut p ← getMut e id
+    if p.isNone && (← crGet id).isNone && !(← get).mt then
+      discard <| crEnsure id
+    let (_, p') ← deferSkipRemoved k e id p
+    p := p'
+    let lvl ← stageCur k
+    if p.isNone then
+      if let some idx ← deferFindCmdValue k e id then
+        modCmds k lvl (fun c => { c with queue := c.queue.modify idx (fun cm => { cm with value := some v }) })
+        return
+    let (idx, _) ← cmdNewBatched k e { kind := .add, id, entity := e }
+    match p with
+    | none =>
+      modCmds k lvl (fun c => { c with queue := c.queue.modify idx (fun cm => { cm with kind := .ensure, value := some v }) })
+    | some ptr => writePtr ptr v
+  | .world =>
+    commandsBegin 0
+    let some p ← ensureNow e id
+      | fail .invalidOperation "entity.c 1748-1752" "component ensured on entity was removed during the operation"
+    commandsEnd 0
+    writePtr p v
+
+/-- `ecs_modified_id` (entity.c 1889-1929) -/
+partial def apiModified (tg : Tgt) (e : UInt64) (id : Id) : M Unit := do
+  checkAlive e "modified"
+  if id < HI && !(← nonTrivialSet id) then return
+  match tg with
+  | .stage k => discard <| cmdNew k { kind := .modified, id, entity := e }
+  | .world =>
+    commandsBegin 0
+    let r ← getRec e
+    let some t := r.table | fail .internalError "entity.c 1917" "no table"
+    if !tableHas (← tbl t) id then
+      fail .invalidParameter "entity.c 1912-1915" "modified(): entity does not have component"
+    notifyOnSet t r.row id true none
+    commandsEnd 0
+
+/-- `ecs_clear` (entity.c 1293-1325) -/
+partial def apiClear (tg : Tgt) (e : UInt64) : M Unit := do
+  if !(← isValid e) then fail .invalidParameter "entity.c 1298" "clear: invalid entity"
+  match tg with
+  | .stage k =>
+    let (_, er) ← cmdNewBatched k e { kind := .clear, entity := e }
+    let lvl ← stageCur k
+    modCmds k lvl (fun c =>
+      let ent := (getEntry c er).getD {}
+      { (putEntry c er { ent with removed := REMOVED_MANY }) with hasRemove := true })
+  | .world =>
+    commandsBegin 0
+    let r ← getRec e
+    let some t := r.table | fail .internalError "entity.c 1309" "no table"
+    let x ← tbl t
+    if x.type.size != 0 then commit e 0 { removed := x.type }
+    commandsEnd 0
+
+/-- `ecs_delete` (entity.c 1327-1407) -/
+partial def apiDelete (tg : Tgt) (e : UInt64) : M Unit := do
+  if e == 0 then fail .invalidParameter "entity.c 1332" "delete: entity is 0"
+  match tg with
+  | .stage k =>
+    discard <| cmdNewBatched k e { kind := .delete, entity := e }
+  | .world =>
+    commandsBegin 0
+    match (← getIx).tryGet e with
+    | none => pure ()
+    | some r =>
+      let panicExpected ← panicHolders e
+      let flags := r.flags
+      if flags != 0 then
+        if hasFlag flags FIsTarget then
+          onDelete (mkPair EcsWildcard e) none true true
+        if hasFlag flags FIsId then
+          onDelete e none true true
+          onDelete (mkPair e EcsWildcard) none true true
+        commandsEnd 0
+        commandsBegin 0
+      -- `table = r->table` on the record pointer: NULL when the entity was
+      -- cleaned up as a result of a cycle (entity.c 1380-1382)
+      let r ← rawRec e
+      match r.table with
+      | some t =>
+        let x ← tbl t
+        if x.type.size != 0 then emit .onRemove x.type t r.row 1 none
+        let r ← rawRec e
+        tableDelete t r.row true
+      | none => pure ()
+      setIx (← liftE ((← getIx).remove e))
+      if !panicExpected.isEmpty then
+        modify fun w => { w with viol := w.viol.push s!"deleting {e} did not panic although {panicExpected} hold a pair with a (OnDeleteTarget, Panic) relationship to it" }
+    commandsEnd 0
+
+/-- `ecs_delete_with` / `ecs_remove_all` (on_delete.c 829-871) -/
+partial def apiOnDeleteAction (tg : Tgt) (id : Id) (action : Policy) : M Unit := do
+  match tg with
+  | .stage k => discard <| cmdNew k { kind := .onDeleteAction, id, action }
+  | .world =>
+    commandsBegin 0
+    onDelete id (some action) false false
+    commandsEnd 0
+
+end
+
+/-- `ecs_merge` (stage.c 358-366) -/
+def merge (k : Nat) : M Unit := do
+  discard <| flush k
+
+/-- `ecs_readonly_begin` (stage.c 289-312) -/
+def readonlyBegin (mt : Bool) : M Unit := modify fun w => { w with readonly := true, mt := mt }
+
+/-- `ecs_readonly_end` (stage.c 314-330) -/
+def readonlyEnd : M Unit := do
+  if !(← get).readonly then fail .invalidOperation "stage.c 318-319" "world is not in readonly mode"
+  modify fun w => { w with readonly := false, mt := false }
+  for k in [0:(← get).stages.size] do
+    discard <| flush k
+
+/-! ### Reads used by properties -/
+
+def has (e : UInt64) (id : Id) : M Bool := do
+  let r ← getRec e
+  match r.table with
+  | some t => return (typeWithout (← tbl t).type id).isSome
+  | none => return false
+
+def getVal (e : UInt64) (id : Id) : M (Option Nat) := do
+  let r ← getRec e
+  match r.table with
+  | some t =>
+    let x ← tbl t
+    match colIndex x id with
+    | some c => return (x.cols.getD c #[])[r.row]?
+    | none => return none
+  | none => return none
+
+end W
+end Flecs

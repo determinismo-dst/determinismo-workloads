@@ -17,6 +17,25 @@ The C tests ([tests/flecs_lean/](tests/flecs_lean/)) each return 0 when flecs be
 documented, built with `distr/flecs.c` and asserts on: a failure confirms its prediction. None
 has run on the real flecs yet.
 
+## On the real flecs
+
+Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled
+with coverage, 3 timelines each, every verdict the same in all 3
+([validation/round-1-evidence.txt](validation/round-1-evidence.txt)):
+- 13 of the 14 predictions behave as predicted (19 of 20 tests):
+  - F1, F6, F7, F9, F10, F11, F12, F13 and F14 with the wrong values or callbacks their tests check
+    for;
+  - F4, F5 and F8 by flecs's own internal-error asserts (`ECS_INTERNAL_ERROR`: its invariants, not
+    a misuse check);
+  - F3 aborts the merge as predicted, at another assert than the one predicted:
+    `ecs_make_alive_id`'s `!ecs_exists(world, t)` (`ECS_INVALID_PARAMETER`), not "second element
+    of pair is not alive".
+- F2 (the batched remove with a Panic relationship) passes: flecs behaves as documented there.
+- F13 is the 16-bit generation wrapping by design, a defect only against the docs' "a deleted
+  handle is not alive"; F14 the report marks lower confidence (the docs show the order only in a
+  diagram). The behaviors are confirmed either way.
+- Not yet searched against flecs's issues.
+
 ## Building and running
 
     lake update && lake build flecs-search FlecsLean

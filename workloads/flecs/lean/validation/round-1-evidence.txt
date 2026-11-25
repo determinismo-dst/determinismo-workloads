@@ -1,0 +1,25 @@
+Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci: each test a
+binary of its own (flecs compiled with trace-pc-guard coverage), 3 timelines each, every verdict
+the same in all 3. A test exits 0 when flecs behaves as documented; a FAIL line or an abort is the
+prediction holding. Aborts are given as the flecs.c line that fired (flecs 4.2.0's distr/flecs.c).
+
+F1   batch_remove_dead_target              fail  FAIL: entity deleted by remove of (ChildOf, deleted parent) it never had
+F2   batch_remove_dead_target_panic        pass  (not confirmed: flecs behaved as documented)
+F3   staged_set_pair_dead_target           abort flecs.c 11174 ecs_assert(!ecs_exists(world, t), ECS_INVALID_PARAMETER) from ecs_make_alive_id, in the merge
+F3   staged_set_pair_existing_dead_target  abort flecs.c 11174, the same (predicted: "second element of pair is not alive", entity.c 2828)
+F4   batch_observer_deletes_entity         abort flecs.c 6924 ecs_assert(r->table != NULL, ECS_INTERNAL_ERROR), in the merge
+F5   set_observer_deletes_entity           abort flecs.c 8921 ecs_assert(r->table != NULL, ECS_INTERNAL_ERROR) after flecs_ensure
+F5   staged_set_observer_deletes_entity    abort flecs.c 8921, the same, from the merge
+F6   on_set_hook_moves_entity              fail  FAIL: OnSet observer got entity 388 (f=388), expected e=387; saw x=2, expected 99
+F7   panic_target_order                    fail  FAIL: deleting the target of a Panic relationship did not panic (e alive: 1, has (RPanic, t): 0)
+F7   panic_target_with_childof             fail  FAIL: deleting the target of a Panic relationship did not panic (e alive: 0)
+F8   range_make_alive_recycled             abort flecs.c 24178 ecs_assert(r->table == NULL, ECS_INTERNAL_ERROR)
+F8   range_new_from_range_duplicate        abort flecs.c 9007 ecs_assert(r->table == NULL, ECS_INTERNAL_ERROR), from ecs_new_from_range
+F9   staged_set_value_lost                 fail  FAIL: e has Position {-1, -1} after the merge, expected {1, 1}
+F9   staged_set_after_remove_all           fail  FAIL: e has Position {-1, -1}, expected {2, 2}
+F10  batch_childof_replaced_onadd          fail  FAIL: add+clear of (ChildOf, p1): 1 OnAdd vs 0 OnRemove; 2 OnAdd and 1 OnRemove calls for a ChildOf pair e does not have
+F11  batch_onset_values                    fail  FAIL: OnSet calls for e saw x = 3 then 3, expected 1 then 3
+F11  staged_ensure_rewrites_set            fail  FAIL: OnSet for set({99, 99}) saw x = 1
+F12  batch_child_survives_parent_delete    fail  FAIL: child survived the deletion of its parent
+F13  generation_wraps                      fail  FAIL: deleted handle 385 reports alive (current 385)
+F14  on_add_hook_view                      fail  FAIL: ecs_has false inside on_add hook; ecs_get NULL inside on_add hook

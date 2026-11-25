@@ -81,6 +81,24 @@ with coverage, 3 timelines each, every verdict the same in all 3
   diagram). The behaviors are confirmed either way.
 - Not yet searched against flecs's issues.
 
+Rounds 2 and 3's tests (F15-F28, F2's corrected test) on flecs v4.2.0, compiled with asserts on
+and run directly (one process each; the workflow `flecs-lean` runs them on GitHub's Linux runners):
+- F2's corrected prediction aborts as predicted (`(OnDelete, Panic)` constraint violated in the
+  merge).
+- Internal-error asserts (`ECS_INTERNAL_ERROR`):
+  - F15: `needs_merge == false` in the pipeline's update;
+  - F16, F17: the readonly assert in `flecs_table_ensure`;
+  - F24: `base_ptr != NULL` in `flecs_table_invoke_ctor`;
+  - F26: `workers_waiting == stage_count - 1` in `flecs_wait_for_sync`, after one spurious wakeup.
+- Wrong values or callbacks, as their tests check: F18, F19 (the source that lost the component),
+  F20, F21, F22, F23, F24 (new instances constructed, not copied; OnSet missing or with a source
+  that lacks the component), F25, F27, F28.
+- Not confirmed:
+  - F17's other half, the next system skipped after a self-disabling one: Update ran (back to the
+    replica, round 4).
+  - F19's uninitialized read (`change_detection_fixed_source_added.c`): neither its plain run nor
+    MemorySanitizer showed it; valgrind on Linux is in the workflow.
+
 ## Building and running
 
     lake update && lake build flecs-search FlecsLean

@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: MIT
+# The Lean replica of flecs's predictions (workloads/flecs/lean/tests/flecs_lean) on the real flecs
+# v4.2.0, on GitHub's hosted Linux runners: flecs.c from the tagged source (checksummed), compiled
+# with asserts on; each C test linked against it and run alone (120 s). A test marked
+# `flecs_lean: valgrind` (an uninitialized read: its answer depends on stale memory) runs under
+# valgrind and under MemorySanitizer too. A test's non-zero exit confirms its prediction (README.txt
+# maps tests to predictions); the job reports each, and fails only when something can't build.
+name: flecs-lean
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - workloads/flecs/lean/tests/**
+      - .github/workflows/flecs-lean.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      FLECS_VERSION: 4.2.0
+      FLECS_SHA256: 4107b0a36aa25f80ddcd6f939451ccfe1bacafcccdd2695840a4a8c413d05b40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang valgrind
+      - name: flecs v${{ env.FLECS_VERSION }}
+        run: |
+          curl -fsSL -o /tmp/flecs.tar.gz "https://github.com/SanderMertens/flecs/archive/refs/tags/v${FLECS_VERSION}.tar.gz"
+          echo "${FLECS_SHA256}  /tmp/flecs.tar.gz" | sha256sum -c -
+          mkdir -p /tmp/flecs && tar -xzf /tmp/flecs.tar.gz -C /tmp/flecs --strip-components=1
+          clang -std=gnu99 -O1 -g -c /tmp/flecs/distr/flecs.c -o /tmp/flecs.o
+      - name: Each test
+        run: |
+          mkdir -p /tmp/bin
+          out=/tmp/results.txt; : > "$out"
+          for t in workloads/flecs/lean/tests/flecs_lean/*.c; do
+            n=$(basename "$t" .c)
+            clang -std=gnu99 -O1 -g -I /tmp/flecs/distr "$t" /tmp/flecs.o -lm -lpthread -o "/tmp/bin/$n"
+            code=0; timeout 120 "/tmp/bin/$n" > "/tmp/bin/$n.out" 2>&1 || code=$?
+            echo "$n: exit $code" >> "$out"
+            if grep -q 'flecs_lean: valgrind' "$t"; then
+              code=0; timeout 300 valgrind -q --error-exitcode=99 "/tmp/bin/$n" > "/tmp/bin/$n.valgrind" 2>&1 || code=$?
+              echo "$n under valgrind: exit $code" >> "$out"
+              clang -std=gnu99 -O1 -g -fsanitize=memory -fsanitize-memory-track-origins=2 -fno-omit-frame-pointer \
+                -I /tmp/flecs/distr /tmp/flecs/distr/flecs.c "$t" -lm -lpthread -o "/tmp/bin/$n.msan"
+              code=0; timeout 300 "/tmp/bin/$n.msan" > "/tmp/bin/$n.msan.out" 2>&1 || code=$?
+              echo "$n under MemorySanitizer: exit $code" >> "$out"
+            fi
+          done
+          cat "$out"
+          {
+            echo "### flecs v${FLECS_VERSION}: the Lean replica's C tests"
+            echo
+            echo "A non-zero exit confirms the test's prediction (README.txt maps tests to predictions)."
+            echo
+            sed 's/^/- /' "$out"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flecs-lean-${{ github.sha }}
+          path: |
+            /tmp/results.txt
+            /tmp/bin/*.out
+            /tmp/bin/*.valgrind

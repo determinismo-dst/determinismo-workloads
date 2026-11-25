@@ -1,0 +1,9 @@
+thread bindings (main thread or a future's), every program of 1..5 ops over 7, classes set aside []: complete after 58821
+  - 22201× push-thread-bindings rejects an array map
+      first: main thread: (push-thread-bindings {#'*x* 1}): jank throws (invalid thread binding map (must be hash map)); Clojure ok
+  - 14469× pop-thread-bindings without a matching push
+      first: main thread: (pop-thread-bindings): jank ok; Clojure throws (Pop without matching push)
+  - 11907× get-thread-bindings holds var_thread_binding boxes, not values
+      first: main thread: (push-thread-bindings (hash-map #'*x* 1)) (= *x* (get (get-thread-bindings) #'*x* *x*)): jank ok, false; Clojure ok, true
+thread bindings (main thread or a future's), every program of 1..5 ops over 7, classes set aside [push-thread-bindings rejects an array map, pop-thread-bindings without a matching push, get-thread-bindings holds var_thread_binding boxes, not values]: complete after 58821
+exit=0

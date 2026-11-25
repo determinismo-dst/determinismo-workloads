@@ -1,0 +1,13 @@
+two-thread lock census (round 3's world: 2 threads × 1 op, alphabet2, bodies ≤1 op, depth 0), partition #[1, 7], budgets [20000, 400000, 2000000]
+  [288] undecided at 20000: 1 so far
+  [289] undecided at 20000: 2 so far
+  [290] undecided at 20000: 3 so far
+  complete after 3432 programs; 3 exceeded 20000 states
+  - #288: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @f); delay d's body = (fn [..] (swap! a inc)); thread 0: @d; thread 1: (swap! a inc)
+  - #289: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); delay d's body = (fn [..] (swap! a inc)); thread 0: @d; thread 1: (swap! a inc)
+  - #290: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); delay d's body = (fn [..] (swap! a inc)); thread 0: @d; thread 1: (swap! a inc)
+  decided 3 of 3
+exit=0

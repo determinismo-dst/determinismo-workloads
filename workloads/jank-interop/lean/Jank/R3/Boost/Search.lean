@@ -113,6 +113,7 @@ def runW (body : WM Unit) (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 
 /-- One timeline: a question kind, then its operands, each a decision. -/
 def body (qs : Array Q) (aside : List String) : WM Unit := do

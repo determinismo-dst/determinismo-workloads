@@ -1,0 +1,342 @@
+ROUND 4 — INTEROP (area B): jank 7135b7708, CppInterOp 28b0830d, Clang/LLVM 23.1.0, bdwgc 327ef1f8
+
+Sources read (all at the pinned commits, no history): jank compiler+runtime/src/cpp/jank/{analyze/processor.cpp,
+analyze/cpp_util.cpp, analyze/cppinterop.cpp, evaluate.cpp, runtime/context_dynamic.cpp, codegen/cpp_processor.cpp,
+ir/processor.cpp, runtime/obj/{deferred_cpp_function,native_function_wrapper,native_pointer_wrapper,opaque_box}.cpp,
+c_api.cpp (jank_unbox*), runtime/core/math.cpp, runtime/module/loader_dynamic.cpp, util/cli.cpp, util/cli.hpp},
+include/cpp/jank/runtime/convert/builtin.hpp, src/jank/jank/nrepl/server/{core,handler/eval}.jank, jank's own tests
+under compiler+runtime/test/jank/cpp/{type-hint,operator/pipe,enum} (sources only), book/src/cpp-interop/*.md,
+book/src/differences-from-cpp.md, book/src/reference/error/analyze/invalid-cpp-constructor-call.md;
+deps/cppinterop/lib/CppInterOp/CppInterOp.cpp (GetOperator 6954-7064, GetBuiltinOperatorType 7066,
+AddOverloadCandidates 1996-2124, BestOverloadMatch 2203-2238, InstantiateTemplate 6572-6720);
+deps/llvm-23.1.0/clang/lib/Sema/SemaOverload.cpp (TryObjectArgumentInitialization 6106-6220);
+deps/bdwgc/{malloc.c 766-863, include/private/gc_hdrs.h 155-200, CMakeLists.txt 686-719, gc_badalc.cc};
+jank's cmake/dependency/bdwgc.cmake and CMakeLists.txt.
+Lean: Jank/R4/Interop/{TopLevel,Operators,Templates,Deferred,Worlds,Theorems}.lean, Run/R4/Interop.lean
+(exe jank4-interop). Output: results/r4-interop.txt. Scratch: .r4-scratch/interop/.
+
+=====================================================================================================
+1. DEVIATIONS (each a hypothesis; jank was not built or run)
+=====================================================================================================
+
+B1. Calling an old fn object puts it back into its var (lazy compilation, jank's default).        NEW
+  (defn f [] 1)
+  (def g f)
+  (defn f [] 2)
+  (g)   ; Clojure 1   jank 1
+  (f)   ; Clojure 2   jank 1  (the call to g rebound f's root to the first function)
+  - Also with alter-var-root and with-redefs: any fn object captured before its var was re-pointed, called for the
+    first time afterwards, re-points the var (alter-var-root #'f (fn [_] (fn [] 3))) then (g) then (f) → 1, not 3.
+  - Path: util/cli.hpp:141 (eagerness defaults to lazy; --eager opts out, cli.cpp:135-139/344-351) →
+    evaluate.cpp:eval(def):333-358 (current_def_var = the var while the fn value is evaluated) →
+    evaluate.cpp:eval(function):522-554 (lazy: make_box<deferred_cpp_function>(meta, current_def_var, code, …)) →
+    runtime/obj/deferred_cpp_function.cpp:realize:45-73 (first call of that object: compile, then
+    `var->bind_root(compiled_fn)` unconditionally, 66-69).
+  - Reach: every top-level defn/def of a fn in a loaded file or at the REPL (eval_string, context_dynamic.cpp 48-79;
+    module load: loader_dynamic.cpp load_jank 816-846 → eval_file). Fns made inside compiled code are not deferred.
+  - Spec: Clojure — a fn is a value; only def, alter-var-root, with-redefs, intern … change a var's root.
+  - Search: world XX, programs of top-level defn/def/call/alter-var-root forms (6 forms per position): exhaust
+    complete with nothing for lengths 1-4; the shortest disagreement has 5 forms (the program above); census 4 of
+    7,776 programs of length 5 and 84 of 46,656 of length 6 disagree; 0 with --eager (theorem eager_agrees_clojure).
+  - Theorems: old_object_rebinds_var, clojure_keeps_new_root (the program above), deferred_call_returns_body (★).
+  - Confidence: high (two short functions, read whole). Test: uB12-calling-an-old-fn-object-leaves-its-var-alone
+    (passes on Clojure 1.11.1).
+
+B2. An operator on enum operands ignores the enum's user-declared operator in analysis; the JIT still calls it, and
+    its result is converted to the built-in operator's type.                                     NEW
+  (cpp/raw "enum ue { ua = 1, ub = 2 }; inline double operator*(ue, ue) { return 0.5; }")
+  (cpp/* cpp/ua cpp/ub)   ; C++ 0.5 (the user operator: exact match beats the built-in's promotions)   jank 0
+  - Path: analyze/processor.cpp:build_cpp_call:367-410: cpp_util::is_primitive (cpp_util.cpp:1025-1029) counts an
+    enum as primitive, so two enum (or enum/builtin) operands go to build_builtin_operator_call:196-249 →
+    cppinterop::get_builtin_operator_type → CppInterOp.cpp:7066 GetBuiltinOperatorType → Sema::CreateBuiltinBinOp
+    (built-in meaning only: int here). Codegen emits `auto &&r( a * b );` (cpp_processor.cpp:1794-1821), which Clang
+    resolves with the user operator (double), then boxes with `convert<int>::into_object(r)` (cpp_processor.cpp:
+    1287-1331; convert/builtin.hpp: into_object(T const o) takes an int, so 0.5 → 0).
+  - A user operator returning a class type gives a JIT compile error instead; one returning an integer of the same
+    value is invisible.
+  - Search: world XVIII (12 operand forms × 4 operators, binary and unary): 1 case of this class in the world's one
+    declared unscoped-enum operator; class key enum-user-operator-bypassed.
+  - Theorem: jank_primitive_operands_builtin_only (★: two primitive operands — builtin, pointer, array or enum —
+    never reach GetOperator, for every platform, world and operator).
+  - Confidence: high on the path; medium-high on the printed value (the into_object conversion).
+  - Test: uB6-enum-operands-use-their-user-operator (C++ only).
+
+B3. A scoped enum's user-declared operators are unreachable.                                     NEW
+  (cpp/raw "enum class se { a = 1, b = 2 }; inline se operator|(se l, se r) { return static_cast<se>(static_cast<int>(l) | static_cast<int>(r)); }")
+  (cpp/| cpp/se.a cpp/se.b)   ; C++ se(3), jank boxes it as 3   jank analysis error
+                              ; "The binary operator `|` is not supported for the types `se` and `se`."
+  (cpp/- cpp/se.a)            ; with `int operator-(se)` declared: C++ calls it; jank the same error (unary)
+  - Path: as B2; CreateBuiltinBinOp has no built-in for scoped enums, so the type is null → processor.cpp:221-237.
+  - This is the usual C++ flag-enum idiom. Search: world XVIII, 2 cases (enum-user-operator-unreachable).
+  - Theorem: jank_primitive_operand_unary_builtin_only (★) with the binary one.
+  - Confidence: high. Test: uB7-scoped-enum-operands-use-their-user-operator (C++ only).
+
+B4. A derived class's operator does not hide its base's: the call is ambiguous in jank.           NEW
+  (cpp/raw "struct B { int operator*(int) const { return 3; } }; struct D : B { int operator*(double) const { return 4; } }; inline D d;")
+  (cpp/* cpp/d 1)   ; C++ 4 (member lookup in D finds only D::operator*)
+                    ; jank "This call is ambiguous between 2 different overloads."
+  - Path: CppInterOp.cpp:GetOperator 6977-7064 step 4: for every associated class (D and its base B,
+    FindAssociatedClassesAndNamespaces) it adds `PC->lookup(OpName)` — B::operator* too, though D's hides it in
+    C++ ([class.member.lookup]); BestOverloadMatch (2203) → AddMethodCandidate with the D object: B's candidate has
+    a derived-to-base object conversion (SemaOverload.cpp:6203-6207, ICK_Derived_To_Base) and an exact int, D's an
+    exact object and int→double: neither is better → OR_Ambiguous → cpp_util.cpp:find_best_overload:1595-1600.
+  - Search: world XVIII, 3 cases (hidden-member-candidates). Theorems getOperator_includes_hidden_base_member,
+    cpp_member_lookup_hides_base.
+  - Confidence: high. Test: uB8-a-derived-operator-hides-the-bases (C++ only).
+
+B5. Argument-dependent lookup for operators follows using-directives (jank accepts what C++ rejects). NEW, low
+  (cpp/raw "namespace px { struct tag {}; } namespace pn { struct P {}; using namespace px; }
+            namespace px { inline int operator|(pn::P const &, pn::P const &) { return 7; } } inline pn::P p;")
+  (cpp/| cpp/p cpp/p)   ; C++ ill-formed (ADL ignores using-directives, [basic.lookup.argdep]/4)   jank 7
+  - Path: CppInterOp.cpp:GetOperator 7017-7030: LookupQualifiedName in each associated namespace, which (unlike ADL)
+    searches namespaces nominated by using-directives; codegen then names the function explicitly
+    (`px::operator|(p, p)`, cpp_processor.cpp:1352-1388), which compiles.
+  - Search: world XVIII, 1 case (using-directive-operator). Theorem getOperator_follows_using_directive.
+  - Test: uB9-argument-dependent-lookup-ignores-using-directives (C++ only).
+
+B6. A user operator ambiguous with a built-in candidate is accepted.                             NEW, low
+  (cpp/raw "struct q { q(int) {} operator int() const { return 1; } }; inline int operator+(q, q) { return 5; } inline q g(0);")
+  (cpp/+ cpp/g 1)   ; C++ ill-formed: operator+(q,q) [exact, user] vs built-in operator+(int,int) [user, exact]
+                    ; jank 5
+  - Path: BestOverloadMatch (CppInterOp.cpp:2203) adds no built-in candidate (round 3's S53 root: same function);
+    jank calls the user operator.
+  - Search: world XVIII, 6 cases (accepts-ill-formed). Test: uB10-a-user-operator-ambiguous-with-a-built-in-one.
+  - Status: new consequence of S53's root (S53 is the case with no user operator at all).
+
+B7. A constructor call on a class template's name uses the template's defaults instead of deducing from the
+    arguments.                                                                                  NEW
+  (cpp/raw "template <typename T = int> struct wrap { T v; wrap(T x) : v(x) {} };")
+  (cpp/.-v (cpp/wrap. 2.5))    ; C++17 CTAD: wrap<double>, 2.5      jank wrap<int>, 2
+  (cpp/.-v (cpp/wrap. true))   ; C++ wrap<bool>, true                jank wrap<int>, 1
+  - Path: processor.cpp:analyze_cpp_symbol 3855-3871 (trailing '.') → build_cpp_value 3738-3752
+    (`cpp_util::instantiate(scope, {})`: cpp_util.cpp:84-106 → CppInterOp.cpp:6644 CompleteTemplateArguments →
+    Sema::CheckTemplateArgumentList with no arguments, which fills every default) → constructor overload in
+    wrap<int> → codegen `static_cast<int>(2.5)` (cpp_processor.cpp 1670-1720).
+  - Without defaults jank refuses ("missing the necessary template parameters"), which the book documents
+    (reference/error/analyze/invalid-cpp-constructor-call.md); with defaults it silently picks them.
+  - Search: world XIX (5 templates × 21 argument lists): see 7. Theorem jank_ctor_specialization_is_defaults (★:
+    the specialization never depends on the arguments).
+  - Confidence: high on the path; medium-high on the value (static_cast / implicit conversion both truncate).
+  - Test: uB11-class-template-constructor-deduces-its-arguments (C++ only).
+
+B8. (cpp/delete p) of a pointer from C++'s own `new` crashes.                                     NEW, low-medium
+  (cpp/raw "inline int *make() { return new int(5); }")
+  (cpp/delete (cpp/make))   ; C++ `delete p`: freed, nil   jank SIGSEGV
+  - Path: codegen gen(cpp_delete) cpp_processor.cpp:1894-1919 emits `GC_free(p)` (after `p->~T()` when not
+    trivially destructible); bdwgc malloc.c:GC_free 824-850: HDR(p) is null for memory outside the collector's
+    heap (gc_hdrs.h 155-200: lookup ends at GC_all_nils), and GC_free_internal 766-771 reads hhdr->hb_sz.
+    jank links bdwgc's `gc` and `gctba` only (CMakeLists.txt 446/677; gc_badalc.cc defines only GC_throw_bad_alloc),
+    so C++ `new` in cpp/raw code is malloc memory.
+  - Spec: the book does not document cpp/delete; its name and cpp/new's comment (cpp_processor.cpp 1872-1877)
+    describe C++ new/delete. Read, tabled (world XXI), not searched. Theorem delete_cxx_new_crashes (table).
+  - Test: uB13-cpp-delete-of-a-pointer-from-cxx-new (C++ only; predicted segfault).
+
+Earlier-round entries re-found by the new worlds (not new):
+  - S53 (no built-in candidates for class operands with conversions): world XVIII, 48 cases (no-builtin-candidates).
+  - R23 (literal branches of an `if` share a C++ type): world XVI', compiled contexts only.
+  - S57: compiled contexts only (see 2).
+  - S43 (a native-typed param with fn-level recur emits invalid C++) covers class- and pointer-typed params too
+    (ir/processor.cpp types every fn-recur shadow object_ref; neither `int *` nor `std::string` converts to it). Read.
+
+=====================================================================================================
+2. FEEDBACK ITEMS (prompted by the user)
+=====================================================================================================
+
+S49 and S57 failed on jank 7135b7708 with "uncaught jank error" where a wrong value was predicted.
+
+Where it departed: the tests, and round 3's evaluation context, not the typing.
+  - The round-3 tests (tests/jank_lean/deviations_r3_test.jank s49, s57; also s50, s53) each ran
+    (ev "(do (cpp/raw \"…\") use)"). context::eval (context_dynamic.cpp 220-226) analyzes the whole form before
+    evaluating it; analyze_do (processor.cpp 2245-2290) analyzes every sub-form; analyze_cpp_raw (4136-4209) only
+    wraps the code in an include guard, and evaluate.cpp eval(cpp_raw) (633-637) is what declares it. So the use was
+    analyzed before its declaration existed: analyze_cpp_symbol (3855-4053) fails in cpp_util::resolve_scope, tries
+    the preprocessor (resolve_literal_value, diagnostics silenced) and returns analyze_unresolved_cpp_symbol; the
+    `#cpp (s49_add double)` head fails in the same lookup (5617-5624, analyze_invalid_cpp_dsl). Both are thrown by
+    `expect_ok()` in context::eval: "uncaught jank error", as observed. This is S71's mechanism.
+  - Round 3's replica judged each case in one analysis against a world where every declaration existed, and took
+    every `if` as compiled. The REPORT-3 example of S57, `(if false 1 cpp/gd)` written at the top level, is
+    interpreted by evaluate.cpp eval(if) (594-606): the chosen branch is evaluated alone (a cpp_value is wrapped and
+    boxed by its own type, 644-649), so jank prints 2.5, Clojure's result. Only a compiled `if` (inside a fn, let,
+    loop, try, which evaluate.cpp wraps and compiles) declares one local of the common type (ir/processor.cpp gen(if)
+    647-700; cpp_processor.cpp gen(local) 913 strips the reference, gen(set_local) assigns) and converts.
+
+The fix (Jank/R4/Interop/TopLevel.lean): a replica of top-level evaluation — forms read, analyzed whole, then
+evaluated; cpp/raw declares at evaluation; `if`/`do` interpreted at the top level, everything else wrapped and
+compiled, boxed by its type; inside a fn the `if` goes through one local of its type. It reuses round 3's typing
+(find_branch_common_type, tmplJank, indirectCall, classOperatorCall).
+
+Results (results/r4-interop.txt, "feedback"):
+  S49 (#cpp (s49_add double) 1 2), C++ 3.0
+     round-3 test shape: analysis error (unresolved `s49_add`)            ← matches the real jank
+     corrected (cpp/raw in its own eval): 3                                 S49 STANDS (as a compiled call)
+  S50 (cpp/s50_ptr 21), C++ 42
+     round-3 shape: analysis error (unresolved)  ← the round-3 "confirmation" came from this error, not from S50
+     corrected: "argument 0 is not convertible from `int` to `const long &`" S50 STANDS, needs re-testing
+  S53 (cpp/+ (cpp/s53_mk) 1.0), C++ 2.5
+     round-3 shape: analysis error (unresolved)  ← same: the round-3 confirmation is not evidence for S53
+     corrected: "The operator is not supported for the type."              S53 STANDS, needs re-testing
+  S57 (if false 1 cpp/s57_gd), Clojure 2.5
+     round-3 shape: analysis error (unresolved)                            ← matches the real jank
+     corrected, top level: 2.5 (Clojure's)                                  S57 REFUTED at the top level
+     corrected, inside a fn ((fn [c] (if c 1 cpp/s57_gd)) false): 2       S57 STANDS for compiled code
+  (S50 and S53 are not prompted: their round-3 tests had the same shape, so their "confirmed from an error" status
+  rests on the unresolved-symbol error; re-test with uB2, uB3.)
+
+What else the fix changes:
+  - World XVI rerun in both contexts (XVI'): 36 of 324 cases deviate, every one in a compiled fn, none at the top
+    level. 26 involve a cpp/ reference (S57's class: e.g. ((fn [c] (if c 1 cpp/glong)) false) → 705032704 where
+    Clojure gives 5000000000; ((fn [c] (if c true cpp/gint)) false) → true where Clojure gives 7); 10 are R23
+    (two literals, e.g. ((fn [c] (if c true 1)) true) → 1).
+  - World XII rerun: unchanged (69 of 75); a template call is a cpp_call, which evaluate.cpp always wraps and
+    compiles (670-675), so the context does not matter.
+  - Every round-3 interop prediction written as a top-level `if` needs a fn around it; every interop test needs its
+    cpp/raw in a separate top-level eval. The corrected tests are uB1-uB5 (uB5 is a control predicted to pass).
+  - Round 3's member candidate gave a derived object an exact match; Clang gives ICK_Derived_To_Base (conversion
+    rank, SemaOverload.cpp 6203-6207). R4's Operators.objConv replaces it. It changes no round-3 world result
+    (their derived-object calls have one candidate or the same object conversion on every candidate).
+
+=====================================================================================================
+3. WHAT WAS REPLICATED (Jank/R4/Interop/, Run/R4/Interop.lean)
+=====================================================================================================
+  - TopLevel.lean: context_dynamic.cpp eval/eval_string (48-79, 220-226), analyze_do, analyze_cpp_raw,
+    analyze_cpp_symbol's unresolved path, evaluate.cpp eval(do/if/cpp_raw/cpp_value/…) and wrap_expression
+    (167-249), the compiled `if` (ir/processor.cpp 647-700, cpp_processor.cpp 905-920), convert<T>::into_object
+    for integral/enum/bool/floating types (convert/builtin.hpp), C++ assignment conversions ([conv.integral] modulo
+    2^w, [conv.fpint], [conv.bool]).
+  - Operators.lean: CppInterOp.cpp GetOperator 6977-7064 (TU unqualified lookup, FindAssociatedClassesAndNamespaces,
+    LookupQualifiedName following using-directives, associated classes' own members via DeclContext::lookup,
+    hidden friends, arity filter), the jank operator path (processor.cpp 367-511, 526-760, the lvalue rule 565-572),
+    BestOverloadMatch with member candidates (AddMethodCandidate, object conversion per SemaOverload.cpp 6106-6220);
+    the C++ side: [over.match.oper] member lookup with hiding and base ambiguity, non-member unqualified + ADL
+    (no using-directives, hidden friends), built-in candidates of [over.built] for + - * | (promoted arithmetic /
+    integral pairs, unary -) with the [over.match.oper]/3.3.4 exclusion, user-defined conversion sequences compared
+    only through the same conversion function ([over.ics.rank]/3.3).
+  - Templates.lean: build_cpp_value's class-template constructor path (3738-3752) with cpp_util::instantiate (84-106)
+    and CompleteTemplateArguments (CppInterOp.cpp 6644-6668); C++17 class template argument deduction from implicit
+    guides ([over.match.class.deduct]): by-value deduction, defaults for undeduced parameters, guide selection.
+  - Deferred.lean: deferred_cpp_function (constructor, realize 45-73, call → realize → compiled_fn.call),
+    evaluate.cpp eval(def)/eval(function) under lazy and eager eagerness.
+  - Worlds.lean: decision bodies for XVI', XVIII, XIX; cpp/delete by pointer origin (codegen 1866-1919, bdwgc GC_free).
+  - Read, replicated as tables or prose (no search needed):
+      * analyze/cppinterop.cpp: 100+ one-line wrappers, each taking `jit_prc.interpreter.lock()` and calling the
+        Cpp:: function; the round-3 CppInterOp replica stands for them (the lock is the runtime area's).
+      * Typed fn parameters (processor.cpp 1798-1840; cpp_processor.cpp 1955-2030): a pointer hint unboxes an
+        opaque_box with an exact canonical-type-name check (c_api.cpp jank_unbox_with_source_c 590-607); other
+        native hints use convert<T>::from_object. jank's own tests (test/jank/cpp/type-hint/*) agree with this
+        reading. No deviation beyond S43 (recur) and S40 (out-of-range from_object).
+      * cpp/box, cpp/unbox (processor.cpp 4467-4618, codegen 1823-1864): the name check is the book's documented
+        behaviour (native-values.md "Opaque boxes"); R91 stands.
+      * cpp/new (4621-4674; codegen `new (UseGC) T{ args, }`, brace init: R88 stands), cpp/delete (B8).
+      * opaque_box (equal: same data pointer; hash: the pointer), native_pointer_wrapper (same), native_function_wrapper
+        (arity dispatch, "invalid arity" by name): identity semantics, nothing to compare with Clojure.
+      * nREPL and native exceptions: evaluate.cpp safe_eval 733-778 catches everything; a non-std::exception native
+        value becomes *e = ex-info "uncaught exception" (its value lost) and the reply is :err/:ex with that text
+        (handler/eval.jank 34-48). An exception escaping handle-client (core.jank 85-104 catches std::exception,
+        object_ref, error_ref) reaches the client future's catch :default (142-145) and ends that connection's loop
+        without a reply; nothing in printing a value can throw a native exception today (R75: print-method is never
+        called), so this path was not reached by any program.
+
+=====================================================================================================
+4. STILL LEFT OUT, AND WHY
+=====================================================================================================
+  - C++20 rewritten and reversed comparison candidates: the book documents them as unsupported
+    (native-functions.md "Operators"), so comparison operators are not in world XVIII.
+  - Operator templates, operator[] / operator() / assignment operators, pointer-arithmetic built-in candidates: not in
+    the world (no declared ones); GetOperatorArity of a template is ~0 (accepted), which matches C++.
+  - What the translation unit's global namespace already declares: assumed nothing viable (CXA4-1).
+  - Explicit deduction guides, partial specializations, CTAD for aggregates: not in world XIX.
+  - Integral template arguments past i64 (`(X 9223372036854775808)`) fail in runtime::to_i64 (math.cpp 10-30,
+    big_integer::to_integer throws) where C++ accepts `X<9223372036854775808ULL>` for an unsigned parameter: read,
+    not tested (low).
+  - Concurrency of realize (a recursive_mutex per object) and of the interpreter lock: the runtime area's.
+  - Emitted C++ for B5/B6: "compiles" is from C++ rules (codegen names the function explicitly).
+
+=====================================================================================================
+5. ASSUMPTIONS
+=====================================================================================================
+Replaced:
+  - CXA10 (GetOperator finds no user operator): replaced by the GetOperator replica (B2-B6).
+  - Round 3 member-candidate object conversion "derived = exact": contradicted (ICK_Derived_To_Base).
+  - Round 3's implicit "every if is compiled" (S57): contradicted at the top level (TopLevel.lean).
+  - Round 3's "a cpp/raw declaration exists when its use is analyzed": contradicted inside one top-level form.
+Standing / new:
+  - InteropA4-1 (CXA4-1): the translation unit's global namespace declares no operator viable for the searched
+    operands; jank's headers declare their operators and using-directives inside namespaces (grep of include/cpp).
+  - InteropA4-2: S.getCurScope() in GetOperator is the translation-unit scope (clang-repl keeps it between inputs).
+  - InteropA4-3: Clang's BestViableFunction gathers the not-worse candidates as round 3's bestViable does (only the
+    count is reported for ambiguities).
+  - InteropA4-4: built-in candidates per [over.built] with the operand conversions of round 3's paramConv
+    (CXA3, CXA2); each class in the world has at most one conversion function and one converting constructor.
+  - InteropA4-5: convert<int>::into_object(int) receives the user operator's double by implicit conversion (no
+    other overload is a better match); x86-64 truncation.
+  - InteropA4-6: HDR(p) is null for malloc memory (no REDIRECT_MALLOC, GC heap and malloc arenas disjoint).
+  - InteropA4-7: the test runner loads source modules with eval_file and default (lazy) eagerness.
+  - Round 3's CXA1-CXA13 stand.
+
+=====================================================================================================
+6. PROPERTIES CHECKED
+=====================================================================================================
+  P1 a program's value does not depend on whether its cpp/raw and its use share a top-level form (as in C++, where a
+     declaration precedes its use) — checked as "the round-3 shapes give analysis errors" (jank departs by design:
+     S71's mechanism);
+  P2 (if c a b) returns the chosen branch's value, at the top level and in a fn (XVI');
+  P3 (cpp/<op> a b) calls the function or built-in C++ [over.match.oper] selects, is ill-formed exactly when C++ is,
+     and returns C++'s value (XVIII);
+  P4 (cpp/X. args) constructs the specialization C++'s class template argument deduction picks (XIX);
+  P5 calling a fn object leaves every var alone (XX);
+  P6 (cpp/delete p) is C++'s delete for pointers C++ may delete (XXI, table).
+
+=====================================================================================================
+7. SEARCH RUNS (results/r4-interop.txt; explore = mixed seeds; residual = exhaust with each found class set aside)
+=====================================================================================================
+  - feedback: the four round-3 test programs and their corrected shapes through the top-level replica (above).
+  - XVI' if branches × chosen branch × context (9 × 9 × 2 × 2 = 324 cases): 36 deviate (R23-compiled 10,
+    S57-compiled 26), all in compiled fns. explore found after 8; residual: found after 10 (R23), 24 (S57);
+    complete, 324 timelines, nothing.
+  - XII rerun (75 calls): 69 deviate, unchanged; explore found after 1; residual: found after 2; complete, 75, nothing.
+  - XVIII operators (4 binary operators × 12 × 12 operands + 12 unary = 588 cases): 61 deviate —
+    no-builtin-candidates 48 (S53), accepts-ill-formed 6 (B6), hidden-member-candidates 3 (B4),
+    enum-user-operator-unreachable 2 (B3), enum-user-operator-bypassed 1 (B2), using-directive-operator 1 (B5).
+    explore found after 6; residual: found after 53, 69, 330, 393, 524, 550; complete, 588 timelines, nothing.
+  - XIX class templates (5 templates × 21 argument lists = 105 cases): 34 deviate — defaults-instead-of-deduction 18
+    (B7), defaults-instead-of-deduction-same-value 12 (B7, invisible in the value), missing-template-arguments 4
+    (documented). explore found after 1; residual: found after 3, 5, 23; complete, 105 timelines, nothing.
+  - XX deferred fns (6 forms per position): exhaust complete with nothing for lengths 1-4 (6, 36, 216, 1,296
+    timelines); length 5 found after 496 timelines: (defn f [] 1) (def g f) (defn f [] 2) (g) (f).
+    Census of every program: length 4, 0 of 1,296 disagree; length 5, 4 of 7,776; length 6, 84 of 46,656
+    (results/r4-interop-deferred.txt); with --eager 0 at every length.
+  - XXI cpp/delete: table of 3 origins.
+  - Round 3's interop residuals were all complete (results/r3-interop-report.txt 6); none stopped at a bound.
+
+=====================================================================================================
+8. THEOREMS (Jank/R4/Interop/Theorems.lean, Deferred.lean, Worlds.lean; no sorry, no native_decide, no new axiom;
+   ★ = for every input)
+=====================================================================================================
+  ★ jank_primitive_operands_builtin_only: every platform, world, operator and pair of primitive operand types
+    (builtin, pointer, array, enum): jank never calls a user operator function (B2, B3).
+  ★ jank_primitive_operand_unary_builtin_only: the same for one operand.
+  ★ jank_ctor_specialization_is_defaults: for every class template and argument list, the specialization jank
+    constructs is the template's defaults (B7).
+  ★ deferred_call_returns_body (Deferred.realize_own_root_same_result): a call through a var whose root is a
+    deferred fn returns that fn's value.
+  ★ eager_agrees_clojure: with --eager every step equals Clojure's (B1 needs lazy).
+  Deferred.old_object_rebinds_var, Deferred.clojure_keeps_new_root: B1's program, jank 1, Clojure 2.
+  getOperator_includes_hidden_base_member, cpp_member_lookup_hides_base (B4).
+  getOperator_follows_using_directive (B5).
+  Worlds4.delete_cxx_new_crashes (B8's table).
+  #print axioms (results/r4-interop-axioms.txt): only propext, Classical.choice, Quot.sound; no Lean.ofReduceBool.
+
+=====================================================================================================
+9. LIBRARY GAPS (built in the project; sdk/lean untouched)
+=====================================================================================================
+  - An operator-lookup world (namespaces, using-directives, hidden friends, member operators, enums with
+    namespaces) beside round 3's XWorld, and user-defined conversion sequences that carry the conversion function.
+  - A top-level evaluation model (analysis environment separate from the evaluation environment).
+  - Kernel-decidable (fuel-bounded) class-base and namespace walks, so lookups can be checked with decide +kernel.
+
+=====================================================================================================
+10. PROJECTS TRANSLATED (for NOTICE.md)
+=====================================================================================================
+  - jank (MPL-2.0); CppInterOp and Clang/LLVM 23.1.0 (Apache-2.0 with LLVM exceptions): GetOperator,
+    BestOverloadMatch, InstantiateTemplate, TryObjectArgumentInitialization; bdwgc (MIT-style): GC_free/HDR, as
+    prose and a table only. No libstdc++ code.

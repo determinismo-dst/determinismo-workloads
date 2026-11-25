@@ -95,6 +95,7 @@ def runW (body : WM Unit) (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 
 /-- `(compare a b)` over the widened universe; a class per disagreement (census), `unexplained`
 otherwise. -/
@@ -209,6 +210,7 @@ def orderRun (d m p : Nat) (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 
 /-! ## Namespaces -/
 
@@ -247,6 +249,7 @@ def nsExtraRun (n : Nat) (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 end
 
 end Jank.R3.Search.Core

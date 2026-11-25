@@ -247,6 +247,7 @@ def run (body : GM Unit) (jvm : Bool) (jvmRoots : List String) (source : Source)
   | .ok _ w' => ({ taken := w'.decisions.taken, violation := none }, w'.log)
   | .error (.violation p d) w' => ({ taken := w'.decisions.taken, violation := some (p, d) }, w'.log)
   | .error .limit w' => ({ taken := w'.decisions.taken, violation := none }, w'.log)
+  | .error (.nodeDown _) w' => ({ taken := w'.decisions.taken, violation := none }, w'.log)
 
 /-! ## Scenarios
 

@@ -17,6 +17,11 @@ on the real jank.
   (Boost.Multiprecision, immer, libstdc++'s regex, folly, bdwgc, CppInterOp and Clang), the
   compiler's flags, and the nREPL server wired to the reader and evaluator (S1–S76), with
   corrections to rounds 1 and 2. [REPORT-3.md](REPORT-3.md).
+- **Round 4** (main 7135b7708): the feedback from round 3's run, what round 3 left out, and the
+  parts no round had touched: lazily compiled fns and thread bindings, C++ operator lookup and
+  class templates, collection objects, regex captures and matchers, the nREPL's positions and the
+  terminal REPL, module loading, AOT and the CLI, the clojure.core functions and bundled
+  namespaces no round covered, jank.shell and clojure.pprint (U1–U92). [REPORT-4.md](REPORT-4.md).
 
 ## What the real jank said
 
@@ -32,14 +37,24 @@ on the real jank.
   - Each test's evidence: [validation/round-1-2-evidence.txt](validation/round-1-2-evidence.txt).
 - **Round 3**: 57 tests run on jank main 7135b7708 (UTF-8 locale, each test in its own process
   with a 120 s limit), each passing on Clojure 1.11.1 except the C++ interop ones.
-  - 50 confirmed (6 of them from an error whose text the report doesn't carry: S1, S36, S37,
-    S42, S50, S53). Among them a crash (S34: a long input to a regex segfaults) and the five
-    predicted hangs (S62, S63, S64, S65, S67).
+  - 48 confirmed (4 of them from an error whose text the report doesn't carry: S1, S36, S37,
+    S42). Among them a crash (S34: a long input to a regex segfaults) and the five predicted
+    hangs (S62, S63, S64, S65, S67).
+  - S50 and S53 also failed with an error, first counted as confirmations: their tests ran a
+    `cpp/raw` and its use as one form, which jank analyzes whole (S71), so the error says
+    nothing about them. Round 4 re-tests them (U5, U6).
   - 4 refuted: S2, S9, S44, S69 (jank gave Clojure's result).
   - 3 failed in another way than predicted: S49 and S57 (an error where a wrong value was
     predicted), S70 (jank prints an unbound root its own way; no freed memory seen).
   - b01, b11, b24, b29 again without a result, for the same reason: to rerun.
   - Each test's evidence: [validation/round-3-evidence.txt](validation/round-3-evidence.txt).
+- **Round 4** re-read the round-3 feedback: S2, S9 and S44's tests could not see the predicted
+  values (jank's `=` on BigDecimals is D8's epsilon; S44's test used metadata the strip pass keeps),
+  S49 and S57's tests (and S50, S53's) analyzed a `cpp/raw` and its use as one form (S71), S69's
+  test threw inside the fn that runs the finally, and S70's asserted a text jank never prints. Its
+  87 tests ([tests/jank_lean/deviations_r4_test.jank](tests/jank_lean/deviations_r4_test.jank) and
+  the hangs file) are not yet run on jank; the 72 that need no C++ interop or jank-only namespace
+  pass on Clojure 1.12.0 (1.11.1: all but u69, a 1.12 change).
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
@@ -54,12 +69,15 @@ lake build
 lake exe jank-model          # round 1's searches
 lake exe jank-reader         # round 2's drivers: jank-<component>
 lake exe jank3-boost         # round 3's: jank3-<area>
+lake exe jank4-runtime       # round 4's: jank4-<area> (feedback, runtime, interop, immer, regex,
+                             # nrepl, modules, core)
 ```
 
 `./fetch-sources.sh` puts the sources the replica translates next to it, at the commits it was
 written against (git-ignored): jank in `upstream/` (f3d82d654) and `upstream-main/` (7135b7708),
 and in `deps/` the libraries jank pins (immer 282629d0, boost-multiprecision 2b3ab082, bdwgc
-327ef1f8, CppInterOp 28b0830d, folly e54ca53d) and libstdc++ 15.3.0's regex files. Only
+327ef1f8, CppInterOp 28b0830d, folly e54ca53d, and since round 4 boost-process e4d0d405, json
+02dfbea3, stduuid 3afe7193) and libstdc++ 15.3.0's regex files. Only
 `jank3-boost`'s header check reads one of them at run time; the others are for following the
 reports' line numbers. The LLVM 23.1.0 files CppInterOp reaches are read only (llvm-project at
 llvmorg-23.1.0).

@@ -1,0 +1,498 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 4 (main 7135b7708): predictions from REPORT-4 (U1, U2, ...), each
+; test asserting Clojure's documented result (C++'s for the cpp tests), so a failure confirms one.
+; Values pass through functions so the runtime's generic paths run; forms jank may refuse go through
+; `ev` (eval of read-string), so a refusal fails its own test. Each cpp/raw runs in its own
+; top-level eval before its use is read (jank analyzes a top-level `do` whole, S71), and a
+; prediction about compiled code wraps its form in a fn (a top-level `if` is interpreted).
+; BigDecimals are observed with `compare` and `str`, never `=` (D8). Top-level `defn`s below are
+; lazily compiled when jank loads this file from source (its default), which U8-U14 rely on.
+; Predicted hangs are in deviations_r4_hangs_test.jank. Run under a UTF-8 locale, each test in its
+; own process (uNN-cpp tests and a predicted segfault are jank only).
+(ns jank-lean.deviations-r4-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]
+            [clojure.walk :as walk]))
+
+;; Coordinator's items: round 3's S2, S9 and S44 observed the way the replica predicts them.
+(defn- div [a b] (/ a b))
+
+(defn- to-bigdec [x] (bigdec x))
+
+(defn- eval-quoted [v] (eval (list 'quote v)))
+
+;; jank.shell (a port of clojure.java.shell; the Clojure translation maps jank.shell to it)
+(defn- sh-fn [] (require 'jank.shell) (resolve 'jank.shell/sh))
+
+; Each asserts C++'s (or Clojure's) result. Every cpp/raw runs in its own top-level eval, before
+; the form that uses its declarations is read (jank analyzes a top-level `do` whole, S71). The
+; cpp/raw code uses `inline` functions and variables (book: differences-from-cpp.md).
+(defn- ev [s] (eval (read-string s)))
+
+; Top-level forms here are evaluated by jank's interpreter when the namespace is loaded from
+; source, so every `defn` below is a lazily compiled fn (evaluate.cpp 528-547, jank's default).
+
+;; U8. alter-var-root's wrapper is lost at the original fn's first call.
+(defn- ua1-twice [x] (* 2 x))
+
+(alter-var-root #'ua1-twice (fn [orig] (fn [x] (+ 100 (orig x)))))
+
+;; U9. with-redefs: the stub is replaced when the original runs for the first time inside.
+(defn- ua2-greet [] :orig)
+
+;; U10. Calling an old fn value for the first time reverts its var's redefinition.
+(defn- ua3-version [] :old)
+
+(def ^:private ua3-saved ua3-version)
+
+(defn- ua3-version [] :new)
+
+;; U11. A defn'd fn changes identity at its first call.
+(defn- ua4-f [] 1)
+
+(def ^:private ua4-held ua4-f)
+
+;; U12. with-meta on a defn'd fn that was never called throws.
+(defn- ua5-f [] 1)
+
+;; U15. get-thread-bindings maps each var to its value.
+(def ^:dynamic *ua7* 0)
+
+;; U16 (S70, prompted). The printed form of an unbound var's root.
+(def ua8-x)
+
+;; U17. push-thread-bindings takes any map.
+(def ^:dynamic *ua9* 0)
+
+;; U14. A defn'd fn carries no metadata (jank gives it {:name "ns/f"} once it has been called).
+(defn- ua11-f [] 1)
+
+; Values pass through functions so the runtime's generic paths run.
+(defn- wm [o m] (with-meta o m))
+
+(defn- nth2 [c i] (nth c i))
+
+(defn- nth3 [c i nf] (nth c i nf))
+
+(defn- pop1 [c] (pop c))
+
+(defn- seq1 [c] (seq c))
+
+(defn- arr-map [& kvs] (apply array-map kvs))
+
+;; built at run time with re-pattern, so a pattern jank refuses fails its own test only.
+(defn- rx [p] (re-pattern p))
+
+(defn- rfind [p s] (re-find (rx p) s))
+
+(defn- line-of [x] (:line (meta x)))
+
+(defn- column-of [x] (:column (meta x)))
+
+(defn- ue1-f [x] x)
+
+(defn- meta-of [x k] (get (meta x) k))
+
+(defn- nrepl-handle [msg]
+  (require 'jank.nrepl.server.handler.eval)
+  (require 'jank.nrepl.server.handler.completions)
+  ((resolve 'jank.nrepl.server.handler/handle-message) msg))
+
+;; clojure.data and clojure.data.json are loaded when a test calls them, so a library that
+;; fails to load fails only its own tests.
+(defn- data-diff [a b] (require 'clojure.data) ((resolve 'clojure.data/diff) a b))
+
+(defn- json-read-str [& args] (require 'clojure.data.json) (apply (resolve 'clojure.data.json/read-str) args))
+
+(defn- json-write-str [& args] (require 'clojure.data.json) (apply (resolve 'clojure.data.json/write-str) args))
+
+;; slurp, spit
+(def ^:private u-path "jank-lean-r4-core-spit.txt")
+
+(deftest u01-bigdecimal-division-is-exact
+  (is (zero? (compare 2M (div 6M 3M))))
+  (is (= (str 2M) (str (div 6M 3M))))
+  (is (zero? (compare 0.5M (div 3 6M))))
+  (is (zero? (compare 0.5M (div 1.5M 3)))))
+
+(deftest u02-bigdec-of-a-double-uses-its-shortest-text
+  (is (zero? (compare 0.1M (to-bigdec 0.1))))
+  (is (= (str 0.1M) (str (to-bigdec 0.1)))))
+
+(deftest u03-eval-of-a-quoted-object-keeps-its-meta
+  (let [v (with-meta [1] {})]
+    (eval-quoted v)
+    (is (= {} (meta v))))
+  (let [w (with-meta [2] {:jank/source 1 :m 1})]
+    (eval-quoted w)
+    (is (= {:jank/source 1 :m 1} (meta w)))))
+
+;; Feedback (prompted): S49, S50, S53, S57 with the declaration in its own eval.
+(deftest u04-cpp-explicit-template-arguments
+  (ev "(cpp/raw \"template <typename T> T u_b1_add(T a, T b) { return a + b; }\")")
+  (let [r (ev "(#cpp (u_b1_add double) 1 2)")]
+    (is (double? r))
+    (is (= 3.0 r))))
+
+(deftest u05-cpp-function-pointer-with-a-reference-parameter
+  (ev "(cpp/raw \"inline long u_b2_twice(long const &x) { return 2 * x; } inline long (*u_b2_ptr)(long const &) = u_b2_twice;\")")
+  (is (= 42 (ev "(cpp/u_b2_ptr 21)"))))
+
+(deftest u06-cpp-built-in-operator-on-a-converting-class
+  (ev "(cpp/raw \"struct u_b3_meters { double v; operator double() const { return v; } }; inline u_b3_meters u_b3_mk() { return {1.5}; }\")")
+  (is (= 2.5 (ev "(cpp/+ (cpp/u_b3_mk) 1.0)"))))
+
+(deftest u07-cpp-if-in-a-fn-keeps-a-reference-branchs-value
+  (ev "(cpp/raw \"inline double u_b4_gd = 2.5;\")")
+  (is (= 2.5 ((ev "(fn [c] (if c 1 cpp/u_b4_gd))") false))))
+
+; Control (predicted to pass): at the top level the `if` is interpreted (evaluate.cpp 594-606).
+(deftest u07b-control-cpp-if-at-top-level-keeps-a-reference-branchs-value
+  (ev "(cpp/raw \"inline double u_b5_gd = 2.5;\")")
+  (is (= 2.5 (ev "(if false 1 cpp/u_b5_gd)"))))
+
+(deftest u08-a-wrapped-fn-stays-wrapped-after-its-first-call
+  (is (= 102 (ua1-twice 1)))
+  (is (= 102 (ua1-twice 1))))
+
+(deftest u09-with-redefs-keeps-its-stub-after-the-original-runs
+  (let [orig ua2-greet]
+    (with-redefs [ua2-greet (fn [] :stub)]
+      (is (= :orig (orig)))
+      (is (= :stub (ua2-greet))))))
+
+(deftest u10-calling-an-old-fn-value-keeps-the-redefinition
+  (is (= :old (ua3-saved)))
+  (is (= :new (ua3-version))))
+
+(deftest u11-a-fn-keeps-its-identity-after-its-first-call
+  (is (= 1 (ua4-f)))
+  (is (identical? ua4-held ua4-f)))
+
+(deftest u12-with-meta-on-a-fn-not-yet-called
+  (is (= {:k 1} (meta (with-meta ua5-f {:k 1})))))
+
+(deftest u14-a-defn-d-fn-has-no-metadata-after-its-first-call
+  (is (= 1 (ua11-f)))
+  (is (nil? (meta ua11-f))))
+
+(deftest u15-get-thread-bindings-holds-values
+  (binding [*ua7* 1]
+    (is (= 1 (get (get-thread-bindings) #'*ua7*)))))
+
+(deftest u16-an-unbound-root-prints-as-clojure-prints-it
+  (is (= (str "Unbound: " #'ua8-x) (str @#'ua8-x))))
+
+(deftest u17-push-thread-bindings-takes-an-array-map
+  (push-thread-bindings (array-map #'*ua9* 1))
+  (try
+    (is (= 1 *ua9*))
+    (finally (pop-thread-bindings))))
+
+;; U18. pop-thread-bindings without a matching push is an error (in a future's thread, whose
+;; only frame is the conveyed one).
+(deftest u18-pop-thread-bindings-without-a-push-throws
+  (is (thrown? @(future (pop-thread-bindings)))))
+
+;; Operators: CppInterOp's GetOperator and jank's built-in path for enums.
+(deftest u20-enum-operands-use-their-user-operator
+  (ev "(cpp/raw \"enum u_b6_e { u_b6_a = 1, u_b6_b = 2 }; inline double operator*(u_b6_e, u_b6_e) { return 0.5; }\")")
+  (is (= 0.5 (ev "(cpp/* cpp/u_b6_a cpp/u_b6_b)"))))
+
+(deftest u21-scoped-enum-operands-use-their-user-operator
+  (ev "(cpp/raw \"enum class u_b7_e { a = 1, b = 2 }; inline u_b7_e operator|(u_b7_e l, u_b7_e r) { return static_cast<u_b7_e>(static_cast<int>(l) | static_cast<int>(r)); }\")")
+  (is (= 3 (ev "(cpp/| cpp/u_b7_e.a cpp/u_b7_e.b)"))))
+
+(deftest u22-a-derived-operator-hides-the-bases
+  (ev "(cpp/raw \"struct u_b8_base { int operator*(int) const { return 3; } }; struct u_b8_derived : u_b8_base { int operator*(double) const { return 4; } }; inline u_b8_derived u_b8_d;\")")
+  (is (= 4 (ev "(cpp/* cpp/u_b8_d 1)"))))
+
+(deftest u23-argument-dependent-lookup-ignores-using-directives
+  (ev "(cpp/raw \"namespace u_b9_px { struct u_b9_tag {}; } namespace u_b9_pn { struct P {}; using namespace u_b9_px; } namespace u_b9_px { inline int operator|(u_b9_pn::P const &, u_b9_pn::P const &) { return 7; } } inline u_b9_pn::P u_b9_p;\")")
+  (is (thrown? (ev "(cpp/| cpp/u_b9_p cpp/u_b9_p)"))))
+
+(deftest u24-a-user-operator-ambiguous-with-a-built-in-one
+  (ev "(cpp/raw \"struct u_b10_q { u_b10_q(int) {} operator int() const { return 1; } }; inline int operator+(u_b10_q, u_b10_q) { return 5; } inline u_b10_q u_b10_g(0);\")")
+  (is (thrown? (ev "(cpp/+ cpp/u_b10_g 1)"))))
+
+;; Class templates through the constructor syntax.
+(deftest u25-class-template-constructor-deduces-its-arguments
+  (ev "(cpp/raw \"template <typename T = int> struct u_b11_wrap { T v; u_b11_wrap(T x) : v(x) {} };\")")
+  (is (= 2.5 (ev "(cpp/.-v (cpp/u_b11_wrap. 2.5))")))
+  (is (= true (ev "(cpp/.-v (cpp/u_b11_wrap. true))"))))
+
+;; cpp/delete of memory from C++'s own `new` (jank: GC_free of memory outside the collector's heap).
+(deftest u26-cpp-delete-of-a-pointer-from-cxx-new
+  (ev "(cpp/raw \"inline int *u_b13_make() { return new int(5); }\")")
+  (is (nil? (ev "(cpp/delete (cpp/u_b13_make))"))))
+
+(deftest u27-with-meta-leaves-an-infinite-repeat-alone
+  (let [r (repeat 7)]
+    (wm r {:a 1})
+    (is (nil? (meta r)))
+    (is (not (identical? r (wm r {:a 2}))))))
+
+(deftest u29-nth-of-a-vector-truncates-a-double-index
+  (is (= 2 (nth2 [1 2 3] 1.0)))
+  (is (= 2 (nth2 [1 2 3] 1.5)))
+  (is (= 2 (nth3 [1 2 3] 1.5 :nf)))
+  (is (= 1 (nth2 [1 2 3] -0.5)))
+  (is (= 2 (nth2 (transient [1 2 3]) 1.0))))
+
+(deftest u30-an-iterate-is-realized
+  (is (true? (realized? (iterate inc 0)))))
+
+(deftest u31-pop-of-a-one-element-list-keeps-its-meta
+  (is (= {:a 1} (meta (pop1 (wm '(1) {:a 1}))))))
+
+(deftest u32-seq-of-a-list-is-the-list
+  (let [l (wm '(1 2) {:a 1})]
+    (is (= {:a 1} (meta (seq1 l))))))
+
+(deftest u33-no-transient-of-a-sorted-map
+  (is (thrown? (transient (sorted-map 1 2)))))
+
+(deftest u34-array-map-keeps-every-pair
+  (is (= 9 (count (arr-map 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8))))
+  (is (= :x (get (arr-map 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 0 :x) 0))))
+
+;; U35. A capture made inside a lookahead at an earlier start position is kept (Java's groups are
+;; cleared once per find); libstdc++ starts every position with clean results.
+(deftest u35-lookahead-capture-from-an-earlier-start
+  (is (= ["b" "a"] (rfind "(?=(a))x|b" "ab")))
+  (is (= "a[a]" (string/replace "ab" (rx "(?=(a))x|b") "[$1]"))))
+
+;; U36. nth on a matcher whose pattern has no groups is the match (m.group(n)); jank indexes the
+;; match string's bytes.
+(deftest u36-nth-of-a-matcher-is-the-match
+  (let [m (re-matcher (rx "ab") "xaby")]
+    (re-find m)
+    (is (= "ab" (nth m 0)))))
+
+;; U37. nth on a matcher before any match throws (IllegalStateException); jank gives nil.
+(deftest u37-nth-of-a-matcher-without-a-match-throws
+  (let [m (re-matcher (rx "(a)") "a")]
+    (is (thrown? (nth m 0)))))
+
+;; U38. A pattern string is the whole string: re-pattern does not stop at a NUL.
+(deftest u38-a-pattern-keeps-its-nul
+  (is (nil? (re-find (rx (str "x" (char 0) "y")) "xz"))))
+
+;; U39. print writes a pattern as #"…" (print-method ignores *print-readably*); jank writes its text.
+(deftest u39-print-of-a-pattern
+  (is (= "#\"a\"" (print-str (rx "a")))))
+
+(deftest u40-read-lists-and-defined-vars-carry-line-and-column
+  (is (integer? (line-of '(a b))))
+  (is (integer? (column-of '(a b))))
+  (is (integer? (line-of #'ue1-f))))
+
+(deftest u40b-defined-vars-carry-name-ns-and-file
+  (is (= 'ue1-f (meta-of #'ue1-f :name)))
+  (is (some? (meta-of #'ue1-f :ns)))
+  (is (string? (meta-of #'ue1-f :file))))
+
+(deftest u40c-nrepl-eval-line-reaches-line-meta
+  (let [rs (nrepl-handle {"op" "eval" "code" "(:line (meta '(a)))" "line" 7 "column" 3 "ns" "user"})]
+    (is (some #(= "7" (get % :value)) (filter map? (if (map? rs) [rs] rs))))))
+
+(deftest u41-completions-name-each-vars-own-namespace
+  (let [r (nrepl-handle {"op" "completions" "ns" "user" "prefix" "mapv"})
+        c (first (filter #(= "mapv" (:candidate %)) (:completions r)))]
+    (is (= "clojure.core" (:ns c)))))
+
+(deftest u44-ex-message-of-a-compile-error-in-star-e
+  (nrepl-handle {"op" "eval" "code" "(ue5-undefined)" "ns" "user"})
+  (let [rs (nrepl-handle {"op" "eval" "code" "(ex-message *e)" "ns" "user"})
+        v (some #(get % :value) (filter map? (if (map? rs) [rs] rs)))]
+    ; nREPL over Clojure: the CompilerException's message, e.g. "\"Syntax error compiling at (REPL:1:1).\""
+    (is (string? v))
+    (is (not (contains? #{"\"\"" "nil"} v)))))
+
+; Each asserts Clojure's result. Run under `jank --module-path . run-main run-one -- <ns> <test>`.
+
+;; U45. run-main calls -main with *ns* bound to clojure.core (clojure -m: user).
+(deftest u45-main-runs-in-user
+  (is (= 'user (ns-name *ns*)))
+  (is (= :user/k (read-string "::k"))))
+
+;; U48. load takes a module-path resource path ("/x/y"), not a module name.
+(deftest u48-load-takes-a-resource-path
+  (is (nil? (load "/clojure/walk"))))
+
+;; U49. Loading functions that are absent or throw "TODO: port".
+(deftest u49-loading-functions-exist
+  (is (= 3 (load-string "(+ 1 2)")))
+  (is (some? (resolve 'clojure.core/load-file)))
+  (is (map? (ns-aliases 'clojure.core)))
+  (is (map? (ns-refers 'clojure.core)))
+  (is (var? (requiring-resolve 'clojure.core/inc))))
+
+;; U50. :only / :refer must be a sequential collection.
+(deftest u50-refer-only-must-be-sequential
+  (is (thrown? (binding [*ns* (create-ns 'jank-lean.uf6-scratch)]
+                 (refer 'clojure.string :only #{'join})))))
+
+;; U51. :verbose prints each load.
+(deftest u51-require-verbose-prints-the-load
+  (is (string/includes? (with-out-str (require 'clojure.walk :reload :verbose))
+                        "clojure.core/load")))
+
+;; U55 (extends R21). (ns x) gives the namespace no metadata.
+(deftest u55-ns-form-leaves-no-namespace-meta
+  (binding [*ns* *ns*]
+    (eval (read-string "(ns jank-lean.uf11-probe)")))
+  (is (nil? (meta (find-ns 'jank-lean.uf11-probe)))))
+
+;; U59. compile from a running program (run-main, run, repl, nREPL) compiles the lib and returns it.
+(deftest u59-compile-at-run-time
+  (is (= 'clojure.set (compile 'clojure.set))))
+
+;; clojure.data
+(deftest u61-diff-subdiffs-maps-and-vectors
+  (is (= [{:b 2} {:b 3} {:a 1}] (vec (data-diff (identity {:a 1 :b 2}) {:a 1 :b 3}))))
+  (is (= [[nil 2] [nil 5] [1 nil 3]] (data-diff (identity [1 2 3]) [1 5 3]))))
+
+;; Exceptions
+(deftest u62-ex-message-of-a-non-exception-is-nil
+  (is (nil? (ex-message (identity "boom"))))
+  (is (nil? (ex-data (identity :k))))
+  (is (nil? (ex-cause (identity 1)))))
+
+(deftest u63-throwable-map-cause-is-the-root-cause
+  (let [e (ex-info "a" {:x 1} (ex-info "b" {:y 2}))]
+    (is (= "b" (:cause (Throwable->map e))))
+    (is (= {:y 2} (:data (Throwable->map e))))))
+
+(deftest u64-a-printed-exception-shows-every-cause
+  (is (string/includes? (pr-str (ex-info "a" {} (ex-info "b" {} (ex-info "c" {})))) "\"c\"")))
+
+;; format, printf
+(deftest u65-format-uses-java-conversions
+  (is (= "5" (format (identity "%d") 5)))
+  (is (= "a-b" (format "%s-%s" "a" "b")))
+  (is (= "{}" (format (identity "{}") 5)))
+  (is (= "5" (with-out-str (printf "%d" 5)))))
+
+;; Type predicates
+(deftest u66-strings-are-not-counted
+  (is (false? (counted? (identity "abc"))))
+  (is (= 1 (bounded-count 1 (identity "abc"))))
+  (is (false? (counted? (seq #{1 2 3}))))
+  (is (false? (counted? (long-array 3)))))
+
+(deftest u67-a-vector-is-not-a-map-entry
+  (is (false? (map-entry? (identity [1 2]))))
+  (is (true? (map-entry? (first {1 2})))))
+
+(deftest u68-shuffle-of-any-seq
+  (is (= #{0 1 2} (set (shuffle (cons 0 [1 2])))))
+  (is (= [:x :x :x] (shuffle (repeat 3 :x)))))
+
+;; clojure.walk (Clojure 1.12)
+(deftest u69-postwalk-keeps-list-metadata
+  (is (= {:m 1} (meta (walk/postwalk identity (with-meta (list 1 2) {:m 1})))))
+  (is (= {:m 1} (meta (walk/prewalk identity (with-meta (seq [1 2]) {:m 1}))))))
+
+;; Printing
+(deftest u70-tagged-literal-prints-its-form-readably
+  (is (= "#foo \"bar\"" (pr-str (tagged-literal 'foo (identity "bar"))))))
+
+;; parse-uuid
+(deftest u71-parse-uuid-needs-the-dashed-form
+  (is (nil? (parse-uuid (identity "00000000000000000000000000000000"))))
+  (is (nil? (parse-uuid (identity "{00000000-0000-0000-0000-000000000000}")))))
+
+;; Arrays, output, unported functions
+(deftest u72-areduce-over-an-array
+  (let [a (long-array [1 2 3])]
+    (is (= 6 (areduce a i ret 0 (+ ret (aget a i)))))))
+
+(deftest u73-newline-and-flush
+  (is (= "\n" (with-out-str (newline))))
+  (is (nil? (flush))))
+
+(deftest u74-unchecked-arithmetic
+  (is (= 3 (unchecked-add (identity 1) 2)))
+  (is (= 0 (unchecked-dec (identity 1))))
+  (is (= -1 (unchecked-negate (identity 1))))
+  (is (= 6 (unchecked-multiply (identity 2) 3))))
+
+(deftest u74b-collection-predicates
+  (is (true? (reversible? (identity []))))
+  (is (true? (indexed? (identity []))))
+  (is (true? (special-symbol? 'if)))
+  (is (= 2 (alength (into-array [1 2])))))
+
+(deftest u75-bit-operations-reject-bigints
+  (is (thrown? (bit-not (identity 5N))))
+  (is (thrown? (bit-and (identity 5N) 3))))
+
+(deftest u76-spit-writes-any-value-as-str
+  (spit u-path (identity 42))
+  (is (= "42" (slurp u-path))))
+
+(deftest u77-slurp-takes-options
+  (spit u-path "x")
+  (is (= "x" (slurp u-path :encoding "UTF-8"))))
+
+(deftest u78-spit-into-a-missing-directory-throws
+  (is (thrown? (spit "/jank-lean-no-such-dir/x.txt" "a"))))
+
+(deftest u79-slurp-of-a-missing-file-throws-a-catchable-error
+  (is (= :caught (try (slurp (identity "/jank-lean-no-such-dir/x.txt"))
+                      (catch cpp/jank.runtime.object_ref _ :caught)))))
+
+;; reduce-kv
+(deftest u80-reduce-kv-over-a-seq-of-entries
+  (is (= [:a] (reduce-kv (fn [acc k _] (conj acc k)) [] (seq (identity {:a 1}))))))
+
+;; zipmap, #inst
+(deftest u81-zipmap-keeps-the-first-equal-key
+  (is (vector? (first (keys (zipmap (identity [[1] '(1)]) [:a :b]))))))
+
+(deftest u82-inst-reads-a-year
+  (is (= 1577836800000 (inst-ms (read-string (identity "#inst \"2020\""))))))
+
+;; clojure.data.json
+(deftest u83-json-reads-big-integers-exactly
+  (is (= 18446744073709551615N (json-read-str (identity "18446744073709551615"))))
+  (is (= 9223372036854775808N (json-read-str (identity "9223372036854775808")))))
+
+(deftest u84-json-bigdec-reads-the-decimal-text
+  (is (zero? (compare 0.1M (json-read-str (identity "0.1") :bigdec true)))))
+
+(deftest u85-json-writes-bignums-as-numbers
+  (is (= "123" (json-write-str (identity 123N))))
+  (is (= "1.5" (json-write-str (identity 1.5M)))))
+
+(deftest u86-json-does-not-write-nan
+  (is (thrown? (json-write-str (identity ##NaN)))))
+
+(deftest u87-json-eof-value
+  (is (= :none (json-read-str (identity "") :eof-error? false :eof-value :none))))
+
+(deftest u88-sh-passes-each-string-unchanged
+  (let [sh (sh-fn)]
+    (is (= "a\" b\n" (:out (sh "echo" "a\" b"))))
+    (is (= "5\" wide\n" (:out (sh "echo" "5\" wide"))))))
+
+(deftest u90-sh-env-takes-names-and-values-of-any-kind
+  (let [sh (sh-fn)]
+    (is (= "1\n" (:out (sh "printenv" "N" :env {"N" 1}))))
+    (is (= "b\n" (:out (sh "printenv" "A" :env {:A "b"}))))))
+
+;; clojure.pprint and clojure.stacktrace
+(deftest u91-pprint-breaks-lines-at-the-right-margin
+  (require 'clojure.pprint)
+  (let [pp (resolve 'clojure.pprint/pprint)]
+    (is (= "[0\n 1\n 2\n 3\n 4\n 5\n 6\n 7\n 8\n 9\n 10\n 11\n 12\n 13\n 14\n 15\n 16\n 17\n 18\n 19\n 20\n 21\n 22\n 23\n 24\n 25\n 26\n 27\n 28\n 29]\n"
+           (with-out-str (pp (vec (range 30))))))))
+
+(deftest u92-pprint-and-stacktrace-define-their-documented-functions
+  (require 'clojure.pprint)
+  (require 'clojure.stacktrace)
+  (is (some? (resolve 'clojure.pprint/print-table)))
+  (is (some? (resolve 'clojure.pprint/cl-format)))
+  (is (some? (resolve 'clojure.stacktrace/root-cause)))
+  (is (some? (resolve 'clojure.stacktrace/print-stack-trace))))

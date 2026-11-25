@@ -71,6 +71,7 @@ def intRun (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 end
 
 /-! ## Real ranges -/
@@ -101,6 +102,7 @@ def realRun (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 end
 
 /-! ## Transducers -/
@@ -127,6 +129,7 @@ def tdRun (maxXf maxLen : Nat) (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 end
 
 /-! ## Chunked seqs: `(first (map f … (range 0.0 n)))` for every n ≤ 200 and depth ≤ 4 -/

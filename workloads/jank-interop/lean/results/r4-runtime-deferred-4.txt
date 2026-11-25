@@ -1,0 +1,21 @@
+deferred fns (Jank.R4.Runtime.Deferred.Mode.jankLazy vs Clojure), every program of 1..4 forms over 19 forms, classes set aside []: complete after 137560
+  - 3574× alter-var-root calling its fn: hangs (the first call's bind_root re-enters the write_mutex alter_root holds)
+      first: (defn a [x] …) (alter-var-root #'a (fn [g] (g 1) g)): jank hangs (bind_root of var 0 while alter_root holds its write_mutex); Clojure ok
+  - 3572× with-meta of a fn not yet called throws
+      first: (defn a [x] …) (with-meta a {:k 1}): jank throws (can't hold any metadata); Clojure ok
+  - 122× with-redefs differs: a first call rebound the var, whose root was a with-redefs stub
+      first: (defn a [x] …) (def b a) (with-redefs [a (fn [_] :stub)] [(b 1) (a 1)]): jank 1, 1; Clojure 1, 999
+  - 276× meta of a called top-level fn is {:name …}
+      first: (defn a [x] …) (a 1) (nil? (meta a)): jank 1, false; Clojure 1, true
+  - 8× identical? differs: a first call rebound the var, whose root was its own deferred object
+      first: (defn a [x] …) (def b a) (a 1) (identical? a b): jank 1, false; Clojure 1, true
+  - 4× a call differs: a first call rebound the var, whose root was a wrapper (alter-var-root)
+      first: (defn a [x] …) (alter-var-root #'a (fn [orig] (fn [x] (+ 100 (orig x))))) (a 1) (a 1): jank 101, 1; Clojure 101, 101
+  - 4× with-redefs differs: a first call rebound the var, whose root was a wrapper (alter-var-root)
+      first: (defn a [x] …) (alter-var-root #'a (fn [orig] (fn [x] (+ 100 (orig x))))) (a 1) (with-redefs [b (fn [_] :stub)] [(a 1) (b 1)]): jank 101, 1, 999; Clojure 101, 101, 999
+deferred fns (Jank.R4.Runtime.Deferred.Mode.jankLazy vs Clojure), every program of 1..4 forms over 19 forms, classes set aside [rebound the var, with-meta, hangs, meta of a called]: complete after 137560
+deferred fns (Jank.R4.Runtime.Deferred.Mode.jankEager vs Clojure), every program of 1..4 forms over 19 forms, classes set aside []: complete after 137560
+  - 3992× meta of a called top-level fn is {:name …}
+      first: (defn a [x] …) (nil? (meta a)): jank false; Clojure true
+deferred fns (Jank.R4.Runtime.Deferred.Mode.jankEager vs Clojure), every program of 1..4 forms over 19 forms, classes set aside [meta of a called]: complete after 137560
+exit=0

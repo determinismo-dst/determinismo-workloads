@@ -438,6 +438,7 @@ def runS (g : Grammar) (mode : SpecMode) (aside : Aside) (source : Source) : End
   | .ok _ w => ({ taken := w.decisions.taken, violation := none }, w)
   | .error (.violation p d) w => ({ taken := w.decisions.taken, violation := some (p, d) }, w)
   | .error .limit w => ({ taken := w.decisions.taken, violation := none }, w)
+  | .error (.nodeDown _) w => ({ taken := w.decisions.taken, violation := none }, w)
 
 /-- Census over every timeline (all classes counted; a cut timeline counts as `outside`). -/
 structure Census where

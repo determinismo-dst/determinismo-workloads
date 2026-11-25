@@ -90,7 +90,7 @@ def literalTypeCensus (seeds : Nat) : IO Unit := do
   let mut differ := 0
   let mut first : Option String := none
   for i in [0:seeds] do
-    let src : Source := { gen := mkStdGen (mixSeed i) }
+    let src : Source := { gen := mkStdGen (Jank.R3.Codegen.mixSeed i) }
     match (NativeSearch.genProg false 3).run { decisions := { source := src, limit := 200 } } with
     | .ok f _ =>
       let a := runJank .o0 .eval f

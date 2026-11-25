@@ -1,0 +1,26 @@
+== core (round 3's tokens) ≤ 4, part 2/3: 3 patterns keeping captures, 50 inputs, 14 calls
+  census: 2100 questions: 1383 agree, 717 differ, 0 jank rejects a valid pattern, 0 jank accepts an invalid one, 0 not compared
+    differ [re-seq-new-string (R81)]: 132
+      (re-seq #"()?+" ""): Clojure (["" ""]), jank (["" ""] ["" ""] …) infinite
+      (re-seq #"()?+" "a"): Clojure (["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+      (re-seq #"()?+" "b"): Clojure (["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+    differ [ecmascript-template (R84)]: 282
+      (clojure.string/replace "" #"()?+" "$$"): Clojure throws (Illegal group reference), jank "$"
+      (clojure.string/replace "" #"()?+" "\\$"): Clojure "$", jank "\\$"
+      (clojure.string/replace "a" #"()?+" "$$"): Clojure throws (Illegal group reference), jank "$a$"
+    differ [fn-gets-match-string (R84)]: 132
+      (clojure.string/replace "" #"()?+" f): Clojure "<|>", jank "<>"
+      (clojure.string/replace "a" #"()?+" f): Clojure "<|>a<|>", jank "<>a<>"
+      (clojure.string/replace "b" #"()?+" f): Clojure "<|>b<|>", jank "<>b<>"
+    differ [syntax: possessive quantifier read as a nested repeat]: 96
+      (re-seq #"()?+" "é"): Clojure (["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+      (re-seq #"()?+" "😀"): Clojure (["" ""] ["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+      (re-seq #"()?+" ""): Clojure (["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+    differ [nul-cut (R83)]: 27
+      (re-matches #"()?+" "\u0000a"): Clojure nil, jank ["" ""]
+      (re-matches #"(){2}+" "\u0000a"): Clojure nil, jank ["" ""]
+      (re-matches #"(?=())" "\u0000a"): Clojure nil, jank ["" ""]
+    differ [bytes (R78)]: 48
+      (re-seq #"(?=())" "é"): Clojure (["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+      (re-seq #"(?=())" "😀"): Clojure (["" ""] ["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite
+      (re-seq #"(?=())" ""): Clojure (["" ""] ["" ""]), jank (["" ""] ["" ""] …) infinite

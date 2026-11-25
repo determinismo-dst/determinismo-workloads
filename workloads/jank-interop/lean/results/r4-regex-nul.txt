@@ -1,0 +1,41 @@
+== nul: 353 patterns with a NUL (≤ 3 tokens), 40 inputs over a b NUL, 5 calls
+  census: 70600 questions: 33594 agree, 24606 differ, 1000 jank rejects a valid pattern, 11400 jank accepts an invalid one, 0 not compared
+    differ [pattern-cut-at-nul (new)]: 11824
+      (re-find (re-pattern "\u0000") ""): Clojure nil, jank ""
+      (re-find (re-pattern "\u0000") "a"): Clojure nil, jank ""
+      (re-find (re-pattern "\u0000") "b"): Clojure nil, jank ""
+    differ [re-seq-new-string (R81)]: 5550
+      (re-seq (re-pattern "\u0000") ""): Clojure nil, jank ("" "" …) infinite
+      (re-seq (re-pattern "\u0000") "a"): Clojure nil, jank ("" "" …) infinite
+      (re-seq (re-pattern "\u0000") "b"): Clojure nil, jank ("" "" …) infinite
+    differ [nul-cut (R83)]: 7053
+      (re-seq (re-pattern ".\u0000") "a\u0000"): Clojure ("a\u0000"), jank ("a")
+      (re-seq (re-pattern ".\u0000") "b\u0000"): Clojure ("b\u0000"), jank ("b")
+      (re-seq (re-pattern "$^\u0000") "\u0000"): Clojure nil, jank ("" "" …) infinite
+    differ [regex-iterator-retry (R85)]: 178
+      (clojure.string/split "a" (re-pattern "|a\u0000") 0): Clojure ("a"), jank ()
+      (clojure.string/split "b" (re-pattern "|b\u0000") 0): Clojure ("b"), jank ()
+      (clojure.string/split "a" (re-pattern "|.\u0000") 0): Clojure ("a"), jank ()
+    differ [re-matches-first-match (R82)]: 1
+      (re-matches (re-pattern "|.\u0000") "\u0000"): Clojure nil, jank ""
+    jank rejects [Mismatched '(' and ')' in regular expression]: 200
+      (re-seq (re-pattern "(\u0000)") ""): Clojure nil, jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find (re-pattern "(\u0000)") ""): Clojure nil, jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [quantifier on an assertion]: 800
+      (re-seq (re-pattern "$*\u0000") ""): Clojure nil, jank throws (Mismatched '(' and ')' in regular expression)
+      (re-seq (re-pattern "$?\u0000") ""): Clojure nil, jank throws (Mismatched '(' and ')' in regular expression)
+    jank accepts, Java rejects [Unclosed group]: 4800
+      (re-seq (re-pattern "\u0000(") ""): Clojure throws (Unclosed group), jank ("" "" …) infinite
+      (re-find (re-pattern "\u0000(") ""): Clojure throws (Unclosed group), jank ""
+    jank accepts, Java rejects [Unmatched closing ')']: 5400
+      (re-seq (re-pattern "\u0000)") ""): Clojure throws (Unmatched closing ')'), jank ("" "" …) infinite
+      (re-find (re-pattern "\u0000)") ""): Clojure throws (Unmatched closing ')'), jank ""
+    jank accepts, Java rejects [Dangling meta character '*']: 800
+      (re-seq (re-pattern "\u0000**") ""): Clojure throws (Dangling meta character '*'), jank ("" "" …) infinite
+      (re-seq (re-pattern "\u0000|*") ""): Clojure throws (Dangling meta character '*'), jank ("" "" …) infinite
+    jank accepts, Java rejects [Dangling meta character '?']: 200
+      (re-seq (re-pattern "\u0000|?") ""): Clojure throws (Dangling meta character '?'), jank ("" "" …) infinite
+      (re-find (re-pattern "\u0000|?") ""): Clojure throws (Dangling meta character '?'), jank ""
+    jank accepts, Java rejects [Unknown inline modifier]: 200
+      (re-seq (re-pattern "\u0000(?") ""): Clojure throws (Unknown inline modifier), jank ("" "" …) infinite
+      (re-find (re-pattern "\u0000(?") ""): Clojure throws (Unknown inline modifier), jank ""

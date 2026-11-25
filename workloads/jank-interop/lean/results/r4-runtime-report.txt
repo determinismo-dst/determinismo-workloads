@@ -1,0 +1,350 @@
+ROUND 4 — RUNTIME (fork A): GC feedback (S69, S70), lazily compiled fns, thread bindings, the
+recursive mutexes round 3 left out, round 3's undecided census, proofs. jank 7135b7708.
+Exe: jank4-runtime (commands: census2, gc, deferred N, bindings N, mutex-scenarios, mutexes …,
+mutexes-aside …, fine-validator B). Models: Jank/R4/Runtime/{Census2,Gc4,Deferred,Bindings4,Mutexes,
+Proofs4}.lean. Run outputs: results/r4-runtime-*.txt. Tests: .r4-scratch/runtime/tests.jank,
+tests-hangs.jank; their Clojure translation .r4-scratch/runtime/clj/ (13 tests, 18 assertions,
+0 failures, 0 errors on Clojure 1.11.1).
+Paths: jank under upstream-main/compiler+runtime/ at 7135b7708; bdwgc = deps/bdwgc (327ef1f8);
+folly = deps/folly (e54ca53d); Clojure = clojure-ref/.
+Every item is a hypothesis from replicated code; jank was not built or run.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+
+A1–A6 and A11 share one root cause, replicated in Jank/R4/Runtime/Deferred.lean: jank compiles a
+top-level fn lazily, and the first call of the lazy object rebinds the var it was defined into.
+  - evaluate.cpp eval(def) 333-362: when a def's value is a fn expression (every defn: core.jank
+    727-800 expands to (def name (fn name …))), `current_def_var = var` (350) before evaluating it;
+  - evaluate.cpp eval(function) 522-555: with `util::cli::opts.eagerness == lazy` (the default,
+    include/cpp/jank/util/cli.hpp 141; flags --eager/--lazy, util/cli.cpp 344-351; the book does not
+    mention it) the value is `make_box<obj::deferred_cpp_function>(meta, current_def_var, …)` (538);
+  - deferred_cpp_function.cpp realize 46-73, run by every call arity (75-198): under the recursive
+    compilation_mutex, if not compiled yet: compile (jit_prc.eval_string), create_function,
+    reset_meta, and `if(var.is_some()) var->bind_root(compiled_fn);` (69-70), whatever the var holds
+    by then; then the call goes to compiled_fn;
+  - var.cpp bind_root 98-104 and alter_root 106-112 both take the var's write_mutex
+    (folly::SharedMutex, exclusive); alter_root holds it across apply_to(f, root …);
+  - deferred_cpp_function.hpp 32-35: behaviors `call` only, no with_meta, so core/meta.cpp
+    with_meta 36-59 throws and meta 13-34 gives nil for it.
+Reach: every defn/def-of-fn evaluated by the interpreter: the REPL, the nREPL, `jank run`, and every
+module loaded from source (loader_dynamic.cpp 843 → context_dynamic.cpp eval_string 50-73 →
+evaluate::eval), which includes test namespaces run with `run-main`. Not reached: --eager, AOT-
+compiled modules, fns made inside compiled code (closures).
+Clojure 1.12: a defn's fn is an ordinary AFunction (an IObj); calling it never touches a var.
+Search (Deferred, complete): every program of 1..5 forms over 19 forms (two vars, defn, def of a
+value, calls, alter-var-root wrapping / calling, with-redefs, with-meta, identical?, meta):
+2,613,659 programs, 10 classes (1..4 forms: 137,560, 7 classes); with the mechanisms set aside:
+complete, nothing. --eager control: only A11's class (the {:name} meta); with it set aside:
+complete, nothing. So everything else jank does with lazily compiled fns agrees with Clojure in
+this world.
+Theorems: realize_rebinds (∀ state: the first call leaves the var holding the compiled fn,
+whatever it held), realize_inside_alter_hangs (∀ state: inside alter_root of the same var the first
+call never returns), clojure_call_keeps_roots (∀ state: Clojure's calls never change a root), and
+kernel-checked witnesses.
+
+A1. alter-var-root's wrapper is lost at the wrapped fn's first call.
+  (defn twice [x] (* 2 x))
+  (alter-var-root #'twice (fn [orig] (fn [x] (+ 100 (orig x)))))
+  (twice 1)   ; Clojure 102   jank 102 (the wrapper calls orig: realize rebinds #'twice to orig)
+  (twice 1)   ; Clojure 102   jank 2
+  Test: uA1-a-wrapped-fn-stays-wrapped-after-its-first-call. Status: new. Confidence: high.
+  (The instrumentation pattern: wrapping a not-yet-called defn, as tracing and spec instrumentation
+  do, lasts one call.)
+
+A2. with-redefs: a stub is replaced when the original fn runs for the first time inside the body.
+  (defn greet [] :orig)
+  (let [orig greet] (with-redefs [greet (fn [] :stub)] [(orig) (greet)]))
+  ; Clojure [:orig :stub]   jank [:orig :orig]
+  Path: as A1, plus core.jank with-redefs-fn 4549-4566 (var_get_root, var_bind_root).
+  Test: uA2-with-redefs-keeps-its-stub-after-the-original-runs. Status: new. Confidence: high.
+
+A3. Calling an old fn value for the first time reverts its var's redefinition.
+  (defn version [] :old)
+  (def saved version)
+  (defn version [] :new)
+  (saved)     ; :old in both
+  (version)   ; Clojure :new   jank :old
+  Test: uA3-calling-an-old-fn-value-keeps-the-redefinition. Status: new. Confidence: high.
+  (REPL workflow: redefine a handler, then reach the old, never-called value through a map or a
+  middleware chain: the var silently returns to the old code.)
+
+A4. A defn'd fn changes identity at its first call.
+  (defn f [] 1) (def held f) (f) (identical? held f)   ; Clojure true   jank false
+  (also =, set membership, map keys, which compare fns by identity)
+  Test: uA4-a-fn-keeps-its-identity-after-its-first-call. Status: new. Confidence: high.
+
+A5. with-meta of a defn'd fn that was never called throws.
+  (defn f [] 1) (meta (with-meta f {:k 1}))   ; Clojure {:k 1}   jank throws "… can't hold any metadata."
+  After the first call (f's root is then a jit_function, which has with_meta) it works.
+  Test: uA5-with-meta-on-a-fn-not-yet-called. Status: new. Confidence: high.
+
+A6. alter-var-root whose fn calls the var's own fn for the first time hangs (a variant of S63).
+  (defn inc1 [x] (inc x))
+  (alter-var-root #'inc1 (fn [g] (g 1) g))          ; Clojure returns g   jank hangs
+  (alter-var-root #'inc1 (fn [g] @(future (g 1)) g)) ; the same across threads
+  Path: var.cpp alter_root 108 holds write_mutex across the fn; realize 70 → bind_root 101 takes it
+  again; folly lock() by the exclusive holder never returns (round 3's exclusive_reentry_blocked).
+  S63 needed the fn to re-enter the var explicitly (alter-var-root or def); here the re-entry is the
+  lazy compiler's.
+  Tape/story (Jank/R4/Runtime/Mutexes.lean, coarse lock, results/r4-runtime-mutex-scenarios.txt):
+  one thread, 10 steps: write_mutex sets kHasE; (f); compilation_mutex; JIT lock; JIT unlock;
+  bind_root's lock() waits on its own kHasE. Two threads: 12 steps (58 states); with a third
+  thread calling f, 13 steps (254 states).
+  Search: Deferred 1..5 forms, 102,158 programs in this class; mutex census 3,900 programs in A6's
+  classes (the compilation_mutex then the write_mutex alter_root holds).
+  Tests (hangs file): uA6-alter-var-root-whose-fn-calls-the-vars-fn,
+  uA6b-alter-var-root-whose-fn-waits-on-a-first-call. Status: new (variant of S63). Confidence: high.
+
+A7. get-thread-bindings maps each var to its var_thread_binding box, not its value.
+  (def ^:dynamic *x* 0)
+  (binding [*x* 1] (get (get-thread-bindings) #'*x*))   ; Clojure 1   jank a box that prints as 1
+  (binding [*x* 1] (= 1 (get (get-thread-bindings) #'*x*)))   ; Clojure true   jank false
+  Path: core.jank get-thread-bindings 2788-2792 → core.cpp 774-777 → context.cpp
+  get_thread_bindings 765-775 returns the frame's map; push_thread_bindings 706-750 stores
+  make_box<var_thread_binding>(value, thread_id); var.hpp 155-171 / var.cpp 322-343: the box prints
+  and hashes as its value but has no equal (object.cpp 47-50: identity). Clojure Var.java 346-357
+  builds {var val}. (bound-fn* still works: push unwraps boxes, context.cpp 733-739.)
+  Search (Bindings4, complete): 58,821 programs; class "get-thread-bindings holds boxes" 11,907.
+  Theorem getTB_bound_differs (∀ frame stacks). Test: uA7-get-thread-bindings-holds-values.
+  Status: new. Confidence: high.
+
+A8 (S70, prompted). An unbound var's root prints as `unbound@0x… for var #'ns/x`.
+  (def x) (str @#'x)   ; Clojure "Unbound: #'user/x"   jank "unbound@0x7f… for var #'user/x"
+  Path: var.cpp var_unbound_root::to_string 351-354; Clojure Var.java 42-44.
+  Theorem unbound_str_differs (∀ address, var). Test: uA8-an-unbound-root-prints-as-clojure-prints-it.
+  Status: new as a print deviation (round 3's S70 test failed on it). Confidence: high; low impact.
+
+A9. push-thread-bindings rejects an array map.
+  (def ^:dynamic *x* 0)
+  (push-thread-bindings {#'*x* 1})   ; Clojure ok   jank throws "invalid thread binding map (must be hash map)"
+  Path: core.jank 2766-2780 → core.cpp 764-767 (expect_ok) → context.cpp 694-703 (only
+  persistent_hash_map). A map of up to 8 entries built by a literal or array-map is an array map.
+  `binding` (hash-map) and with-bindings* (converts array maps, core.jank 5125-5136) are unaffected.
+  The docstring: "Takes a map of Var/value pairs."
+  Search: class 22,201 of 58,821. Theorem pushArray_rejected (∀). Test:
+  uA9-push-thread-bindings-takes-an-array-map. Status: new. Confidence: high.
+
+A10. pop-thread-bindings without a matching push returns instead of throwing.
+  @(future (pop-thread-bindings))   ; Clojure throws (IllegalStateException "Pop without matching push")   jank nil
+  (pop-thread-bindings)             ; at a thread's top level: the same
+  Path: context.cpp pop_thread_bindings 752-763 (returns when no frame); in a future the conveyed
+  frame is one pushed frame (core.cpp 1093, 1126) where Clojure's binding-conveyor-fn installs a
+  clone with no prev (Var.java 65-67, 335-344; core.clj 2039-2053). The docstring: "It is an error
+  to pop bindings without pushing before."
+  Search: class 14,469 of 58,821. Theorem future_pop (∀ creator bindings). Test:
+  uA10-pop-thread-bindings-without-a-push-throws. Status: new. Confidence: high; low impact.
+
+A11. A top-level fn carries {:name "ns/f"} metadata once it has been called (nil before).
+  (defn f [] 1) (f) (meta f)   ; Clojure nil   jank {:name "user/f"}
+  Path: processor.cpp analyze_fn 2064-2067 (the fn expression's meta); evaluate.cpp 538 / 552;
+  deferred_cpp_function.cpp 66 (reset_meta on the compiled fn); before the first call the deferred
+  object is not metadatable, so (meta f) is nil. With --eager it is {:name …} from the start.
+  Search: class 276 of 137,560 (lazy), 3,992 (eager). Test:
+  uA11-a-defn-d-fn-has-no-metadata-after-its-first-call. Status: new. Confidence: high; low impact.
+
+A12. defmethod holds the multimethod's mutex while it hashes (realizes) a lazy dispatch value, and
+every call of a multimethod takes that mutex: a realization that waits on a thread calling the
+multimethod hangs.
+  (defmulti mm identity)
+  (defmethod mm :a [_] 1)
+  (let [l (lazy-seq (cons @(future (mm :a)) nil))]
+    (defmethod mm l [_] 2)
+    (mm l))   ; Clojure 2   jank hangs
+  Path: multi_function.cpp add_method 145-153 (std::recursive_mutex held across
+  method_table->assoc, which hashes the lazy seq: realization runs user code); get_method 248-260
+  calls reset_cache (137-143, the mutex) on every call because reset_cache stores
+  `cached_hierarchy = hierarchy`, the hierarchy var (defmulti default #'global-hierarchy, core.jank
+  4118), and get_method compares it with `hierarchy.deref()`, the map (object_ref identity, oref.hpp
+  1324-1346): never equal. Clojure MultiFn.java 144-151: getMethod finds :a in methodCache with no
+  lock (cachedHierarchy holds the deref'd map); addMethod's write lock (58-66) blocks only
+  findAndCacheBestMethod and other writers.
+  Tape/story (Mutexes, 7 steps, 29 states): thread 0 locks the multimethod mutex, L's lock, derefs
+  F; thread 1 (F) calls (mm :a) → reset_cache blocks on the mutex.
+  Search: the mutex census (section 7): 271 programs in this mechanism's classes; residual nothing.
+  Test (hangs file): uA12-defmethod-with-a-lazy-dispatch-value-realized-by-a-caller-thread.
+  Status: new. Confidence: medium (needs a lazy-seq dispatch value whose realization waits on
+  another thread calling the multimethod).
+  Also by reading: since the cache is reset on every call, a dispatch value that is not a method-
+  table key runs find_and_cache_best_method (the mutex again) on every call; Clojure caches it.
+
+Not deviations (recorded):
+  - JIT lock (jit/processor.hpp 102): user code runs under it only from a cpp/raw form's global
+    initializers (ParseAndExecute, processor_dynamic.cpp 600-602) and native libraries' constructors
+    (load_dynamic_library); a cpp/raw initializer that waits on a thread that JIT-compiles anything
+    hangs (Mutexes scenario, 6 steps). jank-only construct, no Clojure counterpart.
+  - Unported (each throws "TODO: port"): agent and every agent fn, ref/alter/commute/ensure/ref-set/
+    sync (dosync), io!, with-local-vars, var-set, future?, future-done?, pmap (so pcalls, pvalues),
+    seque. thread-bound?, swap-vals!, reset-vals!, volatile!/vswap!/vreset!/volatile?, future-call,
+    promise/deliver, add-tap/remove-tap/tap>, delay?, memoize, with-redefs(-fn), with-bindings(*),
+    bound-fn(*) are ported and agree with Clojure in the replica (except A7/A9/A10 above).
+
+======================================================================
+2. FEEDBACK (prompted by the user): S69 and S70
+======================================================================
+
+S69 (jank gave Clojure's result: `(try (try (throw (ex-info …)) (finally (dotimes …))) (catch …))`
+returned {:k [0 1 2]}).
+  Where the replica departed: round 3's GC replica (Jank.R3.Runtime.Gc, assumption RTA8) dropped a
+  frame's words when the frame popped, and the test put the throw inline in the deftest body, while
+  REPORT-3's program threw from a separate fn. Re-read:
+    - jank JIT-compiles the test body (evaluate.cpp eval(try) 623-626 wraps a try; a deftest body is
+      a fn) at -O0 by default (util/cli.cpp 205-206: codegen_optimization_level defaults to 0;
+      321-337 for -O): clang gives every local its own stack slot and no lifetime markers;
+    - gen(throw) 1023-1051 throws a local (`throw static_cast<object_ref>(<local>)`); gen(try)
+      1053-1101 compiles the try inline in the same function and runs the finally from
+      `catch(...) { guard.release(); fin(); throw; }`, so the thrown local's slot is in the live
+      frame that runs the finally;
+    - bdwgc scans each stack from the saved stack pointer to its base (pthread_stop_world.c
+      GC_push_all_stacks 836-947: lo = GC_approx_sp() for the collecting thread, the saved sp for
+      others): a live frame's slots always; a popped frame's leftover words whenever the frames
+      below the collector's sp have not overwritten them.
+  Fix: Jank/R4/Runtime/Gc4.lean replaces RTA8 with a conservative stack: live frames are scanned;
+  a popped frame leaves stale words that, at each collection, are by decision outside the scanned
+  range, scanned intact, or overwritten (frame layouts of JIT code are not replicated, so every
+  outcome is allowed); at -O1+ a local may live only in a register (gc.slot).
+  Re-run (results/r4-runtime-gc.txt, section 7): round 3's test shape (throw in the fn running the
+  finally) at -O0: freed read complete over 64/128/256 timelines, nothing (the value always
+  survives) — what jank did. At -O1 the same shape can free it (found after 4). A separate
+  boom fn: a freed read is reachable but so is survival: the outcome depends on stack contents the
+  replica cannot know. S69 is withdrawn as a prediction (it stays a possible use-after-free; no
+  test, as no program makes the freed read certain).
+  What else it changes: RT8's other-thread variant (a collection by another thread during the
+  unwind) is weakened the same way (the thrower's frames are live during the unwinder's search
+  phase; afterwards the value is held by stale words only). RT9 = S70 below. No other round-3 item
+  rests on RTA8.
+
+S70 (an unbound root printed as `unbound@0x… for var …`; no freed read seen).
+  Where the replica (and the test) departed: (1) the test asserted Clojure's text, which jank never
+  prints whatever the collector does (var.cpp 351-354); round 3's replica modeled the read, not the
+  text. (2) The freed read rested on RTA8: the var x is referenced, after ns-unmap, only by the
+  pointer-free root (var.hpp 179-191, oref.hpp 3086-3088) and by stale stack words of the frames that
+  defined it at load (evaluate.cpp eval(def) 333-362, eval(call) 376-399) and of ns-unmap's call
+  (ns.cpp 105-115); no registry keeps vars (context.cpp intern_var keeps only the ns map), no JIT
+  global holds it (top-level calls are interpreted).
+  Note on the evidence: validation/round-3-evidence.txt cuts every line at 259 characters; the S70
+  line ends right after "for var", so it cannot show whether the var's name printed intact.
+  Fix: Gc4.unboundRoot with stale words. Re-run: a freed read reachable (found after 2) and
+  survival reachable (found after 1), as for S69; Clojure complete over 1,312,768 timelines with one
+  allocation (stopped at 2,000,000 with two and three), nothing. The freed read is withdrawn as a prediction; the
+  printed form is A8 (deterministic), with its own test.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Census2.lean: round 3's two-thread lock census world (Locks.genProgram, alphabet2, the same
+  decisions) walked again, each program round 3 stopped judged with escalating budgets.
+- Gc4.lean: bdwgc's conservative stack scan (pthread_stop_world.c 836-947) over round 3's heap:
+  live frames scanned, popped frames' stale words (gc.stale: outside / scanned / overwritten), -O1+
+  register-only locals (gc.slot); the exception-in-flight scenario in both shapes and at -O0/-O1;
+  the unbound-root scenario with load-time and ns-unmap frames; var_unbound_root::to_string.
+- Deferred.lean: evaluate.cpp eval(def) 333-362 and eval(function) 522-555 (lazy/eager);
+  deferred_cpp_function realize/call 46-198 (rebinding, compile once); var bind_root/alter_root
+  98-112 (the write_mutex as a held-by-this-thread check); with-redefs-fn 4549-4566; meta/with_meta
+  of deferred vs compiled fns (meta.cpp 13-59); the fn expression's {:name} meta (processor.cpp
+  2064-2067). Clojure: AFunction, Var.alterRoot/bindRoot (synchronized), with-redefs-fn.
+- Bindings4.lean: context.cpp push/pop/get_thread_bindings 678-775 (hash-map check, boxes, silent
+  pop), the future's conveyed frame (core.cpp 1093, 1126); Clojure Var.java push/pop/
+  getThreadBindings (346-357, 335-344), binding-conveyor-fn (core.clj 2039-2053).
+- Mutexes.lean: multi_function.cpp's recursive mutex (reset_cache on every call; add_method's
+  hashing realizing a lazy dispatch value), Clojure MultiFn's ReentrantReadWriteLock (getMethod
+  lock-free on a cache hit, findAndCacheBestMethod read then write); the JIT interpreter's recursive
+  mutex (eval_string around cpp/raw initializers; compile in realize); deferred_cpp_function's
+  compilation_mutex then the JIT then bind_root; alter_root's write_mutex (round 3's coarse
+  SharedMutex CSM); lazy-seq realization locks (reentrant, both); futures (wait for the body).
+- Proofs4.lean: an abstract CAS-loop model of atom.cpp swap_vals/reset_vals (65-78, 146-230).
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- Frame layouts and register allocation of clang-compiled JIT code: they decide whether a stale
+  word survives; not replicated (only every outcome allowed). So no GC freed read is predicted.
+- Clojure's ReentrantReadWriteLock queueing (a new reader blocks behind a queued writer in non-fair
+  mode): modeled as readers blocked only by a holding writer; every jank-only class found was
+  re-read by hand (A12 involves no reader in Clojure).
+- The multimethod method_cache read without the lock (a word-sized race; R3 noted it).
+- Agents, refs/STM, with-local-vars, pmap, seque, future?, future-done?: unported ("TODO: port").
+- macOS futures (RTA9 stands).
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+Replaced:
+- RTA8 (round 3: "conservative scanning finds no stale copy of a dead frame's pointers") → Gc4's
+  conservative stack: live frames scanned (at -O0 every local's slot lives until the function
+  returns), stale words of popped frames by decision. Consequence: S69, S70/RT8-RT9 freed reads
+  withdrawn as predictions (possible, not certain).
+- Round 3's "no callbacks under the JIT and multimethod recursive mutexes" → contradicted: hashing in
+  add_method/prefer_method/remove_method realizes lazy dispatch values under the multimethod mutex,
+  every call takes it (A12); cpp/raw initializers run under the JIT lock.
+New:
+- RTA4-1: a top-level form is evaluated by evaluate.cpp with the default eagerness (lazy); the
+  test runner (`jank … run-main`) passes no --eager.
+- RTA4-2: the default -O level (0) for JIT code; clang at -O0 keeps every local in its own slot.
+- RTA4-3: stale-word survival is unknown (decision per word per collection).
+- RTA4-4: Clojure's RRWL non-fair queueing not modeled (above).
+- RTA4-5: realize's JIT steps (eval_string, create_function) take the interpreter lock briefly and
+  run no user code (declarations only).
+Still standing from round 3: RTA1-RTA7, RTA9-RTA11.
+
+======================================================================
+6. PROPERTIES CHECKED
+======================================================================
+- GC: an object Clojure keeps alive is never read after the collector freed it (and, to tell a
+  certain freed read from a possible one, the opposite property: the value survives).
+- Lazily compiled fns: every observation (call results, identical?, with-meta, meta, alter-var-root
+  completing) equals Clojure's.
+- Thread bindings: push/pop results, *x*, get-thread-bindings values equal Clojure's, in the main
+  thread and in a future's thread.
+- Mutexes: no deadlock that Clojure does not have.
+- swap-vals!/reset-vals!: linearizable (proved).
+
+======================================================================
+7. SEARCH RUNS ("complete n" = every timeline/program within the bounds)
+======================================================================
+| World | Bounds | Result |
+| Round 3's two-thread lock census, the 143 undecided (results/r4-runtime-census2-{0,4,6,7,10,11}.txt) | the same world and order; partitions 0, 4, 6, 7, 10, 11 re-walked (complete 14,196 / 3,432 / 3,432 / 3,432 / 3,120 / 3,120); budgets 20,000 → 400,000 → 2,000,000 states | all 143 decided at ≤400,000 states: 131 have no jank-only deadlock; 12 deadlock in round 3's classes (6 D16 watches E⟂S, 6 future RT4/RT5); no new class. Round 3's 37,488-program census is now complete with no undecided program |
+| Round 3's stopped fine-replica scenario: validator swap! beside set-validator! (results/r4-runtime-fine-validator.txt) | fine SharedMutex replica, 3,000,000 states | jank DEADLOCK after 117 steps (683,406 states searched); Clojure always completes (1,832). RT1's variant confirmed at the atomic level |
+| GC, exception in flight (results/r4-runtime-gc.txt) | exhaust over gc.collect/gc.stale/gc.slot; 1-3 allocations in the finally; -O0 and -O1; two shapes | throw in the fn that runs the finally, -O0: freed read complete 64/128/256, nothing (S69's test: matches jank). -O1: freed read found after 4/6/10, survival found after 1. Separate boom fn, -O0 and -O1: freed read found after 2, survival found after 1. Clojure: complete 64 to 186,624, nothing |
+| GC, unbound root | 1-3 allocations after ns-unmap; control without ns-unmap | freed read found after 2, survival found after 1 (both reachable); Clojure complete 1,312,768 (1 allocation), stopped at 2,000,000 (2 and 3), nothing; control complete 1,312,768, nothing |
+| Lazily compiled fns, lazy (results/r4-runtime-deferred-4.txt, -5.txt) | every program of 1..4 / 1..5 forms over 19 forms | complete 137,560 (7 classes) / 2,613,659 (10 classes: the A1-A6, A11 mechanisms and their combinations); residual with the mechanisms set aside: complete, nothing (both sizes) |
+| Lazily compiled fns, --eager control | same | complete 137,560 / 2,613,659: only A11's {:name} meta class; residual: complete, nothing |
+| Thread bindings (results/r4-runtime-bindings.txt) | every program of 1..5 ops over 7, main thread or a future's thread (with or without a creator binding) | complete 58,821: 22,201 A9, 14,469 A10, 11,907 A7; residual complete, nothing |
+| Mutex scenarios (results/r4-runtime-mutex-scenarios.txt) | 6 programs, state search ≤500,000 | A6 one thread (10 steps, 11 states), A6 two threads (12 steps, 58 states) and three (13 steps, 254), A12 (7 steps, 29 states), cpp/raw initializer (6 steps, 23 states); defmethod beside a call with no wait: always completes (64 states) |
+| Mutex census (results/r4-runtime-mutexes.txt) | ≤2 threads × 1 op over 10 ops, callback bodies ≤1 op to depth 1, ≤20,000 states per search | complete 64,330 programs; 629 deadlock classes, every one built from four mechanisms: A6 (compilation_mutex then the write_mutex alter_root holds, 3,900 programs), S63 (write_mutex re-entered by def/alter-var-root, 898), A12 (multimethod mutex, 271), cpp/raw initializers under the JIT lock (no Clojure counterpart, 13,230); no search stopped |
+| Mutex census residual (results/r4-runtime-mutexes-residual.txt) | the same, the four mechanisms set aside | complete 64,330, nothing |
+
+======================================================================
+8. THEOREMS (no sorry, no native_decide, no axiom; ★ = new for-every-input proof)
+======================================================================
+Jank/R4/Runtime/Proofs4.lean:
+- ★ swapVals_linearizable: for every interleaving of load/CAS/spurious-failure events, any number
+  of threads, any functions, any initial value: the [old new] pairs of the successful swap-vals!/
+  reset-vals! chain from the initial value in CAS order and the atom holds the last new value
+  (linearizability with the CAS as linearization point; covers x86 strong and LL/SC weak CAS).
+- ★ unbound_str_differs: jank's printed unbound root differs from Clojure's for every address and var.
+- ★ future_conveys: a future's thread sees its creator's binding of *x*, jank and Clojure alike, for
+  every creator binding.
+Jank/R4/Runtime/Deferred.lean:
+- ★ realize_rebinds, ★ realize_inside_alter_hangs, ★ clojure_call_keeps_roots (above); six
+  kernel-checked witnesses (decide +kernel) of A1, A3, A4 in both modes.
+Jank/R4/Runtime/Bindings4.lean:
+- ★ getTB_bound_differs, ★ pushArray_rejected, ★ future_pop.
+
+======================================================================
+9. LIBRARY GAPS (sdk/lean untouched)
+======================================================================
+- No conservative-stack model: Gc4 (stale words with per-collection decisions) over round 3's heap.
+- No reentrant read-write lock: built in Mutexes (writer reentrancy, writer may read, reader
+  cannot upgrade).
+- exhaust stops at the first counterexample: the GC runs use a pair of opposite properties to show
+  that both outcomes are reachable.
+- Common.census / stateSearch from round 3 reused.
+
+======================================================================
+10. PROJECTS TRANSLATED
+======================================================================
+jank (MPL-2.0); bdwgc (pthread_stop_world.c stack scanning: MIT-style); folly (SharedMutex via
+round 3's replica: Apache-2.0); Clojure (EPL-1.0) as the specification (Var.java, MultiFn.java,
+core.clj). No new project beyond round 3's.

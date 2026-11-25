@@ -1,0 +1,137 @@
+== terminal REPL census: 10000 sequences of 4 lines, complete
+  agree 2351; outside the model 0
+  E4 a form spanning lines: each line is read alone: 523
+      e.g. lines ["(def a 1)", "(def a 1)", "(+ a", " 2)"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.error,
+ Jank.R4.Nrepl.Shown.error]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "3"]
+  UNEXPLAINED: 1295
+      e.g. lines ["(def a 1)", "(def a 1)", "(+ a", "(def a 1)"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.error,
+ Jank.R4.Nrepl.Shown.value "#'user/a"]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.error]
+  E3 *e is never set by the terminal REPL: 450
+      e.g. lines ["(def a 1)", "(def a 1)", "(throw (ex-info \"e\" {}))", "(nil? *e)"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.error,
+ Jank.R4.Nrepl.Shown.value "true"]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.error,
+ Jank.R4.Nrepl.Shown.value "false"]
+  S75 (terminal) one input, one value: several forms (or a form and a stray closer) on a line: 5381
+      e.g. lines ["(def a 1)", "(def a 1)", "(def a 1)", " 2)"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.error]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "2",
+ Jank.R4.Nrepl.Shown.error]
+  (2095 ms)
+== line/column census: 299592 code strings ≤ 6 chars × 4 starts = 1198368, complete
+  every list: (:line (meta form)) jank nil, Clojure its line: 649344 inputs with a list
+  :jank/source positions agree with Clojure's: 826128
+  CR ends a line on Clojure only: 171744
+      e.g. code "\x0d(" start (1,1): jank (1,2) Clojure (2,1)
+  non-ASCII: jank counts bytes, Clojure UTF-16 units: 200496
+      e.g. code "é(" start (1,1): jank (1,3) Clojure (1,2)
+  (787 ms)
+== World S census gTry mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 2000000
+  complete at 35531 timelines; outside the model: 0 []
+  eval value: error: 1
+      e.g. eval "(try (in-ns 'tq) (finally (print \"f\"))) t1" ns=user: jank eval-error false, spec [Jank.R4.Nrepl.SpecItem.error] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 9,1,7,9,1,8; story:
+        r0 eval "(try (in-ns 'tq) (finally (print \"f\"))) (try (def t1 (throw (ex-info \"d\" {}))) (catch cpp/jank.runtime.object_ref e 5))" ns=user → jank [{"id" "r0", "out" "f", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error] out "f"
+        r1 eval "(try (in-ns 'tq) (finally (print \"f\"))) t1" ns=user → jank [{"id" "r1", "out" "f", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "tq", "session" "s0", "value" "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error] out "f"
+  the process stays up: 3929
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (throw (ex-info \"y\" {}))) (finally (throw (ex-info \"z\" {}))))" ns=user: CRASH std::terminate: finally threw while a catch handler's exception unwound (D24)
+      path 0,0,0,1,4; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"x\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"x\"" "user"] out ""
+        r1 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (throw (ex-info \"y\" {}))) (finally (throw (ex-info \"z\" {}))))" ns=user → jank []
+  eval value: text [R112 in-ns returns nil]: 1549
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (in-ns 'tq) (finally (print \"f\")))" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "tq"]] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,0,0,1,9; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"x\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"x\"" "user"] out ""
+        r1 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (in-ns 'tq) (finally (print \"f\")))" ns=user → jank [{"id" "r1", "out" "f", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "tq", "session" "s0", "value" "nil"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"tq\"]" "tq"] out "f"
+  eval value: text: 1873
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch :default e (pr-str e)))" ns=user: jank values ["nil"], spec ["#error"] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,0,0,1,10; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"x\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"x\"" "user"] out ""
+        r1 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch :default e (pr-str e)))" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "\"nil\""}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"#error\"" "user"] out ""
+  (17652 ms)
+== World S census gBinding mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 2000000
+  complete at 11991 timelines; outside the model: 0 []
+  eval value: text [R112 in-ns returns nil]: 183
+      e.g. eval "(def ^:dynamic *d* 0) (binding [*d* 2] (in-ns 'tb))" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "tb"]] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,0,0,1,4; story:
+        r0 eval "(def ^:dynamic *d* 0)" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "#'user/*d*"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "#'user/*d*" "user"] out ""
+        r1 eval "(def ^:dynamic *d* 0) (binding [*d* 2] (in-ns 'tb))" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "tb", "session" "s0", "value" "nil"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"tb\"]" "tb"] out ""
+  (4364 ms)
+== World S census gLoop mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 2000000
+  complete at 3267 timelines; outside the model: 1372 [expression Jank.Analyzer.ExprKind.cppConstructorCall]
+  nothing
+  (2000 ms)
+== World S census gTryRes mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := true, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=2 prefix=#[] max 3000000
+  complete at 681297 timelines; outside the model: 70258 [expression Jank.Analyzer.ExprKind.cppConstructorCall]
+  eval value: error: 1
+      e.g. eval "(try (in-ns 'tq) (finally (print \"f\"))) t1" ns=user: jank eval-error false, spec [Jank.R4.Nrepl.SpecItem.error] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 8,1,6,8,1,7; story:
+        r0 eval "(try (in-ns 'tq) (finally (print \"f\"))) (try (def t1 (throw (ex-info \"d\" {}))) (catch cpp/jank.runtime.object_ref e 5))" ns=user → jank [{"id" "r0", "out" "f", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error] out "f"
+        r1 eval "(try (in-ns 'tq) (finally (print \"f\"))) t1" ns=user → jank [{"id" "r1", "out" "f", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "tq", "session" "s0", "value" "#object[Jank.Analyzer.ObjectType.varUnboundRoot 0]"}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error] out "f"
+  eval value: text: 6311
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (ex-message *e)" ns=user: jank values [""], spec ["error_ref compile: Unable to resolve symbol: t1 in this context"] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,1,7,0,1,9; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) t1" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error] out ""
+        r1 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (ex-message *e)" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"id" "r1", "ns" "user", "session" "s0", "value" "\"\""}, {"id" "r1", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"error_ref compile: Unable to resolve symbol: t1 in this context\"" "user"] out ""
+  (327876 ms)
+== World S census gTryRes3 mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := true, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=3 prefix=#[] max 3000000
+  complete at 20889 timelines; outside the model: 1545 [expression Jank.Analyzer.ExprKind.cppConstructorCall]
+  eval value: text: 402
+      e.g. eval "(ex-message *e)" ns=user: jank values [""], spec ["error_ref compile: Unable to resolve symbol: t1 in this context"] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,7,9; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"x\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"x\"" "user"] out ""
+        r1 eval "t1" ns=user → jank [{"id" "r1", "session" "s0"}, {"id" "r1", "session" "s0"}, {"err" "#error", "id" "r1", "session" "s0"}, {"ex" "#error", "id" "r1", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error] out ""
+        r2 eval "(ex-message *e)" ns=user → jank [{"id" "r2", "session" "s0"}, {"id" "r2", "session" "s0"}, {"id" "r2", "ns" "user", "session" "s0", "value" "\"\""}, {"id" "r2", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"error_ref compile: Unable to resolve symbol: t1 in this context\"" "user"] out ""
+  (11459 ms)
+ALL-DONE

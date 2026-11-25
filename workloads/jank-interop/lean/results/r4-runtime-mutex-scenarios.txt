@@ -1,0 +1,110 @@
+* alter-var-root on a defn'd var whose fn calls the var's fn (never called before)
+  program: alter-var-root fn g = (f); thread 0: (alter-var-root #'f g)
+  jank: DEADLOCK after 10 steps (11 states): waits f's write_mutex (kHasE) holding [deferred fn compilation_mutex, f's write_mutex]
+  Clojure: always completes (8 states)
+  tape:
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+  story:
+    0: thread 0: (alter-var-root #'f g)
+    1: thread 0: f's write_mutex sets kHasE
+    4: thread 0: (f)
+    5: thread 0: deferred fn compilation_mutex lock
+    7: thread 0: JIT interpreter recursive_mutex lock
+* alter-var-root whose fn derefs a future that calls the var's fn for the first time
+  program: alter-var-root fn g = @F; F's body = (f); thread 0: (alter-var-root #'f g)
+  jank: DEADLOCK after 12 steps (58 states): waits f's write_mutex (kHasE) holding [deferred fn compilation_mutex] | waits the future F holding [f's write_mutex]
+  Clojure: always completes (36 states)
+  tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+  story:
+    0: thread 0: (alter-var-root #'f g)
+    1: thread 0: f's write_mutex sets kHasE
+    4: thread 0: @F
+    6: thread 1: (f)
+    7: thread 1: deferred fn compilation_mutex lock
+    9: thread 1: JIT interpreter recursive_mutex lock
+* defmethod with a lazy-seq dispatch value whose realization waits on a thread that calls the multimethod
+  program: L's body = @F; F's body = (mm :a); thread 0: (defmethod mm L …)
+  jank: DEADLOCK after 7 steps (29 states): waits multimethod recursive_mutex holding [] | waits the future F holding [multimethod recursive_mutex, lazy seq L's lock]
+  Clojure: always completes (42 states)
+  tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+  story:
+    0: thread 0: (defmethod mm L …)
+    1: thread 0: multimethod recursive_mutex lock
+    2: thread 0: lazy seq L's lock lock
+    4: thread 0: @F
+    6: thread 1: (mm :a)
+* a multimethod call while another thread's defmethod realizes its lazy dispatch value
+  program: L's body = (eval '(fn [] 1)); thread 0: (defmethod mm L …); thread 1: (mm :a)
+  jank: always completes (64 states)
+  Clojure: always completes (33 states)
+* a cpp/raw initializer that derefs a future that JIT-compiles (no Clojure counterpart)
+  program: F's body = (eval '(fn [] 1)); the cpp/raw initializer = @F; thread 0: (cpp/raw "…initializer calling jank…")
+  jank: DEADLOCK after 6 steps (23 states): waits JIT interpreter recursive_mutex holding [] | waits the future F holding [JIT interpreter recursive_mutex]
+  Clojure: always completes (24 states)
+  tape:
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+  story:
+    0: thread 0: (cpp/raw "…initializer calling jank…")
+    1: thread 0: JIT interpreter recursive_mutex lock
+    3: thread 0: @F
+    5: thread 1: (eval '(fn [] 1))
+* a deferred fn's first call while another thread's alter-var-root waits on it
+  program: alter-var-root fn g = @F; F's body = (f); thread 0: (alter-var-root #'f g); thread 1: (f)
+  jank: DEADLOCK after 13 steps (254 states): waits deferred fn compilation_mutex holding [] | waits f's write_mutex (kHasE) holding [deferred fn compilation_mutex] | waits the future F holding [f's write_mutex]
+  Clojure: always completes (144 states)
+  tape:
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":3,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":2,"value":0}
+{"name":"thread.next","options":1,"value":0}
+{"name":"thread.next","options":1,"value":0}
+  story:
+    0: thread 0: (alter-var-root #'f g)
+    1: thread 0: f's write_mutex sets kHasE
+    4: thread 0: @F
+    5: thread 1: (f)
+    6: thread 1: deferred fn compilation_mutex lock
+    8: thread 1: JIT interpreter recursive_mutex lock
+    12: thread 2: (f)
+exit=0

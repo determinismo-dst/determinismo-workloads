@@ -1,0 +1,42 @@
+== look: lookahead tokens ≤ 3 (4240 patterns in part 0/3), inputs ≤ 3 over a b (15), 9 calls, locale UTF-8
+  census: 572400 questions: 424779 agree, 37056 differ, 110160 jank rejects a valid pattern, 405 jank accepts an invalid one, 0 not compared
+    differ [re-seq-new-string (R81)]: 8124
+      (re-seq #"a?" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"b|" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"|a" ""): Clojure (""), jank ("" "" …) infinite
+    differ [fn-gets-match-string (R84)]: 9794
+      (clojure.string/replace "" #"()" f): Clojure "<|>", jank "<>"
+      (clojure.string/replace "a" #"()" f): Clojure "<|>a<|>", jank "<>a<>"
+      (clojure.string/replace "b" #"()" f): Clojure "<|>b<|>", jank "<>b<>"
+    differ [unmatched-group-empty (R80)]: 10751
+      (re-find #"|()" ""): Clojure ["" nil], jank ["" ""]
+      (re-find #"|()" "a"): Clojure ["" nil], jank ["" ""]
+      (re-find #"|()" "b"): Clojure ["" nil], jank ["" ""]
+    differ [lookahead-capture-from-an-earlier-start (new)]: 4132
+      (re-seq #"(?!(a)b)" "ab"): Clojure (["" "a"] ["" nil]), jank (["" ""] ["" ""] ["" ""] …) infinite
+      (re-seq #"(?!(a))\b" "a"): Clojure (["" "a"]), jank (["" ""])
+      (re-seq #".(?!(a))" "aa"): Clojure (["a" "a"]), jank (["a" ""])
+    differ [ecmascript-template (R84)]: 3072
+      (clojure.string/replace "a" #"a" "[$1]"): Clojure throws (No group 1), jank "[]"
+      (clojure.string/replace "" #"a?" "[$1]"): Clojure throws (No group 1), jank "[]"
+      (clojure.string/replace "" #"b|" "[$1]"): Clojure throws (No group 1), jank "[]"
+    differ [re-matches-first-match (R82)]: 43
+      (re-matches #"|a" "a"): Clojure "a", jank nil
+      (re-matches #"a??" "a"): Clojure "a", jank nil
+      (re-matches #"|a?" "a"): Clojure "a", jank nil
+    differ [regex-iterator-retry (R85)]: 1140
+      (clojure.string/split "a" #"|a" 0): Clojure ("a"), jank ()
+      (clojure.string/split "aa" #"|a" 0): Clojure ("a" "a"), jank ()
+      (clojure.string/split "ab" #"|a" 0): Clojure ("a" "b"), jank ("" "" "b")
+    jank rejects [backreference: Back-reference index exceeds current sub-expression count.]: 68985
+      (re-seq #"\2" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+      (re-find #"\2" ""): Clojure nil, jank throws (Back-reference index exceeds current sub-expression count.)
+    jank rejects [quantifier on an assertion]: 41040
+      (re-seq #"$*" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"$*" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+    jank rejects [inline flags (R18)]: 135
+      (re-seq #"(?)" ""): Clojure (""), jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+      (re-find #"(?)" ""): Clojure "", jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+    jank accepts, Java rejects [Dangling meta character '*']: 405
+      (re-seq #"a**" ""): Clojure throws (Dangling meta character '*'), jank ("" "" …) infinite
+      (re-seq #"b?*" ""): Clojure throws (Dangling meta character '*'), jank ("" "" …) infinite

@@ -1,0 +1,374 @@
+Round 4, area G (core): the clojure.core functions no round covered, and the bundled namespaces
+jank 7135b770857d625630ab6f9abe5861c618d67b82; every jank path is under upstream-main/compiler+runtime/ at that commit.
+Lean: Jank/R4/Core/*.lean, driver Run/R4/Core.lean (exe jank4-core). Run output: results/r4-core.txt.
+Tests: .r4-scratch/core/tests.jank (namespace jank-lean.deviations-r4-core-test, tests uG1..uG30, 28 deftests);
+Clojure translation .r4-scratch/core/clj/jank_lean/deviations_r4_core_test.clj, run from .r4-scratch/core/clj with
+  clojure -Sdeps '{:paths ["."] :deps {org.clojure/clojure {:mvn/version "1.12.0"} org.clojure/data.json {:mvn/version "2.5.2"}}}' \
+    -M -e "(require 'jank-lean.deviations-r4-core-test) (clojure.test/run-tests 'jank-lean.deviations-r4-core-test)"
+  1.12.0: 28 tests, 52 assertions, 0 failures. 1.11.1: 2 failures, both in uG10 (a 1.12 change).
+  Two first drafts were refuted by this check and dropped: (ex-info "m" nil) throws only on 1.11 (1.12 stores {}),
+  and data.json 2.5.2 cannot write characters either.
+
+How the area was covered
+- Scope: the 228 names of .r4-scratch/survey/core-uncovered-core.txt (no round's sources or reports mention
+  "(name " or "\"name\""), the bundled namespaces clojure.set, clojure.walk, clojure.data, clojure.template,
+  clojure.string (the 5 functions no round touched), clojure.test, clojure.data.json, and the C++ objects
+  exception_info, uuid, inst, tagged_literal, reader_conditional.
+- Every definition was extracted from core.jank (.r4-scratch/core/jank-defs.txt, 232 defs) and from Clojure
+  1.12.0's core.clj (.r4-scratch/core/clj-defs.txt) and read side by side, with the C++ each one calls.
+  A normalizer (.r4-scratch/core/sametext.py) finds 65 of them textually identical to Clojure's after removing
+  docstrings, metadata and whitespace; reading the other 150 found 12 more equal up to Clojure's class-only
+  branches (isa?, ancestors, descendants, underive, nthnext, take-last, reductions, dedupe, when-first,
+  keep-indexed, juxt, merge-with, vary-meta). Those inherit only the primitives' deviations of earlier rounds.
+- What differs in code was replicated in Lean (below) and searched completely against Clojure 1.12's behavior.
+- A reach census over core.jank (.r4-scratch/core/reach.py) lists the ported functions that call an unported one.
+- Every surviving deviation has a test; all 28 tests pass on Clojure 1.12.0 (with org.clojure/data.json 2.5.2);
+  on Clojure 1.11.1 all pass except uG10 (walk metadata is a 1.12 change).
+
+(1) Deviations
+
+G1. clojure.data/diff never subdiffs: maps, vectors and sets are compared as atoms.
+    (clojure.data/diff {:a 1 :b 2} {:a 1 :b 3})   ; Clojure ({:b 2} {:b 3} {:a 1})   jank [{:a 1, :b 2} {:a 1, :b 3} nil]
+    (clojure.data/diff [1 2 3] [1 5 3])           ; Clojure [[nil 2] [nil 5] [1 nil 3]]   jank [[1 2 3] [1 5 3] nil]
+    (clojure.data/diff #{1 2} #{2 3})             ; Clojure [#{1} #{3} #{2}]           jank [#{1 2} #{2 3} nil]
+    Path: src/jank/clojure/data.jank equality-partition 66 (always :atom), diff-similar 69 (always atom-diff),
+      diff 72-89. The helpers (vectorize 22, diff-associative-key 32, diff-associative 48, diff-sequential 59) are
+      ported and never reached. jank's own docstring (copied from Clojure) says maps are subdiffed.
+    Clojure: clojure/data.clj EqualityPartition/Diff protocols.
+    Test: uG1-diff-subdiffs-maps-and-vectors. Status: new. Confidence: high.
+    Search: every ordered pair of 21 values (see (7)); theorem jankDiff_is_atomDiff (for every pair).
+
+G2. ex-message, ex-data and ex-cause throw on anything but an ex-info (Clojure and jank's own docstrings: nil).
+    (ex-message "boom")   ; Clojure nil   jank throws (native std::runtime_error from try_object)
+    (ex-data :k)          ; Clojure nil   jank throws
+    Path: core.jank 123-149 -> runtime/core.cpp ex_message 1338, ex_data 1343, ex_cause 1348:
+      try_object<obj::exception_info>(o). The error is a native exception: (catch cpp/jank.runtime.object_ref e)
+      does not catch it.
+    Reach: jank throws any object (strings, keywords: core.jank itself throws strings in spit, aset, destructure);
+      a handler calling (ex-message e) on such a value throws again. clojure.test's thrown-with-msg?
+      (test.jank 516) calls ex-message on whatever it caught.
+    Test: uG2-ex-message-of-a-non-exception-is-nil. Status: new. Confidence: high.
+
+G3. Throwable->map: :cause and :data are the outermost exception's, not the root cause's; :via entries have no :type.
+    (:cause (Throwable->map (ex-info "a" {:x 1} (ex-info "b" {:y 2}))))   ; Clojure "b"      jank "a"
+    (:data  (Throwable->map (ex-info "a" {:x 1} (ex-info "b" {:y 2}))))   ; Clojure {:y 2}   jank {:x 1}
+    Path: core.jank 150 (Throwable->map is ex-map) -> core.cpp ex_map 1353 -> obj/exception_info.cpp to_map
+      116-148 (message and data of `this`), cause_to_via 38-54 (:message :data :at, no :type).
+    Clojure: core_print.clj Throwable->map 473-507 (":cause - root cause message").
+    Test: uG3-throwable-map-cause-is-the-root-cause. Status: new. Confidence: high.
+    Theorem: jank_cause_not_root (every chain of 2+ links whose root message differs from the outer one).
+
+G4. Printing an exception with two or more causes repeats the first cause and never prints the others.
+    (pr-str (ex-info "a" {} (ex-info "b" {} (ex-info "c" {}))))   ; Clojure contains "c"   jank :via a, b, b; no "c"
+    Path: obj/exception_info.cpp to_code_string 70-101: the loop at 80-83 advances cause_it but prints
+      cause_to_via(cause) (82), the first cause, each time; :cause (75) is the outer message (Clojure: the root's).
+      str is the same text (to_string 62-68).
+    Test: uG4-a-printed-exception-shows-every-cause. Status: new. Confidence: high.
+    Theorem: jank_printed_via_wrong (every chain of 3+ links whose third message differs from the second).
+
+G5. format (and printf) follow std::format: `{}` is a field, `%` is text.
+    (format "%d" 5)          ; Clojure "5"     jank "%d"
+    (format "%s-%s" "a" "b") ; Clojure "a-b"   jank "%s-%s"
+    (format "{}" 5)          ; Clojure "{}"    jank "5"
+    (format "{}")            ; Clojure "{}"    jank throws std::format_error (native)
+    Path: core.jank format 6950-6953 ("Formats a string using std::format."), printf 6955-6958 -> core.cpp format
+      237-378 (its own brace scanner; `%` copied at 361-371) -> detail/std_format.hpp vformat_object_to.
+    Caveat: jank's docstring states std::format; the book's differences-from-clojure.md does not list it.
+    Test: uG6-format-uses-java-conversions. Status: new. Confidence: high.
+    Search: every string of at most 5 characters over % s d a { } with 5 argument lists (see (7)).
+    Theorem: scan_no_braces (for every brace-free string and every argument list jank returns the string unchanged).
+
+G6. counted? is true for strings, arrays and hash/sorted map and set seqs; bounded-count counts a whole string.
+    (counted? "abc")          ; Clojure false   jank true
+    (bounded-count 1 "abc")   ; Clojure 1       jank 3
+    (counted? (seq #{1 2 3})) ; Clojure false   jank true
+    (counted? (long-array 3)) ; Clojure false   jank true
+    Path: core.jank counted? 7007-7011 -> core/seq.cpp is_counted 131-141 (behavior::countable: any count()
+      member; persistent_string.hpp, array.hpp, detail/iterator_sequence.hpp 40-41,
+      detail/base_persistent_map_sequence.hpp 42-43); bounded-count 7521-7531 (defined again 7532-7542).
+    Clojure: (instance? clojure.lang.Counted coll); String, arrays, PersistentHashMap.Seq, APersistentMap.KeySeq,
+      PersistentTreeMap.Seq are not Counted.
+    Test: uG7-strings-are-not-counted. Status: new. Confidence: high.
+    Search: 22 object types (see (7)); theorem bounded_count_agree (agrees wherever counted? does).
+
+G7. map-entry? is true for every vector of two.
+    (map-entry? [1 2])   ; Clojure false   jank true
+    Path: core.jank 5075-5080: (and (vector? x) (== 2 (count x))). jank has no entry type: map seqs yield
+      persistent_vectors.
+    Test: uG8-a-vector-is-not-a-map-entry. Status: new. Confidence: high.
+    Theorems: jank_map_entry_any_pair, map_entry_agree (agree on every value that is not a 2-vector).
+
+G8. shuffle throws on seqs whose C++ type has no static empty(): cons, repeat, chunked cons, sort's result.
+    (shuffle (repeat 3 :x))      ; Clojure [:x :x :x]   jank throws "cannot be shuffled" (native)
+    (set (shuffle (cons 0 [1 2])))  ; Clojure #{0 1 2}  jank throws
+    Path: core.jank 7516-7520 -> core/seq.cpp shuffle 1178-1201 (behavior::collection_like,
+      collection_like.hpp 10-14). Clojure: any java.util.Collection.
+    Test: uG9-shuffle-of-any-seq. Status: extends R120 (same root: no static empty()). Confidence: high.
+
+G9. clojure.walk rebuilds lists and seqs without their metadata (Clojure 1.12 keeps it).
+    (meta (clojure.walk/postwalk identity (with-meta '(1 2) {:m 1})))   ; Clojure 1.12 {:m 1}   jank nil
+    Path: src/jank/clojure/walk.jank walk 3-12 (no with-meta on the list and seq branches; vectors, maps and sets
+      keep theirs through empty, core/seq.cpp 787-803, and into, core.jank 3370-3384).
+    Caveat: Clojure 1.11 dropped it too (1.12's walk.clj 35-51 added with-meta); the spec here is 1.12.
+    Test: uG10-postwalk-keeps-list-metadata (passes on 1.12.0, fails on 1.11.1). Status: new. Confidence: high.
+    Theorems: jank_walk_drops_list_meta, walk_vec_meta_agree.
+
+G10. tagged-literal prints its form with str, not pr.
+    (pr-str (tagged-literal 'foo "bar"))   ; Clojure "#foo \"bar\""   jank "#foo bar"
+    Path: core.jank 7654-7659 -> obj/tagged_literal.cpp to_string_impl 30-36 (form.to_string), to_code_string
+      50-53 returns to_string. The printed form does not read back to the same value.
+    Test: uG11-tagged-literal-prints-its-form-readably. Status: new. Confidence: high.
+
+G11. parse-uuid accepts 32 hex digits with dashes anywhere or none, and a braced form.
+    (parse-uuid "00000000000000000000000000000000")         ; Clojure nil   jank #uuid "00000000-…"
+    (parse-uuid "{00000000-0000-0000-0000-000000000000}")   ; Clojure nil   jank a uuid
+    Path: core.jank 7796-7803 -> core.cpp parse_uuid 1020-1038 -> obj/uuid.cpp from_string 17-28 -> stduuid
+      3afe7193 include/uuid.h from_string 503-547 (braces 514-517, '-' skipped 521, 32 hex digits 523-544).
+    Clojure 1.12: (UUID/fromString s), grammar of UUID.toString. The JDK also takes some non-canonical strings
+      ("1-1-1-1-1"); jank rejects those, which the documented grammar supports: not reported.
+    Test: uG12-parse-uuid-needs-the-dashed-form. Status: new. Confidence: high (low impact).
+
+G12. areduce throws on every non-empty array: its loop steps with unchecked-inc-int, which is unported.
+    (let [a (long-array [1 2 3])] (areduce a i ret 0 (+ ret (aget a i))))   ; Clojure 6   jank throws "TODO: port unchecked-inc-int"
+    Path: core.jank areduce 6609-6619 -> unchecked-inc-int 1835-1841. (amap, 6594, uses unchecked-inc: ported.)
+    Test: uG13-areduce-over-an-array. Status: new. Confidence: high.
+
+G13. newline and flush throw "TODO: port".
+    (newline)   ; Clojure writes "\n"   jank throws
+    (flush)     ; Clojure nil           jank throws "TODO: port flesh"
+    Path: core.jank newline 5895-5900, flush 5902-5908. (println and prn are C++, core.cpp; they do not call newline.)
+    Test: uG14-newline-and-flush. Status: new (R124's list lacks them). Confidence: high.
+
+G14. Other functions jank defines but leaves unported (each throws "TODO: port"), beyond R113 and R124:
+    instance?, cast, class, class?, bases, supers (via bases), byte, short, the 20 unchecked-* functions except
+    unchecked-inc (unchecked-add/-int, -subtract/-int, -multiply/-int, -negate/-int, -dec/-int, -inc-int,
+    -divide-int, -remainder-int, unchecked-byte/-short/-char/-int/-long/-float/-double), rationalize (noted in
+    round 3), find-keyword, line-seq, read-line, read+string, with-open, with-in-str, memfn, into-array,
+    to-array-2d (R124), file-seq, special-symbol?, reversible?, indexed?, iterator-seq, enumeration-seq,
+    resultset-seq, mix-collection-hash, hash-ordered-coll, seq-to-map-for-destructuring, create-struct,
+    struct-map, struct, accessor (and defstruct through create-struct), stream-reduce!, stream-seq!,
+    stream-into! (and stream-transduce! through stream-reduce!), reader-conditional, reader-conditional?,
+    clojure.string/re-quote-replacement (R84 noted it). print-method and print-dup dispatch on class, so every
+    call throws (R75 holds). aset with nested indices throws a string.
+    Path: core.jank, each definition (listed with lines in .r4-scratch/core/jank-defs.txt).
+    Tests: uG15-unchecked-arithmetic, uG16-collection-predicates (the portable ones). Status: new names.
+
+G15. Bit operations accept BigInts.
+    (bit-not 5N)     ; Clojure throws "bit operation not supported for: class clojure.lang.BigInt"   jank -6
+    (bit-and 5N 3)   ; Clojure throws   jank 1
+    Path: core.jank bit-not 1436-1442 -> core/math.cpp bit_not 492-496 -> to_i64 10-30 (big_integer accepted at
+      22-25). Clojure: Numbers.bitOpsCast accepts Long, Integer, Short, Byte only.
+    Test: uG17-bit-operations-reject-bigints. Status: new. Confidence: high (low impact).
+
+G16. spit of anything but a string throws; Clojure writes (str x).
+    (spit f 42) (slurp f)   ; Clojure "42"   jank throws (native: try_object<persistent_string>)
+    Path: core.jank spit 7340-7351: (cpp/cast jtl.immutable_string content) -> convert/builtin.hpp 333-336.
+    Test: uG18-spit-writes-any-value-as-str. Status: new. Confidence: high.
+
+G17. slurp takes no options.
+    (slurp f :encoding "UTF-8")   ; Clojure the text   jank arity error
+    Path: core.jank slurp 7326-7338 ([f] only). Test: uG19-slurp-takes-options. Status: new. Confidence: high.
+
+G18. spit into a path it cannot open returns nil and writes nothing.
+    (spit "/no-such-dir/x.txt" "a")   ; Clojure throws FileNotFoundException   jank nil
+    Path: core.jank spit 7340-7351: std::ofstream::open's failure is never checked; operator<< on a failed stream
+      does nothing. Test: uG20-spit-into-a-missing-directory-throws. Status: new. Confidence: high.
+
+G19. slurp of a missing file throws std::filesystem::filesystem_error before its own "(No such file or directory)"
+    check, so a jank object catch misses it.
+    (try (slurp "/no-such-dir/x.txt") (catch cpp/jank.runtime.object_ref _ :caught))   ; Clojure :caught   jank uncaught native exception
+    Path: core.jank slurp 7326-7338: the let evaluates (cpp/std.filesystem.file_size fname) (7331, the
+      throwing overload) before the (cpp/.is_open file) check (7332-7333). Test: uG21-slurp-of-a-missing-file-throws-a-catchable-error.
+    Status: new. Confidence: medium-high (assumes the analyzer picks file_size(const path&), the only
+      single-argument overload).
+
+G20. reduce-kv rejects a seq of entries.
+    (reduce-kv (fn [acc k _] (conj acc k)) [] (seq {:a 1}))   ; Clojure [:a]   jank throws "do not support reduce-kv" (native)
+    Path: core.jank 7316-7325 -> core/seq.cpp reduce_kv 923-972: nil, persistent_vector and types with
+      is_map_like (detail/base_persistent_map.hpp 27) only. Clojure: IKVReduce extended to Object reduces entries.
+    Test: uG22-reduce-kv-over-a-seq-of-entries. Status: new. Confidence: high (low impact).
+
+G21. clojure.data.json/read-str: an integer in [2^63, 2^64) becomes a negative long; a longer one a double.
+    (json/read-str "18446744073709551615")   ; data.json 18446744073709551615N   jank -1
+    (json/read-str "9223372036854775808")    ; data.json 9223372036854775808N    jank -9223372036854775808
+    (json/read-str "18446744073709551616")   ; data.json BigInt                   jank 1.8446744073709552E19
+    Path: json_native.cpp read 142 (json.get<jtl::i64>()) <- nlohmann 02dfbea3 lexer.hpp 1249-1299
+      (number_unsigned when strtoull fits) and from_json.hpp get_arithmetic_value 77-107 (static_cast).
+    Spec: data.json 2.5.2 read-integer (json.clj 184-189). Test: uG23-json-reads-big-integers-exactly.
+    Status: new. Confidence: high. Theorem: jank_reads_u64_wrapped (every integer in [2^63, 2^64)).
+
+G22. data.json read-str with :bigdec true reads a decimal through a double.
+    (compare 0.1M (json/read-str "0.1" :bigdec true))   ; data.json 0   jank nonzero (0.1000000000000000055511151231257827021181583404541015625M)
+    Path: json_native.cpp 147 big_decimal(json.get<f64>()) (round 3's S9 conversion). Spec: read-decimal
+      (bigdec string). Test: uG24-json-bigdec-reads-the-decimal-text (compare, not =: D8).
+    Status: extends S9 (new path). Confidence: high.
+
+G23. data.json write-str writes BigInts and BigDecimals as JSON strings.
+    (json/write-str 123N)   ; data.json "123"   jank "\"123\""
+    Path: json_native.cpp write 69-72 (to_string into a json string). Spec: write-bignum (json.clj 772-780).
+    Test: uG25-json-writes-bignums-as-numbers. Status: new. Confidence: high.
+
+G24. data.json write-str writes NaN and infinities as null.
+    (json/write-str ##NaN)   ; data.json throws "JSON error: cannot write Double NaN"   jank "null"
+    Path: json_native.cpp write (real -> json double) -> nlohmann serializer.hpp dump_float 799-806.
+    Test: uG26-json-does-not-write-nan. Status: new. Confidence: high (low impact).
+
+G25. data.json read-str of empty input with :eof-error? false throws.
+    (json/read-str "" :eof-error? false :eof-value :none)   ; data.json :none   jank throws nlohmann parse_error (native)
+    Path: json_native.cpp read_str 198-202: nlohmann::json::parse throws before the `discarded` case (189-195)
+      that would honor eof_error. jank's docstring documents both options; default-read-options (json.jank 5-7)
+      lacks :eof-error? (so its documented default true is false). Test: uG27-json-eof-value.
+    Status: new. Confidence: high.
+
+G26. zipmap builds a hash map, so a key `=` to an earlier one replaces it at any size.
+    (first (keys (zipmap [[1] '(1)] [:a :b])))   ; Clojure [1]   jank (1)
+    Path: core.jank zipmap 2411-2423: (transient (hash-map)) -> round 3's S59 transient path (champ.hpp 697-699).
+      Clojure's zipmap starts from (transient {}), an array map below 9 entries, which keeps the stored key.
+    Test: uG29-zipmap-keeps-the-first-equal-key. Status: extends S59 (S59 holds only from 9 entries for
+      maps built by assoc). Confidence: medium-high (rests on S59's transient path, replicated in round 3,
+      whose persistent path was confirmed).
+
+G27. #inst reads only a full date: a year, a year-month or a time without seconds is a read error.
+    (read-string "#inst \"2020\"")   ; Clojure #inst "2020-01-01T00:00:00.000-00:00"   jank read error "Unrecognized date/time syntax"
+    Path: read/parse.cpp parse_tagged_inst 948-975 -> obj/inst.cpp inst_from_string: formats "%FT%T%Oz",
+      "%FT%T%z", "%FT%T", "%F" (std::chrono::parse); "%F" needs year-month-day.
+    Clojure: clojure.instant's RFC3339 subset, every field after the year optional.
+    Test: uG30-inst-reads-a-year. Status: new (R51 is AOT only). Confidence: high for "2020" (no format can
+      match a string without '-'); the timezone forms were not replicated (libstdc++'s chrono parser was not
+      fetched).
+
+Not reported (checked):
+- (ex-data (ex-info "m" nil)): Clojure 1.12 {} (ExceptionInfo.java 31), jank nil; 1.11 throws: no test can pass
+  on both, and the docstring says nothing.
+- update-vals/update-keys keep a sorted map sorted (jank's sorted maps are transientable); Clojure returns an
+  unsorted map: an implementation detail, undocumented.
+- zipmap's and group-by's key order: hash maps (the book: "(hash-map) returns a hash map").
+- data.json escapes: data.json escapes non-ASCII and "/" by default (:escape-unicode, :escape-slash); jank writes
+  UTF-8 and "/" raw; both are valid JSON and jank's write-str docstring does not list those options. Characters:
+  both throw (data.json 2.5.2 has no writer for Character): the replica's first guess was wrong, the Clojure
+  check refuted it, the case was dropped.
+- clojure.test: thrown? takes no class (jank's documented form); is, are, testing, deftest, test-vars are
+  Clojure's text with object_ref catches: a native exception escapes is and test-var (the harness reports it).
+- Many runtime type errors are native std::runtime_error (try_object, visit_*): object catches miss them
+  (round 2 noted it under R26); here every test where Clojure throws asserts only where jank does not throw.
+
+(2) Feedback items: none were given to this area.
+
+(3) What was replicated (Jank/R4/Core/)
+- Value.lean: a value model (nil, booleans, longs, BigInts, doubles by text, strings, chars, keywords, symbols,
+  vectors, Clojure map entries, lists, seqs, array maps, sets, arrays) with Clojure's = (Util.equiv), get,
+  contains?, assoc on array maps (stored key kept), merge; all by fuel (kernel-runnable).
+- Diff.lean: clojure.data in full on both sides: jank's data.jank (equality-partition 66, diff-similar 69, diff
+  72-89) and Clojure's data.clj (EqualityPartition, Diff for Set/List/Map, atom-diff, vectorize,
+  diff-associative-key, diff-associative with set/union of keys, diff-sequential).
+- Exceptions.lean: exception chains; core.cpp ex_message/ex_data/ex_cause/ex_map (1338-1356);
+  exception_info.cpp to_map 116-148, cause_to_via 38-54, to_code_string 70-101 (the :via loop); Clojure's
+  ex-message/ex-data, Throwable->map and print-throwable.
+- Format.lean: core.cpp format 237-378 character by character (escapes, manual/automatic indices, depth,
+  out-of-range and unbalanced errors), detail/std_format.hpp's per-type formatting and std::format's field
+  grammar for the search alphabet; java.util.Formatter for %s %d %a %% %n with Missing/IllegalConversion/
+  UnknownConversion errors.
+- Uuid.lean: stduuid from_string (uuid.h 503-547) exactly; the JDK 23 UUID.fromString (fast path, fromString1
+  with Long.parseLong's sign and range rules and masking); the documented 8-4-4-4-12 grammar.
+- Preds.lean: counted?, bounded-count, shuffle's domain and map-entry? per object type (22 types, behaviors read
+  from each header and from Clojure's class declarations).
+- Walk.lean: walk/postwalk on forms with metadata, jank's and Clojure 1.12's.
+- Json.lean: nlohmann's integer lexing and get<i64> cast against data.json's read-integer; :bigdec through a
+  double against bigdec of the text (exact binary64 representability); the write cases.
+- Seqfns.lean: cycle (jank's lazy concat against Clojure's Cycle), nthrest (jank against 1.12), and the UTF-8
+  byte implementations of trim-newline, starts-with?, ends-with?, includes? against char ones.
+- Search.lean and Run/R4/Core.lean: the censuses (7).
+
+(4) Still left out, and why
+- The 65 textually identical definitions and the 12 equal up to class branches are not re-replicated: their
+  deviations are their primitives', which rounds 1-3 replicated (e.g. distinct? and group-by inherit D12,
+  frequencies inherits S59 past 8 entries, mod inherits round 1's rem, sort-by round 2's comparator sorts).
+- with-out-str and prn-str: captured through open_memstream on *out*; output functions were round 2's.
+- #inst timezone forms and printing: libstdc++'s std::chrono::parse (chrono_io.h) was not fetched.
+- clojure.data.json's string escaping (textual only), :value-fn/:key-fn (Clojure's semantics, read as equal),
+  write of inst (textual).
+- Functions that need Java classes (class, instance?, cast, supers, bases, resultset-seq, the stream-*
+  family, enumeration-seq, iterator-seq): unported; listed in G14.
+- rand, rand-int, rand-nth, random-sample, shuffle's distribution, random-uuid: properties only (ranges and
+  element sets), checked by reading.
+
+(5) Assumptions
+Replaced: none from earlier rounds.
+Standing (new):
+- coreA4-1: analysis of (cpp/std.filesystem.file_size fname) selects file_size(const path&), which throws
+  (G19).
+- coreA4-2: nlohmann's json from an immutable_string is a JSON string (G23 holds either way: Clojure writes a
+  number).
+- coreA4-3: JDK 23's UUID.fromString as quoted in Uuid.lean (the Clojure check ran on OpenJDK 23).
+- coreA4-4: S59's transient path (round 3) for G26.
+- coreA4-5: arguments to the predicate tables: a type's behaviors are what its header declares (count(),
+  static empty(), conj), including base classes.
+
+(6) Properties checked
+- diff returns Clojure's [only-in-a only-in-b in-both] for every pair.
+- ex-message/ex-data/ex-cause are nil on non-exceptions; Throwable->map's :cause and :data are the root's;
+  printing lists every link.
+- format equals java.util.Formatter's result, or both throw.
+- parse-uuid accepts exactly what the JDK accepts with the same value, and only the documented grammar.
+- counted? and bounded-count and shuffle per type; map-entry? per value.
+- postwalk keeps metadata.
+- read-str of integers is = to data.json's; :bigdec gives the decimal's value.
+- trim-newline, starts-with?, ends-with?, includes? on UTF-8 bytes equal the char versions.
+- cycle's and nthrest's prefixes equal Clojure's.
+
+(7) Search runs (jank4-core all; output results/r4-core.txt). Each is a complete walk (censusUnder over the
+whole world).
+- clojure.data/diff, every ordered pair of 21 values (scalars, vectors/lists ≤ 2, maps ≤ 2 entries nested once,
+  sets ≤ 2): complete 441; 40 disagree: sequential not subdiffed 18, maps not subdiffed 12, sets not split 10;
+  0 unexplained.
+- format, every string of ≤ 5 characters over % s d a { } × 5 argument lists ([], [1], ["x"], [1.5], [1 "x"]):
+  complete 46,655; 31,707 disagree: Java conversions are text to jank 5,005, braces are fields to jank 17,710,
+  both 8,992; 0 unexplained.
+- parse-uuid, 5 templates (canonical, mixed case, 32 hex, braced, "1-1-1-1-1") with ≤ 2 edits (insert, delete,
+  replace at every position, over 0 f F - { } g +): complete 1,596,458 (33 s); 142,022 disagree: jank accepts
+  outside the documented grammar where the JDK rejects 106,501; the JDK accepts outside the grammar where jank
+  rejects 23,031 (not a jank deviation: the grammar sides with jank); both accept outside the grammar with
+  different values 8,634 (the JDK masks over-long parts, e.g. "f00000000-000-0000-0000-000000000000"); both
+  accept the same value outside the grammar 3,856; 0 unexplained, and no disagreement on a string inside the
+  documented grammar.
+- ex-message/ex-data on 5 non-exception values; Throwable->map :cause, :data and the printed :via over chains of
+  1–4 links: complete 17; 11 disagree (5, 3, 1, 2 by class); 0 unexplained.
+- counted?, bounded-count (n ≤ 4) and shuffle over 22 object types: complete 154; counted? 6 types, bounded-count
+  18, shuffle 3; 0 unexplained.
+- map-entry? over 10 values: complete 10; 1 ([1 2]).
+- postwalk identity over 9 forms with metadata: complete 9; 5 (every list or seq carrying metadata).
+- trim-newline, starts-with?, ends-with?, includes? on UTF-8 bytes against chars, all pairs of strings ≤ 3
+  characters over a é \n \r 😀: complete 24,336; 0 (quiet, as expected for every valid string: a UTF-8 continuation
+  byte is never 10 or 13 and UTF-8 is prefix-free; not proved here).
+- cycle, take n ≤ 12 of 1–4 elements: complete 52; 0 (the theorem covers every input).
+- data.json read-str of integers at 2^0, 2^62, 2^63, 2^64, 2^65 ± 2, both signs: complete 50; 25 (5 wrap, 20 doubles).
+- data.json :bigdec true of m/10^k for m ≤ 200, k ≤ 3: complete 804; 551 (every decimal not a binary64 value).
+
+(8) Theorems (no sorry, no native_decide, no new axiom; star = for every input)
+- ★ Diff.jankDiff_is_atomDiff: jank's diff is atom-diff for every pair.
+- ★ Exceptions.jank_printed_via_wrong; ★ Exceptions.jank_cause_not_root.
+- ★ Format.scan_no_braces: for every brace-free string, every argument list and every start state at depth 0,
+  jank's format returns the string; Format.jank_format_percent_d (decide).
+- ★ Preds.jank_map_entry_any_pair, ★ Preds.map_entry_agree, ★ Preds.bounded_count_agree.
+- ★ Walk.jank_walk_drops_list_meta, ★ Walk.walk_vec_meta_agree.
+- ★ Json.jank_reads_u64_wrapped.
+- ★ Seqfns.cycle_agrees (jank's lazy cycle equals Clojure's Cycle on every prefix of every non-empty
+  collection); ★ Seqfns.nthrest_agrees (with jankNthrest_drop, cljNthrest_drop).
+All build (lake build jank4-core, 63 jobs); #print axioms (results/r4-core-axioms.txt): only propext,
+Classical.choice, Quot.sound.
+
+(9) Library gaps (built here, sdk/lean untouched)
+- The searches reuse round 3's Jank.R3.Search.Common (censusUnder, printCensus); nothing new was needed.
+- Kernel-runnable replicas: fuel-indexed recursion (Value, Diff) and a one-character-per-step scanner (Format) so
+  that `decide` and induction proofs reach them (Lean's `while` does not reduce in the kernel).
+
+(10) Projects translated (for NOTICE.md)
+- stduuid (jank-lang/stduuid 3afe7193, MIT): uuid::from_string, in Jank/R4/Core/Uuid.lean.
+- nlohmann json (jank-lang/json 02dfbea3, MIT): the number lexer's outcome and get<i64>, dump_float's
+  non-finite case, in Jank/R4/Core/Json.lean.
+- Clojure (EPL 1.0) and clojure.data.json 2.5.2 (EPL 1.0, read from its jar in ~/.m2): the specification side.
+- jank (MPL 2.0): core.jank, data.jank, walk.jank, json.jank, core.cpp, seq.cpp, math.cpp,
+  exception_info.cpp, tagged_literal.cpp, uuid.cpp, inst.cpp, json_native.cpp.
+New pinned sources: deps/json (02dfbea39d94b8d19ddcd0eabfdc943a65bf3368) and deps/stduuid
+(3afe7193facd5d674de709fccc44d5055e144d7a), shallow-fetched at the commits jank's tree pins; fetch-sources.sh
+does not fetch them yet (the coordinator owns that file).

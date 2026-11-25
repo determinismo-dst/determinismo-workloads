@@ -1,0 +1,42 @@
+== Round 3's S2/S9 tests as written (jank's `=` is D8's epsilon)
+agree   (= 2M (/ 6M 3M))
+        jank (replica): true
+        Clojure:        true
+agree   (= 0.5M (/ 3 6M))
+        jank (replica): true
+        Clojure:        true
+agree   (= 0.1M (bigdec 0.1))
+        jank (replica): true
+        Clojure:        true
+== Round 4's observations (compare, str)
+DIFFER  (compare 2M (/ 6M 3M))
+        jank (replica): 1
+        Clojure:        0
+DIFFER  (= (str 2M) (str (/ 6M 3M)))
+        jank (replica): false
+        Clojure:        true
+DIFFER  (compare 0.5M (/ 3 6M))
+        jank (replica): 1
+        Clojure:        0
+DIFFER  (= (str 0.5M) (str (/ 3 6M)))
+        jank (replica): false
+        Clojure:        true
+DIFFER  (compare 0.5M (/ 1.5M 3))
+        jank (replica): 1
+        Clojure:        0
+DIFFER  (compare 0.1M (bigdec 0.1))
+        jank (replica): -1
+        Clojure:        0
+DIFFER  (= (str 0.1M) (str (bigdec 0.1)))
+        jank (replica): false
+        Clojure:        true
+DIFFER  (str (/ 6M 3M))
+        jank (replica): 1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+        Clojure:        2
+DIFFER  (str (/ 3 6M))
+        jank (replica): 0.49999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999998
+        Clojure:        0.5
+DIFFER  (str (bigdec 0.1))
+        jank (replica): 0.1000000000000000055511151231257827021181583404541015625
+        Clojure:        0.1
+== S44: theorems s44_round3_test_meta_kept, s44_round4_cases (checked at build)

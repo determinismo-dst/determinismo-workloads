@@ -1,0 +1,35 @@
+== matcher: 12 patterns × 17 inputs × 30 scripts = 6120 scripts: 3830 agree, 2290 differ
+    [nth without a match is nil]: 1260
+      (let [m (re-matcher #"a" "")] (nth m 0)): Clojure throws (No match found), jank nil
+      (let [m (re-matcher #"a" "")] (nth m 1)): Clojure throws (IndexOutOfBoundsException), jank nil
+      (let [m (re-matcher #"a" "")] (nth m 2)): Clojure throws (IndexOutOfBoundsException), jank nil
+    [nth reads a character of the match (no groups)]: 59
+      (let [m (re-matcher #"a" "a")] (re-find m) (nth m 0)): Clojure "a" "a", jank "a" \a
+      (let [m (re-matcher #"a" "aa")] (re-find m) (nth m 0)): Clojure "a" "a", jank "a" \a
+      (let [m (re-matcher #"a" "aa")] (re-find m) (re-find m) (nth m 0)): Clojure "a" "a" "a", jank "a" "a" \a
+    [nth with not-found reads a character (no groups)]: 70
+      (let [m (re-matcher #"a" "a")] (re-find m) (nth m 0 :nf)): Clojure "a" :nf, jank "a" \a
+      (let [m (re-matcher #"a" "aa")] (re-find m) (nth m 0 :nf)): Clojure "a" :nf, jank "a" \a
+      (let [m (re-matcher #"a" "aa")] (re-find m) (re-find m) (nth m 0 :nf)): Clojure "a" "a" :nf, jank "a" "a" \a
+    [nth past group 0 reads a character (no groups)]: 11
+      (let [m (re-matcher #"ab" "ab")] (re-find m) (nth m 1)): Clojure "ab" throws (IndexOutOfBoundsException), jank "ab" \b
+      (let [m (re-matcher #"ab" "aab")] (re-find m) (nth m 1)): Clojure "ab" throws (IndexOutOfBoundsException), jank "ab" \b
+      (let [m (re-matcher #"ab" "aba")] (re-find m) (nth m 1)): Clojure "ab" throws (IndexOutOfBoundsException), jank "ab" \b
+    [nth with not-found without a match is not-found]: 410
+      (let [m (re-matcher #"(a)" "")] (nth m 0 :nf)): Clojure throws (No match found), jank :nf
+      (let [m (re-matcher #"(a)" "")] (nth m 1 :nf)): Clojure throws (No match found), jank :nf
+      (let [m (re-matcher #"(a)" "")] (re-find m) (nth m 0 :nf)): Clojure nil throws (No match found), jank nil :nf
+    [unmatched group is "" (R80)]: 390
+      (let [m (re-matcher #"(a)|b" "b")] (re-find m)): Clojure ["b" nil], jank ["b" ""]
+      (let [m (re-matcher #"(a)|b" "b")] (re-find m) (re-find m)): Clojure ["b" nil] nil, jank ["b" ""] nil
+      (let [m (re-matcher #"(a)|b" "b")] (re-find m) (re-find m) (re-find m)): Clojure ["b" nil] nil nil, jank ["b" ""] nil nil
+    [other]: 90
+      (let [m (re-matcher #"" "")] (re-find m) (nth m 0)): Clojure "" "", jank "" throws (index out of bounds for this persistent_string)
+      (let [m (re-matcher #"" "a")] (re-find m) (nth m 0)): Clojure "" "", jank "" throws (index out of bounds for this persistent_string)
+      (let [m (re-matcher #"" "b")] (re-find m) (nth m 0)): Clojure "" "", jank "" throws (index out of bounds for this persistent_string)
+  print-str of a pattern (Clojure: print-method's #"…"; jank: to_string):
+    (print-str (re-pattern "a")): Clojure "#\"a\"", jank "a"
+    (print-str (re-pattern "a\"b")): Clojure "#\"a\\\"b\"", jank "a\"b"
+    (print-str (re-pattern "\\Q\"\\E")): Clojure "#\"\\Q\\E\\\"\\Q\\E\"", jank "\\Q\"\\E"
+    (print-str (re-pattern "(a)|b")): Clojure "#\"(a)|b\"", jank "(a)|b"
+    (print-str (re-pattern "")): Clojure "#\"\"", jank ""

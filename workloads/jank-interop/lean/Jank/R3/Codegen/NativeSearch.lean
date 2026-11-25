@@ -220,5 +220,6 @@ def run (lvl : Lvl) (tgt : Target) (depth : Nat) (known : List String) (prop : N
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p dd) w => { taken := w.decisions.taken, violation := some (p, dd) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 
 end Jank.R3.Codegen.NativeSearch

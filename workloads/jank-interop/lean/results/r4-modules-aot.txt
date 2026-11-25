@@ -1,0 +1,15 @@
+== census AOT start-up vs run-main vs clojure -m: 384 timelines (complete), 169 violate
+   F1 *ns* during -main: run-main clojure.core, AOT the main module's ns, clojure -m user: 27; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" []],
+  main := [Jank.R4.Modules.Load.Form.printNs] }; clojure -m { out := ["*ns* user"], status := 0, kind := "", phase := "ok" }; jank run-main { out := ["*ns* clojure.core"], status := 0, kind := "", phase := "ok" }; jank AOT(static) { out := ["*ns* app.core"], status := 0, kind := "", phase := "ok" }
+   F3 AOT (static runtime): exit status 0 after an uncaught exception: 27; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" []],
+  main := [Jank.R4.Modules.Load.Form.boom] }; clojure -m { out := [], status := 1, kind := "boom", phase := "main" }; jank run-main { out := [], status := 1, kind := "boom", phase := "main" }; jank AOT(static) { out := [], status := 0, kind := "boom", phase := "main" }
+   F2 AOT: a module's referenced vars are interned before its (ns …): refer of clojure.core throws: 15; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" [], Jank.R4.Modules.Load.Form.defv "inc"],
+  main := [Jank.R4.Modules.Load.Form.ref "inc"] }; clojure -m { out := ["ref app.core/inc"], status := 0, kind := "", phase := "ok" }; jank run-main { out := ["ref app.core/inc"], status := 0, kind := "", phase := "ok" }; jank AOT(static) { out := [], status := 0, kind := "refer-conflict", phase := "startup" }
+   F14 jank compile: a namespace with no module (create-ns, :as-alias) stops the build: 100; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" [], Jank.R4.Modules.Load.Form.createNs "scratch"],
+  main := [] }; clojure -m { out := [], status := 0, kind := "", phase := "ok" }; jank run-main { out := [], status := 0, kind := "", phase := "ok" }; jank AOT(static) { out := ["Compiled module 'scratch' not found."], status := 1, kind := "", phase := "compile" }
+  (0 s)
+exit=0

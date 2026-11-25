@@ -1,0 +1,43 @@
+two-thread lock census (round 3's world: 2 threads × 1 op, alphabet2, bodies ≤1 op, depth 0), partition #[1, 11], budgets [20000, 400000, 2000000]
+  [254] undecided at 20000: 1 so far
+  [255] undecided at 20000: 2 so far
+  [256] undecided at 20000: 3 so far
+  [257] undecided at 20000: 4 so far
+  [258] undecided at 20000: 5 so far
+  [259] undecided at 20000: 6 so far
+  [260] undecided at 20000: 7 so far
+  [261] undecided at 20000: 8 so far
+  [262] undecided at 20000: 9 so far
+  [263] undecided at 20000: 10 so far
+  [264] undecided at 20000: 11 so far
+  [265] undecided at 20000: 12 so far
+  [266] undecided at 20000: 13 so far
+  complete after 3120 programs; 13 exceeded 20000 states
+  - #254: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #255: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (swap! a inc)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #256: atom watches exclusive (readers to drain) ⟂ atom watches shared | atom watches shared ⟂ atom watches kHasE (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (add-watch a :k w)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #257: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (set-validator! a vf)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #258: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (get-validator a)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #259: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (alter-var-root #'v f)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #260: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (def v 1)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #261: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (meta #'v)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #262: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @d); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #263: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (realized? d)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #264: future state exclusive (kHasE) ⟂ future state upgrade | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @f); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #265: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  - #266: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); future f's body = (fn [..] (swap! a inc)); thread 0: (future-cancelled? f); thread 1: (swap! a inc)
+  decided 13 of 13
+exit=0

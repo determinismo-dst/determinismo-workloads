@@ -1,0 +1,109 @@
+two-thread lock census (round 3's world: 2 threads × 1 op, alphabet2, bodies ≤1 op, depth 0), partition #[1, 6], budgets [20000, 400000, 2000000]
+  [288] undecided at 20000: 1 so far
+  [289] undecided at 20000: 2 so far
+  [290] undecided at 20000: 3 so far
+  [409] undecided at 20000: 4 so far
+  [553] undecided at 20000: 5 so far
+  [554] undecided at 20000: 6 so far
+  [1344] undecided at 20000: 7 so far
+  [1345] undecided at 20000: 8 so far
+  [1346] undecided at 20000: 9 so far
+  [1609] undecided at 20000: 10 so far
+  [1610] undecided at 20000: 11 so far
+  [2137] undecided at 20000: 12 so far
+  [2138] undecided at 20000: 13 so far
+  [2918] undecided at 20000: 14 so far
+  [2919] undecided at 20000: 15 so far
+  [2920] undecided at 20000: 16 so far
+  [2921] undecided at 20000: 17 so far
+  [2922] undecided at 20000: 18 so far
+  [2923] undecided at 20000: 19 so far
+  [2924] undecided at 20000: 20 so far
+  [2925] undecided at 20000: 21 so far
+  [2926] undecided at 20000: 22 so far
+  [2927] undecided at 20000: 23 so far
+  [2928] undecided at 20000: 24 so far
+  [2929] undecided at 20000: 25 so far
+  [2930] undecided at 20000: 26 so far
+  [3183] undecided at 20000: 27 so far
+  [3185] undecided at 20000: 28 so far
+  [3186] undecided at 20000: 29 so far
+  [3187] undecided at 20000: 30 so far
+  [3188] undecided at 20000: 31 so far
+  [3190] undecided at 20000: 32 so far
+  [3191] undecided at 20000: 33 so far
+  [3193] undecided at 20000: 34 so far
+  [3194] undecided at 20000: 35 so far
+  complete after 3432 programs; 35 exceeded 20000 states
+  - #288: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @f); var v's meta expression = (fn [..] (swap! a inc)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #289: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] (swap! a inc)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #290: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] (swap! a inc)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #409: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (future-cancel f)); watch w = (fn [..] (swap! a inc)); var v's meta expression = (fn [..] (swap! a inc)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #553: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] (add-watch a :k w)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #554: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] (add-watch a :k w)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #1344: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @f); var v's meta expression = (fn [..] (alter-var-root #'v f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #1345: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] (alter-var-root #'v f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #1346: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] (alter-var-root #'v f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #1609: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] (def v 1)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #1610: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] (def v 1)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2137: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] @d); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2138: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] @d); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2918: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2919: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (swap! a inc)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2920: atom watches exclusive (readers to drain) ⟂ atom watches shared (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (add-watch a :k w)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2921: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (set-validator! a vf)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2922: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (get-validator a)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2923: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (alter-var-root #'v f)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2924: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (def v 1)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2925: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (meta #'v)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2926: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @d); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2927: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (realized? d)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2928: future state exclusive (readers to drain) ⟂ future state shared | future thread exclusive (kHasE) ⟂ future thread exclusive | join of the future's thread ⟂ the future's thread still running (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @f); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2929: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #2930: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] (future-cancel f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3183: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (swap! a inc)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3185: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (set-validator! a vf)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3186: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (get-validator a)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3187: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (alter-var-root #'v f)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3188: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (def v 1)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3190: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] @d); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3191: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (realized? d)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3193: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancel f)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  - #3194: no jank-only deadlock (budget 400000, decided)
+      validator vf = (fn [..] (swap! a inc)); watch w = (fn [..] (future-cancelled? f)); var v's meta expression = (fn [..] (future-cancelled? f)); thread 0: (meta #'v); thread 1: (swap! a inc)
+  decided 35 of 35
+exit=0

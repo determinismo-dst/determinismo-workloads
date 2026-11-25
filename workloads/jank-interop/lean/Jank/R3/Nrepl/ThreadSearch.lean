@@ -84,6 +84,7 @@ def runTWith (sched : Option Nat) (cfg : TConfig) (aside : Aside) (scripts : Lis
   | (.error (.violation "deadlock" d), p) => ({ taken := p.decisions.taken, violation := some ("every request gets a done reply (no hang)", d) }, p)
   | (.error (.violation prop d), p) => ({ taken := p.decisions.taken, violation := some (prop, d) }, p)
   | (.error .limit, p) => ({ taken := p.decisions.taken, violation := none }, p)
+  | (.error (.nodeDown _), p) => ({ taken := p.decisions.taken, violation := none }, p)
 
 structure TScenario where
   name : String
@@ -159,6 +160,7 @@ def runR2PB (s : Scenario) (budget : Nat) (source : Source) : Ended :=
   | (.error (.violation "deadlock" d), p) => { taken := p.decisions.taken, violation := some ("every request gets a done reply (no hang)", d) }
   | (.error (.violation prop d), p) => { taken := p.decisions.taken, violation := some (prop, d) }
   | (.error .limit, p) => { taken := p.decisions.taken, violation := none }
+  | (.error (.nodeDown _), p) => { taken := p.decisions.taken, violation := none }
 
 /-- Round 2's scenarios whose exhaustive search stopped at 20,000 timelines (the controls and
 N12). -/

@@ -1,0 +1,412 @@
+S69 (prompted): the thrown ex-info, a collection in the finally
+* throw in the fn that runs the finally (round 3's test), -O0, 1 allocation(s) in the finally
+  jank, a freed read: complete, 64 timelines, nothing
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 64 timelines, nothing
+* throw in the fn that runs the finally (round 3's test), -O0, 2 allocation(s) in the finally
+  jank, a freed read: complete, 128 timelines, nothing
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 128 timelines, nothing
+* throw in the fn that runs the finally (round 3's test), -O0, 3 allocation(s) in the finally
+  jank, a freed read: complete, 256 timelines, nothing
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 256 timelines, nothing
+* throw in the fn that runs the finally (round 3's test), -O1, 1 allocation(s) in the finally
+  jank, a freed read: found after 4: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 512 timelines, nothing
+  shortest freed-read tape (9 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":1}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    -O1: the thrown local lives only in a register
+    throw: the thrown local stays in F's frame, which runs the finally
+    a collection runs at the allocation of finally's object 0
+    collection 1: freed [ex-info object]
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw in the fn that runs the finally (round 3's test), -O1, 2 allocation(s) in the finally
+  jank, a freed read: found after 6: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 1024 timelines, nothing
+  shortest freed-read tape (10 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":1}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    -O1: the thrown local lives only in a register
+    throw: the thrown local stays in F's frame, which runs the finally
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 1
+    collection 1: freed [ex-info object]
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw in the fn that runs the finally (round 3's test), -O1, 3 allocation(s) in the finally
+  jank, a freed read: found after 10: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 2048 timelines, nothing
+  shortest freed-read tape (11 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":1}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    -O1: the thrown local lives only in a register
+    throw: the thrown local stays in F's frame, which runs the finally
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 2
+    collection 1: freed [ex-info object, finally's object 0]
+    allocate finally's object 2 at 66064 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw from a separate fn boom (round 3's report), -O0, 1 allocation(s) in the finally
+  jank, a freed read: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 896 timelines, nothing
+  shortest freed-read tape (9 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame boom: 3 word(s) left behind on the stack
+    throw: boom's frame is popped; its words stay on the stack until overwritten
+    a collection runs at the allocation of finally's object 0
+    collection: 0 of 3 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw from a separate fn boom (round 3's report), -O0, 2 allocation(s) in the finally
+  jank, a freed read: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 12736 timelines, nothing
+  shortest freed-read tape (10 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame boom: 3 word(s) left behind on the stack
+    throw: boom's frame is popped; its words stay on the stack until overwritten
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 1
+    collection: 0 of 3 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw from a separate fn boom (round 3's report), -O0, 3 allocation(s) in the finally
+  jank, a freed read: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 143552 timelines, nothing
+  shortest freed-read tape (11 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame boom: 3 word(s) left behind on the stack
+    throw: boom's frame is popped; its words stay on the stack until overwritten
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 2
+    collection: 0 of 3 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object, finally's object 0]
+    allocate finally's object 2 at 66064 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw from a separate fn boom (round 3's report), -O1, 1 allocation(s) in the finally
+  jank, a freed read: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 2304 timelines, nothing
+  shortest freed-read tape (12 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame boom: 3 word(s) left behind on the stack
+    throw: boom's frame is popped; its words stay on the stack until overwritten
+    a collection runs at the allocation of finally's object 0
+    collection: 0 of 3 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw from a separate fn boom (round 3's report), -O1, 2 allocation(s) in the finally
+  jank, a freed read: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 20736 timelines, nothing
+  shortest freed-read tape (13 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame boom: 3 word(s) left behind on the stack
+    throw: boom's frame is popped; its words stay on the stack until overwritten
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 1
+    collection: 0 of 3 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object]
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+* throw from a separate fn boom (round 3's report), -O1, 3 allocation(s) in the finally
+  jank, a freed read: found after 2: (ex-data e) reads ex-info object, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 186624 timelines, nothing
+  shortest freed-read tape (14 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.slot","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate the vector [0 1 2] at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-data map {:k [0 1 2]} at 65768 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ex-info object at 65848 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame boom: 3 word(s) left behind on the stack
+    throw: boom's frame is popped; its words stay on the stack until overwritten
+    allocate finally's object 0 at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate finally's object 1 at 66000 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of finally's object 2
+    collection: 0 of 3 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [the vector [0 1 2], ex-data map {:k [0 1 2]}, ex-info object, finally's object 0]
+    allocate finally's object 2 at 66064 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame finally's frame: 1 word(s) left behind on the stack
+
+S70 (prompted): (def x) (def u @#'x) at load; in the test fn (ns-unmap *ns* 'x), allocations, (str u)
+* 1 allocation(s) after ns-unmap
+  jank, a freed read: found after 2: var_unbound_root::to_string reads var->to_string() reads var x, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 1312768 timelines, nothing
+  shortest freed-read tape (15 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol x at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var x at 65744 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate x's var_unbound_root at 65848 (Jank.R3.Runtime.Gc.Kind.atomic)
+    allocate vars map {x} at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol u at 66016 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var u at 66080 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate vars map {x, u} at 66184 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame loader frames: 4 word(s) left behind on the stack
+    allocate vars map {u} at 66280 (Jank.R3.Runtime.Gc.Kind.normal)
+    (ns-unmap *ns* 'x)
+    a collection runs at the allocation of object 0
+    collection: 0 of 4 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [symbol x, var x, vars map {x}, vars map {x, u}]
+    allocate object 0 at 66360 (Jank.R3.Runtime.Gc.Kind.normal)
+    use var u ((str u) reads u's root)
+    use x's var_unbound_root ((str u) reads the unbound root)
+* 2 allocation(s) after ns-unmap
+  jank, a freed read: found after 2: var_unbound_root::to_string reads var->to_string() reads var x, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): stopped at 2000000
+  shortest freed-read tape (16 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol x at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var x at 65744 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate x's var_unbound_root at 65848 (Jank.R3.Runtime.Gc.Kind.atomic)
+    allocate vars map {x} at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol u at 66016 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var u at 66080 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate vars map {x, u} at 66184 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame loader frames: 4 word(s) left behind on the stack
+    allocate vars map {u} at 66280 (Jank.R3.Runtime.Gc.Kind.normal)
+    (ns-unmap *ns* 'x)
+    allocate object 0 at 66360 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of object 1
+    collection: 0 of 4 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [symbol x, var x, vars map {x}, vars map {x, u}, object 0]
+    allocate object 1 at 66424 (Jank.R3.Runtime.Gc.Kind.normal)
+    use var u ((str u) reads u's root)
+    use x's var_unbound_root ((str u) reads the unbound root)
+* 3 allocation(s) after ns-unmap
+  jank, a freed read: found after 2: var_unbound_root::to_string reads var->to_string() reads var x, freed by the collector
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): stopped at 2000000
+  shortest freed-read tape (17 decisions):
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":0}
+{"name":"gc.collect","options":2,"value":1}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+{"name":"gc.stale","options":3,"value":0}
+  story:
+    allocate context at 65536 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate ns user at 65608 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol x at 65680 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var x at 65744 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate x's var_unbound_root at 65848 (Jank.R3.Runtime.Gc.Kind.atomic)
+    allocate vars map {x} at 65936 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate symbol u at 66016 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate var u at 66080 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate vars map {x, u} at 66184 (Jank.R3.Runtime.Gc.Kind.normal)
+    frame loader frames: 4 word(s) left behind on the stack
+    allocate vars map {u} at 66280 (Jank.R3.Runtime.Gc.Kind.normal)
+    (ns-unmap *ns* 'x)
+    allocate object 0 at 66360 (Jank.R3.Runtime.Gc.Kind.normal)
+    allocate object 1 at 66424 (Jank.R3.Runtime.Gc.Kind.normal)
+    a collection runs at the allocation of object 2
+    collection: 0 of 4 stale word(s) inside the scanned range, 0 overwritten
+    collection 1: freed [symbol x, var x, vars map {x}, vars map {x, u}, object 0, object 1]
+    allocate object 2 at 66488 (Jank.R3.Runtime.Gc.Kind.normal)
+    use var u ((str u) reads u's root)
+    use x's var_unbound_root ((str u) reads the unbound root)
+* control: no ns-unmap, 2 allocations
+  jank, a freed read: complete, 1312768 timelines, nothing
+  jank, the value survives: found after 1: the value survived every collection of this timeline
+  Clojure (the JVM's roots): complete, 1312768 timelines, nothing
+
+printed form of an unbound root: jank unbound@0x7f062d022660 for var #'user/x; Clojure Unbound: #'user/x
+exit=0

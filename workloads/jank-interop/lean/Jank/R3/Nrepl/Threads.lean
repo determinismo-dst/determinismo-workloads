@@ -636,5 +636,6 @@ def runT (cfg : TConfig) (aside : Aside) (scripts : List (List TReq)) (source : 
   | (.error (.violation "deadlock" d), p) => ({ taken := p.decisions.taken, violation := some ("every request gets a done reply (no hang)", d) }, p)
   | (.error (.violation prop d), p) => ({ taken := p.decisions.taken, violation := some (prop, d) }, p)
   | (.error .limit, p) => ({ taken := p.decisions.taken, violation := none }, p)
+  | (.error (.nodeDown _), p) => ({ taken := p.decisions.taken, violation := none }, p)
 
 end Jank.R3.Nrepl

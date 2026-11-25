@@ -71,6 +71,7 @@ def successors {M L : Type} (prog : Program M L) (p : Process M L) : Array (Move
           | some np => path := np
           | none => fuel := 0
         | .error .limit _ => fuel := 0
+        | .error (.nodeDown _) _ => fuel := 0
   -- thread.next: the index of the stepping thread among the threads that could step
   let ready := (out.toList.map (·.1.thread)).eraseDups
   return out.map fun (mv, s) =>
@@ -172,6 +173,7 @@ def pathStory {M L : Type} (prog : Program M L) (init : Process M L) (moves : Li
         | .blocked => p := p1
       | .error (.violation prop d) p1 => return p1.log.push s!"violation {prop}: {d}"
       | .error .limit p1 => return p1.log
+      | .error (.nodeDown _) p1 => return p1.log
     | _ => pure ()
   return p.log
 

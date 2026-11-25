@@ -1,0 +1,71 @@
+== examples (replica outputs)
+   (clojure.data/diff {:a 1, :b 2} {:a 1, :b 3}): Clojure [{:b 2} {:b 3} {:a 1}], jank [{:a 1, :b 2} {:a 1, :b 3} nil]
+   (clojure.data/diff [1 2 3] [1 5 3]): Clojure [[nil 2] [nil 5] [1 nil 3]], jank [[1 2 3] [1 5 3] nil]
+   (clojure.data/diff #{1 2} #{2 3}): Clojure [#{1} #{3} #{2}], jank [#{1 2} #{2 3} nil]
+   (format "%d" 5): Clojure "5", jank "%d"
+   (format "%s-%s" "a" "b"): Clojure "a-b", jank "%s-%s"
+   (format "{}" 5): Clojure "{}", jank "5"
+   (format "{}"): Clojure "{}", jank throws (The format argument index `0` is out of range.)
+   (format "100%"): Clojure throws (UnknownFormatConversionException '%'), jank "100%"
+   (format "{"): Clojure "{", jank throws (This format string has an unmatched brace.)
+   (parse-uuid "00000000000000000000000000000000"): JDK false, documented grammar false, jank true
+   (parse-uuid "{00000000-0000-0000-0000-000000000000}"): JDK false, documented grammar false, jank true
+   (parse-uuid "0-0000000-0000-0000-0000-000000000000"): JDK false, documented grammar false, jank true
+   (parse-uuid "1-1-1-1-1"): JDK true, documented grammar false, jank false
+   (parse-uuid "00000000-0000-0000-0000-000000000000"): JDK true, documented grammar true, jank true
+   (json/write-str 123N): data.json 123, jank "123" (a JSON string)
+   (json/write-str 1.5M): data.json 1.5, jank "1.5" (a JSON string)
+   (json/write-str ##NaN): data.json throws: cannot write Double NaN, jank null
+   (json/write-str ##Inf): data.json throws: cannot write Double Infinity, jank null
+   (json/write-str \a): data.json throws: Don't know how to write JSON of class java.lang.Character, jank throws: JSON write error (unsupported type: character)
+   (json/write-str [1 "x" nil true]): data.json [1,"x",null,true], jank [1,"x",null,true]
+   (json/write-str {:a 1}): data.json {"a":1}, jank {"a":1}
+   (json/read-str "9223372036854775808"): data.json 9223372036854775808N, jank -9223372036854775808
+   (json/read-str "18446744073709551615"): data.json 18446744073709551615N, jank -1
+   (json/read-str "18446744073709551616"): data.json 18446744073709551616N, jank 18446744073709551616.0 (double)
+   (json/read-str "-9223372036854775809"): data.json -9223372036854775809N, jank -9223372036854775809.0 (double)
+== census clojure.data/diff, every ordered pair of 21 values: 441 timelines (complete), 40 violate
+   G-diff: sequential not subdiffed: 18; first: (clojure.data/diff [] [1]): Clojure [nil [1] nil], jank [[] [1] nil]
+   G-diff: maps not subdiffed: 12; first: (clojure.data/diff {} {:a 1}): Clojure [nil {:a 1} nil], jank [{} {:a 1} nil]
+   G-diff: sets not split: 10; first: (clojure.data/diff #{} #{1}): Clojure [nil #{1} nil], jank [#{} #{1} nil]
+   (0 s)
+== census format: strings of ≤5 chars over % s d a { }, 5 argument lists: 46655 timelines (complete), 31707 violate
+   G-format: Java conversions are text to jank: 5005; first: (format "%"): Clojure throws (UnknownFormatConversionException '%'), jank "%"
+   G-format: braces are fields to jank, text to Java: 17710; first: (format "{"): Clojure "{", jank throws (This format string has an unmatched brace.)
+   G-format: both: 8992; first: (format "%%{"): Clojure "%{", jank throws (This format string has an unmatched brace.)
+   (0 s)
+== census parse-uuid: 5 templates, ≤2 edits (insert/delete/replace over 0 f F - { } g +): 1596458 timelines (complete), 142022 violate
+   G-uuid: jank accepts outside the documented grammar (the JDK rejects): 106501; first: (parse-uuid "-00000000-0000-0000-0000-000000000000"): JDK false, jank true
+   G-uuid: the JDK accepts outside the documented grammar (jank rejects): 23031; first: (parse-uuid "0000000-0000-0000-0000-000000000000"): JDK true, jank false
+   G-uuid: both accept outside the documented grammar, same value: 3856; first: (parse-uuid "000000000-000-0000-0000-000000000000")
+   G-uuid: both accept outside the grammar, different values: 8634; first: (parse-uuid "f00000000-000-0000-0000-000000000000"): JDK true, jank true
+   (33 s)
+== census ex-message/ex-data on non-exceptions; Throwable->map and printing over chains of 1–4: 17 timelines (complete), 11 violate
+   G-ex: ex-message/ex-data of a non-exception throws: 5; first: (ex-message "boom"): Clojure nil, jank throws
+   G-ex: Throwable->map :cause is the outer message: 3; first: chain [a, b]: Clojure :cause (some b), jank (some a)
+   G-ex: Throwable->map :data is the outer data: 1; first: chain [a, b]: Clojure :data {:y 2}, jank {:x 1}
+   G-ex: pr-str repeats the first cause: 2; first: chain [a, b, c]: Clojure prints :via [a, b, c], jank [a, b, b]
+   (0 s)
+== census counted?, bounded-count (n ≤ 4), shuffle over 22 object types: 154 timelines (complete), 27 violate
+   G-counted: counted? differs by type: 6; first: (counted? "abc"): Clojure false, jank true
+   G-counted: bounded-count counts the whole collection: 18; first: (bounded-count 0 "abc"): Clojure 0, jank 3
+   G-shuffle: shuffle rejects seqs without a static empty() (R120's root): 3; first: (shuffle (cons 0 [1 2])): Clojure a vector, jank throws
+   (0 s)
+== census map-entry? over 10 values: 10 timelines (complete), 1 violate
+   G-map-entry: map-entry? holds for every 2-vector: 1; first: (map-entry? [1 2]): Clojure false, jank true
+   (0 s)
+== census postwalk identity: metadata over 9 forms: 9 timelines (complete), 5 violate
+   G-walk: lists and seqs lose metadata (Clojure 1.12 keeps it): 5; first: Jank.R4.Core.Walk.F.list (some "m") [Jank.R4.Core.Walk.F.atom "1"]
+   (0 s)
+== census trim-newline, starts-with?, ends-with?, includes?: strings ≤3 chars over a é \n \r 😀 (UTF-8 bytes vs chars): 24336 timelines (complete), 0 violate
+   (0 s)
+== census cycle: take n ≤ 12 of 1–4 elements: 52 timelines (complete), 0 violate
+   (0 s)
+== census data.json read-str of integers at the 2^62..2^65 boundaries (both signs): 50 timelines (complete), 25 violate
+   G-json: an integer in [2^63, 2^64) wraps to a negative long: 5; first: (json/read-str "9223372036854775808"): data.json 9223372036854775808N, jank -9223372036854775808
+   G-json: an integer past 64 bits becomes a double: 20; first: (json/read-str "18446744073709551616"): data.json 18446744073709551616N, jank 18446744073709551616.0 (double)
+   (0 s)
+== census data.json read-str :bigdec true of m/10^k, m ≤ 200, k ≤ 3: 804 timelines (complete), 551 violate
+   G-json: :bigdec reads through a double (S9's path): 551; first: m=1 k=1
+   (0 s)
+exit=0

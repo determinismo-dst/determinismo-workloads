@@ -1,0 +1,342 @@
+ROUND 4 — nREPL and REPL (area E, fork E; exe jank4-nrepl; jank 7135b7708, paths under
+upstream-main/compiler+runtime/; run outputs in results/r4-nrepl-*.txt)
+
+Scope: round 3's left-outs in the nREPL area (try, binding and loops in code strings; the line
+and column fields), round 3's World T searches that stopped at their bound (T3, T7, T9), and the
+REPL parts no round covered (handlers beyond round 3's properties, the terminal REPL `jank repl`).
+No feedback items were given to this area.
+
+No sorry, no native_decide, no new axiom. No round 1-3 file edited by this fork.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+
+E1. Neither an nREPL eval's `line`/`column` nor the reader nor `def` ever give Clojure's position
+and identity metadata: a read list has no `:line`/`:column`, a defined var has no `:line`,
+`:column`, `:file`, `:name` or `:ns`.
+  Exchange (op eval, ns "user", line 7, column 3):
+    code "(:line (meta '(a)))"   nREPL over Clojure {:value "7"}    jank {:value "nil"}
+  Programs (any loaded file; the test file itself):
+    (meta '(a b))           ; Clojure {:line <its line> :column <its column>}   jank nil
+    (defn f [x] x)
+    (:line (meta #'f))      ; Clojure <its line>                                 jank nil
+    (:name (meta #'f))      ; Clojure f                                          jank nil
+    (:ns (meta #'f))        ; Clojure the namespace                              jank nil
+    (:file (meta #'f))      ; Clojure the file's path (or "NO_SOURCE_PATH")      jank nil
+  Path:
+    handler/eval.jank :eval 66–72 ((get msg "line" 1), (get msg "column" 1)), :load-file 74–80
+      → do-eval 22 → eval.jank safe-eval 4–16 (jank.read.source_position{0, line, col})
+      → evaluate.cpp safe_eval 733 → context_dynamic.cpp eval_string 50–52
+      (read::lex::processor l_prc{ code, p }) → lex.cpp processor(f, p) 338–345, position ++
+      347–363 → parse.cpp's source → core/meta.cpp source_to_meta 171–228: the position only
+      ever lands in {:jank/source {:file … :start {:offset :line :col} :end …}}.
+    analyze/pass/strip_source_meta.cpp 13–42 then removes :jank/source from quoted literals
+      (reset_meta to nil when nothing else is left), so (meta '(a)) is nil.
+    evaluate.cpp eval(def) 333–337 sets the var's meta to its name symbol's evaluated meta;
+      var.cpp set_meta 307–311 adds nothing (no :name/:ns). No :line/:column key is made
+      anywhere in the compiler or core.jank.
+    Clojure: LispReader.java ListReader 1236–1260 (:line/:column on every non-empty list read
+      from a LineNumberingPushbackReader, whose line and column nREPL sets from the request's
+      fields); Compiler.java DefExpr.Parser 574 (:line :column :file on the var); Var.java
+      setMeta 240–243 ("ensure these basis keys": :name, :ns).
+  Model: Jank/R4/Nrepl/Pos.lean (both counters; jankLineMeta/cljLineMeta), theorem
+    jank_has_no_line_meta; census pos-census (below): every input holding a list differs.
+  Also found: jank's :jank/source positions themselves agree with Clojure's reader positions on
+    ASCII text without '\r' (theorem jankPos_eq_cljPos, for every text and start), and differ
+    after a '\r' (Clojure's LineNumberReader ends a line there, jank counts a column) and after a
+    non-ASCII character on the same line (jank counts bytes, Clojure UTF-16 units). They are
+    only visible inside :jank/source and in jank's error reports, so they are recorded, not
+    counted.
+  Reach: every program that reads Clojure's position or identity keys from metadata (tools,
+    test reporters, `(:name (meta v))` idioms); every nREPL client that sends line/column.
+  Tests: uE1-read-lists-and-defined-vars-carry-line-and-column,
+    uE1c-defined-vars-carry-name-ns-and-file (both pass on Clojure 1.11.1);
+    uE1b-nrepl-eval-line-reaches-line-meta (jank only: calls jank's nREPL handler in-process).
+  Status: new. R21 is the converse (read-string data carrying :jank/source where Clojure has
+    nil); round 3 left line/column out ("no property reads them"). Round 3's JankEval already
+    modeled core var meta without :name/:ns without reporting it.
+  Confidence: high (by reading; the census only confirms the structure).
+
+E2. `completions` gives every var candidate the namespace searched as its :ns, not the var's.
+  Exchange: completions ns="user" prefix="mapv"
+    expected (nREPL's completions: "vars also have a :ns key", the var's namespace)
+      {:completions [{:candidate "mapv" :type :function :ns "clojure.core"}] …}
+    jank {:completions [{:candidate "mapv" :type :function :ns "user"}] …}
+  Path: handler/completions.jank vars-candidates 54–64 (`:ns (str ns)` at 62, ns the requested
+    namespace) over (ns-map ns).
+  Theorem: completions_ns_is_searched (for every namespace, prefix and process).
+  Test: uE2-completions-name-each-vars-own-namespace (jank only: jank's handler in-process).
+  Status: new (round 2/3 checked only the candidate names). Confidence: medium-low: nREPL's
+    documentation does not define :ns beyond its presence (assumption EA4-3).
+
+E3. The terminal REPL (`jank repl`) never sets *e.
+  Input (stdin, one line each):  (throw (ex-info "e" {}))  then  (nil? *e)
+    clojure.main/repl: the error, then false     jank: the error, then true
+  Path: terminal_repl_client.cpp run 283–379: *1 *2 *3 *e bound to nil (323–327); after an
+    eval, *3 *2 *1 shift (364–369); every exception handler (372–375) only prints
+    (print_exception). Clojure: main.clj repl 440–462 (`(set! *e e)` after `caught`); core.clj
+    6360–6363 (*e: "bound in a repl thread to the most recent exception caught by the repl").
+  Census term-census: every sequence of 3 (and 4) lines from 10 fragments, complete.
+  Test: none as clojure.test (it needs `jank repl` reading stdin). Shell:
+    printf '(throw (ex-info "e" {}))\n(nil? *e)\n' | jank repl    ; prints true
+    printf '(throw (ex-info "e" {}))\n(nil? *e)\n' | clojure      ; prints false
+  Status: new as a deviation (round 3 noted it in passing, "not searched"). Confidence: high.
+
+E4. The terminal REPL evaluates each input line alone: a form spanning lines is a read error.
+  Input: "(+ 1" then " 2)"
+    clojure.main/repl: 3     jank: a read error for each line (the first is unterminated; the
+    second evaluates 2 and then fails on the closer, so it shows only the error)
+  Path: terminal_repl_client.cpp read_line 223–244 (std::getline when stdin is not a terminal;
+    isocline's ic_readline otherwise, which returns on Enter) → 345–362: the trimmed line is
+    written to a temp file and eval_file'd alone. Clojure: main.clj repl-read 153–169 reads one
+    form from *in*, across lines.
+  Census term-census (E4 class).
+  Test: none as clojure.test (stdin of `jank repl`). Shell:
+    printf '(+ 1\n 2)\n' | jank repl     ; two errors
+    printf '(+ 1\n 2)\n' | clojure       ; 3
+  Status: new. Confidence: high for piped stdin; for an interactive terminal it depends on
+    isocline's multi-line editing (not replicated; assumption EA4-4).
+
+E5. After a read or analysis error, the nREPL's *e is an ex-info whose ex-message is "".
+  Exchange (one session): eval "(ue5-undefined)" (an eval-error), then eval "(ex-message *e)"
+    nREPL over Clojure: {:value "\"Syntax error compiling at (REPL:1:1).\""} (the
+      CompilerException's message; its ex-data names the phase, line and column)
+    jank: {:value "\"\""}
+  Path: evaluate.cpp safe_eval 733–775: an error_ref is caught at 750 and *e set to
+    make_box<obj::exception_info>(e); exception_info(error_ref) (exception_info.cpp 23–27) sets
+    only `error`, so `message` stays empty and `data` nil; core.cpp ex_message 1338–1341 returns
+    `message`. (str *e) does print the report (exception_info::to_string 57–67 →
+    error::report), which is why :err and :ex carry text while ex-message does not.
+  Reach: any read, lex or analysis error at the nREPL (unresolved symbol, unbalanced input,
+    arity checked at analysis, …), then code or a client reading (ex-message *e)/(ex-data *e).
+    User code cannot catch the error_ref itself with (catch cpp/jank.runtime.object_ref …), so
+    *e is where such errors become data.
+  Census gExMsg (6 fragments, 3 requests): complete 70,808; E5 4,080; nothing else.
+  Test: uE5-ex-message-of-a-compile-error-in-star-e (jank only: jank's handler in-process).
+  Status: new (round 3's model built this *e with an empty message but no grammar read it).
+  Confidence: high.
+
+Known classes met again (not counted):
+  - D24 through nREPL: (try (throw …) (catch cpp/jank.runtime.object_ref e (throw …))
+    (finally (throw …))) ends the server process (std::terminate); nREPL over Clojure answers
+    eval-error with the finally's exception. A process-ending case of R129's class.
+  - R112 (in-ns returns nil) inside try and binding bodies.
+  - S75/N5 in the terminal REPL: "1 2" on a line shows only 2; a line holding a form and then a
+    stray closer shows only the error (round 3 named the terminal REPL's same design).
+Noted, not a deviation against Clojure 1.12:
+  - `(catch :default e …)` binds e to nil (cpp_processor.cpp gen(catch) 1111–1113: `catch(...)`
+    with a default-constructed object_ref, which is nil, oref.hpp 1206–1207). Clojure 1.12 has
+    no :default catch; ClojureScript's documented :default binds the thrown value; jank's book
+    (cpp-interop/native-exceptions.md) says jank does not yet support a catch-all.
+
+======================================================================
+2. FEEDBACK ITEMS
+======================================================================
+None was given to this area. Two departures of round 3's own nREPL replica were found and fixed in
+the round 4 copy (round 3's files unchanged):
+- round 3's evaluator had no case for a primitive cast (`cppConstructorCall`, what a `recur` into
+  a native-typed loop local becomes): every loop grammar timeline with `(loop [i 0 acc …] …)` left
+  the model (1,372 of 3,267 in run 2). Copied from round 2's Eval.lean; gLoop then complete with
+  nothing.
+- the spec dropped the vars that Clojure's analysis interns before failing, when the def was not a
+  top-level form (round 3 handled only a top-level def): one artifact in gTry len 2 and 1,274 in
+  gTryRes (run 3). Fixed by interning the defs met before the first unresolvable symbol (EA4-6).
+
+Tests written (.r4-scratch/nrepl/tests.jank; namespace jank-lean.deviations-r4-test):
+- uE1-read-lists-and-defined-vars-carry-line-and-column — passes on Clojure 1.11.1.
+- uE1c-defined-vars-carry-name-ns-and-file — passes on Clojure 1.11.1.
+- uE1b-nrepl-eval-line-reaches-line-meta, uE2-completions-name-each-vars-own-namespace,
+  uE5-ex-message-of-a-compile-error-in-star-e — jank only: they call jank's nREPL handler
+  multimethod (jank.nrepl.server.handler/handle-message) in-process; Clojure has no such namespace
+  (the expected values are nREPL's documented replies over Clojure).
+- E3, E4: no clojure.test form (they need `jank repl` reading stdin); shell repros in section 1.
+- No predicted hang (no tests-hangs.jank).
+Clojure check: .r4-scratch/nrepl/clj/src/jank_lean/deviations_r4_test.clj (uE1, uE1c):
+`Ran 2 tests containing 6 assertions. 0 failures, 0 errors.`
+
+======================================================================
+3. WHAT WAS REPLICATED (Jank/R4/Nrepl/, Run/R4/Nrepl.lean)
+======================================================================
+JEval.lean, Hand.lean, CEval.lean, SWorld.lean, Grammars.lean
+  Round 3's World S stack (JankEval, Handler, CljEval, World, Search) copied into namespace
+  Jank.R4.Nrepl (round 3's files untouched and still reproducible), then extended:
+  - jank `try` (JEval.evalE, arm `.try_`): cpp_processor.cpp gen(try) 1053–1101, gen(catch)
+    1105–1127, gen(finally) 1129–1139, gen(throw) 1024–1050: `catch(object_ref e)` catches what
+    `throw` threw; `:default` is `catch(...)` with `object_ref e;` (nil); no matching catch runs
+    the finally and rethrows; a handler's exception unwinds through the armed scope_exit, and a
+    finally that throws then is std::terminate (D24). The catch local is found in the catch
+    frame the analyzer replica built (processor.cpp analyze_try 2990–3110).
+  - jank `binding` (core.jank 2794–2818: a `do` of push-thread-bindings and a try/finally
+    popping), `dotimes` (core.jank 2694–2709: (int n), loop from 0, unchecked-inc);
+    push-thread-bindings (context.cpp 706–747: every var dynamic, else an error result;
+    a frame copied from the current one), pop-thread-bindings (750–760: no-op when empty).
+  - The spec (CEval): Clojure's try/catch/finally (TryExpr: the first matching catch; finally
+    always runs and its exception replaces the one in flight) as a `spec-try` builtin over
+    thunks (tryWalk turns each `try` form into it, since round 2's spec analyzer knows `try`
+    only without `catch`); core.clj `binding` ((let [] (push-thread-bindings …) (try …
+    (finally (pop-thread-bindings))))), `dotimes` ((long n) …), Var.pushThreadBindings'
+    dynamic check; `^:dynamic` on a def's name (DefExpr.Parser setDynamic).
+  - Grammars gTry, gBinding, gLoop, gTryAll, gTryRes, gTryRes3.
+Pos.lean
+  lex.cpp processor(f, p) 338–345 and movable_position::operator++ 347–363 (per byte, '\n'
+  only); Clojure's LineNumberingPushbackReader.read 64–80 with LineNumberReader's folding of
+  "\r\n", "\r", "\n", columns in UTF-16 units; ListReader 1236–1260 (:line/:column of a list's
+  '('); jank's metadata by Clojure's keys (none). Census pos-census.
+Term.lean
+  terminal_repl_client.cpp run 283–379 and read_line 223–244 (one line per eval_file; *1 *2 *3
+  shift; *e never set; errors printed) over the round 4 evaluator; clojure.main/repl
+  (main.clj 368–462: read form by form across lines, set! *1/*e) over the spec evaluator.
+  Census term-census.
+Seg.lean (+ driver t-estimate, t-seg)
+  Knuth's tree-size estimator and a resumable depth-first census segment, for round 3's World T
+  scenarios (run on round 3's own World T: ThreadSearch.runTWith, interleavePB).
+Theorems.lean (section 8).
+Handlers read against nREPL's documented ops, beyond round 2/3's properties: describe
+  (describe.jank 5–17: :ops lists every handled op, round 2's describe_lists_handled_ops;
+  :versions has only :jank, which nREPL's docs allow), clone (clone.jank: a fresh uuid, no
+  session state: R127), close (close.jank: :session-closed for any session id: R127's class),
+  completions (E2), inspect (R137), the bencode writer (R131 covers nil/false and doubles).
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- T7 (partial reads, one client, every op): Knuth estimates 3.2×10^11 timelines at ≤1 and
+  1.2×10^13 at ≤2 preemptions (300 probes; the estimator's spread is wide, but either is
+  beyond any segmented walk). Not completed; its chunking dimension stays covered by round 2's
+  complete chunking census. A for-every-chunking proof of read-message (every proper prefix of
+  a valid message parses to nil, so chunk boundaries never change the messages) was not done:
+  bencode.jank's parse is a fuel-bounded mutual recursion whose prefix lemmas would need the
+  spec decoder's too.
+- T3/T9: see section 7 for where their segmented walks ended.
+- Interactive line editing (isocline's multi-line mode) for E4: only piped stdin is replicated.
+- The JIT, as in round 3: try/let/loop bodies get the analyzer replica's meaning; the wrapping
+  of a top-level try into a JIT'd fn (evaluate.cpp 623–625) is not told apart from
+  interpretation (it changes nothing observable in these grammars).
+- Native catch types other than object_ref (the analyzer replica's type oracle knows
+  object_ref, int, long, double, bool, void), and `catch` of C++ exceptions raised by the
+  runtime (a jank runtime error is a std::exception that `catch(object_ref)` does not catch:
+  documented by jank's book, so the spec maps jank's object catch to Clojure's catch of what
+  `throw` threw, NA9).
+- recur across try (both reject it; the spec's thunks would not), letfn, try inside macros.
+- nREPL interrupt, stdin op, session middleware (absent in jank: R128, R127).
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+Round 3's NA1–NA8 stand (NA1: an nREPL eval runs clojure.main/repl over the code; NA2:
+load-file is Compiler.load; NA3: *ns* user per connection; ...).
+New:
+- NA9. The spec's equivalent of jank's `(catch cpp/jank.runtime.object_ref e …)` is Clojure's
+  catch of what `throw` threw (ExceptionInfo); runtime errors (C++ exceptions in jank) are not
+  caught by it on either side. `:default` is read as ClojureScript's catch-all binding the value
+  (only the noted observation depends on it).
+- EA4-1. nREPL's `eval` fields `line`/`column` set Clojure's reader position (nREPL's documented
+  meaning: "the line/column number in [file] at which [code] starts").
+- EA4-2. Clojure's LineNumberReader folds "\r\n", "\r" and "\n" into one terminator (its
+  javadoc).
+- EA4-3. nREPL's completions `:ns` of a var candidate is the var's namespace (E2).
+- EA4-4. `jank repl` with piped stdin reads with std::getline; interactive isocline returns one
+  line per Enter (E4 is stated for piped stdin).
+- EA4-6. The spec's analysis is all-or-nothing (round 2's analyzer), while Clojure's DefExpr
+  interns a var before analyzing its init and keeps it when a later analysis fails. On a spec
+  analysis failure the defs met in preorder before the first symbol that resolves to nothing
+  (not a var, special form, `cpp/` name or a name bound anywhere in the form) are interned. jank's
+  side is exact (the analyzer replica keeps what it interned).
+- EA4-5. Knuth estimates are averages over 300 random paths with mixed seeds; they bound
+  feasibility, not exact sizes.
+
+======================================================================
+6. PROPERTIES CHECKED
+======================================================================
+- World S (round 3's properties, unchanged) on code with try/catch/finally, binding and loops:
+  values, :ns, :out, eval-error iff the spec saw an exception, the process stays up, one done.
+- line/column: each list's position as jank's lexer and Clojure's reader compute it from the
+  request's line and column; what (meta form) shows by Clojure's keys.
+- Terminal REPL: the sequence of shown values and errors equals clojure.main/repl's over the
+  same input; *e after an error.
+- World T (round 3's): no hang, every request answered once, :out exactly the eval's own
+  output, fd 1 restored, values as each script alone (T3, T9 with captures locked).
+- Theorems: try agreement except D24; binding restores the frames; completion :ns.
+
+======================================================================
+7. SEARCH RUNS (results/r4-nrepl-run1.txt … -run4.txt, -estimates.txt, -t3.txt,
+   -axioms.txt). "complete n" = every timeline within the bounds was run.
+======================================================================
+line/column (pos-census; Pos.lean): every code string over ( ) a space \n \r é 😀
+  - ≤5 chars × 4 request starts (line 1/7 × column 1/4): complete 149,792. Lists in 71,364
+    (E1: (:line (meta …)) nil in jank, the line in Clojure, every one). :jank/source positions
+    agree on 113,516; differ after a \r on 15,684 (Clojure ends a line, jank counts a column)
+    and after a non-ASCII character on 20,592 (bytes against UTF-16 units). No other class.
+  - ≤6 chars × 4: complete 1,198,368: agree 826,128; \r 171,744; non-ASCII 200,496; nothing
+    else.
+Terminal REPL (term-census; Term.lean): every sequence of k lines from 10 fragments.
+  - k = 3: complete 1,000 (first classifier; its 16 unlabelled were E3 after an analysis error).
+  - k = 4 (classifier refined: a half form followed by any line is E4): complete 10,000:
+    agree 2,351; E4 2,655; E3 448; S75 (terminal) 4,546; 0 unexplained.
+World S, round 4 copy (load-string spec unless noted; len = requests per timeline; pairs = a
+code string of 1 or 2 fragments):
+  - gTry (14 fragments), len 1: complete 210 (load) and 210 (repl): D24 crash 23, R112 9 (1 in
+    repl), the :default observation 9 (1 in repl), NA1 (repl only).
+  - gTry, len 2: complete 35,531: D24 crash 3,929; R112 1,549; :default and E5 1,873 (run 4,
+    after the EA4-6 fix; run 2 also had one spec-model artifact).
+  - gBinding (10 fragments), len 1: complete 110; len 2: complete 11,991: R112 only (183).
+  - gLoop (8 fragments), len 1: complete 72; len 2: complete 5,184 with primitive casts
+    replicated (round 3's evaluator lacked them; run 2 had 1,372 outside the model): nothing.
+  - gExMsg (6 fragments), len 3: complete 70,808: E5 4,080 (every one an (ex-message *e) after
+    a read or an analysis error), nothing else.
+  - gTryRes (residual: every try/binding/loop fragment but the D24, :default, E5 and
+    unbound-print triggers), len 2, R112 set aside: complete 571,536 (0 outside the model), nothing
+    (run 3, before the EA4-6 fix: 1,274 + 82 spec artifacts, all from an unbound `bd`).
+  - gTryRes3 (the same, single fragments), len 3, R112 aside: complete 19,683, nothing.
+  - gTryRes3 in REPL mode: complete 19,683, nothing (NA1: single forms per request).
+World T (round 3's model; ≤k = within k preemptions of round robin):
+  - Knuth estimates (300 random paths, mixed seeds): T3 ≤1 mean 12,236 (max path 331,776);
+    T7 ≤1 3.2×10^11; T7 ≤2 1.2×10^13; T9 ≤2 10,414 (max 552,960). The T3/T9 means are far
+    below what round 3 had already walked (400,000 and 853,000), so the trees are heavy-tailed
+    and the estimates only say T7 is out of reach.
+  - T3 ≤1, segmented depth-first walk from the all-zero timeline: three 18-minute segments, 553,500 + 263,500 + 389,000 = 1,206,000
+    timelines (round 3: stopped at 400,000), nothing. Stopped by hand under slot contention: the
+    walk has finished every timeline whose first 12 decisions are 0 and is inside the subtree
+    with decision 12 = 1 (resume path in results/r4-nrepl-t3.txt). Not complete.
+  - T9 ≤2: not rerun (no slot time left after T3); round 3's 853,000 (stopped) and partition 0..1
+    (complete 94,849) stand. results/r4-nrepl-t9.txt was not produced.
+
+======================================================================
+8. THEOREMS (Jank/R4/Nrepl/Theorems.lean, Jank/R4/Nrepl/Pos.lean; axioms: propext,
+   Classical.choice, Quot.sound only — results/r4-nrepl-axioms.txt)
+======================================================================
+★ try_agree_unless_terminate — for every body, handler and finally outcome: jank's try (the
+  `.try_` arm of JEval.evalE, cpp_processor.cpp gen(try)/gen(catch)/gen(finally)) and Clojure's
+  (CEval's spec-try, TryExpr) give the same outcome, or the handler threw, the finally threw, and
+  jank terminates. New for-every-input: round 1's D24 was found by search; this says it is the
+  only place they part.
+★ binding_frames_restored — for every thread state and every bindings, push-thread-bindings then
+  pop-thread-bindings leave the binding frames as they were (context.cpp 706–760): the frame side
+  of every gBinding timeline coming back quiet.
+  completions_ns_is_searched — for every process, namespace and prefix, every var candidate's
+  :ns is the namespace searched (E2).
+★ jankPos_eq_cljPos — for every start (line, column) and every ASCII text without '\r', jank's
+  lexer position before each byte equals Clojure's reader position before the same character
+  (the positions half of the line/column census, for every input).
+  jank_has_no_line_meta — jank's metadata by Clojure's position keys is never Clojure's (E1).
+(★ = for every input, where rounds 1–3 or this round's search had only bounded runs.)
+
+======================================================================
+9. LIBRARY GAPS (built here; sdk/lean untouched)
+======================================================================
+- Knuth's tree-size estimator over a world's decisions (sdk has none).
+- Resumable census segments: a depth-first walk that starts at any path and prints the next
+  path at a wall-clock deadline, so a tree of any size is walked in bounded jobs (round 3's
+  partitionCensus needs each subtree to fit a job).
+- Round 3's whole World S stack had to be copied to extend the evaluator: sdk has no way to
+  extend a closed evaluator, and Lean's partial mutual defs cannot be extended from outside.
+
+======================================================================
+10. PROJECTS TRANSLATED (for NOTICE.md)
+======================================================================
+- jank (MPL-2.0): handler/*.jank, eval.jank, terminal_repl_client.cpp, lex.cpp positions,
+  cpp_processor.cpp try codegen, context.cpp thread bindings, core.jank binding/dotimes.
+- Clojure (EPL-1.0), spec side: LispReader ListReader, LineNumberingPushbackReader, Compiler
+  DefExpr/TryExpr, Var.setMeta/pushThreadBindings, core.clj binding/dotimes, main.clj repl.
+No new library.

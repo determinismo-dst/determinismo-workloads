@@ -29,6 +29,10 @@ pin deps/boost-multiprecision https://github.com/jank-lang/boost-multiprecision.
 pin deps/cppinterop https://github.com/jank-lang/CppInterOp.git 28b0830da72dfc52728bb58ba0b55d802d95c7eb
 pin deps/folly https://github.com/jank-lang/folly.git e54ca53d2d57dc8dd205873f93b5a2715b0fee5e
 pin deps/immer https://github.com/jank-lang/immer.git 282629d01917d4c7d0aba2322de700c6d1111276
+# Round 4: jank.shell's boost.process, clojure.data.json's nlohmann json, uuid's stduuid.
+pin deps/boost-process https://github.com/jank-lang/boost-process.git e4d0d405a12f13ebe7d894382d3a98830ae1c7bd
+pin deps/json https://github.com/jank-lang/json 02dfbea39d94b8d19ddcd0eabfdc943a65bf3368
+pin deps/stduuid https://github.com/jank-lang/stduuid.git 3afe7193facd5d674de709fccc44d5055e144d7a
 
 # libstdc++ 15.3.0's regex sources (GCC's release tag, the GCC jank's nixpkgs pins), copied flat
 # as the regex replica cites them.

@@ -239,6 +239,7 @@ def run (w : WSpec) (source : Source) : Ended :=
   | .ok _ s => { taken := s.decisions.taken, violation := none }
   | .error (.violation p d) s => { taken := s.decisions.taken, violation := some (p, d) }
   | .error .limit s => { taken := s.decisions.taken, violation := none }
+  | .error (.nodeDown _) s => { taken := s.decisions.taken, violation := none }
 
 /-- `exhaust` with residual restarts: each found class is set aside and the walk restarts, until
 a complete walk finds nothing (or `maxRounds`). -/

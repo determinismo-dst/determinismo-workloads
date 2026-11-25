@@ -275,6 +275,7 @@ def runVec (len : Nat) (emplaceAlias : Bool := true) (source : Source) : Ended :
   | .ok _ d => { taken := d.taken, violation := none }
   | .error (.violation p d) s => { taken := s.taken, violation := some (p, d) }
   | .error .limit s => { taken := s.taken, violation := none }
+  | .error (.nodeDown _) s => { taken := s.taken, violation := none }
 where
   dd (name : String) (n : Nat) : EStateM Stop Decisions Nat := fun s =>
     match s.next name (List.replicate n 1) with
@@ -446,6 +447,7 @@ def runStr (len : Nat) (selfCStr : Bool := true) (source : Source) : Ended :=
   | .ok _ d => { taken := d.taken, violation := none }
   | .error (.violation p d) s => { taken := s.taken, violation := some (p, d) }
   | .error .limit s => { taken := s.taken, violation := none }
+  | .error (.nodeDown _) s => { taken := s.taken, violation := none }
 where
   dd (name : String) (n : Nat) : EStateM Stop Decisions Nat := fun s =>
     match s.next name (List.replicate n 1) with

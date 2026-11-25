@@ -273,5 +273,6 @@ def run (cfg : Cfg) (cache : Array (JVec × Nat)) (source : Source) : Ended :=
   | .ok _ w => { taken := w.decisions.taken, violation := none }
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
 
 end Jank.R3.Immer.Vectors

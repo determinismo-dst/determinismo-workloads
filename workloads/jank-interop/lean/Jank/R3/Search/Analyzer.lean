@@ -377,6 +377,7 @@ def runOne (g : Grammar) (skip : List String) (oracle : Oracle := {}) (source : 
   match (genProgram g).run { decisions := { source } } with
   | .error (.violation p d) w => { taken := w.decisions.taken, violation := some (p, d) }
   | .error .limit w => { taken := w.decisions.taken, violation := none }
+  | .error (.nodeDown _) w => { taken := w.decisions.taken, violation := none }
   | .ok forms w =>
     let j := runJank forms oracle
     let c := runClojure forms

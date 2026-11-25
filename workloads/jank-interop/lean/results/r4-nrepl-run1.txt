@@ -1,0 +1,102 @@
+== line/column census: 37448 code strings ≤ 5 chars × 4 starts = 149792, complete
+  every list: (:line (meta form)) jank nil, Clojure its line: 71364 inputs with a list
+  :jank/source positions agree with Clojure's: 113516
+  CR ends a line on Clojure only: 15684
+      e.g. code "\x0d(" start (1,1): jank (1,2) Clojure (2,1)
+  non-ASCII: jank counts bytes, Clojure UTF-16 units: 20592
+      e.g. code "é(" start (1,1): jank (1,3) Clojure (1,2)
+  (118 ms)
+== terminal REPL census: 1000 sequences of 3 lines, complete
+  agree 363; outside the model 0
+  UNEXPLAINED: 16
+      e.g. lines ["a", "(def a 1)", "(nil? *e)"]: jank [Jank.R4.Nrepl.Shown.error, Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "true"]; Clojure [Jank.R4.Nrepl.Shown.error, Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "false"]
+  E3 *e is never set by the terminal REPL: 22
+      e.g. lines ["(def a 1)", "(throw (ex-info \"e\" {}))", "(nil? *e)"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.error, Jank.R4.Nrepl.Shown.value "true"]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.error, Jank.R4.Nrepl.Shown.value "false"]
+  E4 a form spanning lines: each line is read alone: 433
+      e.g. lines ["(def a 1)", "(def a 1)", " 2)"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.error]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "2",
+ Jank.R4.Nrepl.Shown.error]
+  S75 (terminal) several forms on a line give one value: 166
+      e.g. lines ["(def a 1)", "(def a 1)", "1 2"]: jank [Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "#'user/a", Jank.R4.Nrepl.Shown.value "2"]; Clojure [Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "#'user/a",
+ Jank.R4.Nrepl.Shown.value "1",
+ Jank.R4.Nrepl.Shown.value "2"]
+  (125 ms)
+== World S census gTry mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 100000
+  complete at 210 timelines; outside the model: 0 []
+  the process stays up: 23
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (throw (ex-info \"y\" {}))) (finally (throw (ex-info \"z\" {}))))" ns=user: CRASH std::terminate: finally threw while a catch handler's exception unwound (D24)
+      path 0,1,4; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (throw (ex-info \"y\" {}))) (finally (throw (ex-info \"z\" {}))))" ns=user → jank []
+  eval value: text [R112 in-ns returns nil]: 9
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (in-ns 'tq) (finally (print \"f\")))" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "tq"]] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,1,9; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (in-ns 'tq) (finally (print \"f\")))" ns=user → jank [{"id" "r0", "out" "f", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "tq", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"tq\"]" "tq"] out "f"
+  eval value: text: 9
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch :default e (pr-str e)))" ns=user: jank values ["nil"], spec ["#error"] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,1,10; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch :default e (pr-str e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"nil\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"#error\"" "user"] out ""
+  (52 ms)
+== World S census gTry mode=Jank.R4.Nrepl.SpecMode.repl aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 100000
+  complete at 210 timelines; outside the model: 0 []
+  eval output [NA1 REPL per form vs one value per eval]: 8
+      e.g. eval "(try (throw (ex-info \"x\" {})) (finally (print \"f\"))) (try (throw (ex-info \"x\" {})) (finally (print \"f\")))" ns=user: jank :out "f", spec "ff"
+      path 2,1,2; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (finally (print \"f\"))) (try (throw (ex-info \"x\" {})) (finally (print \"f\")))" ns=user → jank [{"id" "r0", "out" "f", "session" "s0"}, {"id" "r0", "session" "s0"}, {"err" "#error", "id" "r0", "session" "s0"}, {"ex" "#error", "id" "r0", "session" "s0", "status" ["done" "eval-error"]}]
+           spec [Jank.R4.Nrepl.SpecItem.error, Jank.R4.Nrepl.SpecItem.error] out "ff"
+  eval value: text [R112 in-ns returns nil]: 1
+      e.g. eval "(try (in-ns 'tq) (finally (print \"f\")))" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "tq"]] (Jank.R4.Nrepl.SpecMode.repl)
+      path 9,0; story:
+        r0 eval "(try (in-ns 'tq) (finally (print \"f\")))" ns=user → jank [{"id" "r0", "out" "f", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "tq", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"tq\"]" "tq"] out "f"
+  eval value: text: 1
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch :default e (pr-str e)))" ns=user: jank values ["nil"], spec ["#error"] (Jank.R4.Nrepl.SpecMode.repl)
+      path 10,0; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch :default e (pr-str e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"nil\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"#error\"" "user"] out ""
+  the process stays up: 23
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (throw (ex-info \"y\" {}))) (finally (throw (ex-info \"z\" {}))))" ns=user: CRASH std::terminate: finally threw while a catch handler's exception unwound (D24)
+      path 0,1,4; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (throw (ex-info \"y\" {}))) (finally (throw (ex-info \"z\" {}))))" ns=user → jank []
+  eval value: count [NA1 REPL per form vs one value per eval]: 154
+      e.g. eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e)))" ns=user: jank values ["x"], spec ["x", "x"] (Jank.R4.Nrepl.SpecMode.repl)
+      path 0,1,0; story:
+        r0 eval "(try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e))) (try (throw (ex-info \"x\" {})) (catch cpp/jank.runtime.object_ref e (ex-message e)))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "user", "session" "s0", "value" "\"x\""}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "\"x\"" "user", Jank.R4.Nrepl.SpecItem.value "\"x\"" "user"] out ""
+  (135 ms)
+== World S census gBinding mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 100000
+  complete at 110 timelines; outside the model: 0 []
+  eval value: text [R112 in-ns returns nil]: 1
+      e.g. eval "(def ^:dynamic *d* 0) (binding [*d* 2] (in-ns 'tb))" ns=user: jank values [nil], spec [#object[clojure.lang.Namespace 0x… "tb"]] (Jank.R4.Nrepl.SpecMode.loadString)
+      path 0,1,4; story:
+        r0 eval "(def ^:dynamic *d* 0) (binding [*d* 2] (in-ns 'tb))" ns=user → jank [{"id" "r0", "session" "s0"}, {"id" "r0", "session" "s0"}, {"id" "r0", "ns" "tb", "session" "s0", "value" "nil"}, {"id" "r0", "session" "s0", "status" ["done"]}]
+           spec [Jank.R4.Nrepl.SpecItem.value "#object[clojure.lang.Namespace 0x… \"tb\"]" "tb"] out ""
+  (26 ms)
+== World S census gLoop mode=Jank.R4.Nrepl.SpecMode.loadString aside={ blankOut := false,
+  sessions := false,
+  variant := { noTopDoSplit := false, inNsNil := false, nsPrintName := false, printOutLost := false },
+  lookupKnown := false,
+  lookupFallback := false,
+  loadNs := false } len=1 prefix=#[] max 100000
+  complete at 72 timelines; outside the model: 27 [expression Jank.Analyzer.ExprKind.cppConstructorCall]
+  nothing
+  (22 ms)
+ALL-DONE

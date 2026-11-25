@@ -1,0 +1,58 @@
+== Q1 seq objects: 9 starts, 22 operations, 1 step
+  census: complete, 180 timelines; violations per class:
+    [meta-mutated] 1 timelines; shrunk (2 decisions): start (repeat 7); v0 ← (with-meta {:a 1} v0): (meta v0) jank {:a 1}, Clojure nil
+    [hang] 2 timelines; shrunk (2 decisions): start (iterate inc 0); v0 ← (with-meta {:a 1} v0): jank never returns, Clojure (0 1 2 3 …)
+    [realized] 1 timelines; shrunk (2 decisions): start (iterate inc 0); v0 ← (realized? v0): jank throws, Clojure true
+    [transient] 1 timelines; shrunk (2 decisions): start (sorted-map); v0 ← (transient v0): jank #transient-sorted-map, Clojure throws
+    [nth-index] 7 timelines; shrunk (2 decisions): start [1 2 3]; v0 ← (nth 1.0 v0): jank throws, Clojure 2
+  (0 s)
+== Q2 seq objects: 2 steps
+  census: complete, 4072 timelines; violations per class:
+    [seq-meta] 2 timelines; shrunk (4 decisions): start '(1 2); v0 ← (with-meta {:a 1} v0); v1 ← (seq v1): (meta v2) jank nil, Clojure {:a 1}
+    [pop-meta] 1 timelines; shrunk (4 decisions): start '(1); v0 ← (with-meta {:a 1} v0); v1 ← (pop v1): (meta v2) jank nil, Clojure {:a 1}
+    [meta-mutated] 22 timelines; shrunk (2 decisions): start (repeat 7); v0 ← (with-meta {:a 1} v0): (meta v0) jank {:a 1}, Clojure nil
+    [hang] 38 timelines; shrunk (2 decisions): start (iterate inc 0); v0 ← (with-meta {:a 1} v0): jank never returns, Clojure (0 1 2 3 …)
+    [realized] 19 timelines; shrunk (4 decisions): start (iterate inc 0); v0 ← (seq v0); v0 ← (realized? v0): jank throws, Clojure true
+    [transient] 21 timelines; shrunk (4 decisions): start (sorted-map); v0 ← (with-meta {:a 1} v0); v0 ← (transient v0): jank #transient-sorted-map, Clojure throws
+    [nth-index] 136 timelines; shrunk (4 decisions): start [1 2 3]; v0 ← (with-meta {:a 1} v0); v0 ← (nth 1.0 v0): jank throws, Clojure 2
+  (0 s)
+== Q3 seq objects: 3 steps
+  census: complete, 119019 timelines; violations per class:
+    [seq-meta] 130 timelines; shrunk (6 decisions): start '(1 2); v0 ← (with-meta {:a 1} v0); v0 ← (with-meta {:a 1} v0); v1 ← (seq v1): (meta v3) jank nil, Clojure {:a 1}
+    [pop-meta] 65 timelines; shrunk (6 decisions): start '(1 2); v0 ← (with-meta {:a 1} v0); v1 ← (conj 9 v1); v2 ← (pop v2): (meta v3) jank nil, Clojure {:a 1}
+    [meta-mutated] 559 timelines; shrunk (2 decisions): start (repeat 7); v0 ← (with-meta {:a 1} v0): (meta v0) jank {:a 1}, Clojure nil
+    [hang] 794 timelines; shrunk (2 decisions): start (iterate inc 0); v0 ← (with-meta {:a 1} v0): jank never returns, Clojure (0 1 2 3 …)
+    [realized] 397 timelines; shrunk (6 decisions): start (iterate inc 0); v0 ← (seq v0); v0 ← (seq v0); v0 ← (realized? v0): jank throws, Clojure true
+    [transient] 493 timelines; shrunk (6 decisions): start (sorted-map); v0 ← (with-meta {:a 1} v0); v0 ← (with-meta {:a 1} v0); v0 ← (transient v0): jank #transient-sorted-map, Clojure throws
+    [nth-index] 3505 timelines; shrunk (6 decisions): start [1 2 3]; v0 ← (with-meta {:a 1} v0); v0 ← (with-meta {:a 1} v0); v0 ← (nth 1.0 v0): jank throws, Clojure 2
+  (0 s)
+== Q3r residual: 3 steps, every class of Q1-Q3 set aside, and the meta that C1 leaves behind (results only)
+  census: complete, 132600 timelines, nothing
+  (0 s)
+== Q3m residual for meta: 3 steps, without the triggers of C1, C5, C6 (no (repeat 7) start, no seq/pop on lists), classes of results set aside
+  census: complete, 76320 timelines, nothing
+  (0 s)
+== Q4r residual: 4 steps, every class set aside (results only)
+  checkpoint: 250000 timelines, 1 s, no violations
+  checkpoint: 500000 timelines, 2 s, no violations
+  checkpoint: 750000 timelines, 3 s, no violations
+  checkpoint: 1000000 timelines, 4 s, no violations
+  checkpoint: 1250000 timelines, 5 s, no violations
+  checkpoint: 1500000 timelines, 5 s, no violations
+  checkpoint: 1750000 timelines, 6 s, no violations
+  checkpoint: 2000000 timelines, 8 s, no violations
+  checkpoint: 2250000 timelines, 9 s, no violations
+  checkpoint: 2500000 timelines, 10 s, no violations
+  checkpoint: 2750000 timelines, 11 s, no violations
+  checkpoint: 3000000 timelines, 13 s, no violations
+  checkpoint: 3250000 timelines, 14 s, no violations
+  checkpoint: 3500000 timelines, 15 s, no violations
+  checkpoint: 3750000 timelines, 16 s, no violations
+  checkpoint: 4000000 timelines, 17 s, no violations
+  checkpoint: 4250000 timelines, 18 s, no violations
+  checkpoint: 4500000 timelines, 19 s, no violations
+  checkpoint: 4750000 timelines, 20 s, no violations
+  checkpoint: 5000000 timelines, 21 s, no violations
+  checkpoint: 5250000 timelines, 22 s, no violations
+  census: complete, 5290440 timelines, nothing
+  (22 s)

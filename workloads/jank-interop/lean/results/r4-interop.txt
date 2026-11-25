@@ -1,0 +1,192 @@
+jank4-interop: round 4 (jank 7135b7708, CppInterOp 28b0830d, Clang 23.1.0)
+== feedback (prompted): the round-3 tests S49, S50, S53, S57 as written, and corrected
+  S49 (#cpp (s49_add double) 1 2): C++/Clojure 3.000000
+    round-3 test shape (one top-level do): error: analyze/invalid-cpp-dsl: analyze/unresolved-cpp-symbol: unable to find C++ symbol `s49_add` (cpp_util::resolve_scope failed, and it is no preprocessor value)
+    corrected (cpp/raw in its own top-level eval): 3
+  S50 (cpp/s50_ptr 21): C++/Clojure 42
+    round-3 test shape (one top-level do): error: analyze/unresolved-cpp-symbol: unable to find C++ symbol `s50_ptr` (cpp_util::resolve_scope failed, and it is no preprocessor value)
+    corrected (cpp/raw in its own top-level eval): error: Unable to call function since argument 0 is not convertible from `int` to `const long &`.
+  S53 (cpp/+ (cpp/s53_mk) 1.0): C++/Clojure 2.500000
+    round-3 test shape (one top-level do): error: analyze/unresolved-cpp-symbol: unable to find C++ symbol `s53_mk` (cpp_util::resolve_scope failed, and it is no preprocessor value)
+    corrected (cpp/raw in its own top-level eval): error: The operator is not supported for the type.
+  S57 (if false 1 cpp/s57_gd): C++/Clojure 2.500000
+    round-3 test shape (one top-level do): error: analyze/unresolved-cpp-symbol: unable to find C++ symbol `s57_gd` (cpp_util::resolve_scope failed, and it is no preprocessor value)
+    corrected (cpp/raw in its own top-level eval): 2.500000
+    corrected, inside a fn ((fn [c] (if c 1 cpp/…)) false): 2
+== XVI'. if with native branches, at the top level (interpreted) and in a fn (compiled)
+  explore (2000 mixed seeds): if-context:R23-compiled after 8 timelines, 1 decisions: ((fn [c] (if c true 1)) true): Clojure true; jank 1
+  shrunk to 1 decisions: ((fn [c] (if c true 1)) true): Clojure true; jank 1
+  tape:
+    {"name":"r4.branch.case","options":324,"value":109}
+  table: 36 of 324 cases deviate; classes: [R23-compiled (10), S57-compiled (26)]
+    [R23-compiled] ((fn [c] (if c 1 2.5)) true): Clojure 1; jank 1.000000
+    [R23-compiled] ((fn [c] (if c 1 true)) false): Clojure true; jank 1
+    [R23-compiled] ((fn [c] (if c 3000000000 2.5)) true): Clojure 3000000000; jank 3000000000.000000
+    [R23-compiled] ((fn [c] (if c 3000000000 true)) false): Clojure true; jank 1
+    [R23-compiled] ((fn [c] (if c 2.5 1)) false): Clojure 1; jank 1.000000
+    [R23-compiled] ((fn [c] (if c 2.5 3000000000)) false): Clojure 3000000000; jank 3000000000.000000
+    [R23-compiled] ((fn [c] (if c 2.5 true)) false): Clojure true; jank 1.000000
+    [R23-compiled] ((fn [c] (if c true 1)) true): Clojure true; jank 1
+    [R23-compiled] ((fn [c] (if c true 3000000000)) true): Clojure true; jank 1
+    [R23-compiled] ((fn [c] (if c true 2.5)) true): Clojure true; jank 1.000000
+    [S57-compiled] ((fn [c] (if c 1 cpp/glong)) false): Clojure 5000000000; jank 705032704
+    [S57-compiled] ((fn [c] (if c 1 cpp/gdouble)) false): Clojure 2.500000; jank 2
+    [S57-compiled] ((fn [c] (if c 1 cpp/guint)) false): Clojure 4000000000; jank -294967296
+    [S57-compiled] ((fn [c] (if c 3000000000 cpp/gdouble)) false): Clojure 2.500000; jank 2
+    [S57-compiled] ((fn [c] (if c 2.5 cpp/gint)) false): Clojure 7; jank 7.000000
+    [S57-compiled] ((fn [c] (if c 2.5 cpp/glong)) false): Clojure 5000000000; jank 5000000000.000000
+    [S57-compiled] ((fn [c] (if c 2.5 cpp/guint)) false): Clojure 4000000000; jank 4000000000.000000
+    [S57-compiled] ((fn [c] (if c 2.5 cpp/red)) false): Clojure 0; jank 0.000000
+    [S57-compiled] ((fn [c] (if c true cpp/gint)) false): Clojure 7; jank true
+    [S57-compiled] ((fn [c] (if c true cpp/glong)) false): Clojure 5000000000; jank true
+    [S57-compiled] ((fn [c] (if c true cpp/gdouble)) false): Clojure 2.500000; jank true
+    [S57-compiled] ((fn [c] (if c true cpp/guint)) false): Clojure 4000000000; jank true
+    [S57-compiled] ((fn [c] (if c true cpp/red)) true): Clojure true; jank 1
+    [S57-compiled] ((fn [c] (if c cpp/gint 2.5)) true): Clojure 7; jank 7.000000
+    [S57-compiled] ((fn [c] (if c cpp/gint true)) true): Clojure 7; jank true
+    [S57-compiled] ((fn [c] (if c cpp/glong 1)) true): Clojure 5000000000; jank 705032704
+    [S57-compiled] ((fn [c] (if c cpp/glong 2.5)) true): Clojure 5000000000; jank 5000000000.000000
+    [S57-compiled] ((fn [c] (if c cpp/glong true)) true): Clojure 5000000000; jank true
+    [S57-compiled] ((fn [c] (if c cpp/gdouble 1)) true): Clojure 2.500000; jank 2
+    [S57-compiled] ((fn [c] (if c cpp/gdouble 3000000000)) true): Clojure 2.500000; jank 2
+    [S57-compiled] ((fn [c] (if c cpp/gdouble true)) true): Clojure 2.500000; jank true
+    [S57-compiled] ((fn [c] (if c cpp/guint 1)) true): Clojure 4000000000; jank -294967296
+    [S57-compiled] ((fn [c] (if c cpp/guint 2.5)) true): Clojure 4000000000; jank 4000000000.000000
+    [S57-compiled] ((fn [c] (if c cpp/guint true)) true): Clojure 4000000000; jank true
+    [S57-compiled] ((fn [c] (if c cpp/red 2.5)) true): Clojure 0; jank 0.000000
+    [S57-compiled] ((fn [c] (if c cpp/red true)) false): Clojure true; jank 1
+  residual searches (exhaust, each found class set aside in turn):
+    XVI'. if with native branches, at the top level (interpreted) and in a fn (compiled): found after 10 timelines (if-context:R23-compiled): ((fn [c] (if c 1 2.5)) true): Clojure 1; jank 1.000000
+    XVI'. if with native branches, at the top level (interpreted) and in a fn (compiled): found after 24 timelines (if-context:S57-compiled): ((fn [c] (if c 1 cpp/glong)) false): Clojure 5000000000; jank 705032704
+    XVI'. if with native branches, at the top level (interpreted) and in a fn (compiled): complete, 324 timelines, nothing (set aside: [R23-compiled, S57-compiled])
+== XII (rerun). function templates with explicit template arguments, called (compiled in both contexts)
+  explore (3000 mixed seeds): template:explicit-args-dropped after 1 timelines, 1 decisions: (#cpp (add cpp/int) (cpp/long 2) (cpp/long 2)): C++ `add<int>` returns `int`; jank deduces from the arguments and returns `long`
+  shrunk to 1 decisions: (#cpp (add cpp/int) (cpp/long 2) (cpp/long 2)): C++ `add<int>` returns `int`; jank deduces from the arguments and returns `long`
+  tape:
+    {"name":"r3.template.case","options":75,"value":8}
+  table: 69 of 75 cases deviate; classes: [explicit-args-dropped (69)]
+    [explicit-args-dropped] (#cpp (add cpp/int) 1 2.5): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) 1 (cpp/long 2)): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) 2.5 1): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) 2.5 2.5): C++ `add<int>` returns `int`; jank deduces from the arguments and returns `double`
+    [explicit-args-dropped] (#cpp (add cpp/int) 2.5 (cpp/long 2)): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    [explicit-args-dropped] (#cpp (add cpp/int) (cpp/long 2) 1): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+  residual searches (exhaust, each found class set aside in turn):
+    XII (rerun). function templates with explicit template arguments, called (compiled in both contexts): found after 2 timelines (template:explicit-args-dropped): (#cpp (add cpp/int) 1 2.5): C++ returns `int`; jank: No matching overload of the `add` function was found for this call.
+    XII (rerun). function templates with explicit template arguments, called (compiled in both contexts): complete, 75 timelines, nothing (set aside: [explicit-args-dropped])
+== XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]
+  explore (3000 mixed seeds): operator:no-builtin-candidates after 6 timelines, 1 decisions: (cpp/* cpp/gq 1): C++ calls `built-in int operator(int, int)`; jank: No matching overload.
+  shrunk to 1 decisions: (cpp/* cpp/gq 1): C++ calls `built-in int operator(int, int)`; jank: No matching overload.
+  tape:
+    {"name":"r4.operator.case","options":588,"value":358}
+  table: 61 of 588 cases deviate; classes: [no-builtin-candidates (48), accepts-ill-formed (6), hidden-member-candidates (3), enum-user-operator-bypassed (1), using-directive-operator (1), enum-user-operator-unreachable (2)]
+    [no-builtin-candidates] (cpp/+ cpp/gm cpp/gm): C++ calls `built-in double operator(double, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/gm cpp/gq): C++ calls `built-in double operator(double, int)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/gm cpp/ua): C++ calls `built-in double operator(double, int)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/gm 1): C++ calls `built-in double operator(double, int)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/gm 2.5): C++ calls `built-in double operator(double, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/gq cpp/gm): C++ calls `built-in double operator(int, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/ua cpp/gm): C++ calls `built-in double operator(int, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ 1 cpp/gm): C++ calls `built-in double operator(int, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/+ 2.5 cpp/gm): C++ calls `built-in double operator(double, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/- cpp/gm cpp/gm): C++ calls `built-in double operator(double, double)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/- cpp/gm cpp/gq): C++ calls `built-in double operator(double, int)`; jank: No matching overload.
+    [no-builtin-candidates] (cpp/- cpp/gm cpp/ua): C++ calls `built-in double operator(double, int)`; jank: No matching overload.
+    [accepts-ill-formed] (cpp/+ cpp/gq cpp/ua): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-in double operator(int, double), built-in long double operator(int, long double), built-in unsigned int operator(unsigned int, int), built-in unsigned int operator(unsigned int, unsigned int), built-i
+    [accepts-ill-formed] (cpp/+ cpp/gq 1): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-in double operator(int, double), built-in long double operator(int, long double), built-in unsigned int operator(unsigned int, int), built-in unsigned int operator(unsigned int, unsigned int), built-in lon
+    [accepts-ill-formed] (cpp/+ cpp/gq 2.5): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-in double operator(int, double), built-in long double operator(int, long double), built-in unsigned int operator(unsigned int, int), built-in unsigned int operator(unsigned int, unsigned int), built-in l
+    [accepts-ill-formed] (cpp/+ cpp/ua cpp/gq): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-in double operator(int, double), built-in long double operator(int, long double), built-in unsigned int operator(unsigned int, int), built-in unsigned int operator(unsigned int, unsigned int), built-i
+    [accepts-ill-formed] (cpp/+ 1 cpp/gq): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-in double operator(int, double), built-in long double operator(int, long double), built-in unsigned int operator(unsigned int, int), built-in unsigned int operator(unsigned int, unsigned int), built-in lon
+    [accepts-ill-formed] (cpp/+ 2.5 cpp/gq): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-in double operator(int, double), built-in long double operator(int, long double), built-in unsigned int operator(unsigned int, int), built-in unsigned int operator(unsigned int, unsigned int), built-in l
+    [hidden-member-candidates] (cpp/* cpp/gd cpp/gq): C++ calls `int D::operator*(double) const`; jank: This call is ambiguous between 2 different overloads.
+    [hidden-member-candidates] (cpp/* cpp/gd cpp/ua): C++ calls `int D::operator*(double) const`; jank: This call is ambiguous between 2 different overloads.
+    [hidden-member-candidates] (cpp/* cpp/gd 1): C++ calls `int D::operator*(double) const`; jank: This call is ambiguous between 2 different overloads.
+    [enum-user-operator-bypassed] (cpp/* cpp/ua cpp/ua): C++ calls `double operator*(ue, ue)` → 0.500000; jank analyses the built-in operator as `int`; value 0 (the JIT calls `double operator*(ue, ue)`, which returns 0.500000, then boxes it as `int`)
+    [using-directive-operator] (cpp/| cpp/gp cpp/gp): C++ ill-formed (no viable operator); jank calls `int px::operator|(pn::P const&, pn::P const&)`
+    [enum-user-operator-unreachable] (cpp/| cpp/se.a cpp/se.a): C++ calls `se operator|(se, se)`; jank: The operator is not supported for these types.
+    [enum-user-operator-unreachable] (cpp/- cpp/se.a): C++ calls `int operator-(se)`; jank: The operator is not supported for these types.
+  residual searches (exhaust, each found class set aside in turn):
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: found after 53 timelines (operator:no-builtin-candidates): (cpp/+ cpp/gm cpp/gm): C++ calls `built-in double operator(double, double)`; jank: No matching overload.
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: found after 69 timelines (operator:accepts-ill-formed): (cpp/+ cpp/gq cpp/ua): C++ ill-formed (ambiguous between [Q operator+(Q, Q), built-in int operator(int, int), built-in unsigned int operator(int, unsigned int), built-in long operator(int, long), built-in unsigned long operator(int, unsigned long), built-in long long operator(int, long long), built-in unsigned long long operator(int, unsigned long long), built-in float operator(int, float), built-
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: found after 330 timelines (operator:hidden-member-candidates): (cpp/* cpp/gd cpp/gq): C++ calls `int D::operator*(double) const`; jank: This call is ambiguous between 2 different overloads.
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: found after 393 timelines (operator:enum-user-operator-bypassed): (cpp/* cpp/ua cpp/ua): C++ calls `double operator*(ue, ue)` → 0.500000; jank analyses the built-in operator as `int`; value 0 (the JIT calls `double operator*(ue, ue)`, which returns 0.500000, then boxes it as `int`)
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: found after 524 timelines (operator:using-directive-operator): (cpp/| cpp/gp cpp/gp): C++ ill-formed (no viable operator); jank calls `int px::operator|(pn::P const&, pn::P const&)`
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: found after 550 timelines (operator:enum-user-operator-unreachable): (cpp/| cpp/se.a cpp/se.a): C++ calls `se operator|(se, se)`; jank: The operator is not supported for these types.
+    XVIII. operators: GetOperator's lookup (TU, ADL with using-directives, associated classes' members and hidden friends) vs [over.match.oper]: complete, 588 timelines, nothing (set aside: [no-builtin-candidates, accepts-ill-formed, hidden-member-candidates, enum-user-operator-bypassed, using-directive-operator, enum-user-operator-unreachable])
+== XIX. class template constructor calls (cpp/X. args): defaults vs class template argument deduction
+  explore (3000 mixed seeds): class-template:defaults-instead-of-deduction after 1 timelines, 1 decisions: (cpp/.-v (cpp/mixed. true 2.5)): C++ deduces `mixed<bool>`, v = true; jank uses the defaults `mixed<long>`, v = 1
+  shrunk to 1 decisions: (cpp/.-v (cpp/mixed. true 2.5)): C++ deduces `mixed<bool>`, v = true; jank uses the defaults `mixed<long>`, v = 1
+  tape:
+    {"name":"r4.template.case","options":105,"value":98}
+  table: 34 of 105 cases deviate; classes: [defaults-instead-of-deduction (18), defaults-instead-of-deduction-same-value (12), missing-template-arguments (documented) (4)]
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/wrap. 2.5)): C++ deduces `wrap<double>`, v = 2.500000; jank uses the defaults `wrap<int>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/wrap. true)): C++ deduces `wrap<bool>`, v = true; jank uses the defaults `wrap<int>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. 2.5 1)): C++ deduces `both<double, int>`, v = 2.500000; jank uses the defaults `both<int, double>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. 2.5 2.5)): C++ deduces `both<double, double>`, v = 2.500000; jank uses the defaults `both<int, double>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. 2.5 true)): C++ deduces `both<double, bool>`, v = 2.500000; jank uses the defaults `both<int, double>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. 2.5 (cpp/long 3))): C++ deduces `both<double, long>`, v = 2.500000; jank uses the defaults `both<int, double>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. true 1)): C++ deduces `both<bool, int>`, v = true; jank uses the defaults `both<int, double>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. true 2.5)): C++ deduces `both<bool, double>`, v = true; jank uses the defaults `both<int, double>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. true true)): C++ deduces `both<bool, bool>`, v = true; jank uses the defaults `both<int, double>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/both. true (cpp/long 3))): C++ deduces `both<bool, long>`, v = true; jank uses the defaults `both<int, double>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. 2.5 1)): C++ deduces `mixed<double>`, v = 2.500000; jank uses the defaults `mixed<long>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. 2.5 2.5)): C++ deduces `mixed<double>`, v = 2.500000; jank uses the defaults `mixed<long>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. 2.5 true)): C++ deduces `mixed<double>`, v = 2.500000; jank uses the defaults `mixed<long>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. 2.5 (cpp/long 3))): C++ deduces `mixed<double>`, v = 2.500000; jank uses the defaults `mixed<long>`, v = 2
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. true 1)): C++ deduces `mixed<bool>`, v = true; jank uses the defaults `mixed<long>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. true 2.5)): C++ deduces `mixed<bool>`, v = true; jank uses the defaults `mixed<long>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. true true)): C++ deduces `mixed<bool>`, v = true; jank uses the defaults `mixed<long>`, v = 1
+    [defaults-instead-of-deduction] (cpp/.-v (cpp/mixed. true (cpp/long 3))): C++ deduces `mixed<bool>`, v = true; jank uses the defaults `mixed<long>`, v = 1
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/wrap. (cpp/long 3))): C++ deduces `wrap<long>`; jank uses the defaults `wrap<int>`; v is 3 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. 1 1)): C++ deduces `both<int, int>`; jank uses the defaults `both<int, double>`; v is 1 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. 1 true)): C++ deduces `both<int, bool>`; jank uses the defaults `both<int, double>`; v is 1 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. 1 (cpp/long 3))): C++ deduces `both<int, long>`; jank uses the defaults `both<int, double>`; v is 1 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. (cpp/long 3) 1)): C++ deduces `both<long, int>`; jank uses the defaults `both<int, double>`; v is 3 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. (cpp/long 3) 2.5)): C++ deduces `both<long, double>`; jank uses the defaults `both<int, double>`; v is 3 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. (cpp/long 3) true)): C++ deduces `both<long, bool>`; jank uses the defaults `both<int, double>`; v is 3 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/both. (cpp/long 3) (cpp/long 3))): C++ deduces `both<long, long>`; jank uses the defaults `both<int, double>`; v is 3 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/mixed. 1 1)): C++ deduces `mixed<int>`; jank uses the defaults `mixed<long>`; v is 1 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/mixed. 1 2.5)): C++ deduces `mixed<int>`; jank uses the defaults `mixed<long>`; v is 1 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/mixed. 1 true)): C++ deduces `mixed<int>`; jank uses the defaults `mixed<long>`; v is 1 in both
+    [defaults-instead-of-deduction-same-value] (cpp/.-v (cpp/mixed. 1 (cpp/long 3))): C++ deduces `mixed<int>`; jank uses the defaults `mixed<long>`; v is 1 in both
+    [missing-template-arguments (documented)] (cpp/.-v (cpp/hold. 1)): C++ deduces `hold<int>`, v = 1; jank: `hold` cannot be constructed because it is missing the necessary template parameters.
+    [missing-template-arguments (documented)] (cpp/.-v (cpp/hold. 2.5)): C++ deduces `hold<double>`, v = 2.500000; jank: `hold` cannot be constructed because it is missing the necessary template parameters.
+    [missing-template-arguments (documented)] (cpp/.-v (cpp/hold. true)): C++ deduces `hold<bool>`, v = true; jank: `hold` cannot be constructed because it is missing the necessary template parameters.
+    [missing-template-arguments (documented)] (cpp/.-v (cpp/hold. (cpp/long 3))): C++ deduces `hold<long>`, v = 3; jank: `hold` cannot be constructed because it is missing the necessary template parameters.
+  residual searches (exhaust, each found class set aside in turn):
+    XIX. class template constructor calls (cpp/X. args): defaults vs class template argument deduction: found after 3 timelines (class-template:defaults-instead-of-deduction): (cpp/.-v (cpp/wrap. 2.5)): C++ deduces `wrap<double>`, v = 2.500000; jank uses the defaults `wrap<int>`, v = 2
+    XIX. class template constructor calls (cpp/X. args): defaults vs class template argument deduction: found after 5 timelines (class-template:defaults-instead-of-deduction-same-value): (cpp/.-v (cpp/wrap. (cpp/long 3))): C++ deduces `wrap<long>`; jank uses the defaults `wrap<int>`; v is 3 in both
+    XIX. class template constructor calls (cpp/X. args): defaults vs class template argument deduction: found after 23 timelines (class-template:missing-template-arguments (documented)): (cpp/.-v (cpp/hold. 1)): C++ deduces `hold<int>`, v = 1; jank: `hold` cannot be constructed because it is missing the necessary template parameters.
+    XIX. class template constructor calls (cpp/X. args): defaults vs class template argument deduction: complete, 105 timelines, nothing (set aside: [defaults-instead-of-deduction, defaults-instead-of-deduction-same-value, missing-template-arguments (documented)])
+== XX. lazily compiled functions (deferred_cpp_function): programs of top-level defn/def/call/alter-var-root
+  length 1: explore (2000 seeds): nothing
+  length 1: exhaust complete, 6 timelines, nothing
+  length 2: explore (2000 seeds): nothing
+  length 2: exhaust complete, 36 timelines, nothing
+  length 3: explore (2000 seeds): nothing
+  length 3: exhaust complete, 216 timelines, nothing
+  length 4: explore (2000 seeds): nothing
+  length 4: exhaust complete, 1296 timelines, nothing
+  length 5: explore (2000 seeds): nothing
+  length 5: exhaust found after 496 timelines: (defn f [] 1) (def g f) (defn f [] 2) (g) (f): at (f) Clojure (some 2), jank (some 1)
+  census: 0 of 1296 programs of length 4 disagree
+  --eager: 0 of 1296 disagree
+== XXI. (cpp/delete p) by the pointer's origin: jank vs C++ delete
+  Jank.R4.Interop.Worlds4.Origin.cppNewForm: jank destroyed and freed; C++ undefined (placement `new (UseGC)` memory)
+  Jank.R4.Interop.Worlds4.Origin.cxxNew: jank destructor runs, then GC_free dereferences a null header: SIGSEGV; C++ destroyed and freed
+  Jank.R4.Interop.Worlds4.Origin.staticObject: jank destructor runs, then GC_free dereferences a null header: SIGSEGV; C++ undefined
+== theorems (proved at build time; no sorry, no native_decide)
+  ★ jank_primitive_operands_builtin_only
+  ★ jank_primitive_operand_unary_builtin_only
+  ★ jank_ctor_specialization_is_defaults
+  ★ deferred_call_returns_body
+  ★ eager_agrees_clojure
+  Deferred.old_object_rebinds_var
+  Deferred.clojure_keeps_new_root
+  Deferred.realize_own_root_same_result
+  getOperator_includes_hidden_base_member
+  cpp_member_lookup_hides_base
+  getOperator_follows_using_directive
+  Worlds4.delete_cxx_new_crashes
+== done in 0 s
+exit 0

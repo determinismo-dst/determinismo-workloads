@@ -1,0 +1,6 @@
+a validator that swap!s its atom, while another thread calls set-validator! (round 3: fine replica stopped at 500,001 states); budget 3000000
+  program: validator vf = (fn [..] (swap! a inc)); thread 0: (swap! a inc); thread 1: (set-validator! a vf)
+  jank (fine SharedMutex replica): DEADLOCK after 117 steps, 683406 states
+    thread 0 holds [atom validator shared] and waits for atom validator shared; thread 1 holds [] and waits for atom validator exclusive (kHasE)
+  Clojure: always completes (1832 states)
+exit=0

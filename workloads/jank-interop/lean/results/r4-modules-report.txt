@@ -1,0 +1,389 @@
+ROUND 4, AREA F: MODULE LOADING, AOT AND THE CLI (jank 7135b7708)
+==================================================================
+
+Every jank path is under upstream-main/compiler+runtime/ at 7135b7708. Clojure paths are under
+clojure-ref/ (Clojure 1.12.0 sources). Every item is a hypothesis from the Lean replica, re-read
+against the source; jank was not built or run.
+
+Files: Jank/R4/Modules/{Munge,Loader,Load,LoadWorld,Cli,Aot,Theorems}.lean, Run/R4/Modules.lean
+(exe jank4-modules: `loader N`, `load N`, `runmain`, `cli N`, `aot`). Run outputs:
+results/r4-modules-{aot,runmain,cli4,cli5,loader2,load1,load2}.txt. Scratch: .r4-scratch/modules/
+(all4.sh and fin.sh rerun every search and the theorem check). Build: `lake build jank4-modules`
+(51 jobs) succeeds; rounds 1-3 untouched by this area.
+
+No earlier round replicated these parts. Round 3's S13 and S68 touched AOT; R109-R112 touched
+namespaces; R21 the reader's metadata. Nothing here was in rounds 1-3 unless marked.
+
+
+(1) DEVIATIONS
+--------------
+
+F1. run-main calls -main with *ns* bound to clojure.core; an AOT program calls it in the main
+    module's namespace. Clojure's `clojure -M -m` calls it in user.
+    Program (src/app/core.jank):
+        (ns app.core)
+        (defn -main [& _] (println (str *ns*)) (println (read-string "::k")) (eval '(def z 1)))
+    clojure -M -m app.core   user / :user/k / defines user/z
+    jank run-main app.core   clojure.core / :clojure.core/k / defines clojure.core/z
+    jank compile app.core    (the binary) app.core / :app.core/k / defines app.core/z
+    Test: uF1-main-runs-in-user (the test runner is itself `jank run-main run-one`, so a deftest
+    sees -main's *ns*).
+    Path: main.cpp run_main 83-115 (load_module, then apply -main; no in-ns); context.cpp
+    context::context 107-113 (the main thread's binding of *ns* is clojure.core, the var's root);
+    context.cpp load_module 325-350 (binds *ns* for the load only). AOT: aot/processor.cpp
+    gen_entrypoint 92-128 calls jank_load_<module>() directly, so the module's (ns ...) in-ns sets
+    that same binding and it stays. Clojure: clojure.main main-opt 511-517 and initialize 503-509
+    ((in-ns 'user) inside with-bindings).
+    Corroboration on the real jank: round 3's S73 test printed (pr-str *ns*) as "clojure.core"
+    (validation/round-3-evidence.txt), and S71's evidence names the macro it defined through
+    `eval` clojure.core/s71-m: every round's `ev` helper evaluated in clojure.core.
+    Searches: run-main world, F1 in every timeline whose -main observes *ns* (below); AOT world.
+    Status: new. Confidence: high.
+
+F2. A compiled module interns every var its code refers to before its first form runs, so
+    `(ns ...)`'s refer of clojure.core throws when the module shadows a core name it also uses.
+    Program:
+        (ns app.core)
+        (defn update [m] (assoc m :updated true))
+        (defn -main [& _] (println (update {})))
+    clojure -M -m app.core        WARNING (update replaced), prints {:updated true}
+    jank run-main app.core        a warning, prints {:updated true}
+    jank compile app.core, run    start-up throws "update already refers to #'app.core/update in
+                                  ns app.core" (and exits 0, F3)
+    The same happens when module A refers to b/x and b defines x shadowing a core name without
+    :refer-clojure :exclude (A's load fn interns b/x before b's (ns b) refers clojure.core), and
+    when run-main loads a module from a cached .o after compile-module.
+    Path: codegen/cpp_processor.cpp gen_cpp 2092-2180 (load fn: jank_ns_intern_c, then
+    `new (&ns::v) auto(_jank_var("ns/name"))` for every lifted var, then the module fn);
+    ir/builder.cpp 283-309 (every var deref/ref is lifted, owned = false); codegen/api.cpp
+    _jank_var 11-14 -> context.cpp intern_var 491-515 -> ns.cpp intern_var 26-47 (no mapping
+    yet: a new var of that namespace is mapped); then core.jank ns 5581 -> refer 4717 -> ns.cpp
+    refer 174-192 (a var of another namespace that is not clojure.core: error) -> core.cpp refer
+    892-898 `.expect_ok()` throws. JIT never interns early: eval_string 59-74 runs (ns ...) first.
+    Search: AOT world, class F2.
+    Status: extends R109 (R109 is the same refer conflict on re-running (ns ...); here it hits the
+    first load of every compiled module, and of every module loaded from a cached .o).
+    Confidence: high on the mechanism; medium that lein-jank programs reach it (they compile
+    every module this way).
+    Test: none possible from a test file (needs `jank compile` and a second process).
+
+F3. An AOT program built with the default static runtime exits with status 0 when its start-up
+    or -main throws.
+    Program: (ns app.core) (defn -main [& _] (throw (ex-info "boom" {})))
+    clojure -M -m app.core: prints the exception, status 1. jank run-main: status 1
+    (jank_init_dynamic returns ret). jank compile + ./target/a.out: prints it, status 0.
+    Path: c_api.cpp jank_init_static 1133-1169: every handler sets ret = 1, then `return 0;`
+    (1168); the entry point returns it (aot/processor.cpp 133-136). jank_init_dynamic
+    (c_api_dynamic.cpp 84-130) returns ret.
+    Theorem: aot_static_status_zero (for every program). Search: AOT world, class F3.
+    Status: new. Confidence: high. Test: none (process exit status).
+
+F4. `load` takes a module name, not a resource path.
+    (load "/clojure/walk")   Clojure: loads clojure/walk, nil   jank: "The module `/clojure/walk`
+                             could not be found."
+    Relative paths ("walk" from a clojure.* namespace) are likewise module names in jank; jank's
+    own docstring (core.jank 4802-4804) describes Clojure's path rule. `(:load "x")` in ns too.
+    Path: core.jank load 4801-4812 (`(.load_module (.to_string path) ...)`) -> context.cpp
+    load_module 325 -> loader_dynamic.cpp load 721 / find 544-562. Clojure: core.clj load
+    6172-6187 (root-directory, RT.load of the path).
+    Test: uF4-load-takes-a-resource-path. Search: load world, class F4.
+    Status: new. Confidence: high.
+
+F5. Loading functions that are absent or throw "TODO: port".
+    (load-string "(+ 1 2)")              Clojure 3        jank throws "TODO: port load-string"
+    (resolve 'clojure.core/load-file)    Clojure the var  jank nil (no load-file at all)
+    (ns-aliases 'clojure.core)           Clojure {}       jank throws "TODO: port ns-aliases"
+    (ns-refers 'clojure.core)            Clojure a map    jank throws
+    (requiring-resolve 'clojure.core/inc) Clojure the var jank throws
+    Also load-reader, ns-imports, serialized-require, with-loading-context, var-set throw.
+    Path: core.jank load-reader 6171, load-string 6178, ns-imports 6197, ns-refers 6203,
+    ns-aliases 6212, with-loading-context 6962, serialized-require 6978, requiring-resolve 6987;
+    load-file: no definition in core.jank or the C++ runtime.
+    Test: uF5-loading-functions-exist.
+    Status: the same class as R113/R124 (unported functions), new names. Confidence: high.
+
+F6. `refer`'s :only / :refer accept a set (any collection); Clojure throws.
+    (refer 'clojure.string :only #{'join})   Clojure throws ":only/:refer value must be a
+                                             sequential collection of symbols"   jank refers join
+    Also `(require '[x :refer #{a}])`.
+    Path: core.jank refer 4717-4755 (no check). Clojure: core.clj refer 4268-4269.
+    Test: uF6-refer-only-must-be-sequential. Search: load world, class F6.
+    Status: new, low. Confidence: high.
+
+F7. `:verbose` prints nothing.
+    (with-out-str (require 'clojure.walk :reload :verbose))
+       Clojure "(clojure.core/load \"/clojure/walk\")\n"   jank ""
+    Path: core.jank load-lib 4836-4873 binds `verbose` (4846) and never reads it; load 4801 prints
+    nothing. Clojure: load-lib 5981-6026 (*loading-verbosely*), load 6178-6180. jank's own
+    require docstring documents :verbose.
+    Test: uF7-require-verbose-prints-the-load. Search: load world, class F7.
+    Status: new, low. Confidence: high.
+
+F8. When two module-path elements (or two files of one element) hold the same module, the LAST
+    one is loaded; a class path takes the first.
+    jank --module-path a:b run-main x   (x.jank in both)   jank loads b/x.jank; a class path
+                                                          a:b loads a/x.jank
+    Also: the user's --module-path comes before jank's own src/jank (loader ctor 401-408), so a
+    project file with a bundled module's name (e.g. clojure/set.jank) never wins; within one
+    directory, foo_bar.jank and foo-bar.jank both index as foo-bar and the later in
+    recursive_directory_iterator order wins.
+    Path: loader_dynamic.cpp register_entry 181-241 (`res.first->second.jank = entry` overwrites);
+    register_module_path 327-364 in order; find_module 513-537 re-registers on a miss, again in
+    order. Clojure: RT.load -> ClassLoader.getResource (first element). The book calls the module
+    path jank's class path (differences-from-clojure.md, "Compilation model").
+    Theorem: upsert_jank_last_wins (for every index, key and pair of files).
+    Search: loader world, class F8.
+    Status: new. Confidence: high. Test: none (needs a module path with two directories).
+
+F9. A ZIP file on the module path registers nothing, though --help lists "directories, JAR
+    files, and ZIP files".
+    jank --module-path deps.zip run-main x   (x.jank inside)   jank "The module `x` could not be
+                                                               found."
+    Path: loader_dynamic.cpp register_path 297-325: not a directory and not `.jar`, so it is one
+    file keyed by its whole path, and register_entry ignores the `.zip` extension. cli.cpp 122-124.
+    Search: loader world, class F9. Status: new, low-medium. Confidence: high. Test: none.
+
+F10. A file whose name holds a munge escape is indexed under its demunged name, so its own lib
+    name does not find it.
+    src/x/a_PLUS_b.jank:   (require 'x.a_PLUS_b)   Clojure loads it   jank "could not be found"
+                                                   (it is indexed as x.a+b)
+    Path: loader_dynamic.cpp path_to_module 36-50 (demunge of the whole path) and find 547-549
+    (`_` -> `-` only); munge.cpp demunge 318-350. Clojure: root-resource 5939.
+    Search: loader world, class F-munge. Status: new, low (uppercase escapes like _PLUS_, _GT_,
+    _EQ_, _BAR_, _STAR_ between underscores). Test: none (needs such a file).
+
+F11. `(ns x)` gives the namespace the reader's source metadata.
+    (eval (read-string "(ns my.probe)")) (meta (find-ns 'my.probe))
+       Clojure nil   jank {:jank/source {:file ... :start ... :end ...}}
+    Every (ns ...) form read from a file does this, and each reload replaces it.
+    Path: core.jank ns 5581-5645 (`name-metadata (meta name)` 5633, then reset-meta! at 5636-5637);
+    parse.cpp 1897 (every symbol carries source meta, R21).
+    Test: uF11-ns-form-leaves-no-namespace-meta. Status: extends R21 (a new reach: namespaces).
+    Confidence: high.
+
+F12. `--gc-incremental` is documented in --help but never parsed.
+    jank --gc-incremental run x.jank   "error: Invalid command '--gc-incremental'."
+    jank run --gc-incremental x.jank   "error: Extra positional args: x.jank" (the flag became the
+                                       file name)
+    Path: cli.cpp show_help 132 documents it; parse_opts 263-453 has no check for it; options
+    gc_incremental (cli.hpp 109) is never set, so main.cpp 220-223 never enables it.
+    Search: CLI world, class F12. Status: new, low. Test: none (CLI).
+
+F13. An unused command flag silences the extra-positional-arguments error.
+    jank run a.jank b.jank --output-target cpp   warns "These flags were not used", runs a.jank,
+                                                 ignores b.jank
+    jank run a.jank b.jank                       "error: Extra positional args: b.jank"
+    Path: cli.cpp 533-557 (`else if(!pending_positional_args.empty())`).
+    Search: CLI world, class F13. Status: new, low. Test: none (CLI).
+
+F14. `jank compile` fails for any namespace that exists without a module: `:as-alias`,
+    `create-ns`, `in-ns` to a new namespace.
+    (ns app.core (:require [app.spec :as-alias s]))
+    (defn -main [& _] (println ::s/id))
+    clojure -M -m app.core and jank run-main: print :app.spec/id
+    jank compile app.core: "Compiled module 'app.spec' not found." (aot/internal-failure)
+    Path: aot/processor.cpp build_executable 429-476 iterates context::all_ns (context.cpp
+    461-477: every namespace but cpp); gen_entrypoint 62-74/101-113 also declares and registers
+    jank_load_<ns> for each. Clojure documents :as-alias as "the lib will not be loaded".
+    Search: AOT world, class F14. Status: new, medium-low. Test: none (needs jank compile).
+
+F15. `compile` from a running program (run, run-main, repl, nREPL) throws for a source module,
+    and returns nil.
+    (compile 'clojure.set)   Clojure 'clojure.set (its classes exist; nothing written)
+                             jank throws "Unable to write module, given output target
+                             'unspecified'."
+    Path: core.jank compile 4891 -> core.cpp compile 1358-1362 -> context_dynamic.cpp
+    compile_module 212-218 -> eval_string 88-127 -> write_module 239-279: opts.output_target is
+    set only for the compile commands (cli.cpp 476-502, main.cpp 117-150), so it is unspecified.
+    Core modules with a managed load fn (clojure.core, clojure.string, clojure.walk, the nREPL
+    ones: c_api_dynamic_phase_2.cpp) skip eval_string and "compile" without writing. jank's
+    compile also returns nil (core.cpp 1361); Clojure's returns lib (core.clj 6201).
+    Test: uF15-compile-at-run-time. Status: new. Confidence: high (the throw); the test also
+    fails on the nil.
+
+F16. run-main does not put the main module on *pending-paths*, so a module that requires itself
+    runs twice, and a cycle back to the main module evaluates it once more before the cycle
+    error.
+    src/p/a.jank:  (ns p.a (:require [p.a])) (println "loading")
+    clojure -M -m p.a   prints "loading" once (the self-load is skipped: same path as the pending one)
+    jank run-main p.a   prints "loading" twice
+    Path: main.cpp run_main 95 calls context::load_module directly; core.jank load 4801-4812
+    skips only a path equal to (first *pending-paths*) and checks cycles against the rest;
+    *loaded-libs* gets the module only when its ns form ends (5645) or loader::load returns
+    (774). Clojure: clojure.main main-opt requires the module (pending /p/a).
+    Search: run-main world, class F16 (a second evaluation of p.a needs a require of p.a while it
+    loads: a self-require, or a cycle through it whose effects come before the cyclic require).
+    Status: new, low. Test: none (needs run-main of its own module).
+
+Not deviations, recorded:
+- Prefix lists in require/use/ns ("not a libspec"): the book documents "No nested require
+  support (same as ClojureScript)" (differences-from-clojure.md). jank's require docstring still
+  describes prefix lists. Load world class "documented".
+- refer conflicts: jank's ns::refer throws when a name maps to a var of another non-core
+  namespace, as refer's docstring says; Clojure 1.12 warns and replaces (or keeps an interned
+  var), Clojure 1.11 throws. Not reported (the versions disagree with each other).
+- jank finds `my-lib/core.jank` for my-lib.core, where Clojure needs my_lib/core.clj: jank is
+  more lenient (Clojure throws). Loader class "lenient".
+- A single source file on the module path is indexed under its absolute path (".p.foo"), so it
+  can never be required, though the comment at loader_dynamic.cpp 318-319 says files may be put
+  on the path. Clojure ignores plain files on a class path, so both fail: no difference.
+- `jank help` and `-h` exit with status 1 (show_help ends with std::exit(1)); any argument that
+  starts with -h is -h, and -p, -I, -D, -L, -l, -O likewise match by prefix (check_flag 34-51;
+  theorem checkFlag_prefix). Not documented either way.
+- Undocumented `-O<pass>` / `-Ono-<pass>` flags are accepted (an extension).
+- Edge: equal mtimes pick the .o (`>=`, loader_dynamic.cpp 634); Clojure loads the source unless
+  the class is newer.
+
+
+(2) FEEDBACK ITEMS
+------------------
+None were given to this area.
+
+Side note for the coordinator (F1): every round's `ev` helper runs `eval` under run-main, so it
+evaluated in clojure.core. This explains S71's evidence naming `clojure.core/s71-m`. No round-3
+prediction depended on the namespace except where its evidence shows it (S73 printed
+"clojure.core"). The defs those tests made through `ev` landed in clojure.core.
+
+
+(3) WHAT WAS REPLICATED
+-----------------------
+- Munge.lean: munge.cpp munge_chars 9-36, demunge_chars 40-67, cpp_keywords 70-168, munge
+  270-290, demunge 318-350; loader_dynamic.cpp path_to_module 36-50, module_to_path 52-56,
+  module_to_load_function 58-64, find's `_` -> `-` 547-549; std::filesystem extension; Clojure's
+  root-resource and root-directory (core.clj 5939-5954).
+- Loader.lean: loader_dynamic.cpp register_entry 181-241, register_relative_entry/
+  register_directory 243-268, register_jar 270-295, register_path 297-325, register_module_path
+  327-364, find_module 513-537, loader::find 544-641 (sources, origins, .o freshness,
+  compiling/target); Clojure's class path lookup (RT.load: first element, .clj before .cljc).
+- Load.lean: core.jank alias 4708, refer 4717-4755, check-cyclic-dependency 4788, load 4801,
+  load-one 4814, load-all 4825, load-lib 4836, load-libs 4875, require 4900, use 4968, ns
+  5581-5634 (without metadata); context.cpp load_module 325-350; loader::load 721-777
+  (set_is_loaded into the current *loaded-libs* binding); ns.cpp refer 174-192, add_alias
+  135-155, intern_owned_var 65-103, intern_var 26-47; context.cpp intern_var 491-515; main.cpp
+  run_main 83-115. Clojure's side: core.clj refer 4243, alias 4290, load-one 5956, load-all
+  5969, load-lib 5981 (prefix, :verbose prints), load-libs 6028 (prefix lists), check-cyclic
+  6051, require 6066, use 6156, load 6172 (paths), ns 5817; Namespace.java reference/
+  checkReplacement/intern (1.12); clojure.main main-opt/initialize. Errors are compared as
+  "threw or not" (messages differ by design).
+- Aot.lean: aot/processor.cpp gen_entrypoint 34-165, build_executable 411-524; cpp_processor.cpp
+  module load fn 2042-2186; ir/builder.cpp var lifting 276-317; codegen/api.cpp _jank_var;
+  context_dynamic.cpp eval_string compile path 81-127, compile_module 212-218; c_api.cpp
+  jank_init_static 1133-1169; c_api_dynamic.cpp jank_init_dynamic 84-130.
+- Cli.lean: cli.cpp check_flag 13-53, get_positional_arg 64-77, check_pending_flag 79-92,
+  show_help's exit, commit_scratchpad 203-225, parse_opts 227-568 (every check in order);
+  cli.hpp defaults; the documented behavior (--help 100-166, the book's command-line notes).
+
+
+(4) STILL LEFT OUT, AND WHY
+---------------------------
+- JAR reading (zip library) and file mtimes from a real file system: modeled as given data.
+- The `.cpp` module type (registered but never loaded: load 763-766 errors "Unknown module type").
+- Managed load fns of phase 2 beyond "skip eval, no write" (their compiled bodies are the core
+  libraries, out of scope).
+- compile_object's clang invocation and linker arguments (build_compiler_args 167-321,
+  build_linker_args 323-409): flags only, no semantics to compare beyond R25/S39's -fwrapv/-O
+  findings in round 3.
+- lein-jank (a JVM Leiningen plugin, not reached by jank programs) and clojure-cli/.
+- The terminal REPL client (terminal_repl_client.cpp) beyond its start-up namespace.
+- read_jar_file's `.jar:` paths and *file* values (relative vs absolute: *file* is documented
+  as "the path", not which form).
+- Refer conflicts as findings (the Clojure versions disagree); the world still runs them.
+- The load world's namespaces are small (two libs, one missing, two vars each); the AOT world
+  has 384 programs.
+
+
+(5) ASSUMPTIONS
+---------------
+Standing (new):
+- MODA4-1: A file's forms are evaluated one by one (eval_string), each at its own analysis; a
+  top-level (ns ...) expands to a `do` analyzed whole (S71), which changes nothing here since
+  its calls are qualified.
+- MODA4-2: The spec for .jank is Clojure's for .clj (first class path element; .clj before .cljc).
+- MODA4-3: Exceptions are compared as thrown or not; their types and messages are left aside.
+- MODA4-4: Clojure 1.12 refer semantics for the spec; refer-conflict differences are set aside.
+- MODA4-5: -main's references resolve in the main module when it is analyzed; *ns* matters only
+  to run-time operations (eval, read-string ::k, resolve, require's aliases).
+- MODA4-6: The AOT world's lifted vars are the module's references resolved in its namespace
+  after its JIT load (eval_string analyzes the forms again after evaluating them).
+- MODA4-7: The CLI spec is the --help text plus the book: an undocumented flag is an error, help
+  exits 0.
+- MODA4-8: recursive_directory_iterator order is the order files are given in the world.
+Replaced: none (no earlier round modeled these parts).
+
+
+(6) PROPERTIES CHECKED
+----------------------
+- Loader: for every module path and lib, jank loads the file Clojure's class path lookup names.
+- Loading: for every pair of library files and every program of top-level require/use/refer/
+  alias/load/remove-ns/print forms, the same forms throw, the same output is printed, the same
+  files are evaluated in the same order, and the namespaces, aliases, mappings, *loaded-libs* and
+  *ns* end the same.
+- run-main against clojure -m: the same, plus what -main observes.
+- AOT: a compiled program prints, fails and exits as run-main and clojure -m do.
+- CLI: every argument list parses to the documented command, file/module, flags and errors.
+
+
+(7) SEARCH RUNS
+---------------
+"complete n" = every timeline of the world was run. Each class below is a set of timelines whose
+difference disappears when that known feature is neutralized (LoadWorld.explain) or matches it.
+
+- Loader (loader 2): module paths of 0-2 elements (directory, JAR, ZIP or single file), each with
+  0-2 files of 8 names, and one of 7 lib names: complete 598,899; 128,110 differ:
+  lenient (jank finds a file Clojure's root-resource does not name, not a deviation) 43,512;
+  F9 52,170; F10 17,184; F8 15,244; 0 unexplained. (results/r4-modules-loader2.txt)
+- Loading (load 1): two library files (10 ns clauses x 4 extra forms each) and one top-level
+  form of 119: complete 114,224; 39,552 differ: documented prefix lists 19,648; F7 13,824;
+  F4 3,200; F6 2,304; F6+F7 576; 0 unexplained. (results/r4-modules-load1.txt)
+- Loading (load 2): the same with one or two top-level forms: complete 6,853,440 (463 s);
+  3,688,296 differ: documented prefix lists 1,820,620; F7 1,238,032; F4 340,056; F6 197,044;
+  F6+F7 92,544; 0 unexplained. No refer conflict arises in this world (its vars do not shadow
+  each other); R109's conflict is the AOT world's F2. (results/r4-modules-load2.txt)
+- run-main against clojure -m (runmain): the two files and 4 -main bodies: complete 7,744;
+  2,732 differ: F16 976, F1 852, documented prefix lists 848, F1+F6 56; 0 unexplained. When
+  start-up throws on both sides only the output before it is compared: Clojure's require then
+  removes the main namespace and jank's load_module does not, but the process exits with 1 on
+  both. (results/r4-modules-runmain.txt)
+- AOT (aot): 3 b files x 4 app heads x 4 app tails x 8 -main bodies: complete 384; 169 differ:
+  F14 100, F1 27, F3 27, F2 15; 0 unexplained. (results/r4-modules-aot.txt)
+- CLI (cli 4 / cli 5): argument lists of up to 4 / 5 tokens over 25 tokens: complete 406,901 /
+  10,172,526; differ 81,419 / 2,112,132: help exit status and -h prefix 39,174 / 1,081,084,
+  F12 20,713 / 513,976, undocumented -O<pass> extension 14,755 / 316,661, undocumented flag taken
+  as command or positional 4,217 / 97,791, F13 2,560 / 102,620; 0 unexplained.
+  (results/r4-modules-cli4.txt, -cli5.txt)
+- Tests on Clojure 1.11.1: the 7 deftests, translated, pass with `clojure -M -m run-one` and with
+  `clojure -M -e` (.r4-scratch/modules/clj/).
+
+
+(8) THEOREMS (★ = for every input)
+-------------------------------------
+- ★ upsert_jank_last_wins: the index's second registration of a module's .jank slot wins (F8).
+- ★ get_upsert_self: the index after an upsert holds f of the old entry.
+- ★ firstHaving_first: Clojure's lookup returns the first element holding the resource.
+- ★ checkFlag_prefix: a short value-less flag matches every argument that starts with it.
+- ★ aot_static_status_zero: a static-runtime program's status is 0 whenever it was built (F3).
+Checked with `lake env lean Jank/R4/Modules/Theorems.lean` (exit 0). No sorry, no native_decide,
+no new axiom.
+
+Tests written (.r4-scratch/modules/tests.jank; Clojure translation
+.r4-scratch/modules/clj/src/jank_lean/uf_modules_test.clj, all 7 pass on Clojure 1.11.1 through
+`clojure -M -m run-one` and `clojure -M -e`): uF1-main-runs-in-user, uF4-load-takes-a-resource-path,
+uF5-loading-functions-exist, uF6-refer-only-must-be-sequential, uF7-require-verbose-prints-the-load,
+uF11-ns-form-leaves-no-namespace-meta, uF15-compile-at-run-time. No predicted hang.
+Not testable from a test file (they need jank's CLI, AOT builds, files or exit statuses): F2, F3,
+F8, F9, F10, F12, F13, F14, F16; each has its shell steps above.
+
+
+(9) LIBRARY GAPS (built here; sdk/lean untouched)
+-------------------------------------------------
+- A module-path / file-system model (elements, files with mtimes, archives).
+- A namespace/var/alias state with Clojure-style `binding` that restores on exceptions
+  (EStateM keeps the state at a throw, so effects before an exception persist as in the JVM).
+- Census over a world is round 3's censusUnder (Jank.R3.Search); no new search primitive.
+
+
+(10) PROJECTS TRANSLATED (for NOTICE.md)
+----------------------------------------
+- jank only (MPL 2.0): module loader, core.jank loading functions, AOT processor, CLI.
+- Clojure's core.clj loading functions and clojure.main, as the specification side (EPL 1.0),
+  as before.

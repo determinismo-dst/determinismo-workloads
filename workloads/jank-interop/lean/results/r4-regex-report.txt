@@ -1,0 +1,243 @@
+ROUND 4 — REGEX (area D). jank 7135b770857d625630ab6f9abe5861c618d67b82; libstdc++ 15.3.0 (deps/libstdcxx-15.3.0/);
+round 3's replica (Jank/R3/Regex/) reused unchanged; round 4 in Jank/R4/Regex/ (GPL-3.0+ with the GCC runtime exception,
+like round 3's folder) and Run/R4/Regex.lean (exe jank4-regex). Prefix D. Every item is a prediction from the replicas
+read against the source; jank was not built or run. Clojure's side was checked on a JVM (Clojure 1.11.1 on OpenJDK 23
+through the clojure CLI): the round-4 java.util.regex model's answers were rerun there question by question.
+
+1. DEVIATIONS
+
+D1. A capture made inside a lookahead at an earlier start position is kept by Java and lost by jank. (new)
+  (re-find #"(?=(a))x|b" "ab")                       ; Clojure ["b" "a"]       jank ["b" ""]
+  (re-find #".(?!(a))" "aa")                         ; Clojure ["a" "a"]       jank ["a" ""]
+  (re-find #"(?!(a))$" "a")                          ; Clojure ["" "a"]        jank ["" ""]
+  (re-find #"(?=(a))b|(?=(b))" "ab")                 ; Clojure ["" "a" "b"]    jank ["" "" "b"]
+  (clojure.string/replace "ab" #"(?=(a))x|b" "[$1]") ; Clojure "a[a]"          jank "a[]"
+  (clojure.string/replace "ab" #"(?=(a))x|b" f)      ; f sees ["b" "a"] in Clojure, "b" in jank (R84 too)
+  Mechanism. Java's Matcher keeps one groups array: find() clears it once (search(from)), then the start
+  positions are tried one after another without clearing it again, and a lookahead's body (positive or
+  negative) returns through its own end node without restoring what its groups captured. So a lookahead that
+  captured at position 0 and then failed the rest of the pattern leaves its capture for a match at position 1.
+  libstdc++ starts every start position from the results the search began with:
+  _M_search (regex_executor.tcc 41–57) calls _M_search_from_first per position → _M_main_dispatch(__dfs)
+  (84–92) sets `_M_cur_results = _M_results`; _M_results is written only by _M_handle_accept (429–) when it
+  accepts (and `__glibcxx_assert(!_M_has_sol)` there: nothing explores after a solution), so what
+  _M_lookahead (151–167) copied into _M_cur_results at a failed position is gone.
+  Within one start position the two agree: libstdc++ also keeps a lookahead's captures after the rest fails
+  (`(re-find #"(?:(?=(a))x|a)" "a")` is ["a" "a"] on both, `(re-matches #"(?=(a))x|ab" "ab")` ["ab" "a"]).
+  Path (jank): core.jank re-find 6378 → core.cpp re_find 972–988 (std::regex_search); re-seq 6388;
+  re-matches is one position (no effect); clojure.string/replace and split → string_native.cpp 218/226/393
+  (regex_replace / sregex_iterator / cregex_iterator: each step a new regex_search).
+  Reach: any pattern with a capturing group inside (?=…) or (?!…) whose lookahead succeeds (or, for (?!…), its
+  body matches) at a position where the whole pattern then fails, followed by a match at a later position in
+  the same find.
+  Classified by a spec-side toggle (Java clearing the groups before each start position): with every round-3
+  jank toggle on, that toggle alone removes these deviations.
+  Spec: Java's behaviour (JDK 23, checked on the JVM; the javadoc's "the captured input associated with a group
+  is always the subsequence that the group most recently matched" is consistent with it). Round 3 compared
+  captures inside lookaheads only through the whole match (RXJ4), so it could not see this.
+  Census: 13,144 of 1,717,065 questions at ≤ 3 lookahead tokens, 178,668 of 39,495,600 at ≤ 4 (section 7).
+  Test: uD1-lookahead-capture-from-an-earlier-start. Confidence: high on jank's side (replica + library
+  assertion); medium-high that Clojure users rely on Java's result (it is Java's documented "most recently
+  matched" rule, not a separately documented guarantee).
+
+D2. nth on a matcher whose pattern has no groups indexes the match string. (new)
+  (let [m (re-matcher #"ab" "xaby")] (re-find m) (nth m 0))      ; Clojure "ab"            jank \a
+  (let [m (re-matcher #"ab" "xaby")] (re-find m) (nth m 1))      ; Clojure throws (IOOBE)  jank \b
+  (let [m (re-matcher #"ab" "xaby")] (re-find m) (nth m 0 :nf))  ; Clojure :nf             jank \a
+  (let [m (re-matcher #"" "a")] (re-find m) (nth m 0))           ; Clojure ""              jank throws
+  Path: core/seq.cpp nth 648 (and 698) → the matcher is `indexable` (re_matcher.hpp 18) → re_matcher.cpp
+  nth 14–22 → runtime::nth(groups, …), where groups is what re_find stored: smatch_to_vector's string for a
+  pattern without groups (core.cpp 945–954) → persistent_string.cpp nth 107–147 (a character from the bytes,
+  R52). Clojure: RT.java nthFrom 929–930 (`m.group(n)`) and 986–992 (with not-found: `groups > 0 && n <=
+  groupCount` else not-found). With groups the vector gives Clojure's answers except "" for nil (R80).
+  Census: 6,120 scripts (12 patterns × 17 inputs × 30 scripts of re-find/re-groups/nth): 59 + 70 + 11 + 90.
+  Test: uD2-nth-of-a-matcher-is-the-match. Theorem: nth_no_groups_never_the_match (for every match). Confidence: high.
+
+D3. nth on a matcher without a current match is nil (or the not-found value) instead of throwing. (new)
+  (nth (re-matcher #"(a)" "a") 0)                                ; Clojure IllegalStateException   jank nil
+  (nth (re-matcher #"(a)" "b") 0 :nf)                            ; Clojure IllegalStateException   jank :nf
+  (let [m (re-matcher #"a" "b")] (re-find m) (nth m 0))          ; Clojure IllegalStateException   jank nil
+  Path: as D2; groups is nil before any find and after a failed one (core.cpp re_find 980), and seq.cpp nth
+  648/698 returns nil / the fallback for it. Clojure: Matcher.group throws without a match (both nth forms for
+  a pattern with groups; RT.java 929–930, 989–990). re-groups agrees (both throw).
+  Census: 1,260 + 410 of the 6,120 scripts. Test: uD3-nth-of-a-matcher-without-a-match-throws.
+  Theorem: nth_without_match_nil. Confidence: high.
+
+D4. re-pattern stops at the first NUL of the pattern string. (new; distinct from R83, which cuts the input)
+  (re-find (re-pattern (str "x" (char 0) "y")) "xz")    ; Clojure nil              jank "x"
+  (re-matches (re-pattern (str (char 0))) "")            ; Clojure nil              jank ""
+  (re-pattern (str "(" (char 0) ")"))                    ; Clojure a pattern        jank throws (Mismatched '(' and ')')
+  (re-pattern (str (char 0) "("))                        ; Clojure throws           jank a pattern matching ""
+  Path: core.jank re-pattern 6352 → core.cpp re_pattern 929–937 → re_pattern.cpp 6–11:
+  `regex{ s.c_str(), std::regex_constants::ECMAScript }` → regex.h 494–495 basic_regex(const _Ch_type*) uses
+  `_Rx_traits::length(__p)` (strlen). The pattern's text (`str`, `pr-str`) keeps the whole string. A #"…" literal
+  cannot hold a NUL (round 2's R1), so only patterns built at run time reach it.
+  Replica departure found: round 3's jRePattern/jankEval compiled the whole string; no round-3 alphabet put a NUL
+  in a pattern, so no round-3 count changes.
+  Census: 353 patterns with a NUL (≤ 3 tokens over a b NUL * | ( ) $ ^ . ?) × 40 inputs × 5 calls = 70,600
+  questions: 11,824 deviations classed as this cut; 1,000 valid patterns rejected and 11,400 invalid ones accepted
+  through it.
+  Test: uD4-a-pattern-keeps-its-nul. Theorem: jankEval4_pattern_nul (★, every call, input, locale). Confidence: high.
+
+D5. print writes a pattern as its bare text. (new, low; same root as R69/R75: printing through to_string)
+  (print-str #"a")       ; Clojure "#\"a\""      jank "a"
+  (print-str [#"a"])     ; Clojure "[#\"a\"]"    jank "[a]"
+  Path: core.cpp print 141–159 (to_string) → re_pattern.cpp to_string 17–25 (the pattern). Clojure:
+  core_print.clj 409–429, print-method for Pattern writes #"…" and ignores *print-readably*. `str` agrees ("a");
+  `pr-str` agrees except R71's quote.
+  Test: uD5-print-of-a-pattern. Theorem: print_pattern_differs (★, every pattern). Confidence: high.
+
+2. FEEDBACK ITEMS
+
+None of the seven feedback items (S2, S9, S44, S49, S57, S69, S70) is in this area. Every round-3 regex
+prediction run on jank 7135b7708 (S22–S35) came back as predicted (validation/round-3-evidence.txt: wrong values
+or the predicted read errors, S34's segfault).
+
+Corrections found while replicating (not prompted):
+- Round 3's jRePattern / jankEval compiled the whole pattern string; jank builds the std::regex from c_str() (D4).
+  The corrected path is Jank/R4/Regex/Compare4.lean jankEval4 (it replaces jRePattern/jankEval's pattern handling).
+  No round-3 alphabet drew a NUL inside a pattern, so no round-3 count changes.
+- Round 3's Java model passed captures through continuations; Java keeps them in one mutable array. On every
+  question where no capture is kept (no capturing group inside a lookaround or atomic group, no possessive repeat
+  over a group), the two models give the same answer (regress, section 7); on the others round 3 compared only
+  whole matches (RXJ4), and round 4 compares everything.
+
+3. WHAT WAS REPLICATED (Jank/R4/Regex/; driver Run/R4/Regex.lean, exe jank4-regex)
+- JavaM.lean (spec): java.util.regex rebuilt with Matcher's single groups array — GroupTail's write and restore,
+  Pos/Neg/Behind/NotBehind bodies that return without restoring, atomic groups and possessive repeats that keep
+  their captures, find() clearing the groups once per call and not per start position, matches() once; lookbehind
+  and negative lookbehind with Java's TreeInfo length study (min/max with 32-bit int arithmetic, maxValid,
+  deterministic; Curly/GroupCurly/Loop/Ques per quantified node; Behind/BehindS stepping by units or code points);
+  inline flags i m s d u x U c and their negations, scoped (?flags:X), flags kept to the end of the enclosing group
+  and across | (Single/SingleI/SingleU, BitClass with case partners, CIRange/CIRangeU, Dot/UnixDot/All,
+  Begin/Caret/UnixCaret, Dollar/UnixDollar multiline or not, Bound ASCII or Unicode, CIBackRef), comments mode
+  (whitespace and #… skipped wherever the parser peeks, inside classes too, never after a backslash), named groups,
+  \k<name>, ${name} in templates. Character case mapping for ASCII, Latin-1, Latin Extended-A, Greek, Kelvin and
+  Angstrom signs.
+- Compare4.lean: questions on round 3's replica with the c_str() cut of the pattern; the round-4 spec; the class
+  chain (pattern cut, round 3's jank toggles, a spec toggle clearing Java's groups per start position); EDN dumps
+  of the spec's answers for the JVM.
+- Matcher.lean: re-matcher objects (re_matcher.cpp 8–23; core.cpp re_find 972–988, re_groups 990–1000;
+  seq.cpp nth 648–696/698–740; persistent_string.cpp nth 107–147) against java.util.regex.Matcher through
+  Clojure's RT.nthFrom (RT.java 920–953, 963–1012) and re-groups (core.clj 4911–4926); print of a pattern
+  (core.cpp print 141–159, re_pattern.cpp 13–31) against core_print.clj 409–429.
+- Read and found exact, not modelled further: regex constants in emitted C++ (cpp_processor.cpp gen_constant
+  347–352: make_box<re_pattern>("…") with util::escape, escape.cpp 148–200, rebuilds the pattern text for every
+  byte a #"…" literal can hold); re-pattern of a pattern returns it (core.cpp 931–934, like Clojure); patterns
+  compare and hash by identity in both (object.cpp equal 47–50, to_hash 69–72); clojure.string/split's
+  limit/leading-empty handling (string_native.cpp 393–448) against Pattern.split (round 3's census covers it);
+  re-quote-replacement is unported (string.jank 11–17; round 3 noted it under R84).
+- .r4-scratch/regex/clj/validate.clj: reruns every dumped question on a JVM (Clojure 1.11.1, OpenJDK 23).
+
+4. STILL LEFT OUT, AND WHY
+- Java's CANON_EQ (no decomposed input is drawn), Unicode properties beyond round 3's families under (?U),
+  POSIX \p{Lower}/\p{Upper} under (?i) (not drawn). \X (grapheme cluster), \b{g} and \N{…} stay "not compared"
+  on the spec side, as in round 3: jank reads \X and \N as the letters (round 3's S31 class), so their questions
+  already differ by syntax.
+- The for-every-input proof that libstdc++'s DFS executor never changes _M_results without a solution (the second
+  half of D1's mechanism) did not check: a tactic walk over the replica's dfs (12 handlers, StateT over Except)
+  reached every leaf of most handlers but left goals, and the file is kept aside unchecked in
+  .r4-scratch/regex/ExecInv.lean.unfinished (not in the build). The invariant rests on reading the source and on
+  libstdc++'s own assertion (_M_handle_accept: __glibcxx_assert(!_M_has_sol)); the censuses exercise it.
+- Lookbehind, inline flags, named and atomic groups only ever meet R18 on jank's side: libstdc++'s scanner rejects
+  every "(?" other than "(?:", "(?=", "(?!" (regex_scanner.tcc 136–150), so their matched semantics change no
+  comparison; they are matched now so that the spec model has no "not compared" class.
+- Thread-safety of a shared matcher (Java documents Matcher as unsafe for concurrent use; jank's re_find mutates
+  without a lock): not a deviation from documented behaviour.
+
+5. ASSUMPTIONS
+Replaced:
+- RXJ4 (captures inside lookaheads compared through the whole match only) → JavaM's mutable groups, checked on the
+  JVM (section 7); this is what finds D1.
+- RXJ2 (Java's loop rule), RXJ3 (Pattern corners: dangling ] and }, leading ] in a class, {n} after nothing,
+  \b{x}) → measured on the JVM: every dumped question of round 3's core and syntax tables (section 7).
+- "Lookbehind and inline flags parsed, not matched" (round 3, left out) → matched (JavaM), checked on the JVM.
+Standing / new:
+- RXJ5 (new): the spec is Java's behaviour on JDK 23 where the javadoc is silent (the start-position rule of D1,
+  the lookbehind length study with int overflow, (?m)^ failing at the end of input, flags kept across |). Each was
+  observed on the JVM; Clojure 1.12 on another JDK ≥ 19 is assumed to behave the same.
+- RXJ6 (new): case mapping is Character's simple mapping on the drawn code points only (ASCII, Latin-1, Latin
+  Extended-A, Greek, U+212A/U+212B).
+- Round 3's RXA1–RXA5 and RXJ1 stand.
+
+6. PROPERTIES CHECKED
+- jank's re-find, re-seq, re-matches, clojure.string/replace and replace-first (template and fn), split give
+  Clojure's results on the same pattern and input, including every capture (no "not compared" for lookaheads).
+- re-pattern accepts exactly the patterns Java compiles, from the whole string.
+- nth and re-groups on a re-matcher give Clojure's (Matcher.group) answers before, after and between finds.
+- print, str and pr-str of a pattern give Clojure's text.
+- The spec model equals the JVM on every dumped question.
+
+7. SEARCH RUNS (locale UTF-8; round 3 showed every regex table identical in the C locale)
+- examples (results/r4-regex-examples.txt): the report's programs with both answers and their class.
+- look ≤ 3 (results/r4-regex-look3-p{0,1,2}.txt): 23 tokens (nine whole lookaheads with a group, a b | ( ) (?:
+  * ? \1 \2 ^ $ \b .), 12,719 patterns × 15 inputs (≤ 3 over a b) × 9 calls = 1,717,065 questions, complete:
+  1,275,646 agree, 111,479 differ, 329,130 jank rejects a valid pattern, 810 jank accepts an invalid one,
+  0 not compared, 0 unexplained. Differ by class: D1 lookahead-capture-from-an-earlier-start 13,144;
+  R80 31,606; R84 fn 28,997; R81 24,322; R84 template 9,626; R85 3,608; R82 176. Rejects: backreferences
+  (S28) 205,875; quantified assertions (S27) 123,120; (?) (R18) 135.
+- look ≤ 4 (results/r4-regex-look4-p{0..3}.txt): the same 23 tokens, 292,560 patterns × 15 inputs × 9 calls =
+  39,495,600 questions, complete in four parts: 29,779,213 agree, 1,808,357 differ, 7,875,090 jank rejects a
+  valid pattern, 32,940 jank accepts an invalid one, 0 not compared, 0 unexplained. Differ by class: R80 650,242;
+  R84 fn 464,978; R81 366,547; D1 178,668; R84 template 73,212; R85 70,523; R82 4,187. Rejects: backreferences
+  (S28) 4,319,055; quantified assertions (S27) 3,551,040; (?) (R18) 4,995. Shortest new example:
+  (re-find #"(?!(a))$" "a"): Clojure ["" "a"], jank ["" ""].
+- core: round 3's ≤ 3 and ≤ 4 core censuses, only the patterns whose Java tree keeps captures (round 3 compared
+  them through whole matches): ≤ 3: none; ≤ 4: 8 patterns × 50 inputs × 14 calls = 5,600 questions
+  (results/r4-regex-core4-p*.txt): 3,915 agree, 1,685 differ, all in known classes (R81, R84 ×2, S25 possessive,
+  R83, R78).
+- flags ≤ 2 (results/r4-regex-flags2.txt): 32 tokens (inline flags, scoped flags, lookbehinds, named group and
+  \k<n>, atomic group, a A b é É space # ^ $ . ( ) | * \w \b [a]), 1,056 patterns × 17 inputs × 4 calls =
+  71,808 questions, complete: 44,847 agree, 1,053 differ (R81 694, R78 280, R85 53, R82 14, R79 12), 23,800
+  rejects (inline flags 23,324, lookbehind 136, named group 68, atomic group 68: all R18; quantified assertion
+  204: S27), 2,108 accepted-invalid (\k<n> without the group), 0 not compared, 0 unexplained.
+- nul (results/r4-regex-nul.txt): 353 patterns with a NUL × 40 inputs (≤ 3 over a b NUL) × 5 calls = 70,600:
+  D4 11,824; R83 7,053; R81 5,550; R85 178; R82 1; rejects 1,000 and accepted-invalid 11,400 (through D4's cut).
+- matcher (results/r4-regex-matcher.txt): 12 patterns × 17 inputs × 30 scripts of re-find/re-groups/nth =
+  6,120 scripts: 3,830 agree, 2,290 differ: D3 1,260 + 410; D2 59 + 70 + 11 + 90 (the last: #"" matched "");
+  R80 390. Printing: 5 patterns, all differ (D5).
+- JVM (results/r4-regex-jvm-{look,flags,syntax,core}.txt): the round-4 spec model's answers rerun on Clojure 1.11.1
+  / OpenJDK 23 through the clojure CLI, question by question, every question whose pattern Java compiles plus one
+  compile check per rejected pattern: look (a quarter of the ≤ 3 lookahead patterns, all inputs and calls)
+  257,110; flags ≤ 2 39,313; round 3's syntax table 18,320; round 3's ≤ 3 core census (a third of the patterns,
+  50 inputs, 5 calls) 596,970 — 911,713 questions, 911,713 identical. (A first run of the core table showed 1,878 differences, all from the validator's encoding: String.getBytes
+  writes "?" for a lone surrogate, which Java's empty matches leave between the halves of 😀; with the model's
+  encoding, 0 differ. That rerun of the whole core table, about 20 s of one JVM, went outside the job queue.)
+- regress (results/r4-regex-regress3-p{0,1}.txt): round 3's Java model against round 4's on round 3's ≤ 3 core
+  census (18,278 patterns × 50 inputs × 14 calls = 12,794,600 questions): identical except 600, all on #"(?)":
+  round 3's model rejected an empty flag group, which Java accepts (JVM-checked) — a round-3 spec slip with no
+  effect on its findings (jank rejects "(?)" too; it is an R18 instance).
+
+8. THEOREMS (Jank/R4/Regex/Theorems4.lean; no sorry, no native_decide, no new axiom): all check in `lake build jank4-regex`
+- ★ jankEval4_pattern_nul: for every call, locale, limits, pattern s without NUL and tail t,
+  re-pattern of s ++ NUL ++ t answers as re-pattern of s (D4).
+- ★ nth_no_groups_never_the_match (with jNth_str_never_str): for every match of a pattern without groups,
+  jank's nth (both arities, every index) never returns a string (D2).
+- ★ nth_without_match_nil: before a match, (nth m n) is nil for every n ≥ 0 (D3).
+- ★ print_pattern_differs (with cljPrint_go_length): for every pattern, jank's print differs from Clojure's (D5).
+- searchFromFirst_starts_clean: every start position of the replica's _M_search runs from _M_results (D1's
+  mechanism, first half). The second half (a position without a solution leaves _M_results unchanged) was
+  attempted and dropped: the proof did not check (section 4).
+- takeWhile_ne_zero_of_no_nul, takeWhile_ne_zero_append_nul (helpers).
+
+9. LIBRARY GAPS (built in Jank/R4/Regex/, sdk/lean untouched)
+- A spec model checked against a live implementation: EDN dumps of the model's answers and a Clojure script that
+  reruns them on a JVM (the sdk has no way to compare a model with an external oracle).
+- Classification by a spec-side toggle (Fix4.jfix, Fix4.javaPatCut) after round 3's jank-side toggle chain.
+- A mutable-state backtracking matcher in continuation-passing style over StateT (Java's groups array).
+
+10. PROJECTS TRANSLATED (for NOTICE.md)
+- libstdc++ 15.3.0 (GPL-3.0-or-later with the GCC Runtime Library Exception): round 3's regex replica is reused
+  and extended in Jank/R4/Regex/ (that folder carries the same README, LICENSE, COPYING.RUNTIME).
+- java.util.regex: specification only, from the Pattern/Matcher javadoc and JVM observation; no JDK code copied.
+- Clojure (EPL-1.0): RT.nthFrom, re-groups and core_print's Pattern print-method as the spec side.
+
+11. TESTS (.r4-scratch/regex/tests.jank; a fragment for jank-lean.deviations-r4-test, which needs
+    [clojure.test :refer [deftest is]] and [clojure.string :as string])
+- uD1-lookahead-capture-from-an-earlier-start, uD2-nth-of-a-matcher-is-the-match,
+  uD3-nth-of-a-matcher-without-a-match-throws, uD4-a-pattern-keeps-its-nul, uD5-print-of-a-pattern.
+- Clojure check: translated to .r4-scratch/regex/clj/r4_regex_test.clj (clj/translate.sh), run with the clojure CLI
+  (Clojure 1.11.1): 5 tests, 6 assertions, 0 failures, 0 errors. None needs C++ interop. No predicted hang
+  (no tests-hangs.jank).
+- Every pattern is built at run time with re-pattern; D4 builds its NUL with (char 0) (to_char 1311 → jtl::to_char
+  wcrtomb writes one NUL byte, utf8.cpp 170–194; immutable_string keeps it), so jank's pattern is cut to "x".

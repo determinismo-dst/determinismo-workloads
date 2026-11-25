@@ -1,0 +1,252 @@
+ROUND 4 — AREA C: IMMER AND COLLECTIONS. Exe `jank4-immer`, models Jank/R4/Immer/, prefix C.
+jank main 7135b7708 (paths under upstream-main/compiler+runtime/), immer 282629d0 (deps/immer/), Clojure 1.12
+sources (clojure-ref/). Every item is a hypothesis from Lean replicas re-read against the source; jank was not built
+or run.
+
+== 1. Deviations ==
+
+C1. `with-meta` on an infinite `repeat` writes the meta into the repeat itself.
+  (let [r (repeat 7)] (with-meta r {:a 1}) (meta r))            ; Clojure nil     jank {:a 1}
+  (let [r (repeat 7)] (identical? r (with-meta r {:a 2})))       ; Clojure false   jank true
+  Path: core.jank 3158-3161 `repeat` → obj/repeat.cpp `create` 34-37 (count infinite);
+    repeat.cpp `with_meta` 124-130: `expect_object<repeat>(fresh_seq())`, then `ret->meta = meta`;
+    `fresh_seq` 53-60 returns `this` when `count == infinite`. So the meta is set on the original object, which every
+    holder of the seq shares (also `vary-meta`, and anything that attaches meta to a seq it was handed).
+    A finite (repeat n x) gets a new object (fresh_seq 59). Clojure: Repeat.withMeta returns `new Repeat(meta, …)`.
+  Replica: SeqObjects.jank `.withMeta` on `.rep none`: `h.set! r …` (same heap slot), class meta-mutated.
+  Search: class meta-mutated in Q1–Q3 (559 of 119,019 at 3 steps); theorem c1_repeat_meta_written.
+  Test: uC1-with-meta-leaves-an-infinite-repeat-alone. Status: new. Confidence: high.
+
+C2. `with-meta` (or `vary-meta`) on `(iterate f x)`, and on `(range)`, never returns.
+  (meta (with-meta (iterate inc 0) {:a 1}))   ; Clojure {:a 1}   jank: no return (prints an infinite seq)
+  (meta (with-meta (range) {:a 1}))           ; the same: core.jank 2832 `(range)` is `(iterate inc 0)`
+  Path: core.jank 2821-2825 → obj/iterator.cpp: the iterator object has no with_meta/get_meta/set_meta (not
+    `metadatable`, behavior/metadatable.hpp 10-14; header iterator.hpp 16-18 behaviors seqable/sequence_like only);
+    core/meta.cpp `with_meta` 37-58 → the non-metadatable arm throws `runtime_non_metadatable_value` whose message
+    is built first with `typed_o->to_code_string()` (50-53) → iterator.cpp `to_code_string` → seq_to_code_string over
+    the whole (infinite) sequence: the string builder grows until memory runs out. Clojure: Iterate extends ASeq,
+    `withMeta` returns a new Iterate.
+  Also: `(meta (iterate inc 0))` is nil in both (meta.cpp 13-35 returns nil for non-metadatable objects).
+  Replica: `.iter` arm of `jank … .withMeta`: `.hang`. Search: class hang (794 at 3 steps); theorem c2_iterate_with_meta. Tests (hangs file): uC2-with-meta-on-an-iterate,
+  uC2b-with-meta-on-an-infinite-range. Status: new. Confidence: high (that the error text is built eagerly from the
+  value's code string: meta.cpp 50-53).
+
+C3. `nth` on a vector (and a transient vector) rejects a double index that Clojure truncates; jank's lists accept it.
+  (nth [1 2 3] 1.0)       ; Clojure 2   jank throws "requires an integer index"
+  (nth [1 2 3] 1.5)       ; Clojure 2   jank throws
+  (nth [1 2 3] 1.5 :nf)   ; Clojure 2   jank :nf
+  (nth [1 2 3] -0.5)      ; Clojure 1   jank throws
+  (nth '(1 2 3) 1.5)      ; Clojure 2   jank 2 (the sequential path truncates)
+  Path: core.jank 2586-2594 `nth` → core/seq.cpp `nth` 648-696 / 698-735: `index = to_int(idx)` (math.hpp 1411-1421,
+    `static_cast<i64>`), then for an `indexable` object `typed_o.nth(idx)` with the *original* idx →
+    obj/persistent_vector.cpp `nth` 322-348 (`is_integral(index)` or throw; math.cpp 621: integer or BigInt) and
+    `nth(idx, fallback)` → `get` 218-235 (not integral → fallback); transient_vector.cpp 53-79 the same. Sequential
+    seqs walk to `index` (seq.cpp 672-688). Clojure: `nth` is RT.nth(Object, int) — the compiler coerces the index
+    with RT.intCast (a double truncates, out-of-int-range throws).
+  Note: Clojure's coercion is its implementation (the docstring says only "the value at the index"); jank's own
+    sequential path agrees with it, its vector path does not.
+  Replica: `jank … .nth`/`.nthNf` `.vec` arm. Search: class nth-index (3,505 at 3 steps); theorem c3_nth_double.
+  Test: uC3-nth-of-a-vector-truncates-a-double-index.
+  Status: new. Confidence: high (by reading); medium-low as a defect.
+
+C4. `realized?` of `(iterate f x)` (and of `(range)`) throws.
+  (realized? (iterate inc 0))   ; Clojure true   jank throws "Objects of type `iterator` are not realizable."
+  Path: core.jank 7563-7566 → core.cpp `is_realized` 719-737 (`realizable` only). Clojure: Iterate implements
+    IPending, realized once its seed is (always, for `iterate`).
+  Search: class realized (397 at 3 steps). Test: uC4-an-iterate-is-realized. Status: new, low.
+
+C5. `pop` of a one-element list drops the list's meta (and of a longer list, the meta its rest carries).
+  (meta (pop (with-meta '(1) {:a 1})))              ; Clojure {:a 1}   jank nil
+  (meta (pop (conj (with-meta '(2) {:a 1}) 1)))     ; Clojure {:a 1}   jank nil
+  Path: obj/persistent_list.cpp `pop` 180-189 `make_box<persistent_list>(data.rest())` (no meta; the native list
+    nodes carry none: native_persistent_list.hpp list_node). Clojure PersistentList.pop 107: one element →
+    `EMPTY.withMeta(_meta)`; more → `_rest`, which keeps the meta `cons` gave it (PersistentList.cons uses `meta()`).
+  Search: class pop-meta (65 at 3 steps). Test: uC5-pop-of-a-one-element-list-keeps-its-meta. Status: new, low.
+
+C6. `seq` of a list is a new list without the meta.
+  (meta (seq (with-meta '(1 2) {:a 1})))   ; Clojure {:a 1} (RT.seq returns the list itself)   jank nil
+  Path: persistent_list.cpp `seq`/`fresh_seq` 100-112 (`make_box<persistent_list>(data)`). Reaches everything that
+    calls seq on a form and then reads its meta (macros reading `(meta (seq form))`).
+  Search: class seq-meta (130 at 3 steps). Test: uC6-seq-of-a-list-is-the-list. Status: new, low.
+
+C7. `transient` accepts sorted maps and sorted sets.
+  (transient (sorted-map 1 2))   ; Clojure throws ClassCastException (not IEditableCollection)   jank a transient
+  Path: core/seq.cpp `transient` 161-179 (`transientable`) → persistent_sorted_map.hpp 89 `to_transient` →
+    obj/transient_sorted_map.cpp. Not in the book's differences-from-clojure.md.
+  Search: class transient (493 at 3 steps). Test: uC7-no-transient-of-a-sorted-map. Status: new, low (jank accepts more).
+
+C8. `array-map` with more than eight pairs keeps only the first eight keys; later pairs, updates included, are lost.
+  (count (array-map 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8))       ; Clojure 9    jank 8
+  (get (array-map 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 0 :x) 0)      ; Clojure :x   jank 0
+  Path: core.jank 6249-6255 `array-map` → obj/persistent_array_map.cpp `create_from_seq` 36-55: a local
+    `transient_array_map`, `transient.assoc_in_place(key, val);` with the result discarded (50) →
+    obj/transient_array_map.cpp `assoc_in_place` 67-89: at `data.size() == max_size` (8 entries,
+    native_array_map.hpp 30, `size()` = length/2) it returns a new promoted `transient_hash_map` and leaves `this`
+    unchanged; so from then on every pair goes into a map that is dropped. Clojure: PersistentArrayMap
+    `createAsIfByAssoc` (array maps of any size; an equal key keeps its position and takes the last value).
+  Reach: `(array-map …)` and `(apply array-map kvs)` with more than eight pairs (distinct keys, or an update after
+    eight). The other callers of `assoc_in_place` that drop the result never pass eight entries (codegen
+    `_jank_amap_impl`, api.cpp 280-300 / 325-340: map literals of at most 8 pairs, ir/processor.cpp 179) or use a
+    hash-map transient (c_api.cpp 509-517, data/json_native.cpp 165-185).
+  Note: round 3's IMA7 assumed users rebind to the transient each bang returns; this is jank's own code not doing so.
+  Replica: ArrayMapCtor.lean `jankArrayMap` (`assocInPlaceKept`), spec `cljArrayMap`.
+  Search: A1/A2 complete, classes past-8-entries and update-after-8 only.
+  Theorems: jank_array_map_at_most_8 (for every list of pairs), nine_keys, update_dropped (kernel).
+  Test: uC8-array-map-keeps-every-pair. Status: new. Confidence: high.
+
+== 2. Feedback items ==
+ None were given to this area. Round 3's immer deviations (S59, S60, S61) were confirmed on jank 7135b7708 and are
+ unchanged. One round-3 assumption is contradicted by jank's own code: IMA7 ("transient users rebind to the transient
+ each bang returns") — `persistent_array_map::create_from_seq` does not (C8). It changes no round-3 search (their
+ worlds build maps with `hash-map`, `{…}` literals, `into` and bangs, never `array-map`), so none is rerun for it.
+
+== 3. What was replicated ==
+ Jank/R4/Immer/TransientGet.lean — proofs over round 3's rbts replica (Jank/R3/Immer/Rbts.lean) for the transient
+   push path: immer rbts/rbtree.hpp `push_back_mut`, `ensure_mutable_tail`; rbts/operations.hpp
+   `push_tail_mut_visitor<Mutating>` (in place `inner()[new_idx] = …` when the node's owner token is the transient's,
+   else `make_inner_e` + `do_copy_inner`), `make_path_e`; and how jank reaches them (transient_vector.cpp
+   `conj_in_place` 46: `data.push_back`). Unfolding lemmas pushTailMut_eq / _shape_zero / _shape_succ,
+   pushBackMut_small/_full_tail/_grow/_mid/_first, slot lemmas setAt_bind, setAt_get_of_lt, setAt_get_self, ys_bind,
+   ys_get (a node written in place keeps its own slots, a copy has exactly the first `cnt`).
+ Jank/R4/Immer/TransientTake.lean — the transient pop path: rbtree.hpp `take_mut` (tail cut in place by `destroy_n`
+   or copied by `copy_leaf_e`), operations.hpp `slice_right_mut_visitor<Collapse, Mutating>` (`visit_regular`:
+   in place `inner()[idx] = next` or the node itself; copies `copy_inner_e`; collapse at index 0 and 1;
+   `visit_leaf`), jank transient_vector.cpp `pop_in_place` (`data.take(data.size() - 1)`). Equations
+   sliceMutInner_zero/_succ (by `rfl`: Lean cannot generate them for the nested `match` in `down`).
+ Jank/R4/Immer/SeqObjects.lean — jank's sequence/collection objects with identity (a heap) and Clojure's classes:
+   persistent_list (with_meta, seq/fresh_seq, conj, peek, pop), persistent_vector (seq, conj, with_meta, peek, pop,
+   nth, get), persistent_vector_sequence, repeat (create, seq, fresh_seq, with_meta), iterator (`iterate`; not
+   metadatable), cons, persistent_sorted_map, transients; core/meta.cpp `meta`/`with_meta`, core/seq.cpp `nth` (both
+   arities), `peek`, `pop`, `transient`, core.cpp `is_realized`. Clojure: PersistentList (per-node meta, `pop`,
+   `cons`, `withMeta`), RT.seq, PersistentVector, Repeat, Iterate (IPending), Cons, RT.nth with `intCast`,
+   PersistentTreeMap (not editable).
+ Jank/R4/Immer/ArrayMapCtor.lean — `persistent_array_map::create_from_seq` with `transient_array_map::assoc_in_place`
+   (promotion at 8 returned, dropped) and `native_array_map::insert_or_assign`; Clojure's `createAsIfByAssoc`.
+ Read and found to agree with Clojure (no replica beyond reading): array_chunk.cpp (`chunk_next` throws at the end,
+   `nth` bounds), chunk_buffer.cpp (capacity, `chunk` empties the buffer: later `chunk-append` throws, as Clojure's
+   NPE), chunked_cons.cpp (`next` returns its tail, already `seq`'d by core/seq.cpp `chunk_cons`),
+   persistent_vector_sequence.cpp, native_vector_sequence.cpp, native_array_sequence.cpp `with_meta`, cons.cpp,
+   lazy_sequence.cpp `with_meta` (realizes, as Clojure's LazySeq.withMeta does), range/integer_range `with_meta`
+   (a fresh object), transient_sorted_map/set (reads assert after `persistent!`), subvec (core/seq.cpp 621-646:
+   bounds and `to_int` coercion as RT.subvec), persistent_array_map.cpp `assoc`/`dissoc`/`find` (an update at 8
+   entries promotes: order changes, not values — maps are unordered).
+   base_persistent_map_sequence.cpp `to_hash` is `hash::unordered` over a sequential seq: round 1's D12 already
+   lists `(seq m)` vs the entry vector.
+
+== 4. Still left out, and why ==
+ - `take_mut` (and `take`) keeping a tree well formed: not proved, so the transient sequence theorem (get_conjs)
+   covers `conj!` chains; `pop!` is covered for every well-formed tree (get_takeMut) but not chained after another
+   `pop!`. Round 3 did not prove it for the persistent `take` either. The vector worlds V1/V1b (complete) and
+   V2–V4 search the chains.
+ - CHAMP laws other than get-after-add (get of another key after add, get after sub, count, iteration = entries,
+   transient = persistent): not proved. Each needs `Equal` to be an equivalence agreeing with the hash on the keys
+   present; jank's `=` is not (D12, R55), and stating the law with that premise means proving the hash-path
+   uniqueness of every stored key through `do_add`/`do_sub`/`make_merged`/collision nodes and their `_mut` forms
+   (round 3's get_doAdd alone is 110 lines for one branch family). The designed-hash censuses (M4/M5/S3, below)
+   search exactly those paths with keys whose `=` is an equivalence.
+ - M4 (persistent, 4 steps) and S3 (sets, 4 steps) complete: estimated 5.06·10^9 and 1.19·10^8 timelines
+   (Knuth, 2,000 samples); at the measured 3,200–7,400 per second that is days and hours of a shared slot. Replaced
+   by their complete 3-step worlds (M4-3, S3-3) plus round 3's covered prefixes.
+ - Seq objects not modeled: native_array_sequence (C++ arrays only), persistent_string_sequence (round 2's R52–R56),
+   ranges (round 2), lazy seqs beyond `with-meta` (round 2's R117–R119).
+
+== 5. Assumptions ==
+ Replaced:
+ - Round 3 IMA7 (users rebind to what a bang returns): true of users following the documentation, false of jank's
+   own `create_from_seq` (C8).
+ New:
+ - IMMA4-1. `(range)` with no arguments is core.jank 2832 `(iterate inc 0)` (not a range object).
+ - IMMA4-2. A double index reaches `nth` as a boxed real; `to_int` truncates toward zero (math.hpp 1420 `static_cast`),
+   as Java's `(int)` cast in RT.intCast does.
+ - IMMA4-3. The error built by meta.cpp `with_meta` for a non-metadatable value is formatted before it is thrown
+   (`util::format(… typed_o->to_code_string() …)`), and printing an infinite sequence never ends (no
+   `*print-length*`: round 2's R74); C2's "no return" is that loop (or the allocation failing).
+ - IMMA4-4. Lists read as quoted literals carry no meta at run time (round 3's strip pass resets source-only meta,
+   S44), in both jank and the replica.
+ Standing from round 3: IMA1–IMA6.
+
+== 6. Properties checked ==
+ - Transient vectors: `nth` after `conj!` and after `pop!` equals Clojure's (the list model), for every well-formed
+   tree and owner token (proofs); `conj!` keeps well-formedness.
+ - Seq objects: after every operation, the result's printed value (4 elements, kind of brackets, "throws", "never
+   returns") equals Clojure's, and the meta of every live value equals Clojure's (an in-place write to a shared
+   object shows on an earlier value).
+ - `array-map`: the entries (keys in order, values) equal Clojure's.
+ - CHAMP worlds: round 3's properties (Maps.lean `check`).
+
+
+== 7. Search runs ("complete n" = every timeline within the bounds; outputs in results/r4-immer-*.txt) ==
+ Round 3's stopped CHAMP searches (same configurations, copied from Run/R3/Immer.lean into Run/R4/Immer.lean):
+  M5 CHAMP transients, designed-hash keys, 4 steps (dead-read set aside): resumed from round 3's path
+    5.1.1.0.5.0.1.1.5.0.4.1.3: 2,500,000 timelines (1,082 s, to path 5.1.6.0.5.1.5.1.5.1.1.1.5.3), then 322,128
+    (140 s): COMPLETE with round 3's 4,750,000: 7,572,128 timelines, nothing.
+  M4 CHAMP persistent ops, designed-hash keys, 4 steps: estimated 5.06·10^9 timelines (Knuth, 2,000 mixed samples;
+    mean 16.0 decisions); not completable (round 3 covered 10,750,000 in census order). Replaced by:
+    M4-2 (2 steps): complete 61,642, nothing.
+    M4-3 (3 steps, estimated 1.63·10^7): <M4-3>
+  S3 sets, designed-hash keys, all operations, 4 steps: estimated 1.19·10^8 (round 3 covered 24,500,000, every
+    timeline whose first decision is 0 or 1). Replaced by S3-3 (3 steps): complete 838,319, nothing.
+ New worlds:
+  A1 array-map: a prefix of 0–8 distinct keys, then 0–5 pairs over keys {0, 1, 2, 100} and values {0, 1}:
+    complete 337,041; classes [past-8-entries] 84,354 and [update-after-8] 17,575 (both C8); nothing else.
+  A2 array-map: prefix 0–7, then 0–6 pairs: complete 2,396,744; [past-8-entries] 431,352, [update-after-8] 162,600
+    (C8); nothing else (in particular no difference while the map stays at 8 entries or fewer).
+  Q1/Q2/Q3 seq objects (SeqObjects.lean: 9 starts '(1 2), '(1), [1 2 3], (seq [1 2 3]), (repeat 7), (repeat 2 7),
+    (iterate inc 0), (cons 0 '(1)), (sorted-map); 22 operations: with-meta {:a 1}/nil, seq, pop, peek, conj, nth and
+    nth with a default at 1, 5, -1, 1.0, 1.5, -0.5, realized?, transient; each step on any live value):
+    Q1 (1 step) complete 180; Q2 (2 steps) complete 4,072; Q3 (3 steps) complete 119,019. Classes (Q3 counts):
+    [meta-mutated] 559 (C1), [hang] 794 (C2), [nth-index] 3,505 (C3), [realized] 397 (C4), [pop-meta] 65 (C5),
+    [seq-meta] 130 (C6), [transient] 493 (C7).
+  Q3r residual, 3 steps, every class set aside and the meta C1 leaves behind (results only): complete 132,600, nothing.
+  Q3m residual for meta, 3 steps, without C1/C5/C6's triggers (no (repeat 7) start, no seq or pop): complete 76,320,
+    nothing.
+  Q4r residual, 4 steps, results only: complete 5,290,440, nothing.
+
+== 8. Theorems (no sorry, no native_decide, no new axiom; #print axioms in results/r4-immer-axioms.txt) ==
+ ★ marks a new for-every-input proof of a result round 3 had only searched.
+ Transient vectors over immer's rbts replica (Jank/R4/Immer/TransientGet.lean, TransientTake.lean):
+  - ★ get_pushBackMut: for every well-formed tree (Tree.wfT) below 2^35 elements, every owner token e, value x
+    and j ≤ count: (nth (conj! t x) j) = (nth t j) for j < count, x at count — push_back_mut, ensure_mutable_tail,
+    push_tail_mut_visitor (in place or copied at every level), make_path_e, root growth.
+  - ★ pushBackMut_wfT: conj! keeps the tree well formed (below 2^35 elements), for every token.
+  - ★ get_conjs: every transient built by any number of conj! from a well-formed vector (with round 3's empty_wfT:
+    from (transient [])) is well formed, has the right count, and reads at every index as the vector's elements
+    followed by the pushed values in order.
+  - ★ get_takeMut: for every well-formed tree, token and j < k ≤ count: (nth (take_mut t k) j) = (nth t j) —
+    slice_right_mut_visitor with and without collapse, in place (destroy_n, inner()[idx] = next, the node itself)
+    or copied; ★ get_popBang: the same for jank's pop! (take(size - 1)) at the transient level; get_conjBang: the
+    transient-level form of get_pushBackMut.
+  - Supporting: readAt_pushTailMut (push_tail_mut_visitor reads, every mutating flag), wfP_pushTailMut,
+    sliceMutInner_tail_read, sliceMutInner_root_nc, sliceMutInner_root_c, sliceMutLeaf_tail/_none,
+    setAt_bind/_get_of_lt/_get_self/_length_ge, ys_bind, ys_get, the unfolding lemmas.
+ array-map (Jank/R4/Immer/ArrayMapCtor.lean):
+  - jank_array_map_at_most_8 (for every list of pairs: jank's array-map holds at most 8 entries);
+  - nine_keys, update_dropped (C8's examples, kernel evaluation).
+ Seq objects (Jank/R4/Immer/SeqObjects.lean, `decide +kernel` on the replica):
+  - c1_repeat_meta_written (C1: the meta lands in heap slot 0, the original repeat; Clojure's is untouched),
+    c2_iterate_with_meta (C2: jank never returns, Clojure does), c3_nth_double (C3: vector throws, Clojure 2, jank's
+    list path 2). Axioms: propext only.
+ Axioms (results/r4-immer-axioms.txt, r4-immer-axioms2.txt): every rbts theorem above depends on propext,
+ Classical.choice and Quot.sound only; nine_keys and update_dropped on none.
+
+== 9. Library gaps (sdk/lean untouched) ==
+ - Object identity for sequence objects: a heap (Array) of objects with jank and Clojure heaps side by side and live
+   values as pairs of indices, so an in-place write (C1) shows on a value created earlier (SeqObjects.lean).
+ - Outcomes beyond values and exceptions: "never returns" as a result kind (C2), compared like any other.
+ - Proof engineering: Lean 4.36 cannot generate equation lemmas for `sliceMutInner` (a `let down … match k` inside a
+   structural recursion); its two equations are stated and proved by `rfl` (definitional unfolding).
+ - `meta` and `mut` are keywords in this Lean version: field and variable names avoid them.
+ - Resumable censuses and world-size estimates reused from round 3 (Kit.reportCensus, Search.estimate); long runs use a
+   copy of the exe so a rebuild cannot touch a running binary.
+
+== 10. Projects translated ==
+ immer (Boost Software License 1.0): rbts `_mut` paths (proofs over round 3's replica). jank (MPL-2.0). Clojure's
+ PersistentList/Repeat/Iterate/RT.nth/PersistentArrayMap as the specification (EPL-1.0).
+
+== 11. Tests (for the coordinator) ==
+ .r4-scratch/immer/tests.jank: uC1-with-meta-leaves-an-infinite-repeat-alone, uC3-nth-of-a-vector-truncates-a-double-index,
+   uC4-an-iterate-is-realized, uC5-pop-of-a-one-element-list-keeps-its-meta, uC6-seq-of-a-list-is-the-list,
+   uC7-no-transient-of-a-sorted-map, uC8-array-map-keeps-every-pair (helpers wm, nth2, nth3, pop1, seq1, arr-map).
+ .r4-scratch/immer/tests-hangs.jank: uC2-with-meta-on-an-iterate, uC2b-with-meta-on-an-infinite-range.
+ Clojure 1.11.1 (clj/jank_lean/deviations_r4_immer_test.clj, deviations_r4_immer_hangs_test.clj, run with the
+ `clojure` CLI): 9 tests, 15 assertions, 0 failures, 0 errors. None needs C++ interop.

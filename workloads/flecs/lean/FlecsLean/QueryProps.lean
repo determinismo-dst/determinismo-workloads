@@ -1,0 +1,365 @@
+/-
+  Query programs, their runner and the properties checked on them.
+
+  A program creates entities, then queries, then runs world/stage calls
+  (round 1's `Op`), iterations and `ecs_query_changed` checks.  After every
+  call the pending table events and revalidations reach the query caches
+  (flecs delivers them before the call returns).
+
+  Properties (sources in Queries.md):
+  - P-Q1 results: a full iteration yields exactly the entities whose
+    components match the terms in the current world, with the current
+    values ("Iteration", "Source", "Relationship Traversal").
+  - P-Q2 order: an order_by query yields values in order ("Sorting"), when
+    no undetected write (`ensure` without `modified`) happened.
+  - P-Q3 groups: tables of one group are iterated together ("Grouping":
+    "Grouped tables are iterated together").
+  - P-CD1 changed: `ecs_query_changed` and `ecs_iter_changed` report every
+    documented change since the query last iterated ("Change Detection").
+  - P1 no crash, no read of uninitialized memory.
+-/
+import FlecsLean.Query
+import FlecsLean.Gen
+import FlecsLean.Search2
+
+namespace Flecs
+open Std
+
+inductive QOp
+  | op (o : Op)
+  | iter (q : Nat) (mode : W.IterMode) (ask : Bool)
+  | changed (q : Nat)
+  deriving Repr, BEq, Inhabited
+
+structure QProg where
+  nEnts : Nat := 3
+  queries : Array QCache := #[]
+  ops : List QOp := []
+  deriving Inhabited
+
+instance : Repr QTerm := ⟨fun t _ => .text s!"{repr t.io} {repr t.oper} {t.id} {repr t.src}"⟩
+
+instance : Repr QProg := ⟨fun p _ =>
+  let qs := p.queries.toList.map (fun q =>
+    s!"query[{", ".intercalate (q.terms.toList.map (fun t => s!"{repr t.io} {repr t.oper} {t.id} {repr t.src}"))}] detect={q.detect} order_by={q.orderBy} group_by={repr q.groupBy}")
+  .text s!"ents={p.nEnts}\n    " ++ .text ("\n    ".intercalate qs) ++ .text "\n    " ++
+    .text ("\n    ".intercalate (p.ops.map (fun o => toString (repr o))))⟩
+
+namespace W
+
+/-- Reference evaluation of a query over the world (not the cache): every
+    entity of every live non-root table that matches, with its values. -/
+def refResults (q : QCache) : M (List (UInt64 × Array (Option Nat))) := do
+  let slots := (← get).slots
+  for t in q.terms do
+    match t.src with
+    | .fixed k => if t.oper == .and && !(← has (slots.getD k 0) t.id) then return []
+    | _ => pure ()
+  let w ← get
+  let mut out := []
+  for t in [1:w.tables.size] do
+    let x := w.tables.getD t default
+    if !x.live || x.count == 0 then continue
+    match (← evalMatch q t) with
+    | none => pure ()
+    | some m =>
+      let vals ← fieldVals q m 0 x.count
+      for i in [0:x.count] do
+        out := out ++ [(x.ents.getD i 0, vals.getD i #[])]
+  return out
+
+end W
+
+/-- the fixed sources of a query are alive (a deleted cascade can take one) -/
+def fixedAlive (q : QCache) : M Bool := do
+  let slots := (← get).slots
+  for t in q.terms do
+    match t.src with
+    | .fixed k => if !(← W.isAlive (slots.getD k 0)) then return false
+    | _ => pure ()
+  return true
+
+structure QOutcome where
+  fail : Option Fail
+  viol : Array String
+
+def sortKey (x : UInt64 × Array (Option Nat)) : String := s!"{x.1}:{repr x.2}"
+
+def runQProg (p : QProg) : QOutcome := Id.run do
+  let s : Scenario := { ops := [] }
+  match W.initWorld s false with
+  | .error f => return { fail := some f, viol := #[] }
+  | .ok (w0, rs) =>
+    let mut w := w0
+    let mut viol : Array String := #[]
+    let hasEnsure := p.ops.any (fun o => match o with
+      | .op (.ensure _ _ .c0 _) => true
+      | _ => false)
+    let step : M Unit := do
+      for _ in [0:p.nEnts] do W.runOp rs .new
+      for q in p.queries do discard <| W.createQuery q
+      W.drainQueryEvents
+    match step.run w with
+    | .error f => return { fail := some f, viol := #[] }
+    | .ok ((), w') => w := w'
+    for o in p.ops do
+      let act : M Unit := match o with
+        | .op op => do
+          let ok ← W.allowed rs op
+          if !ok then return
+          -- the fixed source of a query stays alive (a query whose fixed
+          -- source was deleted is not used)
+          if let .delete _ e := op then
+            if p.queries.any (fun q => q.terms.any (fun t => t.src == .fixed e)) then return
+          -- hierarchies are trees (HierarchiesManual.md): a parent is a
+          -- lower slot (no ChildOf cycle, also across staged commands)
+          if let .add _ e (.pair .childOf t) := op then
+            if t ≥ e then return
+            let slots := (← get).slots
+            let mut cur := slots.getD t 0
+            for _ in [0:16] do
+              if cur == slots.getD e 0 then return
+              let r := (← W.getIx).recOf cur
+              match r.table with
+              | none => break
+              | some ct =>
+                match ((← get).tables.getD ct default).type.find? (fun i => isPair i && pairFirst i == EcsChildOf) with
+                | some pr => cur ← W.getAlive (pairSecond pr)
+                | none => break
+          if op == .readonlyBegin || op == .readonlyEnd then return
+          W.runOp rs op
+          W.drainQueryEvents
+        | .iter qi mode ask => do
+          if qi ≥ (← get).queries.size then return
+          let q ← W.qGet qi
+          if !(← fixedAlive q) then return
+          -- ecs_iter_changed only on queries created with change detection
+          let ask := ask && q.detect
+          let rs ← W.iterate qi mode ask
+          if mode == .full then
+            let ref ← W.refResults (← W.qGet qi)
+            let got := rs.toList.flatMap (fun r => (List.range r.count).map (fun i =>
+              (r.ents.getD i 0, r.vals.getD i #[])))
+            let a := (got.map sortKey).mergeSort (· ≤ ·)
+            let b := (ref.map sortKey).mergeSort (· ≤ ·)
+            if a != b then
+              W.noteViol s!"P-Q1 results: query {qi} yielded {a} but the world has {b}"
+            -- P-Q2
+            if q.orderBy && !hasEnsure then
+              let vs := got.map (fun (_, v) => (v.getD 0 none).getD 0)
+              let groups ← rs.toList.mapM (fun r => W.groupIdOf q r.table)
+              let _ := groups
+              if q.groupBy.isNone && vs != vs.mergeSort (· ≤ ·) then
+                W.noteViol s!"P-Q2 order: query {qi} yielded values {vs} out of order"
+            -- P-Q3
+            if q.groupBy.isSome then
+              let gids ← rs.toList.mapM (fun r => W.groupIdOf q r.table)
+              let mut seen : List UInt64 := []
+              let mut last : Option UInt64 := none
+              for g in gids do
+                if last != some g then
+                  if seen.contains g then
+                    W.noteViol s!"P-Q3 groups: query {qi} returned to group {g} after leaving it ({gids})"
+                  seen := seen ++ [g]
+                  last := some g
+        | .changed qi => do
+          if qi ≥ (← get).queries.size then return
+          if !(← W.qGet qi).detect then return
+          if !(← fixedAlive (← W.qGet qi)) then return
+          -- expected: a table the query matches now changed since it was
+          -- last iterated (or was never iterated), or a fixed source changed
+          let q ← W.qGet qi
+          let mut expected ← W.oracleFixedChanged qi
+          for g in q.groups do
+            for m in g.tables do
+              if (← W.oracleChanged qi m.table) then expected := true
+          let got ← W.queryChanged qi
+          if expected && !got then
+            let mut why := ""
+            for g in q.groups do
+              for m in g.tables do
+                if (← W.oracleChanged qi m.table) then
+                  why := why ++ s!" table {m.table}: {(← get).osnap[(qi, m.table)]?} -> {← W.oracleState qi m.table};"
+            if (← W.oracleFixedChanged qi) then
+              why := why ++ s!" fixed: {(← get).ofixed[qi]?} -> {← W.oracleFixedState qi}"
+            W.noteViol s!"P-CD1 ecs_query_changed: query {qi} returned false after a documented change:{why}"
+      match act.run w with
+      | .error f => return { fail := some f, viol := viol ++ w.viol }
+      | .ok ((), w') => w := w'
+    return { fail := none, viol := viol ++ w.viol }
+
+/-- Debug trace of a program: after each op, each query's matches (table,
+    monitor, sources), the dirty states and oracle snapshots. -/
+def traceQProg (p : QProg) : List String := Id.run do
+  let s : Scenario := { ops := [] }
+  match W.initWorld s false with
+  | .error f => return [s!"init failed {f}"]
+  | .ok (w0, rs) =>
+    let mut w := w0
+    let mut out := []
+    let step : M Unit := do
+      for _ in [0:p.nEnts] do W.runOp rs .new
+      for q in p.queries do discard <| W.createQuery q
+      W.drainQueryEvents
+    match step.run w with
+    | .error f => return [s!"setup failed {f}"]
+    | .ok ((), w') => w := w'
+    for o in p.ops do
+      let act : M String := match o with
+        | .op op => do W.runOp rs op; W.drainQueryEvents; return ""
+        | .iter qi md a => do
+          let r ← W.iterate qi md a
+          return s!"results {repr (r.toList.map (fun x => (x.table, x.ents, x.changed)))}"
+        | .changed qi => do return s!"changed = {← W.queryChanged qi}"
+      match act.run w with
+      | .error f => out := out ++ [s!"{repr o}: FAIL {f}"]; return out
+      | .ok (msg, w') =>
+        w := w'
+        let mut line := s!"{repr o}: {msg}"
+        for qi in [0:w.queries.size] do
+          let q := w.queries.getD qi default
+          for g in q.groups do
+            for m in g.tables do
+              let d := (w.tables.getD m.table default).dirty
+              line := line ++ s!"\n     q{qi} t{m.table} mon={repr m.monitor} src={m.sources} dirty={repr d} osnap={(w.osnap[(qi, m.table)]?)}"
+          line := line ++ s!"\n     q{qi} matchCount={q.matchCount} prev={q.prevMatchCount} fixedMon={repr q.fixedMonitor} ofixed={w.ofixed[qi]?}"
+        for t in [1:w.tables.size] do
+          let x := w.tables.getD t default
+          if x.live then line := line ++ s!"\n     table {t} type={x.type} ents={x.ents.extract 0 x.count} dirty={repr x.dirty}"
+        out := out ++ [line]
+    return out
+
+def checkQ (p : QProg) : List (String × String) := Id.run do
+  let o := runQProg p
+  let mut out : List (String × String) := []
+  if let some f := o.fail then
+    if !allowedFail f then out := out ++ [("P1 no-crash", toString f)]
+  for v in o.viol do
+    let prop := if v.startsWith "P-" then (v.splitOn ":").headD v
+      else if v.startsWith "uninit" then "P1 uninitialized read" else "P2 oracle"
+    out := out ++ [(prop, v)]
+  return out
+
+/-! ### Generators -/
+
+section
+variable {m : Type → Type} [Monad m] [Pick m]
+
+/-- Query menu (C0, C1 data components; ChildOf and the plain
+    relationship `rRemove` = entity 386 for group_by). -/
+def queryMenu (k : Nat) (fixedSlot : Nat) : QCache :=
+  match k with
+  | 0 => { terms := #[{ id := C0, io := .in_ }], detect := true }
+  | 1 => { terms := #[{ id := C1, io := .in_ }, { id := C0, src := .fixed fixedSlot, io := .in_ }], detect := true }
+  | 2 => { terms := #[{ id := C1, io := .in_ }, { id := C0, src := .up, io := .in_ }], detect := true }
+  | 3 => { terms := #[{ id := C0, io := .in_ }], orderBy := true }
+  | 4 => { terms := #[{ id := C0, io := .in_ }], groupBy := some 387, detect := true }
+  | 5 => { terms := #[{ id := C0 }] }
+  | 6 => { terms := #[{ id := C0, io := .in_ }, { id := C1, oper := .not }], detect := true }
+  | 7 => { terms := #[{ id := C0, io := .in_ }, { id := C1, oper := .optional, io := .in_ }], detect := true }
+  | 8 => { terms := #[{ id := C0, src := .up, io := .in_ }], detect := true }
+  | 9 => { terms := #[{ id := C0, io := .in_ }], orderBy := true, groupBy := some 387 }
+  | _ => { terms := #[{ id := C0 }, { id := C1, src := .fixed fixedSlot }] }
+
+def queryMenuSize : Nat := 11
+
+def genQOp (ents : Nat) (nq : Nat) : m QOp := do
+  match (← Pick.pick "q.kind" 4) with
+  | 0 =>
+    let qi ← Pick.pick "q.query" nq
+    let md ← pickOf "q.mode" #[W.IterMode.full, .skipAll, .first]
+    let ask := (← Pick.pick "q.ask" 2) == 0
+    return .iter qi md ask
+  | 1 => return .changed (← Pick.pick "q.query" nq)
+  | _ =>
+    let e ← Pick.pick "flecs.entity" ents
+    let tg : Tgt := if (← Pick.pick "flecs.target" 3) == 0 then .stage 0 else .world
+    let x ← pickOf "flecs.id" #[IdS.c0, .c1, .tag, .pair .childOf 0, .pair .childOf 1, .pair .remove 0, .pair .remove 1]
+    match (← Pick.pick "flecs.call" 8) with
+    | 0 => return .op (.delete tg e)
+    | 1 | 2 => return .op (.add tg e x)
+    | 3 => return .op (.remove tg e x)
+    | 4 => return .op (.set tg e (← pickOf "flecs.set.id" #[IdS.c0, .c1]) (← pickOf "flecs.value" #[1, 2, 3]))
+    | 5 => return .op (.modified tg e (← pickOf "flecs.set.id" #[IdS.c0, .c1]))
+    | 6 => return .op (.ensure tg e (← pickOf "flecs.set.id" #[IdS.c0, .c1]) (← pickOf "flecs.value" #[1, 2, 3]))
+    | _ => return .op (.merge 0)
+
+def genQProg (ents len : Nat) : m QProg := do
+  let nq := (← Pick.pick "q.count" 2) + 1
+  let mut qs := #[]
+  for _ in [0:nq] do
+    qs := qs.push (queryMenu (← Pick.pick "q.menu" queryMenuSize) (← Pick.pick "q.fixed" ents))
+  let mut ops := []
+  for _ in [0:len] do ops := ops ++ [← genQOp ents nq]
+  ops := ops ++ [.op (.merge 0)]
+  for i in [0:nq] do ops := ops ++ [.changed i, .iter i .full true]
+  return { nEnts := ents, queries := qs, ops }
+
+end
+
+/-! ### Cases (the C tests' programs) -/
+
+def wo (o : Op) : QOp := .op o
+
+def qIn (id : Id) (src : QSrc := .self) : QTerm := { id := id, src := src, io := .in_ }
+
+/-- `[in] C1, [in] C0(src)` with change detection -/
+def qC1C0 (src : QSrc) : QCache := { terms := #[qIn C1, qIn C0 src], detect := true }
+
+/-- change_detection_fixed_source_moved.c: the fixed source moves to a new
+    table, then its component is set. -/
+def qcaseFixedMoveSet : QProg :=
+  { nEnts := 2,
+    queries := #[qC1C0 (.fixed 0)],
+    ops := [wo (.set .world 0 .c0 1), wo (.set .world 1 .c1 1),
+          .changed 0, .iter 0 .full false, .changed 0,
+          wo (.add .world 0 .tag), wo (.set .world 0 .c0 2), .changed 0] }
+
+/-- change_detection_parent_moved.c: the same through up(ChildOf). -/
+def qcaseUpMoveSet : QProg :=
+  { nEnts := 2,
+    queries := #[qC1C0 .up],
+    ops := [wo (.set .world 0 .c0 1), wo (.add .world 1 (.pair .childOf 0)), wo (.set .world 1 .c1 1),
+          .changed 0, .iter 0 .full false, .changed 0,
+          wo (.add .world 0 .tag), wo (.set .world 0 .c0 2), .changed 0, .iter 0 .full true] }
+
+/-- change_detection_fixed_source_removed.c: the fixed source loses the
+    component the query reads from it. -/
+def qcaseFixedRemoved : QProg :=
+  { nEnts := 2,
+    queries := #[qC1C0 (.fixed 0)],
+    ops := [wo (.set .world 0 .c0 1), wo (.set .world 1 .c1 1),
+          .changed 0, .iter 0 .full false, .changed 0,
+          wo (.remove .world 0 .c0), .changed 0] }
+
+/-- change_detection_fixed_source_added.c: the fixed source gains the
+    component after the monitor was created (uninitialized slot). -/
+def qcaseFixedAdded : QProg :=
+  { nEnts := 2,
+    queries := #[qC1C0 (.fixed 0)],
+    ops := [wo (.set .world 1 .c1 1), .changed 0, .iter 0 .full false,
+          wo (.set .world 0 .c0 1), .changed 0] }
+
+def qcases : List (String × QProg) := [
+  ("change_detection_fixed_source_moved", qcaseFixedMoveSet),
+  ("change_detection_parent_moved", qcaseUpMoveSet),
+  ("change_detection_fixed_source_removed", qcaseFixedRemoved),
+  ("change_detection_fixed_source_added", qcaseFixedAdded) ]
+
+def shrinkQ (p : QProg) : List QProg := Id.run do
+  let mut out := []
+  let ops := p.ops.toArray
+  for i in [0:ops.size] do
+    out := out ++ [{ p with ops := (ops.eraseIdx! i).toList }]
+  if p.queries.size > 1 then
+    for i in [0:p.queries.size] do
+      -- dropping a query renumbers the later ones
+      let rn := fun (qi : Nat) => if qi > i then qi - 1 else qi
+      let ops' := p.ops.filterMap (fun o => match o with
+        | .iter qi md a => if qi == i then none else some (.iter (rn qi) md a)
+        | .changed qi => if qi == i then none else some (.changed (rn qi))
+        | o => some o)
+      out := out ++ [{ p with queries := p.queries.eraseIdx! i, ops := ops' }]
+  return out
+
+end Flecs

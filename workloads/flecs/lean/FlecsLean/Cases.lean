@@ -26,6 +26,10 @@ def caseBatchRemovePanic : Scenario := { ops := [
   .remove s0 1 (.pair .panic 0),
   .merge 0 ] }
 
+/-- batch_remove_dead_target_panic_record.c (F2 corrected): the same program
+    after the relationship was used in a pair, so its (Rel, *) record exists -/
+def caseBatchRemovePanicRecord : Scenario := { caseBatchRemovePanic with relRecords := true }
+
 /-- staged_set_pair_dead_target.c -/
 def caseStagedSetPairDeadTarget : Scenario := { ops := [
   .new, .new,                             -- 0 tgt, 1 e
@@ -154,9 +158,42 @@ def caseRangeNewFromRangeDup : Scenario := { ops := [
   .makeAlive 0 1,
   .newFromRange 0 ] }
 
+/-- monitor_up_grandparent.c (menu 9, monitor on C0(up)): the grandparent
+    and then the parent get C0; the child already matched -/
+def caseMonitorGrandparent : Scenario := { cfg := 9, ops := [
+  .new, .new, .new,                         -- 0 grandparent, 1 parent, 2 child
+  .add .world 1 (.pair .childOf 0),
+  .add .world 2 (.pair .childOf 1),
+  .add .world 0 .c0,                        -- child starts matching: OnAdd
+  .add .world 1 .c0,                        -- child still matches
+  .remove .world 1 .c0 ] }                  -- child still matches
+
+/-- the same with a C0(self|up) monitor (menu 10) -/
+def caseMonitorGrandparentSelfUp : Scenario := { caseMonitorGrandparent with cfg := 10 }
+
+/-- instantiate_resurrects_deleted_handle.c: the prefab's child sits at
+    offset 1 from the prefab; the instance's id + 1 was deleted -/
+def caseInstantiateResurrects : Scenario := { ops := [
+  .new, .new,                               -- 0 prefab, 1 prefab child (= prefab + 1)
+  .add .world 0 .prefab,
+  .add .world 1 (.pair .childOf 0),
+  .new, .new,                               -- 2 instance, 3 b (= instance + 1)
+  .delete .world 3,
+  .add .world 2 (.pair .isA 0) ] }
+
+/-- staged_childof_recycled_parent.c: the queued parent is deleted and its
+    id recycled before the merge -/
+def caseChildOfRecycledParent : Scenario := { ops := [
+  .new, .new,                               -- 0 p, 1 c
+  .add s0 1 (.pair .childOf 0),
+  .delete .world 0,
+  .new,                                     -- 2 q (recycles p's id)
+  .merge 0 ] }
+
 def allCases : List (String × Scenario) := [
   ("batch_remove_dead_target", caseBatchRemoveDeadTarget),
   ("batch_remove_dead_target_panic", caseBatchRemovePanic),
+  ("batch_remove_dead_target_panic_record (F2 corrected)", caseBatchRemovePanicRecord),
   ("staged_set_pair_dead_target", caseStagedSetPairDeadTarget),
   ("staged_set_pair_existing_dead_target", caseStagedSetPairExisting),
   ("batch_observer_deletes_entity", caseBatchObserverDeletes),
@@ -174,6 +211,10 @@ def allCases : List (String × Scenario) := [
   ("staged_ensure_rewrites_set", caseEnsureRewritesSet),
   ("panic_target_with_childof", casePanicWithChildOf),
   ("staged_set_value_lost", caseSetValueLost),
-  ("range_new_from_range_duplicate", caseRangeNewFromRangeDup) ]
+  ("range_new_from_range_duplicate", caseRangeNewFromRangeDup),
+  ("monitor_up_grandparent", caseMonitorGrandparent),
+  ("monitor_up_grandparent (self|up)", caseMonitorGrandparentSelfUp),
+  ("instantiate_resurrects_deleted_handle", caseInstantiateResurrects),
+  ("staged_childof_recycled_parent", caseChildOfRecycledParent) ]
 
 end Flecs

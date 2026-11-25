@@ -19,10 +19,10 @@ structure Rels where
   rPanic : UInt64   -- (OnDeleteTarget, Panic)
   deriving Repr, Inhabited
 
-inductive RelK | childOf | remove | delete | panic | c0
+inductive RelK | childOf | remove | delete | panic | c0 | isA
   deriving Repr, BEq, Inhabited, DecidableEq
 
-inductive IdS | c0 | c1 | tag | pair (r : RelK) (t : Nat)
+inductive IdS | c0 | c1 | tag | prefab | pair (r : RelK) (t : Nat)
   deriving Repr, BEq, Inhabited, DecidableEq
 
 inductive Op where
@@ -54,6 +54,9 @@ structure Scenario where
   cfg : Nat := 0
   /-- relationship creation order: true creates rPanic before rRemove -/
   panicFirst : Bool := true
+  /-- the (R, *) records of the three relationships exist before the program
+      (some (R, x) pair was used earlier in the world's life) -/
+  relRecords : Bool := false
   hooks : List (Id × Hooks) := []
   obs : List Obs := []
   ops : List Op := []
@@ -86,6 +89,13 @@ def menu (tag : UInt64) (k : Nat) : List (Id × Hooks) × List Obs :=
   -- on_remove hook enqueues a set on its entity
   | 7 => ([(C1, { onRemove := some [.set .stage .self (.id C0) 5] })],
           [{ event := .onSet, pattern := C0 }])
+  -- round 2: a monitor on C0(up) (ChildOf)
+  | 9 => ([], [{ event := .onAdd, pattern := C0, src := .up, monitor := true }])
+  -- round 2: a monitor on C0(self|up)
+  | 10 => ([], [{ event := .onAdd, pattern := C0, src := .selfUp, monitor := true }])
+  -- round 2: up observers on C0 for OnAdd, OnRemove and OnSet, recording
+  | 11 => ([], [{ event := .onAdd, pattern := C0, src := .up }, { event := .onRemove, pattern := C0, src := .up },
+                { event := .onSet, pattern := C0, src := .up }])
   -- observers on everything (OnAdd/OnRemove/OnSet), recording only
   | _ => ([], [{ event := .onAdd, pattern := C0 }, { event := .onRemove, pattern := C0 },
                { event := .onSet, pattern := C0 }, { event := .onAdd, pattern := C1 },
@@ -134,9 +144,18 @@ def initWorld (s : Scenario) (noBatch : Bool) : Except Fail (World × Rels) := d
       stages := Array.replicate s.stages {},
       hooks := HashMap.ofList (s.hooks ++ (menu tag s.cfg).1),
       obs := (s.obs ++ (menu tag s.cfg).2).toArray }
-    -- the traits create (R, *) records (they are set through the OnDeleteTarget pair)
-    for r in [rRemove, rDelete, rPanic] do
-      discard <| crEnsure (mkPair r EcsWildcard)
+    -- Round 2 correction (F2): adding the (OnDeleteTarget, X) trait to R does
+    -- not create the (R, *) record.  flecs_register_flag_for_trait
+    -- (bootstrap.c 207-218) only sets flags on records that already exist;
+    -- (R, *) is created with the first (R, t) record (component_index.c
+    -- 440-448), and from then on it lives until R is deleted (its initial
+    -- refcount is released only by flecs_on_delete_clear_ids).  Round 1
+    -- created (R, *) here, so flecs_remove_invalid (commands.c 908-925)
+    -- always found it.  With `relRecords`, each relationship has been
+    -- used in a pair before the program (the record exists).
+    if s.relRecords then
+      for r in [rRemove, rDelete, rPanic] do
+        discard <| crEnsure (mkPair r EcsWildcard)
     -- non_trivial_set (type_info.c 646-649, observer.c 133-141)
     for (c, h) in s.hooks ++ (menu tag s.cfg).1 do
       if h.onSet.isSome then modify fun w => { w with nonTrivialSet := w.nonTrivialSet.insert c }
@@ -155,12 +174,34 @@ def relOf (rs : Rels) : RelK → UInt64
   | .delete => rs.rDelete
   | .panic => rs.rPanic
   | .c0 => C0
+  | .isA => EcsIsA
 
 def idOfS (rs : Rels) (slots : Array UInt64) : IdS → Id
   | .c0 => C0
   | .c1 => C1
   | .tag => rs.tag
+  | .prefab => EcsPrefab
   | .pair r t => mkPair (relOf rs r) (slots.getD t 0)
+
+/-- P7: for every monitor and slot entity, what the monitor reported equals
+    whether the entity matches the monitor's term now. -/
+def monitorAgreement : M (Array String) := do
+  let w ← get
+  let mut out := #[]
+  for oi in [0:w.obs.size] do
+    let o := w.obs.getD oi default
+    if !o.monitor then continue
+    for e in w.slots do
+      let alive := w.ix.isAlive e
+      let actual ← if alive then
+          (match (w.ix.recOf e).table with
+            | some t => monMatches o t
+            | none => pure false)
+        else pure false
+      let believed := (w.monBelief[(oi, e)]?).getD false
+      if actual != believed then
+        out := out.push s!"P7 monitor: entity {e} {if actual then "matches" else "does not match"} monitor {oi}'s term but the monitor reported {if believed then "OnAdd" else "OnRemove or nothing"} last"
+  return out
 
 /-- Every alive entity sits in exactly one live table at its recorded row,
     rows below `count` hold alive entities, and live tables are in the
@@ -375,6 +416,10 @@ def runScenario (s : Scenario) (noBatch : Bool := false) (checkEach : Bool := tr
     let mut w := { w0 with noBatch := noBatch }
     let mut viol : Array String := #[]
     let mut bufs : Array (Array Op) := Array.replicate s.stages #[]
+    -- P8: slot handles seen dead (EntitiesComponents.md "Liveliness
+    -- Checking": a deleted entity is not alive)
+    let mut deadSeen : Array UInt64 := #[]
+    let usesMakeAlive := s.ops.any (fun o => match o with | .makeAlive .. => true | _ => false)
     for op in s.ops do
       let ok := match (W.allowed rs op).run w with
         | .ok (b, _) => b
@@ -403,10 +448,24 @@ def runScenario (s : Scenario) (noBatch : Bool := false) (checkEach : Bool := tr
         | .error f =>
           return { fail := some f, violations := viol ++ w.viol, state := summarize w, log := w.log, stale := w.staleReads }
         | .ok ((), w2) => w := w2
+      if !usesMakeAlive then
+        for e in w.slots do
+          if w.ix.isAlive e then
+            if deadSeen.contains e then
+              viol := viol.push s!"P8 deleted handle: after {repr op}: entity {e} was deleted earlier and is alive again"
+              deadSeen := deadSeen.filter (· != e)
+          else if !deadSeen.contains e then deadSeen := deadSeen.push e
       if checkEach && !w.readonly then
         match W.checkStorage.run w with
         | .ok (vs, _) => viol := viol ++ vs.map (fun v => s!"after {repr op}: {v}")
         | .error f => viol := viol.push s!"storage check failed: {f}"
+        -- P7: outside deferred mode, each monitor has reported exactly the
+        -- entities that match its term (ObserversManual.md "Monitors")
+        let ownQueues := w.stages.all (fun st => st.levels.all (fun c => c.queue.isEmpty))
+        if ownQueues then
+          match (W.monitorAgreement).run w with
+          | .ok (vs, _) => viol := viol ++ vs.map (fun v => s!"after {repr op}: {v}")
+          | .error _ => pure ()
     return { fail := none, violations := viol ++ w.viol, state := summarize w, log := w.log, stale := w.staleReads }
 
 end Flecs

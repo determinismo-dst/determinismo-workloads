@@ -52,10 +52,19 @@ inductive Act where
 inductive Ev | onAdd | onSet | onRemove
   deriving Repr, BEq, Inhabited, DecidableEq
 
+/-- Where an observer's term finds its component (round 2): on the entity
+    (self), on an ancestor through ChildOf (up), or either (self|up). -/
+inductive OSrc | self | up | selfUp
+  deriving Repr, BEq, Inhabited, DecidableEq
+
 structure Obs where
   event : Ev
   pattern : Id
   acts : List Act := []
+  src : OSrc := .self
+  /-- a monitor (`EcsMonitor`): OnAdd when an entity starts matching the
+      term, OnRemove when it stops (observer.c 654-773) -/
+  monitor : Bool := false
   deriving Repr, Inhabited
 
 structure Hooks where
@@ -83,6 +92,9 @@ structure Table where
   lock : Int := 0
   live : Bool := true
   marked : Bool := false
+  /-- `table->dirty_state` (table.c 1380-1450): per column + 1 counters,
+      allocated on first use by change detection (all 1), NULL before -/
+  dirty : Option (Array Int) := none
   deriving Inhabited
 
 structure CR where
@@ -115,6 +127,8 @@ structure Cmd where
   entity : UInt64 := 0
   value : Option Nat := none
   action : Policy := .remove
+  /-- oracle only: the command's value came from ecs_set (not ecs_ensure) -/
+  fromSet : Bool := false
   deriving Repr, Inhabited
 
 structure Cmds where
@@ -142,6 +156,67 @@ structure Marked where
   id : Id
   action : Option Policy
   deleteId : Bool
+  deriving Inhabited
+
+/-! ### Queries (query/cache/*.c) -/
+
+inductive QSrc
+  /-- `$this`, self -/
+  | self
+  /-- `$this`, up(ChildOf) -/
+  | up
+  /-- a fixed source: slot `k` of the program -/
+  | fixed (k : Nat)
+  deriving Repr, BEq, Inhabited, DecidableEq
+
+inductive QOper | and | not | optional
+  deriving Repr, BEq, Inhabited, DecidableEq
+
+inductive QIO | default_ | in_ | out | inout | none
+  deriving Repr, BEq, Inhabited, DecidableEq
+
+structure QTerm where
+  id : Id
+  src : QSrc := .self
+  oper : QOper := .and
+  io : QIO := .default_
+  deriving Repr, BEq, Inhabited
+
+/-- `ecs_query_cache_match_t`: one cached table. -/
+structure QMatch where
+  table : Nat
+  /-- per cache field: column in the table or -1 -/
+  columns : Array Int := #[]
+  /-- per cache field: 0 ($this) or the source entity -/
+  sources : Array UInt64 := #[]
+  setFields : Array Bool := #[]
+  /-- `_monitor`: [0] for the table, [f+1] per field, -1 untracked -/
+  monitor : Option (Array Int) := none
+  deriving Repr, Inhabited
+
+/-- `ecs_query_cache_group_t` -/
+structure QGroup where
+  id : UInt64
+  tables : Array QMatch := #[]
+  deriving Repr, Inhabited
+
+structure QCache where
+  terms : Array QTerm
+  detect : Bool := false
+  orderBy : Bool := false
+  /-- group_by with the default action on this relationship (cache.c 155-172) -/
+  groupBy : Option UInt64 := none
+  /-- groups in list order (`first_group`, `next`) -/
+  groups : Array QGroup := #[]
+  matchCount : Int := 0
+  prevMatchCount : Int := -1
+  /-- `EcsQueryHasChangeDetection` -/
+  hasCD : Bool := false
+  /-- `impl->monitor` for fixed-source fields; `none` entries were never
+      written (flecs_alloc_n does not zero) -/
+  fixedMonitor : Option (Array (Option Int)) := none
+  /-- `table_slices` for order_by: (table, offset, count) -/
+  slices : Array (Nat × Nat × Nat) := #[]
   deriving Inhabited
 
 structure World where
@@ -173,6 +248,32 @@ structure World where
   /-- check `has(e, c)` inside on_add hooks -/
   checkHookView : Bool := true
   fuel : Nat := 400
+  /-- `world->has_dirty_state` -/
+  hasDirty : Bool := false
+  /-- query caches (round 2) -/
+  queries : Array QCache := #[]
+  /-- table events not yet delivered to the query caches: (created?, table) -/
+  tableEvents : Array (Bool × Nat) := #[]
+  /-- revalidations enqueued by the rematch observers: (query, table) -/
+  revalidate : Array (Nat × Nat) := #[]
+  /-- oracle (not flecs): per entity and component, a count of the
+      documented detectable writes (set, modified, out-iteration) -/
+  wver : HashMap (UInt64 × Id) Nat := {}
+  /-- oracle: per table, a count of entities added or removed -/
+  mver : HashMap Nat Nat := {}
+  /-- oracle: what a query read from a table when it last synced it -/
+  osnap : HashMap (Nat × Nat) String := {}
+  /-- oracle: what a query's fixed-source fields read at the last update of
+      its fixed monitor -/
+  ofixed : HashMap Nat String := {}
+  /-- monitor and up-observer invocations: (observer index, event, entity,
+      source) -/
+  obsLog : Array (Nat × Ev × UInt64 × UInt64) := #[]
+  /-- oracle: per monitor, the entities it has reported as matching -/
+  monBelief : HashMap (Nat × UInt64) Bool := {}
+  /-- `world->stages[0]->base` (observable.c 1210-1228): set while a prefab
+      is instantiated, so instantiation does not recurse through flecs_emit -/
+  instantiating : Bool := false
   deriving Inhabited
 
 abbrev M := StateT World (Except Fail)
@@ -341,6 +442,8 @@ partial def tableEnsure (type : Array Id) : M Nat := do
   for i in recs do
     let some c ← crGet i | fail .internalError "table.c 812" "missing record"
     crSet { c with cache := c.cache.push t, refcount := c.refcount + 1 }
+  -- EcsOnTableCreate (delivered to the query caches, cache.c 552-565)
+  modify fun w => { w with tableEvents := w.tableEvents.push (true, t) }
   return t
 
 /-- `flecs_table_fini` (table.c 1268-1344) for an empty table. -/
@@ -348,11 +451,54 @@ partial def tableFini (t : Nat) : M Unit := do
   let x ← tbl t
   if x.lock != 0 then fail .lockedStorage "storage/table.c 1277" "table deletion while locked"
   modify fun w => { w with byType := w.byType.erase x.type.toList }
+  -- EcsOnTableDelete (cache.c 585-589)
+  modify fun w => { w with tableEvents := w.tableEvents.push (false, t) }
   setTbl t { x with live := false }
   for i in recordIds x.type do
     let some c ← crGet i | fail .internalError "storage/table.c 901-923" "record missing on unregister"
     crSet { c with cache := c.cache.filter (· != t) }
     discard <| crRelease i
+
+/-! ### Dirty state (table.c 1380-1450) -/
+
+/-- `flecs_table_mark_table_dirty` (table.c 1382-1394) -/
+def markTableDirty (t : Nat) (index : Nat) : M Unit := do
+  let w ← get
+  match w.tables[t]? with
+  | some x =>
+    if let some d := x.dirty then
+      setTbl t { x with dirty := some (d.modify index (· + 1)) }
+  | none => pure ()
+
+/-- oracle: an entity entered or left table `t` -/
+def bumpMember (t : Nat) : M Unit := modify fun w =>
+  { w with mver := w.mver.insert t ((w.mver[t]?).getD 0 + 1) }
+
+/-- oracle: a detectable write of `id` on `e` -/
+def bumpWrite (e : UInt64) (id : Id) : M Unit := modify fun w =>
+  { w with wver := w.wver.insert (e, id) ((w.wver[(e, id)]?).getD 0 + 1) }
+
+/-- `flecs_table_mark_dirty` (table.c 1397-1429) -/
+def markDirty (t : Nat) (id : Id) : M Unit := do
+  let w ← get
+  match w.tables[t]? with
+  | some x =>
+    if let some d := x.dirty then
+      match colIndex x id with
+      | some c => setTbl t { x with dirty := some (d.modify (c + 1) (· + 1)) }
+      | none => pure ()
+  | none => pure ()
+
+/-- `flecs_table_get_dirty_state` (table.c 1432-1450) -/
+def getDirty (t : Nat) : M (Array Int) := do
+  let x ← tbl t
+  match x.dirty with
+  | some d => return d
+  | none =>
+    let d := Array.replicate (x.colIds.size + 1) (1 : Int)
+    setTbl t { x with dirty := some d }
+    modify fun w => { w with hasDirty := true }
+    return d
 
 def lockT (t : Nat) : M Unit := do
   if !(← get).readonly then modTbl t fun x => { x with lock := x.lock + 1 }

@@ -9,3 +9,8 @@ import FlecsLean.Cases
 import FlecsLean.Threads
 import FlecsLean.Theorems
 import FlecsLean.Axioms
+import FlecsLean.Search2
+import FlecsLean.Pipeline
+import FlecsLean.Query
+import FlecsLean.QueryProps
+import FlecsLean.TheoremsPipe

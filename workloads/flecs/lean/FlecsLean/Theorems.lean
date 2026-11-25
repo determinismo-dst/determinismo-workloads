@@ -1,33 +1,90 @@
 /-
-  Theorems about the replica.  No `sorry`.  The generation lemmas (genInc_*,
-  genIter_*, iterate_genInc, genInc_period) are checked by `bv_decide`, which
-  adds one native-evaluation axiom per call (`*._native.bv_decide.ax_*`, see
-  FlecsLean/Axioms.lean); every other theorem uses only propext,
-  Classical.choice and Quot.sound.
+  Theorems about the replica.  No `sorry`, no axioms beyond propext,
+  Classical.choice and Quot.sound (printed by FlecsLean/Axioms.lean).  Round
+  1 checked the generation lemmas with `bv_decide`; round 2 re-proves them by
+  bit extensionality and `omega`.
 -/
 import FlecsLean.Ops
-import Std.Tactic.BVDecide
 
 namespace Flecs
 
-/-! ### Generations (api_defines.h 333-335) -/
+/-! ### Generations (api_defines.h 333-335)
+
+Round 2: proved by bit extensionality (each bit of a `UInt64` through
+`BitVec.getLsbD`, with the index split into the 16-bit ranges the masks
+cut) and by `omega` on `toNat` for the 16-bit arithmetic.  No `bv_decide`,
+so no native-evaluation axioms. -/
+
+theorem u64_ext {a b : UInt64} (h : ∀ i, i < 64 → a.toBitVec.getLsbD i = b.toBitVec.getLsbD i) : a = b :=
+  UInt64.toBitVec_inj.mp (BitVec.eq_of_getLsbD_eq h)
+
+theorem hE : ENTITY_MASK = (OfNat.ofNat (2 ^ 32 - 1) : UInt64) := rfl
+theorem hG : GENERATION_MASK = (OfNat.ofNat (2 ^ 16 - 1) : UInt64) <<< 32 := rfl
+theorem hF : (0xFFFF : UInt64) = (OfNat.ofNat (2 ^ 16 - 1) : UInt64) := rfl
+theorem hS : ((32 : UInt64).toBitVec % 64).toNat = 32 := by decide
+theorem hS48 : ((48 : UInt64).toBitVec % 64).toNat = 48 := by decide
+
+/-- Bit extensionality over the generation layout: unfold to `getLsbD`,
+    split the bit index at 16, 32 and 48, and let `simp` decide each
+    comparison with `omega`. -/
+macro "bits" : tactic => `(tactic| (
+  apply u64_ext
+  intro i hi
+  simp only [lo32, generation, hE, hG, hF, UInt64.toBitVec_and, UInt64.toBitVec_or,
+    UInt64.toBitVec_not, UInt64.toBitVec_shiftLeft, UInt64.toBitVec_shiftRight,
+    BitVec.shiftLeft_eq', BitVec.ushiftRight_eq', hS, hS48, BitVec.getLsbD_and, BitVec.getLsbD_or,
+    BitVec.getLsbD_not, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_ushiftRight,
+    UInt64.toBitVec_ofNat, BitVec.getLsbD_ofNat, Nat.testBit_two_pow_sub_one]
+  rcases (show i < 16 ∨ (16 ≤ i ∧ i < 32) ∨ (32 ≤ i ∧ i < 48) ∨ 48 ≤ i by omega) with h | h | h | h <;>
+    simp (disch := omega) [decide_eq_true, decide_eq_false]))
 
 /-- `ECS_GENERATION_INC` keeps the 32-bit id. -/
 theorem genInc_lo32 (e : UInt64) : lo32 (genInc e) = lo32 e := by
-  unfold genInc lo32 generation GENERATION_MASK ENTITY_MASK
-  bv_decide
+  unfold genInc; bits
+
+/-- The generation of a handle packed from `a`'s other bits and `y`. -/
+theorem gen_of_pack (a y : UInt64) :
+    generation ((a &&& ~~~ GENERATION_MASK) ||| ((0xFFFF &&& y) <<< 32)) = y &&& 0xFFFF := by
+  bits
+
+theorem gen_of_pack' (a y : UInt64) :
+    generation ((a &&& ~~~ GENERATION_MASK) ||| ((y &&& 0xFFFF) <<< 32)) = y &&& 0xFFFF := by
+  bits
+
+theorem pack_mask (a y : UInt64) :
+    ((a &&& ~~~ GENERATION_MASK) ||| ((y &&& 0xFFFF) <<< 32)) &&& ~~~ GENERATION_MASK =
+      a &&& ~~~ GENERATION_MASK := by
+  bits
+
+theorem unpack (e : UInt64) :
+    (e &&& ~~~ GENERATION_MASK) ||| ((generation e &&& 0xFFFF) <<< 32) = e := by
+  bits
 
 /-- `ECS_GENERATION_INC` adds one to the 16-bit generation, modulo 2^16. -/
 theorem genInc_generation (e : UInt64) :
     generation (genInc e) = (generation e + 1) &&& 0xFFFF := by
-  unfold genInc generation GENERATION_MASK
-  bv_decide
+  unfold genInc; exact gen_of_pack _ _
 
 /-- The bits above the generation (flags) are kept. -/
 theorem genInc_high (e : UInt64) :
     genInc e &&& ((0xFFFF : UInt64) <<< 48) = e &&& ((0xFFFF : UInt64) <<< 48) := by
-  unfold genInc generation GENERATION_MASK
-  bv_decide
+  unfold genInc; bits
+
+theorem land16 (x : Nat) : x &&& 65535 = x % 65536 := Nat.and_two_pow_sub_one_eq_mod x 16
+theorem land16' (x : Nat) : 65535 &&& x = x % 65536 := by rw [Nat.and_comm]; exact land16 x
+
+theorem arith16 (g k : UInt64) :
+    0xFFFF &&& (((g + k) &&& 0xFFFF) + 1) = (g + (k + 1)) &&& 0xFFFF := by
+  apply UInt64.toNat_inj.mp
+  simp only [UInt64.toNat_and, UInt64.toNat_add, UInt64.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  simp only [land16, land16']
+  omega
+
+theorem arith16_period (g : UInt64) : (g + 65536) &&& 0xFFFF = (g + 0) &&& 0xFFFF := by
+  apply UInt64.toNat_inj.mp
+  simp only [UInt64.toNat_and, UInt64.toNat_add, UInt64.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  simp only [land16]
+  omega
 
 /-- `n`-fold application. -/
 def iterN (f : UInt64 → UInt64) : Nat → UInt64 → UInt64
@@ -40,12 +97,13 @@ def genIter (e : UInt64) (k : UInt64) : UInt64 :=
 
 theorem genInc_genIter (e k : UInt64) :
     genInc (genIter e k) = genIter e (k + 1) := by
-  unfold genIter genInc generation GENERATION_MASK
-  bv_decide
+  unfold genInc genIter
+  rw [pack_mask, gen_of_pack', arith16]
 
 theorem genIter_zero (e : UInt64) : genIter e 0 = e := by
-  unfold genIter generation GENERATION_MASK
-  bv_decide
+  unfold genIter
+  have : generation e + 0 = generation e := by simp
+  rw [this]; exact unpack e
 
 theorem toUInt64_succ (n : Nat) : (n + 1).toUInt64 = n.toUInt64 + 1 := by
   simp [Nat.toUInt64, UInt64.ofNat_add]
@@ -59,10 +117,12 @@ theorem iterate_genInc (e : UInt64) (n : Nat) : iterN genInc n e = genIter e n.t
     is the handle of the current one: `ecs_is_alive` cannot tell them apart. -/
 theorem genInc_period (e : UInt64) : iterN genInc 65536 e = e := by
   rw [iterate_genInc]
-  have : (65536 : Nat).toUInt64 = 65536 := rfl
-  rw [this]
-  unfold genIter generation GENERATION_MASK
-  bv_decide
+  have h1 : (65536 : Nat).toUInt64 = 65536 := rfl
+  rw [h1]
+  unfold genIter
+  rw [arith16_period]
+  have : generation e + 0 = generation e := by simp
+  rw [this]; exact unpack e
 
 /-! ### The delete action for a target (on_delete.c 111-152) -/
 

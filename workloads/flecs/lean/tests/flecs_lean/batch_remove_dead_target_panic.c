@@ -1,4 +1,8 @@
-/* Prediction: with a relationship that has (OnDeleteTarget, Panic), a queued
+/* Round 2: this program did not panic on the real flecs, as REPORT-2.md "F2:
+ * the model correction" explains (no (Rel, *) record exists here); the
+ * corrected prediction is batch_remove_dead_target_panic_record.c.
+ *
+ * Prediction: with a relationship that has (OnDeleteTarget, Panic), a queued
  * remove of (Rel, tgt) panics during the merge when tgt was deleted earlier in
  * the same merge and the entity has another command in the queue -- though
  * no entity had (Rel, tgt), so deleting tgt itself was legal.

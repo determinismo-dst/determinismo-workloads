@@ -89,6 +89,57 @@ def genSmallScenario (cfg stages ents len : Nat) (panicFirst : Bool) : m Scenari
   for k in [0:stages] do ops := ops.push (.merge k)
   return { stages, panicFirst, cfg, ops := ops.toList }
 
+/-- Round 2: hierarchies with C0 on parents, monitors and up observers
+    (menu 9-11).  ChildOf pairs point at a lower slot (a forest). -/
+def genObsOp (ents stages : Nat) : m Op := do
+  let e ← Pick.pick "flecs.entity" ents
+  let tg ← genTgt stages
+  match (← Pick.pick "flecs.call" 7) with
+  | 0 => return .delete tg e
+  | 1 | 2 =>
+    if (← Pick.pick "flecs.obs.what" 2) == 0 || e == 0 then return .add tg e .c0
+    else return .add tg e (.pair .childOf (← Pick.pick "flecs.pair.target" e))
+  | 3 =>
+    if (← Pick.pick "flecs.obs.what" 2) == 0 || e == 0 then return .remove tg e .c0
+    else return .remove tg e (.pair .childOf (← Pick.pick "flecs.pair.target" e))
+  | 4 => return .set tg e .c0 (← genVal)
+  | 5 => return .add tg e .tag
+  | _ => return .merge (← Pick.pick "flecs.merge.stage" stages)
+
+def genObsScenario (ents len : Nat) : m Scenario := do
+  let stages := (← Pick.pick "flecs.stages" 2) + 1
+  let cfg := 9 + (← Pick.pick "flecs.hooks" 3)
+  let mut ops : Array Op := Array.replicate ents .new
+  for _ in [0:len] do
+    ops := ops.push (← genObsOp ents stages)
+  for k in [0:stages] do ops := ops.push (.merge k)
+  return { stages, ops := ops.toList, cfg }
+
+/-- Round 2: prefabs with children, instances (IsA), deletes and new
+    entities in between. -/
+def genIsAOp (ents stages : Nat) : m Op := do
+  let e ← Pick.pick "flecs.entity" ents
+  let tg ← genTgt stages
+  match (← Pick.pick "flecs.call" 8) with
+  | 0 => return .delete tg e
+  | 1 => return .add tg e .prefab
+  | 2 => if e == 0 then return .add tg e .c0
+         else return .add tg e (.pair .childOf (← Pick.pick "flecs.pair.target" e))
+  | 3 => if e == 0 then return .add tg e .prefab
+         else return .add tg e (.pair .isA (← Pick.pick "flecs.pair.target" e))
+  | 4 => return .set tg e .c0 (← genVal)
+  | 5 => return .new
+  | 6 => return .remove tg e .prefab
+  | _ => return .merge (← Pick.pick "flecs.merge.stage" stages)
+
+def genIsAScenario (ents len : Nat) : m Scenario := do
+  let stages := (← Pick.pick "flecs.stages" 2) + 1
+  let mut ops : Array Op := Array.replicate ents .new
+  for _ in [0:len] do
+    ops := ops.push (← genIsAOp ents stages)
+  for k in [0:stages] do ops := ops.push (.merge k)
+  return { stages, ops := ops.toList, cfg := 0 }
+
 /-- Entity-index programs: entities, deletes, make_alive, ranges. -/
 def genEIOp (maxEnts : Nat) : m Op := do
   match (← Pick.pick "flecs.ei.call" 7) with
@@ -122,7 +173,9 @@ def allowedFail (f : Fail) : Bool :=
   [ "entity.c 2774-2778", "addons/entity_ranges.c 145", "addons/entity_ranges.c 146-147",
     "addons/entity_ranges.c 151-153", "addons/entity_ranges.c 160-162",
     "addons/entity_ranges.c 160-162 (nested default range)", "addons/entity_ranges.c 180-184",
-    "addons/entity_ranges.c 254-255", "storage/entity_index.c 280-281" ].contains f.site
+    "addons/entity_ranges.c 254-255", "storage/entity_index.c 280-281",
+    -- an instance that is a child of its own prefab (instantiate.c 253-260)
+    "addons/prefab/instantiate.c 253-260" ].contains f.site
 
 structure Verdict where
   ok : Bool
@@ -158,9 +211,16 @@ def checkAll (s : Scenario) : List Verdict := _root_.Id.run do
       out := out ++ [{ ok := false, property := "P1 no-crash", detail := toString f }]
   if !a.stale.isEmpty then
     out := out ++ [{ ok := false, property := "P1 no-stale-read", detail := a.stale[0]! }]
-  let strong := a.violations.filter (fun v => !v.startsWith "view:")
+  let isP7 := fun (v : String) => ((v.splitOn "P7 monitor").length > 1)
+  let strong := a.violations.filter (fun v => !v.startsWith "view:" && !isP7 v && !v.startsWith "P8")
   if !strong.isEmpty then
     out := out ++ [{ ok := false, property := "P2 oracle", detail := strong[0]! }]
+  let p7 := a.violations.filter isP7
+  if !p7.isEmpty then
+    out := out ++ [{ ok := false, property := "P7 monitor", detail := p7[0]! }]
+  let p8 := a.violations.filter (fun v => v.startsWith "P8")
+  if !p8.isEmpty then
+    out := out ++ [{ ok := false, property := "P8 deleted handle", detail := p8[0]! }]
   let b := runScenario s true
   let af := a.fail.map (·.code)
   let bf := b.fail.map (·.code)

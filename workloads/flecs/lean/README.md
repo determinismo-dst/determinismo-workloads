@@ -17,6 +17,33 @@ The C tests ([tests/flecs_lean/](tests/flecs_lean/)) each return 0 when flecs be
 documented, built with `distr/flecs.c` and asserts on: a failure confirms its prediction. None
 has run on the real flecs yet.
 
+## Round 2
+
+[REPORT-2.md](REPORT-2.md): queries and their caches (matching, rematch, groups, `order_by`,
+change detection), the pipeline's schedule and sync points, monitors and up observers, prefab
+instantiation. F2's model corrected: the `(Rel, *)` record that carries the Panic policy exists
+only once `Rel` was used in a pair (`flecs_register_flag_for_trait` updates records that exist),
+so round 1's program drops the command, as the real flecs did; with the record, the panic stands
+(`batch_remove_dead_target_panic_record.c`). Nine new predictions, F15-F23, 13 new C tests (none
+run yet):
+- F15: a system annotating `[out] X()` then reading `[in] X()` makes `ecs_progress` abort at an
+  internal assert (pipeline.c 354).
+- F16: no sync point between a wildcard or Any write annotation and an overlapping read.
+- F17: a system that disables itself in a frame skips the next system that frame; with three, an
+  internal assert (pipeline.c 467-470).
+- F18: change detection misses a write to a fixed or up source that moved to another table.
+- F19: a fixed source lacking the component: its removal goes unseen, and its addition compares a
+  monitor slot never written (an uninitialized read; its test runs under valgrind).
+- F20: a monitor on `X(up)` reports OnAdd for an entity already matching, OnRemove for one still
+  matching, when an ancestor in between changes.
+- F21: instantiating a prefab with children makes a deleted entity handle alive again.
+- F22: a batched set, remove and add of one component keeps the set's value.
+- F23: a queued ChildOf to a deleted parent whose id was recycled attaches the child to the new
+  entity (the docs: the child is deleted).
+
+Query caches, grouping and sorting agreed with a fresh evaluation in every run. The round-1
+generation lemmas are re-proved without `bv_decide`.
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled
@@ -41,6 +68,7 @@ with coverage, 3 timelines each, every verdict the same in all 3
     lake update && lake build flecs-search FlecsLean
     .lake/build/bin/flecs-search cases                    # each C test's program in the model
     .lake/build/bin/flecs-search explore SEED N ENTS LEN  # random API programs
+    .lake/build/bin/flecs-search pipe|query|obs-explore|isa-explore ...  # round 2's (REPORT-2.md)
 
 The replica's own fixes, when a round adds any, are switches off by default: the replica is flecs
 as written.

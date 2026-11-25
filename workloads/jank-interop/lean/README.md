@@ -33,7 +33,7 @@ on the real jank.
   run on jank.
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
-jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md).
+jankifier's `specs/unreported.md` (its section "Found by a Lean replica of jank").
 
 ## Building and running
 

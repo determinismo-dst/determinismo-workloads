@@ -1,0 +1,27 @@
+# exhaust2 rr fixd13=1 fixd3=1 order=1 txns=3 mops=1 keys=2 threads=2 read=any runs=1000000000 secs=1750 noinforeads=0 out=results/r2/G-d13-order-e
+518500 timelines, 518500 histories
+
+## completeness-assumed:read-committed
+Elle: read-committed valid; every interpretation where the options' assumption holds violates read-committed (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0)]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+

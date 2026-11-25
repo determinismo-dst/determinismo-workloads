@@ -154,6 +154,15 @@ structure Analysis' where
   fixedWrite : Bool := false
   /-- The RW explainer's `version<` fixed (`versionLtFixed`). -/
   fixedVersionLt : Bool := false
+  /-- D21's fix: a predicate read's rows are item reads too. -/
+  rowItems : Bool := false
+  /-- D22's fix: the explainers' item paths read an `:ok` op's reads only. -/
+  okReadsOnly : Bool := false
+
+/-- An op's item reads: its `:r` mops, and with D21's fix its predicate reads' rows. -/
+def itemReads (o : Op) (rows : Bool) : List (Nat × Val) :=
+  o.value.flatMap fun m =>
+    if m.f == .r then [(m.k, m.v)] else if rows && m.f == .rp then readMap m else []
 
 /-- `rw-graph`, `wr-graph`, `ww-graph` and their explainers (closed_predicate.clj:423-678). -/
 def graph (a : Analysis') (h : History) : Analysis := Id.run do
@@ -164,15 +173,18 @@ def graph (a : Analysis') (h : History) : Analysis := Id.run do
   let mut gww : Graph := {}
   for o in oks hl do
     for m in o.value do
-      match m.f with
-      | .r =>
-        let v := resolveVersion a.av m.k m.v
-        if let some v' := versionAfter (versionsOf a.av m.k) v then
-          if let some w := ewGet a.ew m.k v' then
+      let items : List (Nat × Val) :=
+        if m.f == .r then [(m.k, m.v)] else if a.rowItems && m.f == .rp then readMap m else []
+      for (k, rv) in items do
+        let v := resolveVersion a.av k rv
+        if let some v' := versionAfter (versionsOf a.av k) v then
+          if let some w := ewGet a.ew k v' then
             if w != o.index then grw := grw.link o.index w Rels.RW
         if let some v := v then
-          if let some w := ewGet a.ew m.k v then
+          if let some w := ewGet a.ew k v then
             if w != o.index then gwr := gwr.link w o.index Rels.WR
+      match m.f with
+      | .r => pure ()
       | .rp =>
         for (k, v) in versionSet a.av m do
           for v' in vsAfter (versionsOf a.av k) v do
@@ -201,10 +213,11 @@ def graph (a : Analysis') (h : History) : Analysis := Id.run do
     let ox ← op x
     let oy ← op y
     let bw := extWritesOp oy
-    let item := (ox.value.filter (·.f == .r)).findSome? fun m =>
-      let v := resolveVersion a.av m.k m.v
-      match versionAfter (versionsOf a.av m.k) v with
-      | some v' => if bw.lookup m.k == some v' then some ({ type := "rw", key := some m.k } : Step) else none
+    let reads := if a.okReadsOnly && !ox.isOk then [] else itemReads ox a.rowItems
+    let item := reads.findSome? fun (k, rv) =>
+      let v := resolveVersion a.av k rv
+      match versionAfter (versionsOf a.av k) v with
+      | some v' => if bw.lookup k == some v' then some ({ type := "rw", key := some k } : Step) else none
       | none => none
     match item with
     | some s => some s
@@ -218,12 +231,12 @@ def graph (a : Analysis') (h : History) : Analysis := Id.run do
     let ox ← op x
     let oy ← op y
     let ws := extWritesOp ox
-    let item := oy.value.findSome? fun m =>
-      if m.f != .r then none else
-      match resolveVersion a.av m.k m.v with
-      | some v => if ws.lookup m.k == some v then some ({ type := "wr", key := some m.k } : Step) else none
+    let reads := if a.okReadsOnly && !oy.isOk then [] else itemReads oy a.rowItems
+    let item := reads.findSome? fun (k, rv) =>
+      match resolveVersion a.av k rv with
+      | some v => if ws.lookup k == some v then some ({ type := "wr", key := some k } : Step) else none
       -- `(= v (get writes k))` with v nil and k unwritten is true in Clojure
-      | none => if (ws.lookup m.k).isNone then some ({ type := "wr", key := some m.k } : Step) else none
+      | none => if (ws.lookup k).isNone then some ({ type := "wr", key := some k } : Step) else none
     match item with
     | some s => some s
     | none => (oy.value.filter (fun m => m.f == .rp && cached m)).findSome? fun m =>
@@ -244,18 +257,26 @@ def graph (a : Analysis') (h : History) : Analysis := Id.run do
 
 /-- `elle.closed-predicate/check` (closed_predicate.clj:689) up to `result-map`. -/
 def analyze (h : History) (extra : Extra) (o : Order := {}) (fixedVersionsAfter fixedWrite : Bool := false)
-    (cuts : List (Nat × Nat) := []) (fixedVersionLt : Bool := false) : Except String Anomalies := do
+    (cuts : List (Nat × Nat) := []) (fixedVersionLt : Bool := false) (rowItems okReadsOnly d20 : Bool := false) :
+    Except String Anomalies := do
   let hl := h.toList
   let av := allVersions hl
   let some ew := extWrites hl | throw "multiple-writes-of-same-value"
   let miss := predReadMissCases av hl
-  let an := combine ([graph { av, ew, fixedVersionsAfter, fixedWrite, fixedVersionLt } h] ++ extraAnalysesOf extra h)
-  let m ← cyclesE an o cuts
+  let an := combine ([graph { av, ew, fixedVersionsAfter, fixedWrite, fixedVersionLt, rowItems, okReadsOnly } h] ++
+    extraAnalysesOf extra h)
+  let m ← cyclesE an o cuts d20
   return addCases m "predicate-read-miss" (miss.map fun i => Case.other [i])
+
+/-- The analysis with the options' fixes: the deployed ones (`cpFixed`: D9, D10, D11) and
+round 3's (D20, D21, D22). -/
+def analyzeOpts (opts : Opts) (h : History) (extra : Extra) (o : Order := {}) : Except String Anomalies :=
+  analyze h extra o opts.cpFixed opts.cpFixed opts.cuts opts.cpFixed opts.fixD21 opts.fixD22 opts.fixD20
 
 def check (opts : Opts) (h : History) (fixedVersionsAfter fixedWrite : Bool := false)
     (fixedVersionLt : Bool := false) : Outcome :=
-  match analyze h (additionalGraphs opts) {} fixedVersionsAfter fixedWrite opts.cuts fixedVersionLt with
+  match analyze h (additionalGraphs opts) {} (fixedVersionsAfter || opts.cpFixed) (fixedWrite || opts.cpFixed)
+      opts.cuts (fixedVersionLt || opts.cpFixed) opts.fixD21 opts.fixD22 opts.fixD20 with
   | .error e => .thrown e
   | .ok m => .result (resultMap opts m)
 

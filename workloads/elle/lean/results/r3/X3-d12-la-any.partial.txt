@@ -1,0 +1,39 @@
+# fix-d12-la la fix=d12 seeds=40000 txns=4 mops=2 keys=2 threads=3 read=any maxread=3 secs=600 out=results/r3/X3-d12-la-any
+40000 histories so far (144s)
+
+- fix:caught-no-interpretation: 229
+- fix:false-positive:read-uncommitted: 9
+- fix:false-positive:strong-session-read-uncommitted: 10
+- fix:false-positive:strong-read-uncommitted: 8
+- fix:misses:strong-read-uncommitted: 9
+- fix:misses:strong-session-snapshot-isolation: 1
+- fix:misses:strong-session-read-uncommitted: 3
+- fix:misses:snapshot-isolation: 1
+- fix:regression: 1
+
+## fix:caught-no-interpretation (first at history 25)
+strong-session-read-uncommitted: was true, now invalid; no interpretation exists
+
+## fix:false-positive:read-uncommitted (first at history 149)
+read-uncommitted: invalid; an interpretation satisfies read-uncommitted
+
+## fix:false-positive:strong-session-read-uncommitted (first at history 149)
+strong-session-read-uncommitted: invalid; an interpretation satisfies strong-session-read-uncommitted
+
+## fix:false-positive:strong-read-uncommitted (first at history 149)
+strong-read-uncommitted: invalid; an interpretation satisfies strong-read-uncommitted
+
+## fix:misses:strong-read-uncommitted (first at history 888)
+strong-read-uncommitted: valid; every interpretation violates strong-read-uncommitted
+
+## fix:misses:strong-session-snapshot-isolation (first at history 4091)
+strong-session-snapshot-isolation: valid; every interpretation violates strong-session-snapshot-isolation
+
+## fix:misses:strong-session-read-uncommitted (first at history 9175)
+strong-session-read-uncommitted: valid; every interpretation violates strong-session-read-uncommitted
+
+## fix:misses:snapshot-isolation (first at history 10243)
+snapshot-isolation: valid; every interpretation violates snapshot-isolation
+
+## fix:regression (first at history 15756)
+strong-read-uncommitted: was invalid, now true; every interpretation violates strong-read-uncommitted

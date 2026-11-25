@@ -1,0 +1,427 @@
+# exhaust3 rr fixd13=1 fixd3=1 order=1 txns=3 mops=1 keys=2 threads=2 read=any prefix=2.2.0.0 secs=1780 out=results/r3/F3-d13-order-p2.2.0.0
+211968 timelines (complete), 211968 histories
+
+- fix:caught: 2880 timelines
+- completeness-assumed:read-committed: 4416 timelines
+- completeness-assumed:repeatable-read: 4416 timelines
+- completeness-assumed:consistent-view: 4416 timelines
+- completeness-assumed:snapshot-isolation: 4416 timelines
+- completeness-assumed:serializable: 4416 timelines
+- completeness-assumed:strong-session-read-committed: 3648 timelines
+- completeness-assumed:strong-session-snapshot-isolation: 3648 timelines
+- completeness-assumed:strong-session-serializable: 3648 timelines
+- completeness-assumed:strict-serializable: 2976 timelines
+- completeness-assumed:strong-read-committed: 2976 timelines
+- completeness-assumed:strong-snapshot-isolation: 2976 timelines
+
+## fix:caught
+strict-serializable: Elle as written true, fixed invalid; every interpretation violates it
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1), (5, 2)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":0}
+
+## completeness-assumed:read-committed
+Elle: read-committed valid; every interpretation where the options' assumption holds violates read-committed (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:repeatable-read
+Elle: repeatable-read valid; every interpretation where the options' assumption holds violates repeatable-read (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:consistent-view
+Elle: consistent-view valid; every interpretation where the options' assumption holds violates consistent-view (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:snapshot-isolation
+Elle: snapshot-isolation valid; every interpretation where the options' assumption holds violates snapshot-isolation (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:serializable
+Elle: serializable valid; every interpretation where the options' assumption holds violates serializable (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:strong-session-read-committed
+Elle: strong-session-read-committed valid; every interpretation where the options' assumption holds violates strong-session-read-committed (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:strong-session-snapshot-isolation
+Elle: strong-session-snapshot-isolation valid; every interpretation where the options' assumption holds violates strong-session-snapshot-isolation (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:strong-session-serializable
+Elle: strong-session-serializable valid; every interpretation where the options' assumption holds violates strong-session-serializable (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (3, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:strict-serializable
+Elle: strict-serializable valid; every interpretation where the options' assumption holds violates strict-serializable (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (4, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:strong-read-committed
+Elle: strong-read-committed valid; every interpretation where the options' assumption holds violates strong-read-committed (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (4, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+
+## completeness-assumed:strong-snapshot-isolation
+Elle: strong-snapshot-isolation valid; every interpretation where the options' assumption holds violates strong-snapshot-isolation (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]
+transaction order: [(1, 0), (4, 1)]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+

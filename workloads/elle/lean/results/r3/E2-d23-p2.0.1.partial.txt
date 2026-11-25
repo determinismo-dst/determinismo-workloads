@@ -1,0 +1,15 @@
+# fix-d5-la la fix=d5 base=elle exhaust=1 txns=3 mops=2 keys=1 threads=2 read=any maxread=2 interleave=0 fail=1 info=1 models=strong-session-read-uncommitted,strong-session-read-committed,strong-session-snapshot-isolation,strong-session-serializable,strong-read-uncommitted,strong-read-committed,strict-serializable prefix=2.0.1 secs=1750 shrink=300 out=results/r3/E2-d23-p2.0.1
+5000 histories so far (19s)
+
+- fix:caught: 302
+- fix:caught-no-interpretation: 65
+- fix:drops-false-positive: 116
+
+## fix:caught (first at history 175)
+strong-session-read-committed: was true, now invalid; every interpretation violates strong-session-read-committed
+
+## fix:caught-no-interpretation (first at history 189)
+strong-session-read-committed: was true, now invalid; no interpretation exists
+
+## fix:drops-false-positive (first at history 467)
+strong-read-uncommitted: was invalid, now true; an interpretation satisfies strong-read-uncommitted

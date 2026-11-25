@@ -29,6 +29,37 @@ def opInternalCase (o : Op) : Bool := Id.run do
     | _ => pure ()
   return false
 
+/-- D6's fix: every read of a key not preceded in its transaction by a write of that key (the
+first is `ext-reads`'s; the others are just as external). -/
+def allExtReads (txn : List Mop) : List (Nat × Val) := Id.run do
+  let mut written : List Nat := []
+  let mut out : List (Nat × Val) := []
+  for m in txn do
+    match m.f with
+    | .w => if !written.contains m.k then written := written ++ [m.k]
+    | .r => if !written.contains m.k then out := out ++ [(m.k, m.v)]
+    | _ => pure ()
+  return out
+
+/-- D6's fix: an `:ok` transaction's external reads of one key returning two values (a fuzzy,
+non-repeatable read: Berenson et al.'s P2). In every clean interpretation one of the two values
+precedes the other, so the transaction anti-depends on the version after the first value it
+read, which precedes (or is) the second's writer: a G-single-item. -/
+def fuzzyReadCases (h : List Op) : List Nat :=
+  (oks h).filterMap fun o =>
+    let rs := allExtReads o.value
+    if rs.any (fun (k, v) => rs.any fun (k', v') => k == k' && !(v == v')) then some o.index else none
+
+/-- D7's fix: an `:ok` transaction reading a value it writes later itself (values are unique, so
+it read its own future write): `:future-read`, which Elle's lattice takes as a G1c
+(consistency_model.clj:142-147), as list-append reports it. -/
+def futureReadCases (h : List Op) : List Nat :=
+  (oks h).filterMap fun o =>
+    let ms := o.value.zip (List.range o.value.length)
+    if ms.any (fun (m, i) => m.f == .r && m.v != .nil &&
+        ms.any fun (m', j) => i < j && m'.f == .w && m'.k == m.k && m'.v == m.v)
+    then some o.index else none
+
 /-- `g1a-cases` (rw_register.clj:110). -/
 def g1aCases (h : List Op) : List (Nat × Nat) :=
   let failed := failedWriteIndices isW h
@@ -56,10 +87,11 @@ def vgLink (vgs : VGraphs) (k : Nat) (a b : Val) : VGraphs :=
   amUpdate vgs k [] fun es => if es.any (fun (x, y) => x == a && y == b) then es else es ++ [(a, b)]
 
 /-- `initial-state-version-graphs` (rw_register.clj:184). -/
-def initialStateVersionGraphs (h : List Op) : VGraphs :=
+def initialStateVersionGraphs (h : List Op) (fixD6 : Bool := false) : VGraphs :=
   h.foldl (fun vgs o =>
     if o.isInvoke || o.isFail then vgs else
-    let kvs := extWrites o.value ++ (if o.isOk then extReads o.value else [])
+    -- D6's fix: every external read's value (nil precedes it, as each first read's)
+    let kvs := extWrites o.value ++ (if o.isOk then (if fixD6 then allExtReads else extReads) o.value else [])
     kvs.foldl (fun vgs (k, v) => if v == .nil then vgs else vgLink vgs k .nil v) vgs) []
 
 /-- `wfr-version-graphs` (rw_register.clj:255). -/
@@ -234,7 +266,7 @@ def realtimeFor (opts : Opts) (h : History) : Graph :=
 /-- Each version-graph source of `version-graphs` (rw_register.clj:652-673), in order. -/
 def sources (opts : Opts) (h : History) (o : Order := {}) : List (String × VGraphs) :=
   let hl := h.toList
-  [("initial-state", initialStateVersionGraphs hl)] ++
+  [("initial-state", initialStateVersionGraphs hl opts.fixD6)] ++
   (match opts.txnOrder with
    | some ord => [("transaction-order-keys", transactionOrderGraphs hl ord)]
    | none => []) ++
@@ -266,9 +298,42 @@ def versionGraphs (opts : Opts) (h : History) (o : Order := {}) : VGraphs × Boo
 def idxGet (idx : List (Nat × List (Val × List Nat))) (k : Nat) (v : Val) : List Nat :=
   ((idx.lookup k).bind (·.lookup v)).getD []
 
+/-- The versions reachable from `v` in key `k`'s version graph, `v` included. -/
+def vgReach (vgs : VGraphs) (k : Nat) (v : Val) : List Val := Id.run do
+  let es := (vgs.lookup k).getD []
+  let mut seen : List Val := [v]
+  let mut queue : List Val := [v]
+  let mut fuel := es.length + 2
+  while !queue.isEmpty && fuel > 0 do
+    fuel := fuel - 1
+    let next := queue.flatMap fun x => (es.filter (·.1 == x)).map (·.2)
+    let fresh := dedup (next.filter fun y => !seen.contains y)
+    seen := seen ++ fresh
+    queue := fresh
+  return seen
+
+/-- D1's fix, the register form: (reader, writer, key) where an edge v1 -> v2 of key `k`'s version
+graph gives the reader of v1 an rw edge to v2's writer, the reader also writes `k` (its final
+write v3), and v2 and v3 are unordered in that graph: the reader's write came first (`ww`), or the
+version after v1 came before it (a G-single through the reader). -/
+def unreadPairsRR (h : List Op) (vgs : VGraphs) (fixD13 fixD6 : Bool) : List (Nat × Nat × Nat) :=
+  let er := extIndex (if fixD6 then allExtReads else extReads) h
+  let ew := extIndex extWrites h fixD13
+  let writeOf (i : Nat) (k : Nat) : Option Val :=
+    (h.find? (·.index == i)).bind fun o => (extWrites o.value).lookup k
+  dedup <| vgs.flatMap fun (k, es) => es.flatMap fun (v1, v2) =>
+    (idxGet er k v1).flatMap fun r => (idxGet ew k v2).filterMap fun w =>
+      if r == w then none else
+      match writeOf r k with
+      | some v3 =>
+        if v3 == v2 || (vgReach vgs k v3).contains v2 || (vgReach vgs k v2).contains v3 then none
+        else some (r, w, k)
+      | none => none
+
 /-- `version-graphs->transaction-graph` (rw_register.clj:704). -/
-def versionGraphsToTxnGraph (h : List Op) (vgs : VGraphs) (fixD13 : Bool := false) (g1a : Bool := false) : Graph := Id.run do
-  let er := extIndex extReads h
+def versionGraphsToTxnGraph (h : List Op) (vgs : VGraphs) (fixD13 : Bool := false) (g1a : Bool := false)
+    (fixD6 : Bool := false) (unread : List (Nat × Nat × Nat) := []) : Graph := Id.run do
+  let er := extIndex (if fixD6 then allExtReads else extReads) h
   let ew := extIndex extWrites h fixD13
   -- D13's fix: an :info writer whose write an :ok read saw committed in every clean
   -- interpretation; for models prohibiting G1a its ww edges hold wherever the model can.
@@ -283,7 +348,9 @@ def versionGraphsToTxnGraph (h : List Op) (vgs : VGraphs) (fixD13 : Bool := fals
       let v1w := (idxGet ew k v1).filter isOkOp
       let v2w := idxGet ew k v2
       g := g.linkAllToAll v1w v2w Rels.WW
-      g := g.linkAllToAll v1r v2w Rels.RW
+      g := if unread.isEmpty then g.linkAllToAll v1r v2w Rels.RW
+        else v1r.foldl (fun g r => v2w.foldl (fun g w =>
+          if unread.contains (r, w, k) then g else g.link r w Rels.RW) g) g
       g := g.removeSelfEdges (dedup (v1r ++ v1w ++ v2w))
   return g
 
@@ -318,9 +385,9 @@ def stepOverInfo (h : List Op) (vgs : VGraphs) : VGraphs := Id.run do
   return out
 
 /-- `wr-graph` (rw_register.clj:833); `none`: a value written by two ops (Elle throws). -/
-def wrGraph (h : List Op) (fixD13 : Bool := false) : Option Graph := do
+def wrGraph (h : List Op) (fixD13 : Bool := false) (fixD6 : Bool := false) : Option Graph := do
   let ew := extIndex extWrites h fixD13
-  let er := extIndex extReads h
+  let er := extIndex (if fixD6 then allExtReads else extReads) h
   let mut g : Graph := {}
   for (k, vr) in er do
     for (v, readers) in vr do
@@ -332,28 +399,42 @@ def wrGraph (h : List Op) (fixD13 : Bool := false) : Option Graph := do
   return g
 
 /-- `graph` (rw_register.clj:879): wr, then ww+rw, then the extra order. -/
-def graphWith (opts : Opts) (extra : Extra) (h : History) : Except String Analysis := do
+def graphWith (opts : Opts) (extra : Extra) (h : History) (unreadPass : Bool := false) :
+    Except String Analysis := do
   let hl := h.toList
-  let some gwr := wrGraph hl opts.fixD13 | throw "IllegalArgumentException: value written by more than one op"
+  let some gwr := wrGraph hl opts.fixD13 opts.fixD6 | throw "IllegalArgumentException: value written by more than one op"
   let (vgs, cyclic) := versionGraphs opts h
   let vgs := if opts.fixD13 then stepOverInfo hl vgs else vgs
-  let tg := versionGraphsToTxnGraph hl vgs opts.fixD13 ((prohibitedAnomalyTypes opts).contains "G1a")
+  -- D1's second pass: each unread pair a `ww` step instead of `rw`
+  let unread := if unreadPass then unreadPairsRR hl vgs opts.fixD13 opts.fixD6 else []
+  let isUnread (a b k : Nat) : Bool := unread.contains (a, b, k)
+  let tg := versionGraphsToTxnGraph hl vgs opts.fixD13 ((prohibitedAnomalyTypes opts).contains "G1a") opts.fixD6 unread
   let mops (b : Nat) := (h[b]?.map (·.value)).getD []
+  let reads := if opts.fixD6 then allExtReads else extReads
   let explainWr : Nat → Nat → Option Step := fun a b =>
     let ws := extWrites (mops a)
-    let rs := extReads (mops b)
-    ws.findSome? fun (k, v) => match rs.lookup k with
-      | some v' => if v == v' then some { type := "wr", key := some k } else none
-      | none => none
+    let rs := reads (mops b)
+    ws.findSome? fun (k, v) => if rs.any (fun (k', v') => k == k' && v == v') then some { type := "wr", key := some k } else none
   let explainWwRw : Nat → Nat → Option Step := fun a b =>
     match explainOpDeps vgs (extWrites (mops a)) (extWrites (mops b)) with
     | some k => some { type := "ww", key := some k }
-    | none => (explainOpDeps vgs (extReads (mops a)) (extWrites (mops b))).map fun k =>
+    | none =>
+      let rs := reads (mops a)
+      -- with D6's fix every external read is tried, each alone (a key may be read twice)
+      (rs.findSome? fun r => match explainOpDeps vgs [r] (extWrites (mops b)) with
+        | some k => if isUnread a b k then none else some k
+        | none => none).map fun k =>
         ({ type := "rw", key := some k } : Step)
   let wr : Analysis := { graph := gwr, explain := explainWr }
   let wwrw : Analysis := { graph := tg, explain := explainWwRw,
                            anomalies := if cyclic then [("cyclic-versions", [])] else [] }
-  return combine ([wr, wwrw] ++ extraAnalysesOf extra h)
+  if unread.isEmpty then return combine ([wr, wwrw] ++ extraAnalysesOf extra h)
+  let gun : Graph := unread.foldl (fun g (r, w, _) => g.link r w Rels.WW) ({} : Graph)
+  let explainUn : Nat → Nat → Option Step := fun a b =>
+    (unread.find? fun (r, w, _) => r == a && w == b).map fun (_, _, k) =>
+      ({ type := "ww", key := some k, unread := true } : Step)
+  let un : Analysis := { graph := gun, explain := explainUn }
+  return combine ([wr, wwrw, un] ++ extraAnalysesOf extra h)
 
 def graph (opts : Opts) (h : History) : Except String Analysis := graphWith opts (additionalGraphs opts) h
 
@@ -365,11 +446,32 @@ def analyze (opts : Opts) (h : History) (extra : Extra) (o : Order := {}) : Exce
   let internal := (oks hl).filter opInternalCase
   let lost := lostUpdateCases isW hl
   let an ← graphWith opts extra h
-  let m ← cyclesE an o opts.cuts
+  let m ← cyclesE an o opts.cuts opts.fixD20
+  -- D1's fix (register form): the G-singles through unread pairs, from a second search
+  let m ← if !opts.fixD1 then pure m else do
+    let vgs := (versionGraphs opts h).1
+    let vgs := if opts.fixD13 then stepOverInfo hl vgs else vgs
+    if (unreadPairsRR hl vgs opts.fixD13 opts.fixD6).isEmpty then pure m else
+    let an2 ← graphWith opts extra h true
+    let m2 ← cyclesE an2 o [] opts.fixD20
+    let retyped : List (String × Case) := m2.flatMap fun (t, cs) => cs.filterMap fun c =>
+      match c with
+      | .cycle ops steps =>
+        let v := if t.endsWith "-realtime" then "-realtime" else if t.endsWith "-process" then "-process" else ""
+        let base := String.ofList (t.toList.take (t.length - v.length))
+        let t' := if steps.any (·.unread) && (base == "G0" || base == "G1c") then "G-single-item" ++ v else t
+        some (t', c)
+      | _ => none
+    pure (retyped.foldl (fun m (t, c) =>
+      let have_ := (m.lookup t).getD []
+      if have_.any (fun c' => match c, c' with | .cycle a _, .cycle b _ => a == b | _, _ => false) then m
+      else addCases m t [c]) m)
   let m := addCases m "internal" (internal.map fun o => Case.other [o.index])
   let m := addCases m "G1a" (g1a.map fun (r, w) => Case.other [r, w])
   let m := addCases m "G1b" (g1b.map fun (r, w) => Case.other [r, w])
   let m := addCases m "lost-update" (lost.map fun (_, _, ts) => Case.other ts)
+  let m := if opts.fixD6 then addCases m "fuzzy-read" ((fuzzyReadCases hl).map fun i => Case.other [i]) else m
+  let m := if opts.fixD7 then addCases m "future-read" ((futureReadCases hl).map fun i => Case.other [i]) else m
   return m
 
 /-- `elle.rw-register/check` (rw_register.clj:909). -/

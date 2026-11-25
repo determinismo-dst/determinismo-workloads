@@ -52,6 +52,34 @@ def deduplicated (ops : List Op) : List Op :=
     | .r, .list l => { m with v := .list (dedup l) }
     | _, _ => m }
 
+/-- The deployed service's `deduplicated` (service-5fc908e/src/elle_service.clj:164-190, D17's
+fix): each `:ok` read holding a value twice is dropped from its completion and from its
+invocation (the process's open one, by position). -/
+def deduplicatedFixed (ops : List Op) : List Op := Id.run do
+  let dup (m : Mop) : Bool := m.f == .r && (match m.v with
+    | .list l => l.length != (dedup l).length
+    | _ => false)
+  let mut openInv : List (Nat × Nat) := []
+  let mut drops : List (Nat × List Nat) := []
+  let mut i := 0
+  for o in ops do
+    if o.isInvoke then openInv := amPut openInv o.process i
+    else
+      let js := if o.isOk then ((o.value.zip (List.range o.value.length)).filter (dup ·.1)).map (·.2) else []
+      if !js.isEmpty then
+        drops := amPut drops i js
+        if let some j := openInv.lookup o.process then drops := amPut drops j js
+      openInv := openInv.filter (·.1 != o.process)
+    i := i + 1
+  return (ops.zip (List.range ops.length)).map fun (o, i) =>
+    match drops.lookup i with
+    | some js => { o with value := ((o.value.zip (List.range o.value.length)).filter (!js.contains ·.2)).map (·.1) }
+    | none => o
+
+/-- The deployed service's switches: Elle's patched namespaces (service-5fc908e/src/elle: D3, D9,
+D10, D11, D13, D14) and the service's own changes (D16, D17, D19). -/
+def deployedOpts : Opts := { fixD3 := true, fixD13 := true, cpFixed := true, perKeyFixed := true }
+
 structure Answer where
   valid : Valid
   types : List String
@@ -62,28 +90,32 @@ structure Answer where
 found). -/
 def judge (model : Model) (opts : Opts) (h : History) : Outcome :=
   let an := match model with
-    | .listAppend => ListAppend.analyze h (additionalGraphs opts) {} false opts.cuts
+    | .listAppend => ListAppend.analyze h (additionalGraphs opts) {} false opts.cuts (ListAppend.fxOf opts)
     | .register => RwRegister.analyze opts h (additionalGraphs opts)
-    | .closedPredicate => ClosedPredicate.analyze h (additionalGraphs opts) {} false false opts.cuts
+    | .closedPredicate => ClosedPredicate.analyzeOpts opts h (additionalGraphs opts)
   match an with
   | .error e => .thrown e
   | .ok m => .result (resultMap opts m true)
 
 /-- `check` (elle_service.clj:221) on parsed operations. -/
-def check (model : Model) (consistency : String) (linearizableKeys : Bool) (ops : List Op) :
-    Except String Answer := do
+def check (model : Model) (consistency : String) (linearizableKeys : Bool) (ops : List Op)
+    (deployed : Bool := false) (base : Opts := {}) : Except String Answer := do
   let ops := closed ops
   let twice := if model == .listAppend then duplicates ops else []
-  let h := (if twice.isEmpty then ops else deduplicated ops).toArray
+  let h := (if twice.isEmpty then ops else if deployed then deduplicatedFixed ops else deduplicated ops).toArray
   let perKey := consistency == "strict-serializable-per-key"
-  let opts : Opts := { models := some [if perKey then "strict-serializable" else consistency],
-                       linearizableKeys, perKey }
+  let base := if deployed then { base with fixD3 := true, fixD13 := true, cpFixed := true, perKeyFixed := true } else base
+  let model1 := if perKey then "strict-serializable" else consistency
+  let opts : Opts := { base with models := some [model1], linearizableKeys := linearizableKeys, perKey := perKey }
   match judge model opts h with
   | .thrown e => throw e
   | .result r =>
     if twice.isEmpty then return { valid := r.valid, types := r.anomalyTypes, not_ := r.boundary.1 }
-    else return { valid := .false_, types := dedup (r.anomalyTypes ++ ["duplicate-elements"]),
-                  not_ := r.boundary.1 }
+    else
+      let types := dedup (r.anomalyTypes ++ ["duplicate-elements"])
+      -- the deployed service: `not` is the boundary of the answer's types (elle_service.clj:263-265)
+      return { valid := .false_, types,
+               not_ := if deployed then (Model.friendlyBoundary types).1 else r.boundary.1 }
 
 /-! ## strict-serializable-per-key, as the service states it (elle_service.clj:17-20)
 

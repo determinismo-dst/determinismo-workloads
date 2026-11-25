@@ -99,6 +99,87 @@ def pairIndexFold : Fold (Except String PairChunk) (Except String (List (Nat × 
     let pairs := running.foldl (fun m (_, i) => amPut m i (-1)) pairs
     return canonMap pairs toString
 
+/-! ## Round 3's D15 fix: a double invocation across chunks -/
+
+/-- A chunk's partial index, and the processes whose first op in the chunk is an invocation. -/
+structure PairChunkFx where
+  c : PairChunk := {}
+  seen : List Nat := []
+  firstInv : List Nat := []
+  deriving Inhabited
+
+def pairReduceFx (ops : List Op) : Except String PairChunkFx :=
+  ops.foldlM (fun (x : PairChunkFx) o => do
+    let p := o.process
+    let c := x.c
+    let firstInv := if o.isInvoke && !x.seen.contains p then x.firstInv ++ [p] else x.firstInv
+    let c ← if o.isInvoke then
+        (if (c.tail.lookup p).isSome then .error ":jepsen.history/double-invoke"
+         else .ok { c with tail := amPut c.tail p o.index })
+      else
+        match c.tail.lookup p with
+        | some i => .ok { c with pairs := c.pairs ++ [(i, Int.ofNat o.index), (o.index, Int.ofNat i)],
+                                 tail := c.tail.filter (·.1 != p) }
+        | none =>
+          if (c.head.lookup p).isSome then .error ":jepsen.history/double-complete"
+          else .ok { c with head := amPut c.head p o.index }
+    return { c, seen := if x.seen.contains p then x.seen else x.seen ++ [p], firstInv }) {}
+
+/-- The fixed combiner: after the chunk's head completes running invocations, a process still
+running whose first op in the chunk is an invocation invoked twice (history.clj's reducer only
+saw its own chunk's tail). -/
+def pairCombineFx (acc : Except String (List (Nat × Int) × List (Nat × Nat))) (r : Except String PairChunkFx) :
+    Except String (List (Nat × Int) × List (Nat × Nat)) := do
+  let (pairs, running) ← acc
+  let x ← r
+  let c := x.c
+  let mut pairs := c.pairs.foldl (fun m (k, v) => amPut m k v) pairs
+  let mut running := running
+  for (p, i1) in c.head do
+    match running.lookup p with
+    | some i0 =>
+      pairs := amPut (amPut pairs i0 (Int.ofNat i1)) i1 (Int.ofNat i0)
+      running := running.filter (·.1 != p)
+    | none => throw ":jepsen.history/not-running"
+  for p in x.firstInv do
+    if (running.lookup p).isSome then throw ":jepsen.history/double-invoke"
+  running := c.tail.foldl (fun m (p, i) => amPut m p i) running
+  return (pairs, running)
+
+def pairIndexFoldFx : Fold (Except String PairChunkFx) (Except String (List (Nat × Int) × List (Nat × Nat))) (Except String (List String)) where
+  reduce := pairReduceFx
+  cid := .ok ([], [])
+  combine := pairCombineFx
+  final := fun acc => do
+    let (pairs, running) ← acc
+    let pairs := running.foldl (fun m (_, i) => amPut m i (-1)) pairs
+    return canonMap pairs toString
+
+/-- D15's fix: every chunking gives the fixed fold's one-chunk result, which is the fold's as
+written whenever the history is well formed (as written, a history it accepts in one chunk). -/
+def checkD15 (h : History) (maxChunkings : Nat := 512) : List (String × String) := Id.run do
+  let ops := h.toList
+  let one := [ops]
+  let p1 := pairIndexFold.onChunks one
+  let f1 := pairIndexFoldFx.onChunks one
+  -- an error (the history rejected) is one outcome, whichever error a chunking meets first
+  let eq (a b : Except String (List String)) : Bool := match a, b with
+    | .ok a, .ok b => a == b
+    | .error _, .error _ => true
+    | _, _ => false
+  let mut out : Array (String × String) := #[]
+  if !eq p1 f1 then out := out.push ("d15:one-chunk-differs", s!"as written {repr p1}; fixed {repr f1}")
+  for ch in (chunkings ops).take maxChunkings do
+    let fc := pairIndexFoldFx.onChunks ch
+    if !eq f1 fc then
+      out := out.push ("d15:chunking", s!"one chunk {repr f1}; chunks {ch.map fun c => c.map (·.index)}: {repr fc}")
+      break
+  for ch in (chunkings ops).take maxChunkings do
+    if !eq p1 (pairIndexFold.onChunks ch) then
+      out := out.push ("d15:as-written-chunking", "")
+      break
+  return out.toList
+
 /-! ## elle.txn's `failed-write-indices` and `intermediate-write-indices` (txn.clj:111-189) -/
 
 abbrev KVI := List (Nat × List (Val × Nat))

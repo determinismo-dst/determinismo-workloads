@@ -1,0 +1,49 @@
+[{:id 0 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}]}
+{:id 1 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2]]}]}
+{:id 2 :workload :list-append :opts {:consistency-models [:strong-session-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]}
+{:id 3 :workload :list-append :opts {:consistency-models [:strong-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]}
+{:id 4 :workload :list-append :opts {:consistency-models [:strong-session-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 3]] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3]]}
+ {:process 0, :type :fail, :f :txn, :value [[:append 0 3]]}]}
+{:id 5 :workload :list-append :opts {:consistency-models [:strong-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 3]] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3]]}
+ {:process 0, :type :fail, :f :txn, :value [[:append 0 3]]}]}
+{:id 6 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [3 4]] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3] [:append 0 4]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 3] [:append 0 4]]}]}]

@@ -1,0 +1,51 @@
+# deployed-la la seeds=40000 txns=4 mops=2 keys=2 threads=3 read=any maxread=3 secs=900 out=results/r3/P1-la-any
+40000 histories so far (256s)
+
+- deployed:drops-false-positive: 126
+- deployed:caught: 626
+- deployed:false-positive:read-uncommitted: 9
+- deployed:false-positive:strong-session-read-uncommitted: 10
+- deployed:false-positive:strong-read-uncommitted: 8
+- deployed:misses:strong-read-uncommitted: 8
+- perkey:round2-reading-b-differs: 4
+- deployed:misses:strong-session-snapshot-isolation: 1
+- deployed:caught-no-interpretation: 24
+- deployed:misses:strong-session-read-uncommitted: 3
+- deployed:misses:snapshot-isolation: 1
+- deployed:regression: 1
+
+## deployed:drops-false-positive (first at history 28)
+strong-read-uncommitted: was invalid, now true; an interpretation satisfies strong-read-uncommitted
+
+## deployed:caught (first at history 111)
+strong-session-read-committed: was true, now invalid; every interpretation violates strong-session-read-committed
+
+## deployed:false-positive:read-uncommitted (first at history 149)
+read-uncommitted: invalid; an interpretation satisfies read-uncommitted
+
+## deployed:false-positive:strong-session-read-uncommitted (first at history 149)
+strong-session-read-uncommitted: invalid; an interpretation satisfies strong-session-read-uncommitted
+
+## deployed:false-positive:strong-read-uncommitted (first at history 149)
+strong-read-uncommitted: invalid; an interpretation satisfies strong-read-uncommitted
+
+## deployed:misses:strong-read-uncommitted (first at history 888)
+strong-read-uncommitted: valid; every interpretation violates strong-read-uncommitted
+
+## perkey:round2-reading-b-differs (first at history 3417)
+round 2's (b), with every process edge: false; as stated: true
+
+## deployed:misses:strong-session-snapshot-isolation (first at history 4091)
+strong-session-snapshot-isolation: valid; every interpretation violates strong-session-snapshot-isolation
+
+## deployed:caught-no-interpretation (first at history 4169)
+strong-session-read-committed: was true, now invalid; no interpretation exists
+
+## deployed:misses:strong-session-read-uncommitted (first at history 9175)
+strong-session-read-uncommitted: valid; every interpretation violates strong-session-read-uncommitted
+
+## deployed:misses:snapshot-isolation (first at history 10243)
+snapshot-isolation: valid; every interpretation violates snapshot-isolation
+
+## deployed:regression (first at history 34681)
+strong-read-uncommitted: was invalid, now true; every interpretation violates strong-read-uncommitted

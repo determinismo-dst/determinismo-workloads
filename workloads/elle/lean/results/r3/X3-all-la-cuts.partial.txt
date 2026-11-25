@@ -1,0 +1,19 @@
+# fix-all-la la fix=all seeds=30000 txns=5 mops=3 keys=2 threads=3 read=cuts secs=900 out=results/r3/X3-all-la-cuts
+30000 histories so far (154s)
+
+- fix:caught-no-interpretation: 197
+- fix:caught: 146
+- fix:drops-false-positive: 24
+- fix:misses:snapshot-isolation: 1
+
+## fix:caught-no-interpretation (first at history 35)
+strong-session-read-uncommitted: was true, now invalid; no interpretation exists
+
+## fix:caught (first at history 204)
+consistent-view: was true, now invalid; every interpretation violates consistent-view
+
+## fix:drops-false-positive (first at history 1891)
+read-uncommitted: was invalid, now true; an interpretation satisfies read-uncommitted
+
+## fix:misses:snapshot-isolation (first at history 4171)
+snapshot-isolation: valid; every interpretation violates snapshot-isolation

@@ -1,0 +1,15 @@
+# fix-d5-la la fix=d5 seeds=40000 txns=4 mops=2 keys=2 threads=3 read=any maxread=3 models=read-uncommitted,strong-session-read-uncommitted,strong-read-uncommitted,read-committed,strong-read-committed secs=600 out=results/r3/X3-d5-la-any
+40000 histories so far (32s)
+
+- fix:caught-no-interpretation: 56
+- fix:drops-false-positive: 27
+- fix:caught: 11
+
+## fix:caught-no-interpretation (first at history 115)
+strong-session-read-uncommitted: was true, now invalid; no interpretation exists
+
+## fix:drops-false-positive (first at history 149)
+read-uncommitted: was invalid, now true; an interpretation satisfies read-uncommitted
+
+## fix:caught (first at history 888)
+strong-read-uncommitted: was true, now invalid; every interpretation violates strong-read-uncommitted

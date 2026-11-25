@@ -35,6 +35,28 @@ structure Opts where
   ww and rw edges into them, never ww out), and a version written only by `:info` ops is
   stepped over (its predecessors linked to its successors). -/
   fixD13 : Bool := false
+  /-- The deployed service's closed-predicate fixes (service-5fc908e/src/elle/closed_predicate.clj:
+  D9's `:w`, D10's `versions-after` paren and D11's `version<`). -/
+  cpFixed : Bool := false
+  /-- The deployed service's `keys-of` (elle_service.clj:194-202, D19's fix): an init's keys are
+  its map's keys, and a predicate read reads every key. -/
+  perKeyFixed : Bool := false
+  /-- Round 3's fixes (scratch/r3/fix-dN): D1 unread appends after a read of the same key, D2
+  process and real-time graphs together, D4 failed appends stepped over, D5 `:info` appends
+  unindexed for models allowing G1a, D6 every external read and fuzzy reads, D7 rw-register
+  future reads, D8 garbage reads, D12 tie order by first read, D20 item anti-dependencies in
+  mixed cycles, D21 predicate rows as item reads, D22 explainers read `:ok` ops only. -/
+  fixD1 : Bool := false
+  fixD2 : Bool := false
+  fixD4 : Bool := false
+  fixD5 : Bool := false
+  fixD6 : Bool := false
+  fixD7 : Bool := false
+  fixD8 : Bool := false
+  fixD12 : Bool := false
+  fixD20 : Bool := false
+  fixD21 : Bool := false
+  fixD22 : Bool := false
   deriving Repr, Inhabited
 
 /-- An anomaly case. -/
@@ -169,7 +191,7 @@ def removeRedundantCycleExists (m : Anomalies) : Anomalies :=
 
 /-- `elle.txn/cycle-explainer`: the type of a cycle from its steps' types. `none`: Elle throws
 "Don't know how to classify". -/
-def classify (steps : List Step) : Option String :=
+def classify (steps : List Step) (d20 : Bool := false) : Option String :=
   let n (t : String) := (steps.filter (·.type == t)).length
   let realtime := n "realtime"
   let process := n "process"
@@ -184,8 +206,11 @@ def classify (steps : List Step) : Option String :=
   let dd : Option String :=
     if rwc == 1 then some (if predicate then "G-single" else "G-single-item")
     else if 1 < rwc then
-      some (if rwAdj then (if predicate then "G2" else "G2-item")
-            else (if predicate then "G-nonadjacent" else "G-nonadjacent-item"))
+      -- D20's fix: Adya's G2-item is a cycle with one or more item anti-dependencies, whatever
+      -- else it holds; Elle named any cycle with a predicate edge G2
+      let item := if d20 then 0 < n "rw" else !predicate
+      some (if rwAdj then (if item then "G2-item" else "G2")
+            else (if item then "G-nonadjacent-item" else "G-nonadjacent"))
     else if 0 < n "wr" + n "wrp" then some "G1c"
     else if 0 < n "ww" + n "wwp" then some "G0"
     else none
@@ -211,6 +236,18 @@ def baseCycleSpecs : List (String × Spec) := [
   ("G2-item", { rels := WW ||| WWP ||| WR ||| WRP ||| RW, multiple := some RW, type := some "G2-item" }),
   ("G2", { rels := WW ||| WWP ||| WR ||| WRP ||| RW ||| RWP, multiple := some (RW ||| RWP), type := some "G2" })]
 
+/-- D20's fix: the item searches also take predicate anti-dependencies, as long as one item
+anti-dependency is in the cycle. -/
+def baseCycleSpecsFx (d20 : Bool) : List (String × Spec) :=
+  if !d20 then baseCycleSpecs else baseCycleSpecs.map fun (n, s) =>
+    if n == "G-nonadjacent-item" then
+      (n, { s with nonadjacent := some (Rels.RW ||| Rels.RWP), multiple := some (Rels.RW ||| Rels.RWP),
+                   required := [Rels.RW] })
+    else if n == "G2-item" then
+      (n, { s with rels := Rels.WW ||| Rels.WWP ||| Rels.WR ||| Rels.WRP ||| Rels.RW ||| Rels.RWP,
+                   multiple := some (Rels.RW ||| Rels.RWP), required := [Rels.RW] })
+    else (n, s)
+
 /-- `cycle-anomaly-spec-variant` (txn.clj:610). -/
 def specVariant (variant : String) (p : String × Spec) : String × Spec :=
   let rel := if variant == "realtime" then Rels.REALTIME else Rels.PROCESS
@@ -220,9 +257,11 @@ def specVariant (variant : String) (p : String × Spec) : String × Spec :=
   (p.1 ++ "-" ++ variant, s')
 
 /-- `cycle-anomaly-specs` (txn.clj:630): a sorted map by `anomaly-depth-compare`. -/
-def cycleSpecs : List (String × Spec) :=
-  (baseCycleSpecs.flatMap fun p => [p, specVariant "process" p, specVariant "realtime" p]).mergeSort
+def cycleSpecsFx (d20 : Bool) : List (String × Spec) :=
+  ((baseCycleSpecsFx d20).flatMap fun p => [p, specVariant "process" p, specVariant "realtime" p]).mergeSort
     fun a b => Model.anomalyLt a.1 b.1 || a.1 == b.1
+
+def cycleSpecs : List (String × Spec) := cycleSpecsFx false
 
 def cycleTypes : List String := cycleSpecs.map (·.1)
 def processAnomalyTypes : List String := cycleTypes.filter (·.endsWith "-process")
@@ -246,13 +285,26 @@ inductive Extra where | none | process | realtime
   | processInfo
   /-- D3's fix: real-time edges never into `:info` ops (models allowing G1a). -/
   | realtimeNoInfo
+  /-- The deployed service's per-key graph (D19's `keys-of`). -/
+  | realtimePerKeyFixed
+  /-- D2's fix: the process graph, then the real-time graph (each as D3's fix picks it). -/
+  | processRealtime (intoInfo noInfo : Bool)
   deriving Repr, DecidableEq
+
+/-- D2's fix: the models prohibit some process anomaly but not its real-time variant, so a
+process cycle found as its real-time variant would pass. -/
+def needsProcessToo (o : Opts) : Bool :=
+  let prohibited := prohibitedAnomalyTypes o
+  processAnomalyTypes.any fun t =>
+    prohibited.contains t && !prohibited.contains (String.ofList (t.toList.take (t.length - "process".length)) ++ "realtime")
 
 def additionalGraphs (o : Opts) : Extra :=
   let ats := reportableAnomalyTypes o
   let g1a := (prohibitedAnomalyTypes o).contains "G1a"
   if realtimeAnomalyTypes.any ats.contains then
-    (if o.perKey then .realtimePerKey else if o.fixD3 && !g1a then .realtimeNoInfo else .realtime)
+    (if o.perKey then (if o.perKeyFixed then .realtimePerKeyFixed else .realtimePerKey)
+     else if o.fixD2 && needsProcessToo o then .processRealtime (o.fixD3 && g1a) (o.fixD3 && !g1a)
+     else if o.fixD3 && !g1a then .realtimeNoInfo else .realtime)
   else if processAnomalyTypes.any ats.contains then (if o.fixD3 && g1a then .processInfo else .process)
   else .none
 
@@ -263,6 +315,8 @@ def extraAnalysesOf (e : Extra) (h : History) : List Analysis :=
   | .process => [processGraph h]
   | .processInfo => [processGraph h true]
   | .realtimeNoInfo => [realtimeGraph h true]
+  | .realtimePerKeyFixed => [realtimePerKeyGraph h true]
+  | .processRealtime i n => [combine [processGraph h i, realtimeGraph h n]]
   | .none => []
 
 def extraAnalyses (o : Opts) (h : History) : List Analysis := extraAnalysesOf (additionalGraphs o) h
@@ -270,7 +324,7 @@ def extraAnalyses (o : Opts) (h : History) : List Analysis := extraAnalysesOf (a
 /-- `cycle-in-scc-of-type` (txn.clj:758): search, explain, keep only a matching type. An
 unexplained pair (`explain-cycle-pair-data`, core.clj:445) or an unclassified cycle
 (txn.clj:526) throws, as in Elle. -/
-def cycleInSccOfType (g : Graph) (o : Order) (a : Analysis) (p : String × Spec) :
+def cycleInSccOfType (g : Graph) (o : Order) (a : Analysis) (p : String × Spec) (d20 : Bool := false) :
     Except String (Option (List Nat × List Step × String)) :=
   let s := p.2
   let rels := s.rels ||| (s.nonadjacent.getD 0) ||| (s.required.foldl (· ||| ·) 0) |||
@@ -281,7 +335,7 @@ def cycleInSccOfType (g : Graph) (o : Order) (a : Analysis) (p : String × Spec)
     match explainCycle a c with
     | none => .error s!"IllegalStateException: Explainer was unable to explain the relationship (cycle {c})"
     | some steps =>
-      match classify steps with
+      match classify steps d20 with
       | none => .error "IllegalStateException: Don't know how to classify"
       | some t =>
         match s.type with
@@ -298,14 +352,17 @@ def impossibleCycleAnomalies (cases : List (String × String × List Nat)) : Lis
 /-- The searches of `cycle-cases-in-scc`'s reduce (txn.clj:876-891), in order: each type as it is
 pushed on the `types` atom, and its result (pushed on `cycles` when found). A search that throws
 ends the list with its error. -/
-def sccSearches (g : Graph) (o : Order) (a : Analysis) :
+def sccSearches (g : Graph) (o : Order) (a : Analysis) (d20 : Bool := false) :
     List (String × Except String (Option (List Nat × List Step × String))) := Id.run do
   let ex := cycleExistsCases g
-  let mut redundant := impossibleCycleAnomalies ex
+  -- D20's fix: PL-2.99's cycle-exists subgraph has no predicate anti-dependencies, while a G2-item
+  -- (or G-nonadjacent-item) cycle may hold some beside an item one: its absence rules neither out
+  let mut redundant := (impossibleCycleAnomalies ex).filter fun t =>
+    !(d20 && (t.startsWith "G2-item" || t.startsWith "G-nonadjacent-item"))
   let mut out := []
-  for p in cycleSpecs do
+  for p in cycleSpecsFx d20 do
     if redundant.contains p.1 then continue
-    let r := cycleInSccOfType g o a p
+    let r := cycleInSccOfType g o a p d20
     out := out ++ [(p.1, r)]
     match r with
     | .ok (some _) => redundant := redundant ++ Model.allImpliedAnomalies [p.1]
@@ -351,11 +408,11 @@ def cutPoints (searches : List (String × Except String (Option (List Nat × Lis
 timeout: a `:cycle-search-timeout` case, the fallback cycle explained (txn.clj:729-756; both of
 its branches take `g/fallback-cycle` of the whole SCC), the cycle-exists cases and the cycles found
 so far (txn.clj:867-874). -/
-def cycleCasesInSccE (g : Graph) (o : Order) (a : Analysis) (cut : Option Nat := none) :
+def cycleCasesInSccE (g : Graph) (o : Order) (a : Analysis) (cut : Option Nat := none) (d20 : Bool := false) :
     Except String Anomalies := do
   let ex := cycleExistsCases g
   let exCases := ex.map fun (t, _, scc) => (t, Case.exists_ t scc)
-  let searches := sccSearches g o a
+  let searches := sccSearches g o a d20
   match cut with
   | none =>
     let mut found : List (String × Case) := []
@@ -375,7 +432,7 @@ def cycleCasesInSccE (g : Graph) (o : Order) (a : Analysis) (cut : Option Nat :=
     let fc := fallbackCycle g o
     let some steps := explainCycle a fc
       | throw s!"IllegalStateException: Explainer was unable to explain the relationship (fallback cycle {fc})"
-    let some ft := classify steps | throw "IllegalStateException: Don't know how to classify"
+    let some ft := classify steps d20 | throw "IllegalStateException: Don't know how to classify"
     let foundTypes := cycs.map (·.2.2)
     let notContain := (types.dropLast).filter (!foundTypes.contains ·)
     let timeoutCase := Case.other (notContain.length :: [types.length])
@@ -391,13 +448,13 @@ def cycleCasesInScc (g : Graph) (o : Order) (a : Analysis) : Anomalies :=
 
 /-- `cycles` (txn.clj:928): `cuts` gives the cut point of each SCC's search (by its place in
 `sccs`). -/
-def cyclesE (a : Analysis) (o : Order) (cuts : List (Nat × Nat) := []) : Except String Anomalies := do
+def cyclesE (a : Analysis) (o : Order) (cuts : List (Nat × Nat) := []) (d20 : Bool := false) : Except String Anomalies := do
   let mut m : Anomalies := a.anomalies.map fun (k, _) => (k, [Case.flag])
   if a.graph.size == 0 then m := amPut m "empty-transaction-graph" [Case.flag]
   let mut i := 0
   for scc in sccs a.graph o do
     let g := a.graph.select scc
-    for (t, cs) in ← cycleCasesInSccE g o a (cuts.lookup i) do
+    for (t, cs) in ← cycleCasesInSccE g o a (cuts.lookup i) d20 do
       m := addCases m t cs
     i := i + 1
   return m

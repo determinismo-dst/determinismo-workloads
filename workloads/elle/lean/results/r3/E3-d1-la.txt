@@ -1,0 +1,29 @@
+# fix-d1-la la fix=d1 exhaust=1 txns=3 mops=2 keys=2 threads=1 read=any maxread=2 interleave=0 fail=0 info=0 secs=1700 out=results/r3/E3-d1-la
+160200 histories
+
+- fix:caught-no-interpretation: 340
+
+## fix:caught-no-interpretation
+consistent-view: was true, now invalid; no interpretation exists
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 2] [:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":5,"value":0}
+{"name":"read.value","options":5,"value":0}
+

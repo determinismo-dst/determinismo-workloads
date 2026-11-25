@@ -119,8 +119,10 @@ def valuesFromSingleAppends (h : List Op) : List (Nat × List (List Int)) :=
   m.filterMap fun (k, v) => v.map fun e => (k, [[e]])
 
 /-- `sorted-values` (list_append.clj:271): per key, distinct non-empty read values by length.
-Ties keep the order of Clojure's hash set of values (replicated), reversed when `flip`. -/
-def sortedValues (h : List Op) (flip : Bool := false) : List (Nat × List (List Int)) :=
+Ties keep the order of Clojure's hash set of values (replicated), reversed when `flip`. With D12's
+fix (`byFirst`), ties are ordered by where each value was first read (the list is built in
+history order). -/
+def sortedValues (h : List Op) (flip : Bool := false) (byFirst : Bool := false) : List (Nat × List (List Int)) :=
   let fromReads := h.foldl (fun (acc : List (Nat × List (List Int))) o => o.value.foldl (fun acc m =>
     match m.f, m.v with
     | .r, .list v => if v.isEmpty then acc else amUpdate acc m.k [] fun vs => if vs.contains v then vs else vs ++ [v]
@@ -129,7 +131,7 @@ def sortedValues (h : List Op) (flip : Bool := false) : List (Nat × List (List 
   let merged := single.foldl (fun acc (k, v) => if (acc.lookup k).isSome then acc else acc ++ [(k, v)]) fromReads
   merged.map fun (k, vs) =>
     -- the read values' set, in Clojure's hash-set order (`datafy` of a Bifurcan set)
-    let vs := Hash.vectorsOrder vs
+    let vs := if byFirst then vs else Hash.vectorsOrder vs
     let vs := if flip then vs.reverse else vs
     (k, vs.mergeSort fun a b => decide (a.length ≤ b.length))
 
@@ -162,13 +164,14 @@ def wiGet (wi : List (Nat × List (Int × Nat))) (k : Nat) (e : Int) : Option Na
   (wi.lookup k).bind (·.lookup e)
 
 /-- `dirty-update-cases` (list_append.clj:434). `none`: the `(assert t2 ..)` fails, which Elle
-throws. -/
-def dirtyUpdateCases (ai : List (Nat × List Int)) (h : History) : Option (List Nat) := do
+throws. D8's fix (`skipGarbage`): an element no op appended is passed over. -/
+def dirtyUpdateCases (ai : List (Nat × List Int)) (h : History) (skipGarbage : Bool := false) : Option (List Nat) := do
   let wi := writeIndex h.toList
   let mut cases : List Nat := []
   for (k, vs) in ai do
     let mut t1 : OpType := .ok
     for v in vs do
+      if skipGarbage && (wiGet wi k v).isNone then continue
       let t2i ← wiGet wi k v
       let t2 := (h[t2i]?.map (·.type)).getD .ok
       match t1, t2 with
@@ -187,12 +190,35 @@ def readIndex (h : List Op) : List (Nat × List (Option Int × List Nat)) :=
       amUpdate idx m.k [] (amUpdate · (peekV m.v) [] (· ++ [o.index]))
     else idx) idx) []
 
+/-- D8's fix: `:ok` reads holding an element no operation appended (a garbage read, README
+"Garbage Reads"): (reader, key, element). -/
+def garbageReadCases (h : List Op) : List (Nat × Nat × Int) :=
+  let appended : List (Nat × Int) := h.flatMap fun o => o.value.filterMap fun m =>
+    match m.f, m.v with | .append, .int e => some (m.k, e) | _, _ => none
+  (oks h).flatMap fun o => o.value.flatMap fun m =>
+    if m.f != .r then [] else (Val.toList m.v).filterMap fun e =>
+      if appended.contains (m.k, e) then none else some (o.index, m.k, e)
+
+/-- Round 3's list-append fixes in effect. -/
+structure Fx where
+  d1 : Bool := false
+  d4 : Bool := false
+  d5 : Bool := false
+  d8 : Bool := false
+  d12 : Bool := false
+  d20 : Bool := false
+  /-- The models prohibit G1a (D5's fix indexes `:info` appends only then). -/
+  g1a : Bool := true
+  deriving Inhabited
+
 structure Pre where
   hist : History
   possible : List Op
   ai : List (Nat × List Int)
   wi : List (Nat × List (Int × Nat))
   ri : List (Nat × List (Option Int × List Nat))
+  /-- D4's fix: `ww-mop-dep` steps over elements whose writer isn't indexed. -/
+  stepOver : Bool := false
 
 /-- `previously-appended-element` (list_append.clj:517): `none` is `::init`. -/
 def prevElem (p : Pre) (k : Nat) (e : Int) : Option Int :=
@@ -201,11 +227,40 @@ def prevElem (p : Pre) (k : Nat) (e : Int) : Option Int :=
   | some i => if 0 < i then vs[i - 1]? else none
   | none => vs.getLast?
 
-/-- `ww-mop-dep` (list_append.clj:537). -/
+/-- The element before `e` in `k`'s version order (`none`: `::init`). -/
+def elemBefore (p : Pre) (k : Nat) (e : Int) : Option Int :=
+  let vs := (p.ai.lookup k).getD []
+  match vs.findIdx? (· == e) with
+  | some i => if 0 < i then vs[i - 1]? else none
+  | none => none
+
+/-- D4's fix: from `pe` back, the first element an indexed op appended. -/
+def committedFrom (p : Pre) (k : Nat) (pe : Option Int) : Option (Int × Nat) := Id.run do
+  let mut cur := pe
+  let mut fuel := ((p.ai.lookup k).getD []).length + 1
+  while fuel > 0 do
+    fuel := fuel - 1
+    match cur with
+    | none => return none
+    | some x =>
+      match wiGet p.wi k x with
+      | some w => return some (x, w)
+      | none => cur := elemBefore p k x
+  return none
+
+/-- `ww-mop-dep` (list_append.clj:537). With D4's fix (`p.stepOver`), an element whose writer
+isn't indexed (a failed op's: a dirty update; with D5's, an `:info` op's for models allowing
+G1a; with D8's, nobody's) is stepped over to the last element before it that has one. -/
 def wwMopDep (p : Pre) (op : Nat) (k : Nat) (e : Int) : Option Nat :=
   match prevElem p k e with
   | none => none
-  | some pe => match wiGet p.wi k pe with
+  | some pe =>
+    if p.stepOver then
+      match committedFrom p k (some pe) with
+      | some (_, w) => if w != op then some w else none
+      | none => none
+    else
+    match wiGet p.wi k pe with
     | some w => if w != op then some w else none
     | none => none
 
@@ -222,17 +277,47 @@ def wrMopDep (p : Pre) (op : Nat) (k : Nat) (v : Val) : Option Nat :=
     | some w => if w != op then some w else none
     | none => none
 
-/-- `preprocess` (list_append.clj:582). -/
-def preprocess (h : History) (flip : Bool) : Except String Pre := do
+/-- `preprocess` (list_append.clj:582). D5's fix: for models allowing G1a, `:info` appends are
+not indexed as writes (they may have aborted). -/
+def preprocess (h : History) (flip : Bool) (fx : Fx := {}) : Except String Pre := do
   if let some e := verifyMopTypes h.toList then throw e
   if let some e := verifyUniqueAppends h.toList then throw e
   let ps := possible h.toList
-  let sv := sortedValues ps flip
-  return { hist := h, possible := ps, ai := appendIndex sv, wi := writeIndex ps, ri := readIndex ps }
+  -- D5's fix (round 3, after D23): for models allowing G1a the version order comes from the reads
+  -- without the elements `:info` operations appended (each may have aborted; the order of the
+  -- rest holds, transitively, either way)
+  let unInfo := fx.d5 && !fx.g1a
+  let infoElems : List (Nat × Int) := if !unInfo then [] else
+    ps.filter Op.isInfo |>.flatMap fun o => o.value.filterMap fun m =>
+      match m.f, m.v with | .append, .int e => some (m.k, e) | _, _ => none
+  let psV := if !unInfo then ps else ps.map fun o => { o with value := o.value.map fun m =>
+    match m.f, m.v with
+    | .r, .list l => { m with v := .list (l.filter fun e => !infoElems.contains (m.k, e)) }
+    | _, _ => m }
+  let sv := sortedValues psV flip fx.d12
+  let writers := if unInfo then oks h.toList else ps
+  return { hist := h, possible := ps, ai := appendIndex sv, wi := writeIndex writers, ri := readIndex ps,
+           stepOver := fx.d4 }
+
+/-- D1's fix: (reader, appender, key) where the appender's element of `k` was never read, the
+reader read `k`'s last observed version (`rw-mop-deps` gives it an `rw` edge to the appender),
+and the reader also appended to `k` an element never read. -/
+def unreadPairs (p : Pre) : List (Nat × Nat × Nat) := dedup <| p.possible.flatMap fun o =>
+  o.value.flatMap fun m => match m.f, m.v with
+    | .append, .int e =>
+      let known := ((p.ai.lookup m.k).getD []).contains e
+      if known then [] else
+      (rwMopDeps p o.index m.k e).filterMap fun r =>
+        let unreadAppender := (p.hist[r]?.map fun ro => ro.value.any fun m' =>
+          m'.f == .append && m'.k == m.k &&
+            (match m'.v with | .int e' => !((p.ai.lookup m.k).getD []).contains e' | _ => false)).getD false
+        if unreadAppender then some (r, o.index, m.k) else none
+    | _, _ => []
 
 /-- `ww-graph`, `wr-graph`, `rw-graph` and their explainers (list_append.clj:618-759), combined
-(list_append.clj:761). -/
-def graph (p : Pre) : Analysis := Id.run do
+(list_append.clj:761). `unread`: D1's second pass, where each unread pair's `rw` edge is a `ww`
+step marked `unread`. -/
+def graph (p : Pre) (unread : List (Nat × Nat × Nat) := []) : Analysis := Id.run do
   let mut gww : Graph := {}
   let mut gwr : Graph := {}
   let mut grw : Graph := {}
@@ -244,12 +329,15 @@ def graph (p : Pre) : Analysis := Id.run do
       | .r, v =>
         if let some d := wrMopDep p o.index m.k v then gwr := gwr.link d o.index Rels.WR
       | _, _ => pure ()
+  let isUnread (r a k : Nat) : Bool := unread.any fun (r', a', k') => r == r' && a == a' && k == k'
   for o in p.possible do
     for m in o.value do
       match m.f, m.v with
       | .append, .int e =>
-        grw := (rwMopDeps p o.index m.k e).foldl (fun g d => g.link d o.index Rels.RW) grw
+        grw := ((rwMopDeps p o.index m.k e).filter (!isUnread · o.index m.k)).foldl
+          (fun g d => g.link d o.index Rels.RW) grw
       | _, _ => pure ()
+  let gun : Graph := unread.foldl (fun g (r, a, _) => g.link r a Rels.WW) {}
   let mops (b : Nat) := (p.hist[b]?.map (·.value)).getD []
   let ww : Analysis := { graph := gww, explain := fun a b => (mops b).findSome? fun m =>
       match m.f, m.v with
@@ -259,30 +347,65 @@ def graph (p : Pre) : Analysis := Id.run do
       if m.f == .r && wrMopDep p b m.k m.v == some a then some { type := "wr", key := some m.k } else none }
   let rw : Analysis := { graph := grw, explain := fun a b => (mops b).findSome? fun m =>
       match m.f, m.v with
-      | .append, .int e => if (rwMopDeps p b m.k e).contains a then some { type := "rw", key := some m.k } else none
+      | .append, .int e =>
+        if (rwMopDeps p b m.k e).contains a && !isUnread a b m.k then some { type := "rw", key := some m.k } else none
       | _, _ => none }
-  return combine [ww, wr, rw]
+  if unread.isEmpty then return combine [ww, wr, rw]
+  let un : Analysis := { graph := gun, explain := fun a b =>
+      (unread.find? fun (r, x, _) => r == a && x == b).map fun (_, _, k) =>
+        ({ type := "ww", key := some k, unread := true } : Step) }
+  return combine [ww, wr, rw, un]
+
+/-- D1's second pass: the cycles of the graph where each unread pair is a `ww` step; a G0 or
+G1c through one is a G-single-item (the reader's append came first, or a G-single runs through
+the reader); any other class stands, a G-single implying G-nonadjacent and G2. -/
+def unreadCycles (p : Pre) (extra : Extra) (h : History) (o : Order) (d20 : Bool) :
+    Except String Anomalies := do
+  let un := unreadPairs p
+  if un.isEmpty then return []
+  let an := combine ([graph p un] ++ extraAnalysesOf extra h)
+  let m ← cyclesE an o [] d20
+  let retyped : List (String × Case) := m.flatMap fun (t, cs) => cs.filterMap fun c =>
+    match c with
+    | .cycle ops steps =>
+      let v := if t.endsWith "-realtime" then "-realtime" else if t.endsWith "-process" then "-process" else ""
+      let base := String.ofList (t.toList.take (t.length - v.length))
+      let t' := if steps.any (·.unread) && (base == "G0" || base == "G1c") then "G-single-item" ++ v else t
+      -- any other class X holds where the unread steps are ww, and a G-single (which implies
+      -- G-nonadjacent and G2, and their variants) everywhere else
+      some (t', c)
+    | _ => none
+  return retyped.foldl (fun m (t, c) => addCases m t [c]) []
 
 /-- `elle.list-append/check` (list_append.clj:920) up to `result-map`: every anomaly, with the
 extra graph `extra` (what `additional-graphs` picks for the options). -/
 def analyze (h : History) (extra : Extra) (o : Order := {}) (flip : Bool := false)
-    (cuts : List (Nat × Nat) := []) : Except String Anomalies := do
+    (cuts : List (Nat × Nat) := []) (fx : Fx := {}) : Except String Anomalies := do
   let hl := h.toList
   let g1a := g1aCases hl
   let g1b := g1bCases hl
   let okOps := oks hl
   let internal := okOps.filter opIntCase
   let future := okOps.filter opFutureReadCase
-  let dirty := dirtyUpdateCases (appendIndex (sortedValues hl flip)) h
+  let dirty := dirtyUpdateCases (appendIndex (sortedValues hl flip fx.d12)) h fx.d8
   let hp := possible hl
   let dups := duplicates hp
-  let incmp := incompatibleOrders (sortedValues hp flip)
+  let incmp := incompatibleOrders (sortedValues hp flip fx.d12)
   let lost := lostUpdateCases isAppend hp
-  let p ← preprocess h flip
+  let p ← preprocess h flip fx
   let an := combine ([graph p] ++ extraAnalysesOf extra h)
-  let cyc ← cyclesE an o cuts
+  let cyc ← cyclesE an o cuts fx.d20
   let some dirty := dirty | throw "AssertionError: No transaction wrote k = v (dirty-update-cases)"
   let mut m := cyc
+  if fx.d1 then
+    for (t, cs) in ← unreadCycles p extra h o fx.d20 do
+      let have_ := (m.lookup t).getD []
+      let fresh := cs.filter fun c => !have_.any fun c' => match c, c' with
+        | .cycle a _, .cycle b _ => a == b
+        | _, _ => false
+      m := addCases m t fresh
+  if fx.d8 then
+    m := addCases m "garbage-read" ((garbageReadCases hl).map fun (r, _, _) => Case.other [r])
   m := addCases m "duplicate-elements" (dups.map fun i => Case.other [i])
   m := addCases m "incompatible-order" (incmp.map fun _ => Case.other [])
   m := addCases m "internal" (internal.map fun o => Case.other [o.index])
@@ -294,13 +417,19 @@ def analyze (h : History) (extra : Extra) (o : Order := {}) (flip : Bool := fals
   return m
 
 /-- The analysis Elle runs for these options. -/
-def analysis (h : History) (extra : Extra) (flip : Bool := false) : Except String Analysis := do
-  let p ← preprocess h flip
+def analysis (h : History) (extra : Extra) (flip : Bool := false) (fx : Fx := {}) : Except String Analysis := do
+  let p ← preprocess h flip fx
   return combine ([graph p] ++ extraAnalysesOf extra h)
+
+/-- Round 3's fixes the options switch on. -/
+def fxOf (opts : Opts) : Fx :=
+  { d1 := opts.fixD1, d4 := opts.fixD4 || opts.fixD5, d5 := opts.fixD5, d8 := opts.fixD8,
+    d12 := opts.fixD12, d20 := opts.fixD20,
+    g1a := (prohibitedAnomalyTypes opts).contains "G1a" }
 
 /-- `elle.list-append/check` (list_append.clj:920). -/
 def check (opts : Opts) (h : History) (o : Order := {}) (flip : Bool := false) : Outcome :=
-  match analyze h (additionalGraphs opts) o flip opts.cuts with
+  match analyze h (additionalGraphs opts) o flip opts.cuts (fxOf opts) with
   | .error e => .thrown e
   | .ok m => .result (resultMap opts m)
 

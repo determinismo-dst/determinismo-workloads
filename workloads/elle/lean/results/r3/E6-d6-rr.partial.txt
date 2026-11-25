@@ -1,0 +1,27 @@
+# fix-d6-rr rr fix=d6 exhaust=1 txns=3 mops=2 keys=1 threads=2 read=any interleave=0 fail=1 info=1 secs=1700 out=results/r3/E6-d6-rr
+225000 histories so far (871s)
+
+- fix:caught: 50226
+- fix:caught-no-interpretation: 31280
+- fix:misses:strong-session-snapshot-isolation: 254
+- fix:misses:strong-session-serializable: 254
+- fix:misses:strict-serializable: 416
+- fix:misses:strong-snapshot-isolation: 416
+
+## fix:caught (first at history 119)
+repeatable-read: was true, now invalid; every interpretation violates repeatable-read
+
+## fix:caught-no-interpretation (first at history 176)
+read-committed: was true, now invalid; no interpretation exists
+
+## fix:misses:strong-session-snapshot-isolation (first at history 9283)
+strong-session-snapshot-isolation: valid; every interpretation violates strong-session-snapshot-isolation
+
+## fix:misses:strong-session-serializable (first at history 9283)
+strong-session-serializable: valid; every interpretation violates strong-session-serializable
+
+## fix:misses:strict-serializable (first at history 9368)
+strict-serializable: valid; every interpretation violates strict-serializable
+
+## fix:misses:strong-snapshot-isolation (first at history 9368)
+strong-snapshot-isolation: valid; every interpretation violates strong-snapshot-isolation

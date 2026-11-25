@@ -1,0 +1,27 @@
+# deployed-cp cp seeds=40000 keys=3 txns=5 threads=3 misses=1 secs=900 out=results/r3/P1-cp-miss
+40000 histories so far (205s)
+
+- deployed:misses:consistent-view: 3
+- deployed:caught: 22672
+- deployed:misses:repeatable-read: 1034
+- deployed:false-positive:serializable: 1899
+- deployed:false-positive:strong-session-serializable: 1899
+- perkey:graph: 373
+
+## deployed:misses:consistent-view (first at history 1)
+consistent-view: valid; every interpretation violates consistent-view
+
+## deployed:caught (first at history 3)
+consistent-view: was true, now invalid; every interpretation violates consistent-view
+
+## deployed:misses:repeatable-read (first at history 35)
+repeatable-read: valid; every interpretation violates repeatable-read
+
+## deployed:false-positive:serializable (first at history 62)
+serializable: invalid; an interpretation satisfies serializable
+
+## deployed:false-positive:strong-session-serializable (first at history 62)
+strong-session-serializable: invalid; an interpretation satisfies strong-session-serializable
+
+## perkey:graph (first at history 132)
+7 -> 9: the per-key graph's closure false, real time between operations sharing a key true

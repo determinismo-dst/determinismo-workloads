@@ -1,0 +1,27 @@
+# fix-d8-la la fix=d8 seeds=40000 txns=4 mops=2 keys=2 threads=3 read=any maxread=3 garbage=1 secs=600 out=results/r3/X3-d8-la-any
+40000 histories so far (124s)
+
+- fix:no-longer-throws: 314216
+- fix:caught-no-interpretation: 1296
+- fix:false-positive:read-uncommitted: 4
+- fix:false-positive:strong-session-read-uncommitted: 5
+- fix:false-positive:strong-read-uncommitted: 5
+- fix:misses:strong-read-uncommitted: 1
+
+## fix:no-longer-throws (first at history 3)
+read-uncommitted: false
+
+## fix:caught-no-interpretation (first at history 93)
+read-uncommitted: was true, now invalid; no interpretation exists
+
+## fix:false-positive:read-uncommitted (first at history 484)
+read-uncommitted: invalid; an interpretation satisfies read-uncommitted
+
+## fix:false-positive:strong-session-read-uncommitted (first at history 484)
+strong-session-read-uncommitted: invalid; an interpretation satisfies strong-session-read-uncommitted
+
+## fix:false-positive:strong-read-uncommitted (first at history 484)
+strong-read-uncommitted: invalid; an interpretation satisfies strong-read-uncommitted
+
+## fix:misses:strong-read-uncommitted (first at history 34131)
+strong-read-uncommitted: valid; every interpretation violates strong-read-uncommitted

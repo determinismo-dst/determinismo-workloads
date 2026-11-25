@@ -23,3 +23,6 @@ import Elle.Service
 import Elle.ServiceProps
 import Elle.CPSpec
 import Elle.Theorems2
+import Elle.Props3
+import Elle.Round3
+import Elle.Theorems3

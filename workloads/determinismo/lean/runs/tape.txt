@@ -1,0 +1,210 @@
+== tape property: a timeline replayed from its tape has its recorded history
+   source: README_AI.md: "every timeline replays bit-identically"; ARCHITECTURE.md M3: "Record → replay matches all checkpoints"; vm.zig:3730 (egress): "a replay's history is the run's"
+search exhaust [a timeline replayed from its tape has its recorded history / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (241 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (3715 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4261 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / serve's replies]: FOUND after 5 timelines (6 ms): a timeline replayed from its tape has its recorded history: histories part at event 7: recorded decision pull=0 reason=serve's reply to the guest (sdk.serve), replayed - (shrunk to 10 decisions from 10)
+--- counterexample [a timeline replayed from its tape has its recorded history / serve's replies]: a timeline replayed from its tape has its recorded history
+detail: histories part at event 7: recorded decision pull=0 reason=serve's reply to the guest (sdk.serve), replayed -
+values: [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+tape:
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":1}
+{"name":"strategy.answer","options":3,"value":0}
+{"name":"world.fork_index","options":2,"value":0}
+{"name":"world.outside","options":2,"value":0}
+story:
+  guest steps: [Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.pull (Replica.Tape.Label.serveStatus)]
+  advice: []
+  replay perturbed: Replica.Tape.Perturb.none
+  tape: [Replica.Tape.Line.checkpoint 4 7070822073620762547,
+ Replica.Tape.Line.override 0 0 "serve's reply to the guest (sdk.serve)"]
+  recorded 1: guest 0 saw []
+  recorded 2: guest 1 saw []
+  recorded 3: guest 2 saw []
+  recorded 4: guest 3 saw []
+  recorded 5: guest 4 saw []
+  recorded 6: guest 5 saw []
+  recorded 7: decision pull=0 reason=serve's reply to the guest (sdk.serve)
+  replayed 1: guest 0 saw []
+  replayed 2: guest 1 saw []
+  replayed 3: guest 2 saw []
+  replayed 4: guest 3 saw []
+  replayed 5: guest 4 saw []
+  replayed 6: guest 5 saw []
+  replay: error=none diverged=none
+---
+search exhaust [a timeline replayed from its tape has its recorded history / a fork's index]: FOUND after 5 timelines (7 ms): a timeline replayed from its tape has its recorded history: histories part at event 7: recorded decision pull=0 reason=a fork's index: 0 where it was asked, k in its future k, replayed - (shrunk to 10 decisions from 10)
+--- counterexample [a timeline replayed from its tape has its recorded history / a fork's index]: a timeline replayed from its tape has its recorded history
+detail: histories part at event 7: recorded decision pull=0 reason=a fork's index: 0 where it was asked, k in its future k, replayed -
+values: [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+tape:
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":1}
+{"name":"strategy.answer","options":3,"value":0}
+{"name":"world.fork_index","options":2,"value":0}
+{"name":"world.outside","options":2,"value":0}
+story:
+  guest steps: [Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.pull (Replica.Tape.Label.forkIndex)]
+  advice: []
+  replay perturbed: Replica.Tape.Perturb.none
+  tape: [Replica.Tape.Line.checkpoint 4 7070822073620762547,
+ Replica.Tape.Line.override 0 0 "a fork's index: 0 where it was asked, k in its future k"]
+  recorded 1: guest 0 saw []
+  recorded 2: guest 1 saw []
+  recorded 3: guest 2 saw []
+  recorded 4: guest 3 saw []
+  recorded 5: guest 4 saw []
+  recorded 6: guest 5 saw []
+  recorded 7: decision pull=0 reason=a fork's index: 0 where it was asked, k in its future k
+  replayed 1: guest 0 saw []
+  replayed 2: guest 1 saw []
+  replayed 3: guest 2 saw []
+  replayed 4: guest 3 saw []
+  replayed 5: guest 4 saw []
+  replayed 6: guest 5 saw []
+  replay: error=none diverged=none
+---
+search exhaust [a timeline replayed from its tape has its recorded history / replays perturbed by a kernel line or a changed event]: stopped at 1000000 timelines, none broke it (3331 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / guest events and kernel lines, a table of two checkpoints every two events]: FOUND after 4369 timelines (22 ms): a timeline replayed from its tape has its recorded history: the replay stopped: panic: assert(checkpoint_count < checkpoint_count_max) (tape.zig:598), the checkpoints kept [4, 8] and 12 (recorded 12 events) (shrunk to 14 decisions from 14)
+--- counterexample [a timeline replayed from its tape has its recorded history / guest events and kernel lines, a table of two checkpoints every two events]: a timeline replayed from its tape has its recorded history
+detail: the replay stopped: panic: assert(checkpoint_count < checkpoint_count_max) (tape.zig:598), the checkpoints kept [4, 8] and 12 (recorded 12 events)
+values: [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0]
+tape:
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":1}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":1}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":1}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.step","options":2,"value":0}
+{"name":"world.fork_index","options":2,"value":0}
+{"name":"world.outside","options":2,"value":0}
+story:
+  guest steps: [Replica.Tape.Step.event,
+ Replica.Tape.Step.console,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.console,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.console,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event]
+  advice: []
+  replay perturbed: Replica.Tape.Perturb.none
+  tape: [Replica.Tape.Line.checkpoint 4 1878741296782552147,
+ Replica.Tape.Line.checkpoint 8 13117618748007444575,
+ Replica.Tape.Line.checkpoint 12 12126489539966599741]
+  recorded 1: guest 0 saw []
+  recorded 2: kernel 1
+  recorded 3: guest 2 saw []
+  recorded 4: guest 3 saw []
+  recorded 5: guest 4 saw []
+  recorded 6: kernel 5
+  recorded 7: guest 6 saw []
+  recorded 8: guest 7 saw []
+  recorded 9: guest 8 saw []
+  recorded 10: kernel 9
+  recorded 11: guest 10 saw []
+  recorded 12: guest 11 saw []
+  replay: error=(some (panic: assert(checkpoint_count < checkpoint_count_max) (tape.zig:598), the checkpoints kept [4, 8] and 12)) diverged=none
+---
+== tape property: on replay the n-th pull gets the n-th answer
+   source: ARCHITECTURE.md §7: "On replay the n-th pull gets the n-th answer"; "Replay reads the tape and never asks the decider again"
+search exhaust [on replay the n-th pull gets the n-th answer / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (236 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (3633 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4165 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / serve's replies]: complete, 65536 timelines, none broke it (249 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / a fork's index]: complete, 65536 timelines, none broke it (270 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / replays perturbed by a kernel line or a changed event]: stopped at 1000000 timelines, none broke it (3319 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / guest events and kernel lines, a table of two checkpoints every two events]: complete, 16384 timelines, none broke it (56 ms)
+== tape property: a replay that parts from its tape stops at its next checkpoint
+   source: README_AI.md: "tapes with checkpoints (a replay stops where it diverges)"; ARCHITECTURE.md §7: "Checkpoints ... for divergence detection"
+search exhaust [a replay that parts from its tape stops at its next checkpoint / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (240 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (3711 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4263 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / serve's replies]: complete, 65536 timelines, none broke it (263 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / a fork's index]: complete, 65536 timelines, none broke it (293 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / replays perturbed by a kernel line or a changed event]: FOUND after 13 timelines (7 ms): a replay that parts from its tape stops at its next checkpoint: histories part at event 4; the tape's checkpoint at 4 passed, the replay ran to its end (10 events) unstopped (shrunk to 13 decisions from 13)
+--- counterexample [a replay that parts from its tape stops at its next checkpoint / replays perturbed by a kernel line or a changed event]: a replay that parts from its tape stops at its next checkpoint
+detail: histories part at event 4; the tape's checkpoint at 4 passed, the replay ran to its end (10 events) unstopped
+values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3]
+tape:
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.fork_index","options":2,"value":0}
+{"name":"world.outside","options":2,"value":0}
+{"name":"world.perturb","options":3,"value":1}
+{"name":"world.perturb_at","options":9,"value":3}
+story:
+  guest steps: [Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event]
+  advice: []
+  replay perturbed: Replica.Tape.Perturb.consoleBefore 3
+  tape: [Replica.Tape.Line.checkpoint 4 7070822073620762547, Replica.Tape.Line.checkpoint 8 17602781909634984879]
+  recorded 1: guest 0 saw []
+  recorded 2: guest 1 saw []
+  recorded 3: guest 2 saw []
+  recorded 4: guest 3 saw []
+  recorded 5: guest 4 saw []
+  recorded 6: guest 5 saw []
+  recorded 7: guest 6 saw []
+  recorded 8: guest 7 saw []
+  recorded 9: guest 8 saw []
+  replayed 1: guest 0 saw []
+  replayed 2: guest 1 saw []
+  replayed 3: guest 2 saw []
+  replayed 4: kernel: an extra line
+  replayed 5: guest 3 saw []
+  replayed 6: guest 4 saw []
+  replayed 7: guest 5 saw []
+  replayed 8: guest 6 saw []
+  replayed 9: guest 7 saw []
+  replayed 10: guest 8 saw []
+  replay: error=none diverged=none
+---
+search exhaust [a replay that parts from its tape stops at its next checkpoint / guest events and kernel lines, a table of two checkpoints every two events]: complete, 16384 timelines, none broke it (61 ms)

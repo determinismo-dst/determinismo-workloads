@@ -1,0 +1,29 @@
+== composer property: the composer never panics on a valid scenario
+search explore [the composer never panics on a valid scenario / five anytime commands, none marked, swarm]: FOUND at timeline 2 of seeds 0..4999 (0 ms): the composer never panics on a valid scenario: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0)) (shrunk to 8 decisions from 8)
+--- counterexample [the composer never panics on a valid scenario / five anytime commands, none marked, swarm]: the composer never panics on a valid scenario
+detail: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))
+values: [0, 7, 7, 7, 7, 6, 0, 0]
+tape:
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm a1","options":8,"value":7}
+{"name":"composer.swarm a2","options":8,"value":7}
+{"name":"composer.swarm a3","options":8,"value":7}
+{"name":"composer.swarm a4","options":8,"value":7}
+{"name":"composer.swarm a5","options":8,"value":6}
+{"name":"composer.starts","options":2,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_left_out a1 kept_eighths=1
+  0 ms: command_left_out a2 kept_eighths=1
+  0 ms: command_left_out a3 kept_eighths=1
+  0 ms: command_left_out a4 kept_eighths=1
+  0 ms: command_left_out a5 kept_eighths=1
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  end: some (Determinismo.Stop.violation
+  "composer panics"
+  "run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))")
+---

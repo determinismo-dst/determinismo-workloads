@@ -1,0 +1,40 @@
+== composer property: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / first (marked workload) + two parallel nemeses, swarm]: FOUND at timeline 1 of seeds 0..4999 (0 ms): the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on: no marked driver kept (shrunk to 7 decisions from 11)
+--- counterexample [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / first (marked workload) + two parallel nemeses, swarm]: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+detail: no marked driver kept
+values: [0, 3, 0, 0, 0, 0, 0]
+tape:
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm nemesis1","options":8,"value":3}
+{"name":"composer.swarm nemesis2","options":8,"value":0}
+{"name":"composer.starts","options":2,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"composer.load","options":3,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_start load complete
+  0 ms: assert reachable "test command started: load" true
+  1 ms: assert reachable "test command completed: load" true
+  1 ms: reaped load#1: status 0
+  1 ms: assert always "test commands exit successfully" true
+  1 ms: command_left_out nemesis1 kept_eighths=1
+  1 ms: faults_phase start
+  1 ms: faults start
+  1 ms: assert reachable "the fault injector started" true
+  1 ms: composer_load 0 1 20
+  1 ms: command_start nemesis2 start
+  1 ms: assert reachable "test command started: nemesis2" true
+  2 ms: assert reachable "test command completed: nemesis2" true
+  2 ms: reaped nemesis2#2: status 0
+  2 ms: command_start nemesis2 start
+  3 ms: reaped nemesis2#3: status 0
+  3 ms: faults stop
+  3 ms: faults_phase stop
+  3 ms: composer_done 3
+  truth: load#1 [0,1] exited 0
+  truth: nemesis2#2 [1,2] exited 0
+  truth: nemesis2#3 [2,3] exited 0
+  end: none
+---

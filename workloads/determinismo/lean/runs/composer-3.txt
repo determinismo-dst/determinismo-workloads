@@ -1,0 +1,394 @@
+== composer property: a finally command runs only when every command ran to completion
+   source: docs/ANTITHESIS.md (Test templates)
+search exhaust [a finally command runs only when every command ran to completion / first + parallel + serial + eventually + finally, no swarm]: complete, 2268 timelines, none broke it (16 ms)
+search explore [a finally command runs only when every command ran to completion / first + parallel + serial + eventually + finally, no swarm]: 2000 timelines (seeds 0..1999), none broke it (17 ms)
+search exhaust [a finally command runs only when every command ran to completion / setup + first + parallel + anytime + finally, parallel_max 2, no swarm]: complete, 162 timelines, none broke it (1 ms)
+search explore [a finally command runs only when every command ran to completion / setup + first + parallel + anytime + finally, parallel_max 2, no swarm]: 2000 timelines (seeds 0..1999), none broke it (16 ms)
+search exhaust [a finally command runs only when every command ran to completion / parallel (exits 0 or 1) + eventually, min_drive 0, no swarm]: complete, 512 timelines, none broke it (3 ms)
+search explore [a finally command runs only when every command ran to completion / parallel (exits 0 or 1) + eventually, min_drive 0, no swarm]: 2000 timelines (seeds 0..1999), none broke it (14 ms)
+search exhaust [a finally command runs only when every command ran to completion / parallel (exits 0 or 1) + eventually, min_drive default, no swarm]: complete, 9728 timelines, none broke it (54 ms)
+search explore [a finally command runs only when every command ran to completion / parallel (exits 0 or 1) + eventually, min_drive default, no swarm]: 2000 timelines (seeds 0..1999), none broke it (14 ms)
+search exhaust [a finally command runs only when every command ran to completion / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: FOUND after 3 timelines (0 ms): a finally command runs only when every command ran to completion: drive#4 [60,90] killed by the composer did not run to completion, and check ran at 90 (shrunk to 9 decisions from 9)
+--- counterexample [a finally command runs only when every command ran to completion / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: a finally command runs only when every command ran to completion
+detail: drive#4 [60,90] killed by the composer did not run to completion, and check ran at 90
+values: [0, 0, 0, 0, 0, 0, 0, 1, 0]
+tape:
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":1}
+{"name":"world.exit drive","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start drive start
+  0 ms: assert reachable "test command started: drive" true
+  20 ms: assert reachable "test command completed: drive" true
+  20 ms: reaped drive#1: status 0
+  20 ms: assert always "test commands exit successfully" true
+  20 ms: command_start drive start
+  40 ms: reaped drive#2: status 0
+  40 ms: command_start drive start
+  60 ms: reaped drive#3: status 0
+  60 ms: command_start drive start
+  90 ms: length_reached running=1
+  90 ms: reaped drive#4: reported killed
+  90 ms: faults stop
+  90 ms: faults_phase stop
+  90 ms: command_start check complete
+  90 ms: assert reachable "test command started: check" true
+  95 ms: assert reachable "test command completed: check" true
+  95 ms: reaped check#5: status 0
+  95 ms: assert always "an ending command finishes within its window" true
+  95 ms: composer_done 5
+  truth: drive#1 [0,20] exited 0
+  truth: drive#2 [20,40] exited 0
+  truth: drive#3 [40,60] exited 0
+  truth: drive#4 [60,90] killed by the composer
+  truth: check#5 [90,91] exited 0
+  end: none
+---
+search explore [a finally command runs only when every command ran to completion / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: FOUND at timeline 1 of seeds 0..1999 (1 ms): a finally command runs only when every command ran to completion: drive#1 [0,90] killed by the composer did not run to completion, and check ran at 90 (shrunk to 3 decisions from 5)
+--- counterexample [a finally command runs only when every command ran to completion / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: a finally command runs only when every command ran to completion
+detail: drive#1 [0,90] killed by the composer did not run to completion, and check ran at 90
+values: [0, 1, 0]
+tape:
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":1}
+{"name":"world.exit drive","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start drive start
+  0 ms: assert reachable "test command started: drive" true
+  90 ms: length_reached running=1
+  90 ms: reaped drive#1: reported killed
+  90 ms: faults stop
+  90 ms: faults_phase stop
+  90 ms: command_start check complete
+  90 ms: assert reachable "test command started: check" true
+  95 ms: assert reachable "test command completed: check" true
+  95 ms: reaped check#2: status 0
+  95 ms: assert always "test commands exit successfully" true
+  95 ms: assert always "an ending command finishes within its window" true
+  95 ms: composer_done 2
+  truth: drive#1 [0,90] killed by the composer
+  truth: check#2 [90,91] exited 0
+  end: none
+---
+search explore [a finally command runs only when every command ran to completion / drawn scenarios, the Zig's constants]: FOUND at timeline 19 of seeds 0..499 (10 ms): a finally command runs only when every command ran to completion: c3#33 [70045,130010] killed by the composer did not run to completion, and c4 ran at 130010 (shrunk to 171 decisions from 173)
+--- counterexample [a finally command runs only when every command ran to completion / drawn scenarios, the Zig's constants]: a finally command runs only when every command ran to completion
+detail: c3#33 [70045,130010] killed by the composer did not run to completion, and c4 ran at 130010
+values: [4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 3, 6, 0, 0, 0, 3, 0, 0, 2, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 6535, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0]
+tape:
+{"name":"gen.commands","options":5,"value":4}
+{"name":"gen.kind","options":9,"value":4}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":8}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":3}
+{"name":"gen.kind","options":9,"value":6}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":3}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":0}
+{"name":"gen.parallel_max","options":3,"value":2}
+{"name":"gen.timeline","options":3,"value":2}
+{"name":"gen.limit","options":3,"value":0}
+{"name":"gen.no_swarm","options":4,"value":1}
+{"name":"composer.drivers_cpu","options":3,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"world.run_ms c1","options":3,"value":0}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm c0","options":8,"value":0}
+{"name":"composer.swarm c3","options":8,"value":0}
+{"name":"composer.parallelism_log2","options":3,"value":0}
+{"name":"composer.load","options":3,"value":1}
+{"name":"composer.quiet_ms","options":14001,"value":6535}
+{"name":"composer.load","options":3,"value":2}
+{"name":"composer.load_ms","options":110001,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":1}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.load","options":3,"value":2}
+{"name":"composer.load_ms","options":110001,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":1}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":1}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":1}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":1}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":2}
+{"name":"world.exit c3","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c4","options":3,"value":0}
+story:
+  scenario: [("c0", "anytime", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c1", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c2", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c3", "parallel_driver", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0, Replica.Composer.Exit.code 137]"),
+ ("c4", "finally", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=none parallelMax=(some 4) cmdline: swarmOff=false timelineMs=(some 100000) limitMs=none
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_start c1 complete
+  0 ms: assert reachable "test command started: c1" true
+  10 ms: assert reachable "test command completed: c1" true
+  10 ms: reaped c1#1: status 0
+  10 ms: assert always "test commands exit successfully" true
+  10 ms: faults_phase start
+  10 ms: faults start
+  10 ms: assert reachable "the fault injector started" true
+  10 ms: composer_load 1 1 7535
+  7545 ms: composer_load 2 4 10000
+  7545 ms: command_start c3 start
+  7545 ms: assert reachable "test command started: c3" true
+  7545 ms: command_start c3 start
+  7545 ms: command_start c3 start
+  7545 ms: command_start c3 start
+  7595 ms: assert reachable "test command completed: c3" true
+  7595 ms: reaped c3#2: status 0
+  7595 ms: command_start c3 start
+  7595 ms: reaped c3#3: status 0
+  7595 ms: command_start c3 start
+  7595 ms: reaped c3#4: status 0
+  7595 ms: command_start c3 start
+  7595 ms: reaped c3#5: status 0
+  7595 ms: command_start c3 start
+  7645 ms: reaped c3#6: status 0
+  7645 ms: command_start c3 start
+  7645 ms: reaped c3#8: status 0
+  7645 ms: command_start c3 start
+  7645 ms: reaped c3#9: status 0
+  7645 ms: command_start c3 start
+  7695 ms: reaped c3#10: status 0
+  7695 ms: command_start c3 start
+  7745 ms: reaped c3#13: status 0
+  7745 ms: command_start c3 start
+  7795 ms: reaped c3#14: status 0
+  7795 ms: command_start c3 start
+  7845 ms: reaped c3#15: status 0
+  7845 ms: command_start c3 start
+  67595 ms: reaped c3#7: status 0
+  67595 ms: command_start c3 start
+  67595 ms: composer_load 2 4 10000
+  67645 ms: reaped c3#11: status 0
+  67645 ms: command_start c3 start
+  67645 ms: reaped c3#12: status 0
+  67645 ms: command_start c3 start
+  67695 ms: reaped c3#19: status 0
+  67695 ms: command_start c3 start
+  67745 ms: reaped c3#20: status 0
+  67745 ms: command_start c3 start
+  67845 ms: reaped c3#16: status 0
+  67845 ms: command_start c3 start
+  68595 ms: reaped c3#17: status 0
+  68595 ms: command_start c3 start
+  68745 ms: reaped c3#21: status 0
+  68745 ms: command_start c3 start
+  68845 ms: reaped c3#22: status 0
+  68845 ms: command_start c3 start
+  68895 ms: reaped c3#25: status 0
+  68895 ms: command_start c3 start
+  68945 ms: reaped c3#26: status 0
+  68945 ms: command_start c3 start
+  68995 ms: reaped c3#27: status 0
+  68995 ms: command_start c3 start
+  69045 ms: reaped c3#28: status 0
+  69045 ms: command_start c3 start
+  69745 ms: reaped c3#24: status 0
+  69745 ms: command_start c3 start
+  69795 ms: reaped c3#30: status 0
+  69795 ms: command_start c3 start
+  69845 ms: reaped c3#31: status 0
+  69845 ms: command_start c3 start
+  70045 ms: reaped c3#29: status 0
+  70045 ms: command_start c3 start
+  127660 ms: reaped c3#18: status 0
+  128610 ms: reaped c3#23: status 0
+  129860 ms: reaped c3#32: status 0
+  130010 ms: length_reached running=1
+  130010 ms: reaped c3#33: reported killed
+  130010 ms: faults stop
+  130010 ms: faults_phase stop
+  130010 ms: command_start c4 complete
+  130010 ms: assert reachable "test command started: c4" true
+  130060 ms: assert reachable "test command completed: c4" true
+  130060 ms: reaped c4#34: status 0
+  130060 ms: assert always "an ending command finishes within its window" true
+  130060 ms: composer_done 34
+  truth: c1#1 [0,10] exited 0
+  truth: c3#2 [7545,7555] exited 0
+  truth: c3#3 [7545,7555] exited 0
+  truth: c3#4 [7545,7555] exited 0
+  truth: c3#5 [7545,7555] exited 0
+  truth: c3#6 [7595,7605] exited 0
+  truth: c3#7 [7595,67595] exited 0
+  truth: c3#8 [7595,7605] exited 0
+  truth: c3#9 [7595,7605] exited 0
+  truth: c3#10 [7645,7655] exited 0
+  truth: c3#11 [7645,67645] exited 0
+  truth: c3#12 [7645,67645] exited 0
+  truth: c3#13 [7695,7705] exited 0
+  truth: c3#14 [7745,7755] exited 0
+  truth: c3#15 [7795,7805] exited 0
+  truth: c3#16 [7845,67845] exited 0
+  truth: c3#17 [67595,68595] exited 0
+  truth: c3#18 [67645,127645] exited 0
+  truth: c3#19 [67645,67655] exited 0
+  truth: c3#20 [67695,67705] exited 0
+  truth: c3#21 [67745,68745] exited 0
+  truth: c3#22 [67845,68845] exited 0
+  truth: c3#23 [68595,128595] exited 0
+  truth: c3#24 [68745,69745] exited 0
+  truth: c3#25 [68845,68855] exited 0
+  truth: c3#26 [68895,68905] exited 0
+  truth: c3#27 [68945,68955] exited 0
+  truth: c3#28 [68995,69005] exited 0
+  truth: c3#29 [69045,70045] exited 0
+  truth: c3#30 [69745,69755] exited 0
+  truth: c3#31 [69795,69805] exited 0
+  truth: c3#32 [69845,129845] exited 0
+  truth: c3#33 [70045,130010] killed by the composer
+  truth: c4#34 [130010,130020] exited 0
+  end: none
+---

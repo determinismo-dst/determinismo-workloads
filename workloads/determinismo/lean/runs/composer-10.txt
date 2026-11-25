@@ -1,0 +1,104 @@
+== composer property: the composer never panics on a valid scenario
+   source: composer.zig's asserts (ReleaseSafe): a panic ends the timeline without its driver phase's verdicts
+search exhaust [the composer never panics on a valid scenario / first + parallel + serial + eventually + finally, no swarm]: complete, 2268 timelines, none broke it (15 ms)
+search explore [the composer never panics on a valid scenario / first + parallel + serial + eventually + finally, no swarm]: 2000 timelines (seeds 0..1999), none broke it (16 ms)
+search exhaust [the composer never panics on a valid scenario / setup + first + parallel + anytime + finally, parallel_max 2, no swarm]: complete, 162 timelines, none broke it (2 ms)
+search explore [the composer never panics on a valid scenario / setup + first + parallel + anytime + finally, parallel_max 2, no swarm]: 2000 timelines (seeds 0..1999), none broke it (15 ms)
+search exhaust [the composer never panics on a valid scenario / parallel (exits 0 or 1) + eventually, min_drive 0, no swarm]: complete, 512 timelines, none broke it (3 ms)
+search explore [the composer never panics on a valid scenario / parallel (exits 0 or 1) + eventually, min_drive 0, no swarm]: 2000 timelines (seeds 0..1999), none broke it (13 ms)
+search exhaust [the composer never panics on a valid scenario / parallel (exits 0 or 1) + eventually, min_drive default, no swarm]: complete, 9728 timelines, none broke it (52 ms)
+search explore [the composer never panics on a valid scenario / parallel (exits 0 or 1) + eventually, min_drive default, no swarm]: 2000 timelines (seeds 0..1999), none broke it (14 ms)
+search exhaust [the composer never panics on a valid scenario / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: complete, 1394 timelines, none broke it (10 ms)
+search explore [the composer never panics on a valid scenario / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: 2000 timelines (seeds 0..1999), none broke it (11 ms)
+search exhaust [the composer never panics on a valid scenario / serial (1 or 200 ms) + parallel, a 60 ms length, no swarm]: complete, 35121 timelines, none broke it (673 ms)
+search explore [the composer never panics on a valid scenario / serial (1 or 200 ms) + parallel, a 60 ms length, no swarm]: 2000 timelines (seeds 0..1999), none broke it (11 ms)
+search exhaust [the composer never panics on a valid scenario / singleton (1 or 200 ms) + parallel, a 60 ms length, no swarm]: complete, 4 timelines, none broke it (0 ms)
+search explore [the composer never panics on a valid scenario / singleton (1 or 200 ms) + parallel, a 60 ms length, no swarm]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [the composer never panics on a valid scenario / singleton + parallel + anytime, no swarm]: complete, 34 timelines, none broke it (1 ms)
+search explore [the composer never panics on a valid scenario / singleton + parallel + anytime, no swarm]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [the composer never panics on a valid scenario / singleton (marked workload) + two parallel nemeses, swarm]: stopped at 5000 timelines, none broke it (621 ms)
+search explore [the composer never panics on a valid scenario / singleton (marked workload) + two parallel nemeses, swarm]: FOUND at timeline 2 of seeds 0..1999 (0 ms): the composer never panics on a valid scenario: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0)) (shrunk to 7 decisions from 7)
+--- counterexample [the composer never panics on a valid scenario / singleton (marked workload) + two parallel nemeses, swarm]: the composer never panics on a valid scenario
+detail: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))
+values: [0, 7, 0, 7, 7, 0, 0]
+tape:
+{"name":"composer.singleton_eighths","options":7,"value":0}
+{"name":"composer.singleton","options":8,"value":7}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm nemesis1","options":8,"value":7}
+{"name":"composer.swarm nemesis2","options":8,"value":7}
+{"name":"composer.starts","options":2,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_left_out nemesis1 kept_eighths=1
+  0 ms: command_left_out nemesis2 kept_eighths=1
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  end: some (Determinismo.Stop.violation
+  "composer panics"
+  "run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))")
+---
+search exhaust [the composer never panics on a valid scenario / first (marked workload) + two parallel nemeses, swarm]: stopped at 5000 timelines, none broke it (615 ms)
+search exhaust [the composer never panics on a valid scenario / five anytime commands, none marked, swarm]: stopped at 5000 timelines, none broke it (80 ms)
+search exhaust [the composer never panics on a valid scenario / parallel (marked) + parallel nemesis + finally, swarm]: stopped at 5000 timelines, none broke it (636 ms)
+search exhaust [the composer never panics on a valid scenario / parallel, a 30 ms timeline limit (no length), swarm]: stopped at 5000 timelines, none broke it (6078 ms)
+search explore [the composer never panics on a valid scenario / drawn scenarios, the Zig's constants]: FOUND at timeline 22 of seeds 0..499 (11 ms): the composer never panics on a valid scenario: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0)) (shrunk to 26 decisions from 27)
+--- counterexample [the composer never panics on a valid scenario / drawn scenarios, the Zig's constants]: the composer never panics on a valid scenario
+detail: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))
+values: [2, 0, 0, 0, 0, 1, 3, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 2, 0, 3, 0, 0, 0, 0, 1, 0]
+tape:
+{"name":"gen.commands","options":5,"value":2}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":1}
+{"name":"gen.workload","options":4,"value":3}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":6}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":0}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":0}
+{"name":"gen.parallel_max","options":3,"value":0}
+{"name":"gen.timeline","options":3,"value":2}
+{"name":"gen.limit","options":3,"value":0}
+{"name":"gen.no_swarm","options":4,"value":3}
+{"name":"world.exit setup","options":2,"value":0}
+{"name":"composer.drivers_cpu","options":3,"value":0}
+{"name":"world.run_ms c0","options":3,"value":0}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm c1","options":8,"value":1}
+{"name":"composer.parallelism_log2","options":6,"value":0}
+story:
+  scenario: [("setup", "setup", false, [100], "[]"),
+ ("c0", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c1", "parallel_driver", false, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c2", "finally", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=none parallelMax=none cmdline: swarmOff=false timelineMs=(some 100000) limitMs=none
+  0 ms: command_start setup complete
+  0 ms: assert reachable "test command started: setup" true
+  100 ms: assert reachable "test command completed: setup" true
+  100 ms: reaped setup#1: status 0
+  100 ms: assert always "test commands exit successfully" true
+  100 ms: setup_complete
+  100 ms: composer_start
+  100 ms: command_start c0 complete
+  100 ms: assert reachable "test command started: c0" true
+  110 ms: assert reachable "test command completed: c0" true
+  110 ms: reaped c0#2: status 0
+  110 ms: command_left_out c1 kept_eighths=1
+  110 ms: faults_phase start
+  110 ms: faults start
+  110 ms: assert reachable "the fault injector started" true
+  truth: setup#1 [0,100] exited 0
+  truth: c0#2 [100,110] exited 0
+  end: some (Determinismo.Stop.violation
+  "composer panics"
+  "run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))")
+---

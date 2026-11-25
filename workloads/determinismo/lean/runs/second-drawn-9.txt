@@ -1,0 +1,58 @@
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / drawn scenarios, the Zig's constants]: FOUND at timeline 68 of seeds 500..5499 (436 ms): the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on: the composer panics: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0)) (shrunk to 31 decisions from 39)
+--- counterexample [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / drawn scenarios, the Zig's constants]: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+detail: the composer panics: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))
+values: [3, 8, 2, 0, 0, 5, 0, 0, 0, 2, 3, 0, 0, 0, 0, 0, 0, 3, 0, 0, 1, 0, 0, 1, 0, 0, 0, 6, 6, 0, 0]
+tape:
+{"name":"gen.commands","options":5,"value":3}
+{"name":"gen.kind","options":9,"value":8}
+{"name":"gen.workload","options":4,"value":2}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":5}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":2}
+{"name":"gen.workload","options":4,"value":3}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":3}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":0}
+{"name":"gen.parallel_max","options":3,"value":1}
+{"name":"gen.timeline","options":3,"value":0}
+{"name":"gen.limit","options":3,"value":0}
+{"name":"gen.no_swarm","options":4,"value":1}
+{"name":"composer.drivers_cpu","options":3,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm c0","options":8,"value":6}
+{"name":"composer.swarm c2","options":8,"value":6}
+{"name":"composer.starts_log2","options":5,"value":0}
+{"name":"composer.starts","options":2,"value":0}
+story:
+  scenario: [("c0", "parallel_driver", false, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c1", "eventually", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c2", "serial_driver", false, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c3", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=none parallelMax=(some 1) cmdline: swarmOff=false timelineMs=none limitMs=none
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_start c3 complete
+  0 ms: assert reachable "test command started: c3" true
+  10 ms: assert reachable "test command completed: c3" true
+  10 ms: reaped c3#1: status 0
+  10 ms: assert always "test commands exit successfully" true
+  10 ms: command_left_out c0 kept_eighths=1
+  10 ms: command_left_out c2 kept_eighths=1
+  10 ms: faults_phase start
+  10 ms: faults start
+  10 ms: assert reachable "the fault injector started" true
+  truth: c3#1 [0,10] exited 0
+  end: some (Determinismo.Stop.violation
+  "composer panics"
+  "run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))")
+---

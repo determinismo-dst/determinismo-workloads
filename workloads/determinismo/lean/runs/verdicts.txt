@@ -1,0 +1,179 @@
+== verdict property: the exploration's verdict does not depend on the order its timelines end
+   source: README_AI.md: "Branches run on every CPU (--jobs, same timelines as one worker)"; report.zig:506: "the summary does not depend on which worker finished first"; ARCHITECTURE.md M9: "parallel = sequential"
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, two lines each, every kind of one message]: FOUND after 292 timelines (7 ms): the exploration's verdict does not depend on the order its timelines end: in one order exit 3, in another exit 0 (shrunk to 5 decisions from 5)
+--- counterexample [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, two lines each, every kind of one message]: the exploration's verdict does not depend on the order its timelines end
+detail: in one order exit 3, in another exit 0
+values: [0, 1, 2, 2, 1]
+tape:
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":1}
+{"name":"world.assertion","options":11,"value":2}
+{"name":"world.assertion","options":11,"value":2}
+{"name":"world.order","options":2,"value":1}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["sometimes(true) m", "sometimes(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) m", "always(false) m"]
+  explorer: exit 0
+  serve: [[(sometimes, (m, passing)), (always, (m, failing))]]
+  documented: fails [(always, m)]
+---
+search exhaust [the exploration's verdict does not depend on the order its timelines end / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (8 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (6 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (24 ms)
+== verdict property: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+   source: docs/ANTITHESIS.md (Assertions: "Judged as Antithesis does"; Assertion catalog: "A test program's catalog spans its scenarios and is judged over all of them"); SKILL.md (determinismo-workload): "one never true fails the run", "An always never evaluated fails too"
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (6 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two lines each, every kind of one message]: FOUND after 73 timelines (6 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]]] (shrunk to 5 decisions from 5)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two lines each, every kind of one message]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]]]
+values: [0, 0, 3, 3, 0]
+tape:
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) m", "always(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["sometimes(false) m", "sometimes(false) m"]
+  explorer: exit 0
+  serve: [[(always, (m, passing)), (sometimes, (m, failing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, two timelines each, a sometimes alone]: FOUND after 17 timelines (7 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 3; documented: passes; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" true],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" true]],
+ [[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]]] (shrunk to 6 decisions from 6)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, two timelines each, a sometimes alone]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 3; documented: passes; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" true],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" true]],
+ [[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]]]
+values: [0, 0, 1, 1, 0, 0]
+tape:
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":1}
+{"name":"world.assertion","options":3,"value":1}
+{"name":"world.order","options":2,"value":0}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["sometimes(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["sometimes(true) m"]
+  scenario 1, timeline 0 (in the order they ended): ["sometimes(false) m"]
+  scenario 1, timeline 1 (in the order they ended): ["sometimes(false) m"]
+  explorer: exit 3
+  serve: [[(sometimes, (m, passing))], [(sometimes, (m, failing))]]
+  documented: fails []
+---
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (6 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two always messages sharing their first 192 bytes]: FOUND after 7 timelines (7 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 0; documented: fails [(always, xxxxxxxxxxxx)]; timelines [[[Replica.Verdicts.AEvent.eval
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxa"
+     true,
+   Replica.Verdicts.AEvent.eval
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxa"
+     true],
+  [Replica.Verdicts.AEvent.eval
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxa"
+     true,
+   Replica.Verdicts.AEvent.declare
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxb"]]] (shrunk to 5 decisions from 5)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two always messages sharing their first 192 bytes]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 0; documented: fails [(always, xxxxxxxxxxxx)]; timelines [[[Replica.Verdicts.AEvent.eval
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxa"
+     true,
+   Replica.Verdicts.AEvent.eval
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxa"
+     true],
+  [Replica.Verdicts.AEvent.eval
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxa"
+     true,
+   Replica.Verdicts.AEvent.declare
+     (Replica.Verdicts.AKind.always)
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxb"]]]
+values: [0, 0, 0, 3, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) xxxxxxxxxxxxxxxxxxxx", "always(true) xxxxxxxxxxxxxxxxxxxx"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) xxxxxxxxxxxxxxxxxxxx", "declare always xxxxxxxxxxxxxxxxxxxx"]
+  explorer: exit 0
+  serve: [[(always, (xxxxxxxxxxxxxxxxxxxx, passing)), (always, (xxxxxxxxxxxxxxxxxxxx, unreached))]]
+  documented: fails [(always, xxxxxxxxxxxxxxxxxxxx)]
+---
+== verdict property: serve's run (one scenario) shows a failing property exactly when one fails as documented
+   source: README_AI.md: "curl localhost:7878/runs/1/properties # every property's verdict so far"; store.zig:1112
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (6 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, two lines each, every kind of one message]: complete, 29282 timelines, none broke it (63 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (7 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (6 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (8 ms)
+== verdict property: the explorer's verdict of a one-scenario run and serve's agree
+   source: store.zig:1112 ("as Antithesis judges it (report.property_failing)")
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (6 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two lines each, every kind of one message]: FOUND after 73 timelines (6 ms): the explorer's verdict of a one-scenario run and serve's agree: explorer exit 0, serve [(always, (m, passing)), (sometimes, (m, failing))] (shrunk to 5 decisions from 5)
+--- counterexample [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two lines each, every kind of one message]: the explorer's verdict of a one-scenario run and serve's agree
+detail: explorer exit 0, serve [(always, (m, passing)), (sometimes, (m, failing))]
+values: [0, 0, 3, 3, 0]
+tape:
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) m", "always(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["sometimes(false) m", "sometimes(false) m"]
+  explorer: exit 0
+  serve: [[(always, (m, passing)), (sometimes, (m, failing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (6 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (7 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two always messages sharing their first 192 bytes]: FOUND after 7 timelines (6 ms): the explorer's verdict of a one-scenario run and serve's agree: explorer exit 0, serve [(always, (xxxxxxxxxxxx, passing)), (always, (xxxxxxxxxxxx, unreached))] (shrunk to 5 decisions from 5)
+--- counterexample [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two always messages sharing their first 192 bytes]: the explorer's verdict of a one-scenario run and serve's agree
+detail: explorer exit 0, serve [(always, (xxxxxxxxxxxx, passing)), (always, (xxxxxxxxxxxx, unreached))]
+values: [0, 0, 0, 3, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) xxxxxxxxxxxxxxxxxxxx", "always(true) xxxxxxxxxxxxxxxxxxxx"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) xxxxxxxxxxxxxxxxxxxx", "declare always xxxxxxxxxxxxxxxxxxxx"]
+  explorer: exit 0
+  serve: [[(always, (xxxxxxxxxxxxxxxxxxxx, passing)), (always, (xxxxxxxxxxxxxxxxxxxx, unreached))]]
+  documented: fails [(always, xxxxxxxxxxxxxxxxxxxx)]
+---
+== verdict property: events are not properties
+   source: SKILL.md (determinismo-workload): "is an `sdk.event`, searchable and no property"
+search exhaust [events are not properties / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [events are not properties / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (7 ms)
+search exhaust [events are not properties / one scenario, two timelines, two lines each, every kind of one message]: complete, 29282 timelines, none broke it (48 ms)
+search exhaust [events are not properties / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (7 ms)
+search exhaust [events are not properties / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (6 ms)
+search exhaust [events are not properties / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (24 ms)

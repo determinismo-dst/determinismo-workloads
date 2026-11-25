@@ -1,0 +1,70 @@
+search explore [a singleton driver runs with no other driving command (anytime counted) / drawn scenarios, the Zig's constants]: FOUND at timeline 7 of seeds 500..5499 (0 ms): a singleton driver runs with no other driving command (anytime counted): c3#2 [10,20] exited 0 beside c0#3 [10,20] exited 0 (shrunk to 33 decisions from 37)
+--- counterexample [a singleton driver runs with no other driving command (anytime counted) / drawn scenarios, the Zig's constants]: a singleton driver runs with no other driving command (anytime counted)
+detail: c3#2 [10,20] exited 0 beside c0#3 [10,20] exited 0
+values: [4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"gen.commands","options":5,"value":4}
+{"name":"gen.kind","options":9,"value":3}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":4}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":3}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":0}
+{"name":"gen.parallel_max","options":3,"value":0}
+{"name":"gen.timeline","options":3,"value":0}
+{"name":"gen.limit","options":3,"value":0}
+{"name":"gen.no_swarm","options":4,"value":0}
+{"name":"composer.command","options":3,"value":0}
+{"name":"world.run_ms c1","options":3,"value":0}
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms c3","options":3,"value":0}
+{"name":"world.run_ms c0","options":3,"value":0}
+story:
+  scenario: [("c0", "singleton_driver", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c1", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c2", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c3", "anytime", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c4", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=none parallelMax=none cmdline: swarmOff=true timelineMs=none limitMs=none
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_start c1 complete
+  0 ms: assert reachable "test command started: c1" true
+  10 ms: assert reachable "test command completed: c1" true
+  10 ms: reaped c1#1: status 0
+  10 ms: assert always "test commands exit successfully" true
+  10 ms: faults_phase start
+  10 ms: faults start
+  10 ms: assert reachable "the fault injector started" true
+  10 ms: command_start c3 start
+  10 ms: assert reachable "test command started: c3" true
+  10 ms: command_start c0 start
+  10 ms: assert reachable "test command started: c0" true
+  20 ms: assert reachable "test command completed: c3" true
+  20 ms: reaped c3#2: status 0
+  20 ms: assert reachable "test command completed: c0" true
+  20 ms: reaped c0#3: status 0
+  20 ms: faults stop
+  20 ms: faults_phase stop
+  20 ms: composer_done 3
+  truth: c1#1 [0,10] exited 0
+  truth: c3#2 [10,20] exited 0
+  truth: c0#3 [10,20] exited 0
+  end: none
+---

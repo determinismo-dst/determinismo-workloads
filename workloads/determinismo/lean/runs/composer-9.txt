@@ -1,0 +1,133 @@
+== composer property: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+   source: .claude/skills/determinismo-workload/SKILL.md: "the composer's swarm then leaves any driver out of some timelines ... and keeps one marked driver at least"; sdk/zig/schema.zig Command.workload
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / first + parallel + serial + eventually + finally, no swarm]: complete, 2268 timelines, none broke it (15 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / first + parallel + serial + eventually + finally, no swarm]: 2000 timelines (seeds 0..1999), none broke it (18 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / setup + first + parallel + anytime + finally, parallel_max 2, no swarm]: complete, 162 timelines, none broke it (1 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / setup + first + parallel + anytime + finally, parallel_max 2, no swarm]: 2000 timelines (seeds 0..1999), none broke it (17 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / parallel (exits 0 or 1) + eventually, min_drive 0, no swarm]: complete, 512 timelines, none broke it (3 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / parallel (exits 0 or 1) + eventually, min_drive 0, no swarm]: 2000 timelines (seeds 0..1999), none broke it (15 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / parallel (exits 0 or 1) + eventually, min_drive default, no swarm]: complete, 9728 timelines, none broke it (56 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / parallel (exits 0 or 1) + eventually, min_drive default, no swarm]: 2000 timelines (seeds 0..1999), none broke it (15 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: complete, 1394 timelines, none broke it (11 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / parallel (ends by itself or by a signal) + finally, a 60 ms length, no swarm]: 2000 timelines (seeds 0..1999), none broke it (12 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / serial (1 or 200 ms) + parallel, a 60 ms length, no swarm]: complete, 35121 timelines, none broke it (685 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / serial (1 or 200 ms) + parallel, a 60 ms length, no swarm]: 2000 timelines (seeds 0..1999), none broke it (10 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton (1 or 200 ms) + parallel, a 60 ms length, no swarm]: complete, 4 timelines, none broke it (0 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton (1 or 200 ms) + parallel, a 60 ms length, no swarm]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton + parallel + anytime, no swarm]: complete, 34 timelines, none broke it (0 ms)
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton + parallel + anytime, no swarm]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton (marked workload) + two parallel nemeses, swarm]: FOUND after 2 timelines (0 ms): the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on: no marked driver kept (shrunk to 11 decisions from 11)
+--- counterexample [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton (marked workload) + two parallel nemeses, swarm]: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+detail: no marked driver kept
+values: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"composer.singleton_eighths","options":7,"value":0}
+{"name":"composer.singleton","options":8,"value":1}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm nemesis1","options":8,"value":0}
+{"name":"composer.swarm nemesis2","options":8,"value":0}
+{"name":"composer.starts","options":2,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"composer.load","options":3,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"composer.command","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: composer_load 0 1 20
+  0 ms: command_start nemesis1 start
+  0 ms: assert reachable "test command started: nemesis1" true
+  1 ms: assert reachable "test command completed: nemesis1" true
+  1 ms: reaped nemesis1#1: status 0
+  1 ms: assert always "test commands exit successfully" true
+  1 ms: command_start nemesis1 start
+  2 ms: reaped nemesis1#2: status 0
+  2 ms: faults stop
+  2 ms: faults_phase stop
+  2 ms: composer_done 2
+  truth: nemesis1#1 [0,1] exited 0
+  truth: nemesis1#2 [1,2] exited 0
+  end: none
+---
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton (marked workload) + two parallel nemeses, swarm]: FOUND at timeline 2 of seeds 0..1999 (0 ms): the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on: the composer panics: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0)) (shrunk to 7 decisions from 7)
+--- counterexample [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / singleton (marked workload) + two parallel nemeses, swarm]: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+detail: the composer panics: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))
+values: [0, 7, 0, 7, 7, 0, 0]
+tape:
+{"name":"composer.singleton_eighths","options":7,"value":0}
+{"name":"composer.singleton","options":8,"value":7}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm nemesis1","options":8,"value":7}
+{"name":"composer.swarm nemesis2","options":8,"value":7}
+{"name":"composer.starts","options":2,"value":0}
+{"name":"composer.parallelism_log2","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_left_out nemesis1 kept_eighths=1
+  0 ms: command_left_out nemesis2 kept_eighths=1
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  end: some (Determinismo.Stop.violation
+  "composer panics"
+  "run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))")
+---
+search explore [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / drawn scenarios, the Zig's constants]: FOUND at timeline 17 of seeds 0..499 (10 ms): the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on: the composer panics: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0)) (shrunk to 28 decisions from 35)
+--- counterexample [the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on / drawn scenarios, the Zig's constants]: the swarm keeps one marked driver at least (one driver, when none is marked), and the composer goes on
+detail: the composer panics: run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))
+values: [3, 6, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 1, 0, 0, 3, 0, 0, 1, 1, 0, 2, 0, 0, 0, 5]
+tape:
+{"name":"gen.commands","options":5,"value":3}
+{"name":"gen.kind","options":9,"value":6}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":5}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":2}
+{"name":"gen.workload","options":4,"value":1}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":3}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":0}
+{"name":"gen.parallel_max","options":3,"value":1}
+{"name":"gen.timeline","options":3,"value":1}
+{"name":"gen.limit","options":3,"value":0}
+{"name":"gen.no_swarm","options":4,"value":2}
+{"name":"composer.drivers_cpu","options":3,"value":0}
+{"name":"world.run_ms c1","options":3,"value":0}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm c3","options":8,"value":5}
+story:
+  scenario: [("c0", "finally", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c1", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c2", "eventually", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c3", "serial_driver", false, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=none parallelMax=(some 1) cmdline: swarmOff=false timelineMs=(some 30000) limitMs=none
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: command_start c1 complete
+  0 ms: assert reachable "test command started: c1" true
+  10 ms: assert reachable "test command completed: c1" true
+  10 ms: reaped c1#1: status 0
+  10 ms: assert always "test commands exit successfully" true
+  10 ms: command_left_out c3 kept_eighths=1
+  10 ms: faults_phase start
+  10 ms: faults start
+  10 ms: assert reachable "the fault injector started" true
+  truth: c1#1 [0,10] exited 0
+  end: some (Determinismo.Stop.violation
+  "composer panics"
+  "run_drivers: no driver kind kept (composer.zig:718: assert(kinds.len > 0))")
+---

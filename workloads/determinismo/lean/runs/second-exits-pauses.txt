@@ -1,0 +1,101 @@
+== composer property: a command that ended on its own is judged by its exit (only the composer's kills are not)
+search exhaust [a command that ended on its own is judged by its exit (only the composer's kills are not) / parallel (exits 0 or 1) + eventually, min_drive 0, pauses of 0 to 2 ms, no swarm]: FOUND after 2 timelines (0 ms): a command that ended on its own is judged by its exit (only the composer's kills are not): drive#4 [3,4] exited 0 reported as killed: its exit never judged (shrunk to 13 decisions from 13)
+--- counterexample [a command that ended on its own is judged by its exit (only the composer's kills are not) / parallel (exits 0 or 1) + eventually, min_drive 0, pauses of 0 to 2 ms, no swarm]: a command that ended on its own is judged by its exit (only the composer's kills are not)
+detail: drive#4 [3,4] exited 0 reported as killed: its exit never judged
+values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+tape:
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":1}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start drive start
+  0 ms: assert reachable "test command started: drive" true
+  1 ms: assert reachable "test command completed: drive" true
+  1 ms: reaped drive#1: status 0
+  1 ms: assert always "test commands exit successfully" true
+  1 ms: command_start drive start
+  2 ms: reaped drive#2: status 0
+  2 ms: command_start drive start
+  3 ms: reaped drive#3: status 0
+  3 ms: command_start drive start
+  4 ms: reaped drive#4: reported killed
+  4 ms: faults stop
+  4 ms: faults_phase stop
+  4 ms: command_start check complete
+  4 ms: assert reachable "test command started: check" true
+  9 ms: assert reachable "test command completed: check" true
+  9 ms: reaped check#5: status 0
+  9 ms: assert always "an ending command finishes within its window" true
+  9 ms: composer_done 5
+  truth: drive#1 [0,1] exited 0
+  truth: drive#2 [1,2] exited 0
+  truth: drive#3 [2,3] exited 0
+  truth: drive#4 [3,4] exited 0
+  truth: check#5 [4,5] exited 0
+  end: none
+---
+search explore [a command that ended on its own is judged by its exit (only the composer's kills are not) / parallel (exits 0 or 1) + eventually, min_drive 0, pauses of 0 to 2 ms, no swarm]: FOUND at timeline 2 of seeds 0..1999 (0 ms): a command that ended on its own is judged by its exit (only the composer's kills are not): drive#4 [3,4] exited 0 reported as killed: its exit never judged (shrunk to 13 decisions from 13)
+--- counterexample [a command that ended on its own is judged by its exit (only the composer's kills are not) / parallel (exits 0 or 1) + eventually, min_drive 0, pauses of 0 to 2 ms, no swarm]: a command that ended on its own is judged by its exit (only the composer's kills are not)
+detail: drive#4 [3,4] exited 0 reported as killed: its exit never judged
+values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+tape:
+{"name":"composer.parallelism_log2","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.exit drive","options":2,"value":0}
+{"name":"random_below","options":3,"value":1}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start drive start
+  0 ms: assert reachable "test command started: drive" true
+  1 ms: assert reachable "test command completed: drive" true
+  1 ms: reaped drive#1: status 0
+  1 ms: assert always "test commands exit successfully" true
+  1 ms: command_start drive start
+  2 ms: reaped drive#2: status 0
+  2 ms: command_start drive start
+  3 ms: reaped drive#3: status 0
+  3 ms: command_start drive start
+  4 ms: reaped drive#4: reported killed
+  4 ms: faults stop
+  4 ms: faults_phase stop
+  4 ms: command_start check complete
+  4 ms: assert reachable "test command started: check" true
+  9 ms: assert reachable "test command completed: check" true
+  9 ms: reaped check#5: status 0
+  9 ms: assert always "an ending command finishes within its window" true
+  9 ms: composer_done 5
+  truth: drive#1 [0,1] exited 0
+  truth: drive#2 [1,2] exited 0
+  truth: drive#3 [2,3] exited 0
+  truth: drive#4 [3,4] exited 0
+  truth: check#5 [4,5] exited 0
+  end: none
+---

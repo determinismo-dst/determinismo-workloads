@@ -1,0 +1,399 @@
+== fault injector property: an excluded node gets no fault of its own and is in no partition, isolation or outage
+   source: docs/ANTITHESIS.md (Fault exclusions): "a node whose name matches gets no fault of its own and is in no partition, isolation or outage"; faults.zig:553
+search exhaust [an excluded node gets no fault of its own and is in no partition, isolation or outage / two nodes, the later one excluded, no swarm]: FOUND after 15 timelines (1 ms): an excluded node gets no fault of its own and is in no partition, isolation or outage: partition node=a peer=b nodes=[] at 20 ms involves excluded b (shrunk to 8 decisions from 8)
+--- counterexample [an excluded node gets no fault of its own and is in no partition, isolation or outage / two nodes, the later one excluded, no swarm]: an excluded node gets no fault of its own and is in no partition, isolation or outage
+detail: partition node=a peer=b nodes=[] at 20 ms involves excluded b
+values: [0, 0, 0, 0, 0, 0, 7, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":7}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [pause a, isolate a, throttle a, sync_stall a, partition a runner, degrade a runner, degrade runner a, partition a b, degrade a b, degrade b a, clog a, restore]
+  10 ms: fault pause node=a peer= nodes=[] for 5 ms
+  15 ms: pause on a ends
+  20 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  20 ms: faults stop
+  end: none
+---
+search explore [an excluded node gets no fault of its own and is in no partition, isolation or outage / two nodes, the later one excluded, no swarm (8 injections)]: FOUND at timeline 1 of seeds 0..4999 (0 ms): an excluded node gets no fault of its own and is in no partition, isolation or outage: partition node=a peer=b nodes=[] at 10 ms involves excluded b (shrunk to 40 decisions from 42)
+--- counterexample [an excluded node gets no fault of its own and is in no partition, isolation or outage / two nodes, the later one excluded, no swarm (8 injections)]: an excluded node gets no fault of its own and is in no partition, isolation or outage
+detail: partition node=a peer=b nodes=[] at 10 ms involves excluded b
+values: [0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":9}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [pause a, isolate a, throttle a, sync_stall a, partition a runner, degrade a runner, degrade runner a, partition a b, degrade a b, degrade b a, clog a, restore]
+  10 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  20 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  30 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  40 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  50 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  60 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  70 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  80 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  80 ms: faults stop
+  end: none
+---
+== fault injector property: an excluded node is in no drawn fault (injected ones aside)
+   source: docs/ANTITHESIS.md (Fault exclusions): "a node whose name matches gets no fault of its own and is in no partition, isolation or outage"; faults.zig:553
+search exhaust [an excluded node is in no drawn fault (injected ones aside) / two nodes, the later one excluded, no swarm]: FOUND after 15 timelines (0 ms): an excluded node is in no drawn fault (injected ones aside): partition node=a peer=b nodes=[] at 20 ms involves excluded b (shrunk to 8 decisions from 8)
+--- counterexample [an excluded node is in no drawn fault (injected ones aside) / two nodes, the later one excluded, no swarm]: an excluded node is in no drawn fault (injected ones aside)
+detail: partition node=a peer=b nodes=[] at 20 ms involves excluded b
+values: [0, 0, 0, 0, 0, 0, 7, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":7}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [pause a, isolate a, throttle a, sync_stall a, partition a runner, degrade a runner, degrade runner a, partition a b, degrade a b, degrade b a, clog a, restore]
+  10 ms: fault pause node=a peer= nodes=[] for 5 ms
+  15 ms: pause on a ends
+  20 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  20 ms: faults stop
+  end: none
+---
+search explore [an excluded node is in no drawn fault (injected ones aside) / two nodes, the later one excluded, no swarm (8 injections)]: FOUND at timeline 1 of seeds 0..4999 (0 ms): an excluded node is in no drawn fault (injected ones aside): partition node=a peer=b nodes=[] at 10 ms involves excluded b (shrunk to 40 decisions from 42)
+--- counterexample [an excluded node is in no drawn fault (injected ones aside) / two nodes, the later one excluded, no swarm (8 injections)]: an excluded node is in no drawn fault (injected ones aside)
+detail: partition node=a peer=b nodes=[] at 10 ms involves excluded b
+values: [0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":9}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault.aim","options":2,"value":0}
+{"name":"fault.aimed","options":3,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [pause a, isolate a, throttle a, sync_stall a, partition a runner, degrade a runner, degrade runner a, partition a b, degrade a b, degrade b a, clog a, restore]
+  10 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  20 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  30 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  40 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  50 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  60 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  70 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  80 ms: fault partition node=a peer=b nodes=[] for 5 ms
+  80 ms: faults stop
+  end: none
+---
+== fault injector property: at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted
+   source: docs/ANTITHESIS.md (A cap on nodes down at once)
+search exhaust [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / two nodes, the later one excluded, no swarm]: stopped at 100000 timelines, none broke it (343 ms)
+search explore [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / two nodes, the later one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (80 ms)
+search exhaust [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / two nodes, the earlier one excluded, no swarm]: stopped at 100000 timelines, none broke it (346 ms)
+search explore [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / two nodes, the earlier one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (79 ms)
+search exhaust [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm]: stopped at 100000 timelines, none broke it (846 ms)
+search explore [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm (12 injections)]: 5000 timelines (seeds 0..4999), none broke it (174 ms)
+search exhaust [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / three nodes allowing restarts, nodes_down_max 1, no swarm]: stopped at 100000 timelines, none broke it (603 ms)
+search explore [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / three nodes allowing restarts, nodes_down_max 1, no swarm (12 injections)]: 5000 timelines (seeds 0..4999), none broke it (131 ms)
+search exhaust [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / two nodes allowing restarts and pauses, quiet periods, no swarm]: complete, 92224 timelines, none broke it (360 ms)
+search explore [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / two nodes allowing restarts and pauses, quiet periods, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (81 ms)
+search exhaust [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / three nodes, every kind modeled, pacing, swarm]: stopped at 100000 timelines, none broke it (3302 ms)
+search explore [at most nodes_down_max nodes killed, powered off, stopped or wiped at once, outages counted / three nodes, every kind modeled, pacing, swarm (24 injections)]: 5000 timelines (seeds 0..4999), none broke it (471 ms)
+== fault injector property: at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it)
+   source: docs/ANTITHESIS.md (A cap on nodes down at once: "for a claim that covers a minority's failures ... a 2n+1 cluster surviving n"); faults.zig:2087-2111, 2134-2148 (node_start counts recovering nodes)
+search exhaust [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / two nodes, the later one excluded, no swarm]: stopped at 100000 timelines, none broke it (341 ms)
+search explore [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / two nodes, the later one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (79 ms)
+search exhaust [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / two nodes, the earlier one excluded, no swarm]: stopped at 100000 timelines, none broke it (339 ms)
+search explore [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / two nodes, the earlier one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (77 ms)
+search exhaust [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm]: FOUND after 37 timelines (1 ms): at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it): 3 nodes down or recovering at 30 ms, nodes_down_max 2 (shrunk to 16 decisions from 16)
+--- counterexample [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm]: at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it)
+detail: 3 nodes down or recovering at 30 ms, nodes_down_max 2
+values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 1, 0, 1, 1]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":15}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.outage_all","options":2,"value":1}
+{"name":"fault.outage_size","options":4,"value":0}
+{"name":"random_below","options":5,"value":1}
+{"name":"random_below","options":4,"value":1}
+story:
+  faults listed: [restart n0, crash n0, durable_crash n0, restart n1, crash n1, durable_crash n1, restart n2, crash n2, durable_crash n2, restart n3, crash n3, durable_crash n3, restart n4, crash n4, durable_crash n4, outage, outage kill]
+  10 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  15 ms: restart on n0 ends
+  20 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  25 ms: restart on n0 ends
+  30 ms: fault outage node= peer= nodes=[n1, n2] for 5 ms
+  30 ms: outage on n1 ends
+  30 ms: outage on n2 ends
+  30 ms: faults stop
+  end: none
+---
+search explore [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm (12 injections)]: FOUND at timeline 13 of seeds 0..4999 (0 ms): at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it): 3 nodes down or recovering at 110 ms, nodes_down_max 2 (shrunk to 48 decisions from 48)
+--- counterexample [at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it) / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm (12 injections)]: at most nodes_down_max nodes down at once, a node back less than its recovery ago counted (as node_start counts it)
+detail: 3 nodes down or recovering at 110 ms, nodes_down_max 2
+values: [0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 13, 0, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":11}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":0}
+{"name":"fault","options":17,"value":4}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":19,"value":13}
+{"name":"fault","options":17,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [restart n0, crash n0, durable_crash n0, restart n1, crash n1, durable_crash n1, restart n2, crash n2, durable_crash n2, restart n3, crash n3, durable_crash n3, restart n4, crash n4, durable_crash n4, outage, outage kill]
+  10 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  15 ms: restart on n0 ends
+  20 ms: fault durable_crash node=n3 peer= nodes=[] for 5 ms
+  25 ms: durable_crash on n3 ends
+  30 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  35 ms: restart on n0 ends
+  40 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  45 ms: restart on n0 ends
+  50 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  55 ms: restart on n0 ends
+  60 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  65 ms: restart on n0 ends
+  70 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  75 ms: restart on n0 ends
+  80 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  85 ms: restart on n0 ends
+  90 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  95 ms: restart on n0 ends
+  100 ms: fault restart node=n0 peer= nodes=[] for 5 ms
+  105 ms: restart on n0 ends
+  110 ms: fault_skipped crash n1 NodesDownMax
+  110 ms: fault outage node= peer= nodes=[n0, n1] for 20 ms (injected)
+  120 ms: outage on n0 ends
+  120 ms: outage on n1 ends
+  120 ms: faults stop
+  end: none
+---
+== fault injector property: in a quiet period no fault but a clock skip starts
+   source: docs/ANTITHESIS.md (Pausing faults): "the fault under way ends, none but clock skips start"; README_AI.md (quiet periods requested from any node or command)
+search exhaust [in a quiet period no fault but a clock skip starts / two nodes, the later one excluded, no swarm]: FOUND after 20889 timelines (71 ms): in a quiet period no fault but a clock skip starts: restart a[] starts at 0 ms in a quiet period until 50 (injected: sdk.fault) (shrunk to 8 decisions from 8)
+--- counterexample [in a quiet period no fault but a clock skip starts / two nodes, the later one excluded, no swarm]: in a quiet period no fault but a clock skip starts
+detail: restart a[] starts at 0 ms in a quiet period until 50 (injected: sdk.fault)
+values: [0, 1, 0, 0, 0, 3, 0, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":1}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":3}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [pause a, isolate a, throttle a, sync_stall a, partition a runner, degrade a runner, degrade runner a, partition a b, degrade a b, degrade b a, clog a, restore]
+  0 ms: quiet until 50
+  0 ms: fault restart node=a peer= nodes=[] for 20 ms (injected)
+  10 ms: restart on a ends
+  10 ms: faults stop
+  end: none
+---
+search explore [in a quiet period no fault but a clock skip starts / two nodes, the later one excluded, no swarm (8 injections)]: FOUND at timeline 1 of seeds 0..4999 (1 ms): in a quiet period no fault but a clock skip starts: pause a[] starts at 30 ms in a quiet period until 80 (injected: sdk.fault) (shrunk to 32 decisions from 42)
+--- counterexample [in a quiet period no fault but a clock skip starts / two nodes, the later one excluded, no swarm (8 injections)]: in a quiet period no fault but a clock skip starts
+detail: pause a[] starts at 30 ms in a quiet period until 80 (injected: sdk.fault)
+values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":1}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":5}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+{"name":"fault.wait_ns","options":2,"value":0}
+{"name":"world.request","options":10,"value":0}
+{"name":"fault","options":12,"value":0}
+{"name":"fault.duration_ns","options":2,"value":0}
+story:
+  faults listed: [pause a, isolate a, throttle a, sync_stall a, partition a runner, degrade a runner, degrade runner a, partition a b, degrade a b, degrade b a, clog a, restore]
+  10 ms: fault pause node=a peer= nodes=[] for 5 ms
+  15 ms: pause on a ends
+  20 ms: fault pause node=a peer= nodes=[] for 5 ms
+  25 ms: pause on a ends
+  30 ms: fault pause node=a peer= nodes=[] for 5 ms
+  30 ms: pause on a ends
+  30 ms: quiet until 80
+  30 ms: fault pause node=a peer= nodes=[] for 20 ms (injected)
+  50 ms: pause on a ends
+  70 ms: faults stop
+  end: none
+---
+== fault injector property: in a quiet period no drawn fault but a clock skip starts
+   source: docs/ANTITHESIS.md (Pausing faults): "the fault under way ends, none but clock skips start"; README_AI.md (quiet periods requested from any node or command)
+search exhaust [in a quiet period no drawn fault but a clock skip starts / two nodes, the later one excluded, no swarm]: stopped at 100000 timelines, none broke it (346 ms)
+search explore [in a quiet period no drawn fault but a clock skip starts / two nodes, the later one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (79 ms)
+search exhaust [in a quiet period no drawn fault but a clock skip starts / two nodes, the earlier one excluded, no swarm]: stopped at 100000 timelines, none broke it (345 ms)
+search explore [in a quiet period no drawn fault but a clock skip starts / two nodes, the earlier one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (79 ms)
+search exhaust [in a quiet period no drawn fault but a clock skip starts / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm]: stopped at 100000 timelines, none broke it (857 ms)
+search explore [in a quiet period no drawn fault but a clock skip starts / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm (12 injections)]: 5000 timelines (seeds 0..4999), none broke it (176 ms)
+search exhaust [in a quiet period no drawn fault but a clock skip starts / three nodes allowing restarts, nodes_down_max 1, no swarm]: stopped at 100000 timelines, none broke it (592 ms)
+search explore [in a quiet period no drawn fault but a clock skip starts / three nodes allowing restarts, nodes_down_max 1, no swarm (12 injections)]: 5000 timelines (seeds 0..4999), none broke it (127 ms)
+search exhaust [in a quiet period no drawn fault but a clock skip starts / two nodes allowing restarts and pauses, quiet periods, no swarm]: complete, 92224 timelines, none broke it (354 ms)
+search explore [in a quiet period no drawn fault but a clock skip starts / two nodes allowing restarts and pauses, quiet periods, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (79 ms)
+search exhaust [in a quiet period no drawn fault but a clock skip starts / three nodes, every kind modeled, pacing, swarm]: stopped at 100000 timelines, none broke it (3276 ms)
+search explore [in a quiet period no drawn fault but a clock skip starts / three nodes, every kind modeled, pacing, swarm (24 injections)]: 5000 timelines (seeds 0..4999), none broke it (469 ms)
+== fault injector property: once faults stop, nothing of them lasts
+   source: faults.zig:2 ("on stop it undoes what it did"); faults.zig:408 leftovers_check
+search exhaust [once faults stop, nothing of them lasts / two nodes, the later one excluded, no swarm]: stopped at 100000 timelines, none broke it (341 ms)
+search explore [once faults stop, nothing of them lasts / two nodes, the later one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (79 ms)
+search exhaust [once faults stop, nothing of them lasts / two nodes, the earlier one excluded, no swarm]: stopped at 100000 timelines, none broke it (338 ms)
+search explore [once faults stop, nothing of them lasts / two nodes, the earlier one excluded, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (77 ms)
+search exhaust [once faults stop, nothing of them lasts / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm]: stopped at 100000 timelines, none broke it (840 ms)
+search explore [once faults stop, nothing of them lasts / five nodes allowing restarts and power losses, nodes_down_max 2, no swarm (12 injections)]: 5000 timelines (seeds 0..4999), none broke it (170 ms)
+search exhaust [once faults stop, nothing of them lasts / three nodes allowing restarts, nodes_down_max 1, no swarm]: stopped at 100000 timelines, none broke it (578 ms)
+search explore [once faults stop, nothing of them lasts / three nodes allowing restarts, nodes_down_max 1, no swarm (12 injections)]: 5000 timelines (seeds 0..4999), none broke it (128 ms)
+search exhaust [once faults stop, nothing of them lasts / two nodes allowing restarts and pauses, quiet periods, no swarm]: complete, 92224 timelines, none broke it (354 ms)
+search explore [once faults stop, nothing of them lasts / two nodes allowing restarts and pauses, quiet periods, no swarm (8 injections)]: 5000 timelines (seeds 0..4999), none broke it (81 ms)
+search exhaust [once faults stop, nothing of them lasts / three nodes, every kind modeled, pacing, swarm]: stopped at 100000 timelines, none broke it (3317 ms)
+search explore [once faults stop, nothing of them lasts / three nodes, every kind modeled, pacing, swarm (24 injections)]: 5000 timelines (seeds 0..4999), none broke it (470 ms)

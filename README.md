@@ -20,6 +20,8 @@ departures from what they document; each prediction then checked on the real sys
   libraries it builds on (rounds 1-4), with tests run on jank.
 - [elle/lean](workloads/elle/README.md): Elle, Jepsen's consistency checker that determinismo's
   checks use (rounds 1-2), each finding reproduced on Elle itself.
+- [flecs/lean](workloads/flecs/lean/README.md): flecs, the C entity component system (round 1):
+  14 predictions with a C test each, to run on flecs.
 - [determinismo/lean](workloads/determinismo/lean/README.md): determinismo itself (its composer,
   fault injector, verdicts and tapes; round 1): 13 counterexamples, fixed on the platform with a
   test each that fails on the old code.

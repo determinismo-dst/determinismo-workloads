@@ -22,6 +22,14 @@ on the real jank.
   class templates, collection objects, regex captures and matchers, the nREPL's positions and the
   terminal REPL, module loading, AOT and the CLI, the clojure.core functions and bundled
   namespaces no round covered, jank.shell and clojure.pprint (U1–U92). [REPORT-4.md](REPORT-4.md).
+- **Round 5** (main 94d32623, whose compiler and runtime are byte-identical to 7135b7708: every
+  earlier prediction holds at the same lines): native object loading (ld scripts, `-l`, object
+  modules' initializers), errors as a program sees them, the C API, jank.math, C++ operators'
+  value categories, Java regex's Unicode boundaries, the nREPL's interrupt, `#inst` and CHAMP
+  (V1–V48, 49 tests); proofs for every input of the regex executor's invariant (U35), the
+  nREPL's chunking independence (T7) and CHAMP's count laws, and codegen's depth-2 world size
+  (354,197,993,668, proved). Corrections to earlier rounds' models (U47, the load replica, the
+  reader on an empty text). [REPORT-5.md](REPORT-5.md).
 
 ## What the real jank said
 

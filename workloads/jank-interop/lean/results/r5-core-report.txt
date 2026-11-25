@@ -1,0 +1,327 @@
+ROUND 5, AREA G (CORE): #inst THROUGH libstdc++'s std::chrono::parse, AND CHAMP LAWS
+jank main 94d32623 (upstream-r5/compiler+runtime; byte-identical to 7135b7708 there). Paths below are
+under upstream-r5/compiler+runtime/ unless they start with deps/ or clojure-ref/.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+Each item: program; Clojure 1.12's result; jank's predicted result; test; path; status; confidence.
+Every #inst program reads its literal at run time (read-string), as the tests do.
+
+G1. RFC 3339's "Z" offset is a read error.
+    (inst-ms (read-string "#inst \"2020-01-01T00:00:00Z\""))
+      Clojure 1577836800000
+      jank    read error "Unrecognized date/time syntax: 2020-01-01T00:00:00Z"
+    Also "…00.500Z", "2020Z", "2020-01-01Z" (2,366 of the census's inputs; 256 raw strings).
+    Path: runtime/obj/inst.cpp inst_from_string 31-57 tries "%FT%T%Oz", "%FT%T%z", "%FT%T", "%F";
+      libstdc++ chrono_io.h 4020-4060: %z reads "[+|-]hh[mm]", %Oz "[+|-]h[h][:mm]": a 'Z' is no digit
+      (_S_read_unsigned / _S_try_read_digit set failbit); "%FT%T" leaves "Z" unread, so `is.peek() ==
+      EOF` (inst.cpp 44) is false. (The C++ standard's [time.parse] gives %z and %Oz no 'Z' form either.)
+    Clojure: instant.clj timestamp regex 50-51, `(?:[Z]|…)`.
+    Test: vG1-inst-reads-a-z-offset. Theorems z_rejected, z_clojure. Status: new. Confidence: high.
+
+G2. A leap second is a read error.
+    (inst-ms (read-string "#inst \"2016-12-31T23:59:60\""))
+      Clojure 1483228800000 (parse-timestamp's docstring 65-66: seconds up to 60 at minute 59; the
+              lenient GregorianCalendar rolls into the next minute)
+      jank    read error
+    Path: chrono_io.h %S 3767-3858 reads 60 seconds; the end sets _M_is_leap_second (4429-4430);
+      from_stream(sys_time) 2889-2890 sets failbit for it; every format fails.
+    Test: vG2-inst-reads-a-leap-second. Theorems leap_rejected, leap_clojure. Status: new. High.
+
+G3. A fraction of more than 9 digits: a read error, or digits read as an offset.
+    (inst-ms (read-string "#inst \"2020-01-01T00:00:00.12345678912\""))
+      Clojure 1577836800123 (zero-fill-right keeps 9 digits, instant.clj 42-48, 115)
+      jank    1577793600123: 12 hours earlier, printed #inst "2019-12-31T12:00:00.123-00:00"
+    By the number of digits after the 9th: 1 → read error; 2 → read as a "%Oz" offset of hh hours
+    (up to 99); 3 → read error; 4 → read as a "%z" offset hhmm (format 2); 5 or more → read error.
+    Path: chrono_io.h 3827-3839: the fraction loop stops after hh_mm_ss<nanoseconds>::fractional_width
+      = 9 digits; the next directive is %Oz (format 1) or %z (format 2), whose sign is optional (4040-4043)
+      and whose hour needs no colon before EOF (4062-4068).
+    Census: 352 wrong instants, 4,048 read errors.
+    Test: vG3-inst-fraction-of-more-than-nine-digits. Theorems frac11_shifts, frac11_clojure.
+    Status: new. Confidence: high.
+
+G4. Before 1970, a sub-millisecond fraction moves the instant one millisecond toward 1970.
+    (inst-ms (read-string "#inst \"1969-12-31T23:59:59.9995\""))      Clojure -1   jank 0
+    (pr-str (read-string "#inst \"1969-01-01T00:00:00.0001\""))
+      Clojure "#inst \"1969-01-01T00:00:00.000-00:00\""   jank "#inst \"1969-01-01T00:00:00.001-00:00\""
+    Path: core.cpp inst_ms 1056-1066 (duration_cast<milliseconds>) and inst.cpp to_string_impl 77-81
+      (time_point_cast<milliseconds>) truncate toward zero ([time.duration.cast]); Clojure's millisecond
+      field is (quot nanos 1000000) of the positive fraction (instant.clj 247), so the instant's floor.
+    Census: 828 inputs. Test: vG4-inst-before-1970-keeps-its-millisecond. Theorems prefrac_jank,
+    prefrac_clojure. Status: new. Confidence: high.
+
+G5. = between insts compares nanoseconds; a value is not = to the read of its printed form.
+    (= (read-string "#inst \"2020-01-01T00:00:00.0001\"") (read-string "#inst \"2020-01-01T00:00:00\""))
+      Clojure true (java.util.Date.equals compares getTime())   jank false
+    (let [x (read-string "#inst \"2020-01-01T00:00:00.0001\"")] (= x (read-string (pr-str x))))
+      Clojure true   jank false (the value keeps 100,000 ns; the print keeps milliseconds)
+    Path: inst.cpp equal 66-75 (time points, ns with libstdc++'s system_clock), to_string_impl 77-81.
+    Census: eq 20 of 128 pairs; round trip 1,800 inputs. Test: vG5-inst-equality-is-to-the-millisecond.
+    Theorems submilli_jank_ne, submilli_clojure_eq. Status: new. Confidence: high.
+
+G6. compare of two insts throws.
+    (compare (read-string "#inst \"2020-01-01\"") (read-string "#inst \"2021-01-01\""))
+      Clojure -1 (Date implements Comparable)   jank throws (no compare behavior)
+    Also (sort [inst2 inst1]).
+    Path: obj/inst.hpp 12-30 declares no compare; core/equal.cpp compare 24-32 → oref compare →
+      object::compare (object.cpp 228-233) throws runtime_unsupported_behavior "compare".
+    Test: vG6-insts-compare. Status: new. Confidence: high (read, not modeled).
+
+G7. *default-data-reader-fn* takes #inst and #uuid before the built-in readers.
+    (binding [*default-data-reader-fn* tagged-literal] (inst? (read-string "#inst \"2020-01-01\"")))
+      Clojure true (LispReader.readTagged 1435-1451: *data-readers*, then default-data-readers, then
+              the default fn; jank's own docstring, core.jank 7699-7703: "When no data reader is found")
+      jank    false: a tagged literal
+    Same for #uuid.
+    Path: read/parse.cpp parse_reader_macro_tagged 1008-1124: *data-readers* (1037), then
+      *default-data-reader-fn* (1080-1102), then "uuid"/"inst"/"cpp" (1104-1124).
+    Test: vG7-default-data-reader-fn-leaves-inst-and-uuid. Theorem dispatch_differs_iff (the two orders
+    differ exactly when the tag is built in, unmapped, and the default fn is set).
+    Status: new. Confidence: high.
+
+G8 (extends U82). An offset after a date or a partial time, and a time without minutes.
+    (inst-ms (read-string "#inst \"2020-01-01-05:00\""))   Clojure 1577854800000   jank read error
+    (inst-ms (read-string "#inst \"2020-01-01T10\""))      Clojure 1577872800000   jank read error
+    Also "2020+05:00", "2020-05:00" (the regex backtracks: year 2020, offset -05:00), "…T10:30Z".
+    Path: as U82: every format needs "%F" first and either nothing or "T%T" after it; %T needs
+      hh:mm:ss (3728-3765). Clojure's regex puts the offset after any prefix (instant.clj 51).
+    Census: 144 (U82's own class) + 664 with an offset. Test: vG8-inst-reads-an-offset-after-a-date.
+    Status: extends U82 (round 4 tested only "2020"; its G27 claimed the hh:mm case, which holds).
+    Confidence: high.
+
+G9 (low; extends U39's root, print = to_string). print writes an inst without its tag.
+    (print-str (read-string "#inst \"2020-01-01\""))
+      Clojure "#inst \"2020-01-01T00:00:00.000-00:00\"" (print-method of Date, instant.clj 180-182)
+      jank    "2020-01-01T00:00:00.000-00:00" (core.cpp print 141-159 → inst::to_string)
+    Test: vG9-print-of-an-inst-keeps-its-tag. Status: extends U39 (a new type). Confidence: high.
+
+G10 (low; unported names, U49/U92's class). clojure.instant does not exist (no
+    src/jank/clojure/instant.jank): read-instant-date, read-instant-calendar, read-instant-timestamp,
+    parse-timestamp, validated.
+    Test: vG10-clojure-instant-exists. Status: new names. Confidence: high.
+
+G11 (extends R55). A value jank finds unequal to itself is never found in a hash set or map, and is
+    stored twice.
+    (let [x (seq "é")] [(contains? (hash-set x) x) (count (hash-set x x)) (get (hash-map x 1) x)])
+      Clojure [true 1 1]   jank [false 2 nil]
+    Path: persistent_string_sequence.cpp equal 34-37 → seq_ext.hpp equal 13-34 compares bytes with
+      character objects (R55: false for non-ASCII); CHAMP's get (champ.hpp get loop; replica
+      Champ.getLoop) compares the stored value with the query; do_add's equal check fails, so
+      make_merged puts both into one collision node (replica Champ.doAdd/makeMerged, every level equal);
+      persistent_hash_set.cpp create_from_seq 45-53, contains 186-189.
+    Test: vG11-a-set-finds-its-own-string-seq. Theorems r55_stored_twice, r55_never_found (on the
+    replica). Status: extends R55 (round 3's IMA6 left self-unequal values unsearched). Confidence: high
+    (R55 confirmed on jank; the CHAMP path replicated).
+
+Checked, not reported:
+- jank accepts many timestamps Clojure rejects (counted as accepts-invalid, by round 2's rule):
+  - years of 1-3 digits ("20-01-01" is the year 20) and a signed year: "-2020-01-01" reads as the
+    year +2020, because libstdc++'s _S_read_signed (chrono_io.h 2306-2321) negates only when the read
+    failed;
+  - one-digit months, days, hours, minutes, seconds where a later field follows ("2020-1-1");
+  - minute 60 (%T checks `> 60`, 3746-3752: "T00:60:00" is 01:00);
+  - offsets out of range ("+24:00", "+05:60": no range check, 4044-4097), without a colon ("+0500"),
+    hours only ("+05"), one-digit hours ("+5:00"), and without a sign ("…:0005:00");
+  - seconds without digits ("T00:00:.5" is half a second).
+  Census counts: 126,405 / 98,193 / 7,524 / 2,112 + 3,520 / 3,784 / 880; raw strings 453.
+- The en_US.UTF-8 locale: inst.cpp 41 builds std::locale("en_US.utf-8") for every read; where that
+  locale is not installed the constructor throws std::runtime_error ("locale::facet::_S_create_c_locale
+  name not valid"), which parse_tagged_inst 966-969 turns into a read error for every #inst. Not
+  tested (the host's locales decide it); assumption coreA5-1.
+- Dates before 1582-10-15: Clojure's GregorianCalendar reads them as Julian dates; jank's are proleptic
+  Gregorian (RFC 3339's). (inst-ms #inst "1000-01-01") differs by 5 days, and "1582-10-10" prints as
+  "1582-10-20" in Clojure. A Clojure quirk (round 1's A10), not reported; years before 1583 are kept
+  out of the value comparisons.
+- (str inst): Clojure's is Date.toString (zone-dependent); not compared.
+- Hashes: jank's to_hash is the nanosecond count's low bits, Clojure's Date.hashCode; = and hash agree
+  with each other on both sides.
+- CHAMP laws under jank's equality (D12, S59): every break found is in an existing class:
+  (dissoc (hash-map 1 :a) 1N) is {1 :a} and (disj #{0.0 2.0} -0.0) keeps 0.0 (D12: equal values on
+  different hash paths; get, count, dissoc and contains? all follow the query's hash), and the key
+  kept by assoc of an equal key is the new one (S59/IM1).
+
+======================================================================
+2. PROOFS
+======================================================================
+#inst (Jank/R5/Core/Inst.lean): each single-input fact is a kernel-checked theorem (decide +kernel over
+the replica; `chars%` gives the kernel a List Char): z_rejected, z_clojure, leap_rejected, leap_clojure,
+frac11_shifts, frac11_clojure, prefrac_jank, prefrac_clojure, submilli_jank_ne, submilli_clojure_eq, and
+two agreements (offset_agrees, date_agrees). ★ dispatch_differs_iff: for every combination of "the tag
+is in *data-readers*", "*default-data-reader-fn* is set" and "the tag is built in", jank's and Clojure's
+tag dispatch differ exactly when the tag is built in, not mapped, and the default fn is set (G7). The
+census is complete over its alphabet; no for-every-string theorem was attempted for the parser.
+
+CHAMP laws beyond get-after-add (Jank/R5/Core/ChampLaws5.lean, ChampWf5.lean), over round 3's replica of
+immer's champ.hpp, for every champ satisfying round 3's wfNode, every hash function and every equality,
+with only the link between the query and the value (`hashK k = hashT v`, `eqTK x k = eqTT x v` for
+every x: true of jank's mapCfg/setCfg by construction):
+- ★ added_doAdd: do_add's `added` flag is exactly "get along the same hash found nothing", at every
+  level, collision nodes included. ★ size_add: (count (assoc m k x)) = (count m) + (if (get m k) is
+  nil then 1 else 0); the same for conj on sets.
+- ★ added_doAddMut, ★ size_addMut: add_mut (assoc!/conj!) sets the same flag on every branch (in place
+  when the node is owned, through do_add when not), so the transient count equals the persistent one.
+- ★ doSub_absent, ★ sub_absent: dissoc/disj of a key get does not find returns the same champ and
+  allocates nothing; ★ doSubMut_absent, ★ subMut_absent: the same for dissoc!/disj!, on the mutating and
+  the copying branch.
+- ★ doSub_found, ★ size_sub: dissoc/disj of a key get finds returns a tree (never the root "singleton"
+  immer marks unreachable), so the count drops by one.
+- ★ makeMerged_wf, ★ doAdd_wf, ★ add_wf, empty_wf: add keeps wfNode, and the empty champ has it, so the
+  premise of every law above (and of round 3's get_add) holds for every champ built by adds from empty.
+- ★ size_add_add, ★ get_add_add: adding the same value twice changes neither the count nor get.
+- ★ doSub_ok, ★ get_sub (ChampSub5.lean): after dissoc/disj of k, get of k finds nothing, for every
+  well-formed champ holding at most one value Equal to k. doSub_ok follows do_sub through each case: a
+  collision node shrunk (the rest holds nothing Equal to k) or collapsed to the value left; a data slot
+  removed; a two-value node collapsed, its other value passed up (never Equal to k) and inlined by the
+  first ancestor that keeps other entries, into the slot of k's bit; the root's own collapse; empty().
+  The premise is the law's: with two stored values both = to k (D12 lets 1 and 1N sit in one hash set,
+  each = to 1), removing one leaves the other.
+- ChampR55.lean (G11 on the replica): with an equality false for one value, adding it twice to an empty
+  champ stores it twice (r55_stored_twice) and get never finds it (r55_never_found); the control value
+  is stored once (control_stored_once).
+What these make complete: the bounded CHAMP searches of rounds 3-4 (M4-2, M4-3, M5, S3-3) checked count
+and lookups only up to 3-4 steps; for count after add/remove, remove of an absent key, the transient
+count, and add idempotence they are now proved for every length.
+Not proved (and why): get of another key after add or remove, and "iteration yields each key once and
+exactly the keys present" (hence get_sub's premise for champs built by adds). These need a hash-path
+invariant (every stored value sits on its hash's path, do_check_champ) carried through make_merged, the
+inline/collapse cases of do_sub and the collision node's reordering, plus an equality that agrees with
+the hash; jank's does not (D12, R55), so they hold only on a restricted key domain. They stay covered by rounds 3-4's complete bounded searches
+over longs (hash-consistent: M4-2 complete 61,642; S3-3 complete 838,319; M5 transients complete
+7,572,128), with nothing found. The transient's structure (not just its count) agreeing with the
+persistent one is likewise searched (M5), not proved.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+Jank/R5/Core/Inst.lean (#inst, both sides):
+- libstdc++ 15.3.0 (deps/libstdcxx-15.3.0/, fetched this round: chrono_io.h, chrono.h, chrono.std
+  (include/std/chrono), istream.tcc, from GCC's releases/gcc-15.3.0 tag):
+  - basic_istream::peek and its sentry (istream.tcc 51-96, 680-705): a peek on a stream that is not
+    good() sets failbit; a peek at the end sets eofbit. get() after a successful peek.
+  - _Parser<nanoseconds>::operator() for the directives jank's formats use: literal characters
+    (3344-3354), %F (3489-3513), %T and %S's fractional branch (3728-3858), %z and %Oz (4020-4105), the
+    loop's failure exit (4188-4192), and the end: parts, the date check, the time of day, the leap
+    second (4320-4452); _S_read_unsigned, _S_read_signed (with its sign bug), _S_try_read_digit,
+    _S_read_chr (2272-2362); from_stream(sys_time) (2873-2897).
+  - sys_days(year_month_day) and back (days_from_civil / civil_from_days, as chrono.h's algorithms).
+- jank: inst.cpp inst_from_string 31-57 (the 4 formats, `!is.fail() && is.peek() == EOF`),
+  to_string_impl 77-81, to_code_string 95-102, equal 66-75; core.cpp inst_ms 1056-1066; parse.cpp's
+  tag dispatch 1008-1124.
+- Clojure: instant.clj parse-timestamp 50-121 (the regex with Java's backtracking order over the
+  nested greedy optional groups), validated 139-157, construct-calendar/construct-date 240-260
+  (Gregorian years from 1583), print-date 163-178; LispReader.readTagged 1435-1451.
+Jank/R5/Core/InstSearch.lean: the searches (section 7).
+Jank/R5/Core/ChampLaws5.lean, ChampWf5.lean: proofs over round 3's CHAMP replica (Jank/R3/Immer/Champ.lean:
+  immer champ.hpp get, do_add, do_add_mut, do_sub, do_sub_mut, make_merged).
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- #inst under libc++ (inst.cpp 18-29 throws "'#inst' parsing not currently supported." for every #inst):
+  only libstdc++ builds (jank's nixpkgs GCC 15.3.0) are replicated; a macOS/libc++ build of jank would
+  reject every #inst literal.
+- AOT compilation of #inst literals (R51, round 2) and inst hashes (no property).
+- Julian dates (years before 1583) on Clojure's side: a Clojure quirk, kept out of the value checks.
+- CHAMP: get of other keys, iteration = keys exactly once (get_sub's premise), the transient's
+  structure and get after a transient add or remove (section 2); laws for array maps (not CHAMP; round 4's U34 covers their constructor).
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+- coreA5-1. The host has the en_US.UTF-8 locale (glibc normalizes "utf-8"); otherwise every #inst is a
+  read error (inst.cpp 41).
+- coreA5-2. libstdc++ (the GCC jank's nixpkgs pins, 15.3.0), not libc++ (inst.cpp 18-29 disables #inst
+  parsing under libc++); long double has at least 64 mantissa bits (x86-64's 80-bit, AArch64 Linux's
+  128-bit), so from_chars of at most 2+9 digits and chrono::round<nanoseconds> give the exact
+  nanosecond; system_clock::duration is nanoseconds; en_US's decimal point is '.'.
+- coreA5-3. Clojure's GregorianCalendar is Gregorian from 1583 (default cutover 1582-10-15); the value
+  comparisons use years 1969, 2020, 9999 (and years jank alone reads).
+- coreA5-4. from_chars(…, chars_format::fixed) accepts "5." and ".5" and rejects "." and "" (strtod's
+  subject sequence).
+- Round 3's IMA1-IMA7 and round 4's IMMA4-n stand; the CHAMP proofs need none of them.
+
+======================================================================
+6. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- #inst reads what Clojure reads, to the same instant (inst-ms) and printed form: clojure.instant's
+  parse-timestamp docstring and grammar (instant.clj 53-103), validated (139-157), read-instant-date
+  (274-279), print-date (163-178); RFC 3339 section 5.6 for the forms; java.util.Date.getTime.
+- (= x (read-string (pr-str x))) for insts: Clojure's print-dup/print-method of Date (instant.clj
+  180-186) and *print-dup*'s contract (core.clj print-dup docstring).
+- = and compare of insts: Date.equals and Date.compareTo (JDK java.util.Date) through Util.equiv and
+  Util.compare.
+- The reader's tag order: LispReader.readTagged 1435-1451; core.clj *default-data-reader-fn*
+  docstring ("When no data reader is found for a tag").
+- CHAMP: (count (assoc m k v)) = (count m) + (if (contains? m k) 0 1), (count (dissoc m k)) =
+  (count m) - (if (contains? m k) 1 0), (dissoc m k) = m for an absent k, transients agree with
+  persistent operations (clojure.core docstrings of count, assoc, dissoc, conj, disj, assoc!, dissoc!,
+  transient; APersistentMap / PersistentHashMap semantics).
+
+======================================================================
+7. SEARCH RUNS (complete = every input within the bounds)
+======================================================================
+- inst (results/r5-core-inst.txt): 3,512,418 timestamps built field by field (years 2020, 1969, 9999,
+  20, +2020, -2020; months -01 -02 -12 -13 -1; days -01 -29 -31 -1 -00; T or t; hours 00 23 24 1;
+  minutes :00 :59 :60 :5; seconds :00 :59 :60 :5 :; fractions of 0-14 digits, ".", .5, .0001,
+  .9995; 13 offsets), complete in 18 s. 254,820 disagree, every one in a named class, 0 unexplained.
+- raw (results/r5-core-inst-raw6.txt): every string of length ≤ 6 over 0 1 2 9 - : T Z + ., complete,
+  1,111,111; 965 disagree (256 Z, 256 partial, 453 accepts-invalid), 0 unexplained.
+- eq (results/r5-core-inst-eq.txt): 128 pairs of fractions on two bases, complete; 20 disagree (G5).
+- JVM check (results/r5-core-inst-jvm.txt): the Lean model of Clojure's reader against Clojure 1.12.0's
+  read-instant-date on all 3,512,418 census inputs: 14,196 read, 0 mismatches; 4 printed instants
+  (including 10000-01-01 and -1 ms) identical; the reader order and compare as stated in G6/G7.
+
+======================================================================
+8. THEOREMS (no sorry, no native_decide, no new axiom; ★ = for every input)
+======================================================================
+Axioms printed in results/r5-core-axioms.txt.
+- Inst.lean: ★ dispatch_differs_iff; z_rejected, z_clojure, leap_rejected, leap_clojure, frac11_shifts,
+  frac11_clojure, prefrac_jank, prefrac_clojure, submilli_jank_ne, submilli_clojure_eq, offset_agrees,
+  date_agrees.
+- ChampLaws5.lean: ★ added_doAdd, ★ size_add, ★ added_doAddMut, ★ size_addMut, ★ doSub_absent,
+  ★ sub_absent, ★ doSubMut_absent, ★ subMut_absent, ★ doSub_found, ★ size_sub; helpers
+  find_findIdx_isNone, getElem?_of_lt, bit_forms, testBit_of_bne, data_slot_lt, child_wf.
+- ChampSub5.lean: ★ doSub_ok, ★ get_sub; helpers countP_le_flatMap, others_false, other_mem,
+  getLoop_empty, getLoop_data_val.
+- ChampR55.lean: r55_stored_twice, r55_never_found, control_stored_once.
+- ChampWf5.lean: ★ makeMerged_wf, ★ doAdd_wf, ★ add_wf, empty_wf, ★ size_add_add, ★ get_add_add; helpers
+  countP_range_or, popcount_or_pow, clearBit_testBit, popcount_clear, popcount_eq_zero, pow_lt32,
+  popcount_pos, popcount_two, length_setL, mem_setL, length_insertAt, mem_insertAt, length_eraseAt,
+  length_eraseAt_ge, wf_inner_intro, wf_mkInner, wf_inner_facts.
+
+======================================================================
+9. LIBRARY GAPS (built here; sdk/lean untouched)
+======================================================================
+- `String` is a byte array in Lean 4.36, opaque to `decide`: a `chars%` term elaborator turns a string
+  literal into a List Char the kernel evaluates, so single-input facts are kernel-checked theorems.
+- A stream with libstdc++'s state bits (eofbit, failbit, the sentry), for parsers that look past the
+  end more than once.
+- A JVM check of a Lean spec model over a whole census (dump + Clojure script), as round 4's regex.
+
+======================================================================
+10. PROJECTS TRANSLATED (for NOTICE.md)
+======================================================================
+- libstdc++ (GCC 15.3.0): chrono_io.h's _Parser and from_stream, istream.tcc's peek and sentry,
+  GPL-3.0-or-later with the GCC Runtime Library Exception (Jank/R5/Core/README.md).
+- Clojure 1.12 clojure/instant.clj and LispReader.readTagged (EPL-1.0), as the spec.
+- For fetch-sources.sh (coordinator): add chrono_io.h, chrono.h, include/std/chrono (saved as
+  chrono.std) and istream.tcc from GCC releases/gcc-15.3.0 to deps/libstdcxx-15.3.0/ (fetched this round
+  with curl from raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-15.3.0/libstdc++-v3/...).
+- immer (Boost Software License 1.0) through round 3's replica (no new translation).
+
+======================================================================
+11. BUILD, TESTS, FILES
+======================================================================
+- Build: `lake build jank5-core` succeeds (it imports every file below); axioms in
+  results/r5-core-axioms.txt: propext, Classical.choice, Quot.sound only (no sorryAx, no new axiom).
+- Tests: .r5-scratch/core/tests.jank (namespace jank-lean.deviations-r5-core-test, 11 deftests
+  vG1-vG11, no predicted hang). Clojure translation .r5-scratch/core/clj/src/jank_lean/
+  deviations_r5_core_test.clj: 11 tests, 20 assertions, 0 failures on Clojure 1.12.0
+  (.r5-scratch/core/clj/run-1.12.0.txt). None is C++ interop; all run on both.
+- Files: Jank/R5/Core/Inst.lean, InstSearch.lean, ChampLaws5.lean, ChampWf5.lean, ChampSub5.lean,
+  ChampR55.lean, README.md (licenses), LICENSE, COPYING.RUNTIME; Run/R5/Core.lean (jank5-core inst |
+  raw N | eq | dump FILE | show TEXT...); results/r5-core-inst.txt, r5-core-inst-raw6.txt,
+  r5-core-inst-eq.txt, r5-core-inst-jvm.txt, r5-core-axioms.txt; deps/libstdcxx-15.3.0/chrono_io.h,
+  chrono.h, chrono.std, istream.tcc; .r5-scratch/core/ (tests, Clojure check, build logs).

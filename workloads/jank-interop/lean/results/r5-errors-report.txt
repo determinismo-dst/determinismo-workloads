@@ -1,0 +1,376 @@
+Round 5, area B (errors): what a program sees of an error, jank 94d32623 against Clojure 1.12.0
+Every jank path is under upstream-r5/compiler+runtime/ at 94d32623 (its compiler+runtime tree is
+byte-identical to 7135b7708's, so round 4's line numbers stand). Clojure paths are under
+clojure-ref/src/ (1.12.0).
+Lean: Jank/R5/Errors/Model.lean (the paths, both sides), World.lean (the program world),
+Nested.lean (errors through two nested contexts), Theorems.lean, Axioms.lean; driver
+Run/R5/Errors.lean (exe jank5-errors world | nested). Run output: results/r5-errors-world.txt,
+results/r5-errors-nested.txt. Axioms: results/r5-errors-axioms.txt. Clojure 1.12.0 REPL
+confirmation of the Clojure side of B3b, B4, B6, B8, B11, B12: results/r5-errors-clojure-repl.txt
+(input: r5-errors-clojure-repl-input.txt).
+Tests: .r5-scratch/errors/tests.jank (namespace jank-lean.deviations-r5-errors-test, 17 deftests
+vB1..vB12), the two modules vB2 and vB3 load, .r5-scratch/errors/fixture/jank_lean/
+r5_errors_fixture_a.cljc and _b.cljc (to be copied to tests/jank_lean/ beside the tests), the
+Clojure translation .r5-scratch/errors/clj/ (translate.sh: round 4's clj-translate.py, then
+cpp/std.exception -> Exception and cpp/jank.error_ref -> Error).
+
+How the area was read
+- jank: error.hpp/error.cpp (the error kinds and error::base), error/*.cpp (the constructors per
+  kind), error/report_dynamic.cpp (the printed report), jtl/result.hpp (how a result's error is
+  raised), every catch site from which an error reaches a program: codegen gen(try)/gen(catch),
+  analyze_try, evaluate.cpp eval/safe_eval, context.cpp read_string/load_module/macroexpand,
+  context_dynamic.cpp eval/eval_string/eval_file, core.jank eval/read-string/load/load-one/
+  load-lib/binding/with-bindings*, core.cpp ex_info/ex_message/ex_data/ex_cause/future, delay.cpp,
+  future.cpp, lazy_sequence.cpp, var.cpp bind_root/alter_root, multi_function.cpp, the loader,
+  clojure.test's catch sites, the nREPL's handle-client, c_api.cpp jank_init_* (the exit status).
+- Clojure: Compiler.java (CompilerException 7346–7430, DefExpr 417–575, analyzeSeq 7604–7650,
+  macroexpand1 7509–7560, eval 7658–7720, load 8130–8180), LispReader.read 196–208, RT.readString
+  1890–1897, ExceptionInfo.java, Delay.java, Var.java, core.clj (ex-info 4832, ex-data 4841,
+  ex-message 4849, ex-cause 4857, load-one 5956, load-lib 5981–6026, future-call 7110,
+  deref-future 2315), clojure/main.clj (repl's *e).
+
+======================================================================
+(1) DEVIATIONS
+======================================================================
+Each: the program, Clojure's result, the replica's prediction for jank, the test, the path, status,
+confidence. `outcome` below is the tests' observer: [:object e] when an object handler
+(`(catch cpp/jank.runtime.object_ref e …)`, Clojure's `(catch Throwable e …)`) sees what was raised,
+[:native] when only a `cpp/std.exception` handler does, [:error] when only a `cpp/jank.error_ref`
+handler does, [:returned] when nothing was raised.
+
+B1. Read, analysis and load errors are jank::error_ref values, which no object catch sees.
+    (try (read-string "(") (catch cpp/jank.runtime.object_ref e :caught))
+        Clojure :caught (RuntimeException "EOF while reading")      jank: the error_ref escapes
+    (try (eval 'nope) (catch … e :caught))                  Clojure :caught (CompilerException)   jank escapes
+    (try (require 'no.such.ns) (catch … e :caught))         Clojure :caught (FileNotFoundException) jank escapes
+    So clojure.test's thrown? (test.jank 493–504, an object handler), and every program's
+    try/catch, cannot see a read error from read-string, a compile error from eval, or a failed
+    require; only an undocumented (catch cpp/jank.error_ref e …) does, and what it binds is a C++
+    error::base, not data (ex-message/ex-data/ex-cause cannot be applied).
+    Path: every read and analysis result is a jtl::result<_, error_ref>; `expect_ok` raises its
+      error as a C++ throw of the error_ref itself (jtl/result.hpp panic 41–68, line 56):
+      context::read_string context.cpp 271/281, context::eval context_dynamic.cpp 220–226, core.jank
+      load 4801–4812 (`.expect_ok` on load_module's result). The generated handler for
+      cpp/jank.runtime.object_ref is `catch(object_ref e)` (cpp_processor.cpp gen(catch) 1105–1123),
+      which matches only a thrown object_ref.
+    Tests: vB1-a-read-error-reaches-an-object-catch, vB1b-an-analysis-error-from-eval-reaches-an-
+      object-catch, vB1c-a-missing-namespace-reaches-an-object-catch (jank: [:error]).
+    Status: new as a deviation (round 4's E5 remarked that user code cannot catch the error_ref,
+      without an item or a test; the native class, a std::exception escaping an object handler, is
+      round 2's R26 note and round 4's U79, not counted here). Confidence: high.
+
+B2. A require whose module fails leaves the namespace the module created.
+    tests/jank_lean/r5_errors_fixture_a.cljc: (ns jank-lean.r5-errors-fixture-a)
+      (def loaded-before-the-error 1) (throw (ex-info "r5 errors fixture a" {:vb3 1}))
+    (try (require 'jank-lean.r5-errors-fixture-a) (catch …)) (find-ns 'jank-lean.r5-errors-fixture-a)
+        Clojure nil (load-lib removes a namespace undefined on entry)      jank the namespace
+    On both sides the failed lib is in *loaded-libs* afterwards (the ns form records it: core.jank
+    5645, core.clj 5873), so a second require loads nothing; in jank the half-loaded namespace, with
+    the vars defined before the error, is then what the program uses.
+    The same for every failure of the module's top level: a read error, an analysis error, a native
+    error, a thrown object.
+    Path: core.jank load-lib 4836–4873 does catch and remove-ns, but with an object handler
+      (`(catch cpp/jank.runtime.object_ref e (when undefined-on-entry? (remove-ns lib)) (throw e))`);
+      context::load_module (context.cpp 324–354) turns every exception of the module (std::exception
+      342–345, object 346–349, error_ref 350–353) into an error result, and load's `.expect_ok`
+      (core.jank 4812) throws it as an error_ref, which passes the handler. Clojure: core.clj
+      load-lib 5999–6007 `(catch Exception e (when undefined-on-entry (remove-ns lib)) (throw e))`,
+      and Compiler.load 8170–8179 wraps every Throwable of the file in a CompilerException.
+    Theorems: ★ jank_failed_require_keeps_ns (every namespace state, every value raised but a
+      foreign native one), ★ clj_failed_require_removes_ns, ★ load_module_converts.
+    Test: vB2-a-failed-require-removes-the-namespace-it-created (needs fixture a).
+    Status: new. It also corrects round 4's replica: Jank/R4/Modules/Load.lean's jank load-lib
+      catches every failure (`tryCatch`), so its load census never saw this. Confidence: high.
+
+B3. An ex-info raised while a module loads, or by a macro, loses its data.
+    (try (require 'jank-lean.r5-errors-fixture-b) (catch Throwable e (data-with e :vb3)))
+        Clojure {:vb3 1} (the ex-info is the CompilerException's cause; checked on 1.12.0: the
+        chain is [CompilerException :execution, ExceptionInfo {:vb3 1}])   jank: no object handler sees it;
+        the error_ref holds only the ex-info's printed form
+    (defmacro m [] (throw (ex-info "x" {:k 1})))  (try (eval '(m)) (catch … e (data-with e :k)))
+        Clojure {:k 1} (CompilerException :macro-syntax-check, cause the ex-info)   jank: an
+        error_ref whose message is the printed ex-info and which has no cause
+    (data-with walks ex-cause from e and returns the first ex-data holding the key.)
+    Path: context::load_module 346–349 `error::runtime_unable_to_load_module(e.to_code_string())`;
+      analyze_call processor.cpp 3502–3530 and error/analyze.cpp 184–195
+      (`analyze_macro_expansion_exception(object_ref …)`: message from the object's printed form, no
+      cause; only an error_ref keeps a cause, 197–209). Clojure: Compiler.load 8174–8179,
+      macroexpand1 7540–7545.
+    Tests: vB3-an-ex-info-thrown-while-loading-keeps-its-data, vB3b-an-ex-info-thrown-by-a-macro-
+      keeps-its-data (needs fixture b). Status: new. Confidence: high.
+
+B4. A failed delay throws a different kind of exception at its second deref.
+    (let [d (delay (nth [1 2] 5))] [(kind #(deref d)) (kind #(deref d))])
+        Clojure [:object :object] (the same IndexOutOfBoundsException, Delay.java keeps it)
+        jank [:native :object]: the native error the first time, then a string object holding its
+        message (an object handler sees only the second; a std::exception handler only the first)
+    Path: delay.cpp deref 19–45: `catch(std::exception const &e) { error = make_box(e.what()); throw; }`
+      (36–40), and at the next deref `if(error.is_some()) throw error;` (27–30). Clojure: Delay.java realize/deref (the
+      Throwable is kept and rethrown).
+    Theorem: ★ jank_delay_native_then_string (every message); ★ clj_delay_once.
+    Test: vB4-a-failed-delay-throws-the-same-kind-each-deref.
+    Status: new (round 1's D19 modeled the error cache as one flag). Confidence: high.
+
+B5. A delay whose body raises an error_ref runs its body at every deref.
+    (let [n (atom 0) d (delay (swap! n inc) (read-string "("))] @d @d @n)   ; each deref in a try
+        Clojure 1      jank 2
+    Path: delay.cpp deref 32–45 has handlers for std::exception (36) and object_ref (41) only; an error_ref
+      passes both, so neither `val` nor `error` is set and the next deref calls fn again.
+    Theorem: ★ jank_delay_err_runs (n derefs run the body n times, every n); ★ clj_delay_once.
+    Test: vB5-a-delay-whose-body-fails-to-read-runs-once.
+    Status: new mechanism (round 1's D19 is the nil-result rerun; this is the error_ref one).
+      Confidence: high.
+
+B6. A future whose body raises an error_ref ends the process.
+    @(future (read-string "("))      ; also (future (eval 'nope)), (future (require 'no.such))
+        Clojure: deref throws an ExecutionException (and without a deref nothing happens)
+        jank: std::terminate (SIGABRT) as soon as the future's thread ends, deref or not
+    Path: core.cpp future 1091–1171: the thread's lambda handles object_ref and std::exception;
+      `catch(...)` (1163–1169) records "Unknown exception." and then `throw;` rethrows out of the
+      thread's function, which calls std::terminate ([thread.thread.constr]: an exception escaping
+      the thread's invocation calls terminate). jank's book (differences-from-clojure.md, "future can
+      only forward exceptions which are std::exception or object_ref; other exceptions will be
+      forwarded as "Unknown exception"") says such an error is forwarded; the code ends the process.
+    Theorem: ★ jank_future_terminates (every thrown value that is neither an object nor a
+      std::exception).
+    Test: vB6-a-future-whose-body-fails-to-read-can-be-dereferenced (predicted: jank aborts).
+    Status: new. Confidence: high (the rethrow is unconditional).
+
+B7. A failed future's deref throws a string for a native error.
+    (try @(future (nth [1 2] 5)) (catch Throwable e (string? e)))
+        Clojure false (an ExecutionException whose cause is the IndexOutOfBoundsException)
+        jank true (`make_box(e.what())`, the message as a string object)
+    Path: core.cpp future 1143–1148, future.cpp deref 26–29. Clojure: deref-future 2315–2322,
+      FutureTask.get. (An ex-info from the body is rethrown as is, where Clojure wraps it: ex-cause of
+      what deref throws is the ex-info in Clojure, nil in jank. Not tested: the book documents the
+      forwarding.)
+    Theorem: ★ jank_future_native_string; ★ clj_future_wraps.
+    Test: vB7-a-failed-futures-deref-throws-an-exception-not-a-string.
+    Status: new; low-medium (the book says such errors are forwarded, not in what form).
+
+B8. A top-level def whose value throws leaves its var with the def's metadata.
+    (binding [*ns* (create-ns 'x)] (eval '(def ^{:vb8 1} vb8-x (throw (ex-info "e" {})))))   ; caught
+    (:vb8 (meta (find-var 'x/vb8-x)))
+        Clojure nil (DefExpr.eval sets the metadata after the value)      jank 1
+    The var is interned and unbound in both. With ^:private or a docstring the half-defined var is
+    private or documented in jank only.
+    Path: evaluate.cpp eval(def) 333–362: `set_meta` (336–337) and `set_dynamic` (339–340) before
+      `eval(value)` (351, 357). Clojure: Compiler.java DefExpr.eval 456–479 (bindRoot, then
+      setMeta); the parser sets only :dynamic (556–557) and :arglists before.
+    Theorems: ★ jank_def_meta_always, ★ clj_def_meta_none_on_raise.
+    Test: vB8-a-def-whose-value-throws-sets-no-metadata. Status: new; low. Confidence: high.
+    (In compiled code Clojure's DefExpr.emit sets the metadata first too; the difference is the
+    top level: the REPL, eval, a loaded file.)
+
+B9. ex-info rejects a nil message.
+    (ex-message (ex-info nil {}))      Clojure nil      jank: a native error ("An object of type
+        `persistent_string` was expected here, but a `nil` was provided instead.")
+    Path: core.jank ex-info 113–121 → core.cpp ex_info 1321 (`jtl::immutable_string const &message`),
+      the argument converted by convert<immutable_string>::from_object = try_object<persistent_string>
+      (convert/builtin.hpp 323–341). Clojure: ExceptionInfo(String, IPersistentMap) takes null.
+    Test: vB9-ex-info-takes-a-nil-message. Status: new; low-medium (a message computed from data,
+      e.g. (ex-info (:msg x) …), throws the wrong error). Confidence: high.
+
+B10. ex-info with nil data has nil ex-data (Clojure 1.12: {}).
+    (ex-data (ex-info "m" nil))      Clojure {}      jank nil
+    Path: core.cpp ex_info 1321–1336 stores the data unchecked; ExceptionInfo.java 1.12 stores
+      `PersistentArrayMap.EMPTY` for null (and 1.11 threw, which is why round 4's area G noted it
+      and left it out). ex-data's docstring: "Returns exception data (a map)".
+    Test: vB10-ex-info-with-nil-data-has-empty-data (passes on 1.12.0 only). Status: round 4's
+      unreported note (r4-core-report "Not reported (checked)"), reported now that the check is on
+      1.12.0. Low.
+
+B11. read-string of a text without a form returns nil instead of throwing.
+    (read-string "")   (read-string "; c")   (read-string {} " ")
+        Clojure: RuntimeException "EOF while reading"      jank nil
+    Path: core.jank read-string 5974–5984: the 1-arity calls `(read-string {} s)`; context::read_string
+      (context.cpp 166–298) reads `:eof` from the options with a nil default (257–261), so
+      `throw_on_eof` is false and the eof value nil is returned (285–296). Only the C++ default
+      read_string(code) (307–314, which no clojure.core function calls) passes {:eof :eofthrow}.
+      Clojure: LispReader.read 196–208, `valAt(OPT_EOF, EOFTHROW)`: a missing :eof throws.
+    Theorem: read_empty_differs; ★ clj_read_string_throws_iff, ★ jank_read_string_never_object.
+    Tests: vB11-read-string-of-an-empty-text-throws, vB11b-read-string-of-a-comment-throws,
+      vB11c-read-string-with-options-but-no-eof-throws.
+    Status: new; it corrects round 2's replica (Jank/Read.lean readString answers "EOF was reached
+      while reading." for an empty input, the C++ default's behavior, not core.jank's). High.
+
+B12 (extends U44). After a compile error at the nREPL, *e has nil ex-data and no ex-cause.
+    nREPL eval "(vb12-undefined)", then "(some? (ex-data *e))" and "(some? (ex-cause *e))"
+        nREPL over Clojure "true", "true" (a CompilerException: {:clojure.error/phase …}, cause the
+        "Unable to resolve symbol" exception)      jank "false", "false"
+    And after a macro's ex-info or a failed require, the ex-info's data is not reachable from *e.
+    Path: evaluate.cpp safe_eval 750 → exception_info(error_ref) (exception_info.cpp 23–27) sets
+      only `error`: message "" (round 4's U44), data nil, cause nil.
+    Theorem: ★ star_e_of_error_ref. Test: vB12-ex-data-and-cause-of-a-compile-error-in-star-e (jank
+      only: jank's nREPL handler in-process). Status: extends U44 (same constructor). High.
+
+======================================================================
+(2) PROOFS
+======================================================================
+All in Jank/R5/Errors/Theorems.lean; no sorry, no native_decide, no new axiom.
+- ★ object_catch_misses_error_ref, object_catch_misses_std: jank's object handler matches neither.
+- ★ default_catch_binds_nil: (catch :default e …) binds nil whatever was thrown (noted by round 4).
+- ★ jank_read_string_never_object (every text: core.jank's read-string returns or throws an
+  error_ref), ★ clj_read_string_throws_iff (Clojure throws exactly for a text without a complete
+  form), read_empty_differs.
+- ★ load_module_converts (every non-foreign thrown value becomes an error_ref),
+  ★ jank_failed_require_keeps_ns (every namespace state and every such value: the namespace stays),
+  ★ clj_failed_require_removes_ns (every Throwable, namespace undefined on entry: removed),
+  jLoadLib_instance (the world's module path is an instance of the general one).
+- ★ jank_delay_native_then_string (every message), ★ jank_delay_err_runs (every error_ref, every
+  n: n runs), ★ clj_delay_once (every outcome, every n ≥ 1: one run, every deref the same outcome),
+  clj_delay_once_after.
+- ★ jank_future_terminates, ★ jank_future_native_string, ★ clj_future_wraps.
+- ★ jank_def_meta_always, ★ clj_def_meta_none_on_raise.
+- ex_info_nil_message, ★ ex_data_of_nil_data (every message string).
+- ★ star_e_of_error_ref.
+What they make complete: each ★ covers the whole domain of its path in the replica (every thrown
+value, message, count, state); the world's census (7) covers the combinations of sources, contexts
+and observers.
+Not proved: that the generated C++ matches the replica's catch relation beyond reading gen(catch)
+and [except.handle]; the printed report's positions (below, (4)).
+
+======================================================================
+(3) WHAT WAS REPLICATED (Jank/R5/Errors/Model.lean)
+======================================================================
+- Thrown values and handlers: JThrown (object_ref / std::exception / error_ref / foreign), jMatches
+  (gen(catch) cpp_processor.cpp 1105–1123, analyze_try processor.cpp 3046–3150, catch :default
+  1111–1113); Clojure: every exception here is a Throwable.
+- ex-info family: core.cpp 1321–1356 (ex_info, ex_message, ex_data, ex_cause; try_object via
+  convert/builtin.hpp 323–341); Clojure core.clj 4832–4864, ExceptionInfo.java.
+- read-string: core.jank 5974–5984, context.cpp read_string 166–314 (the :eof option, the error_ref
+  of a parse error); Clojure core.clj 3831–3842, RT.java 1890–1897, LispReader.java 196–208.
+- Loading: core.jank load 4801–4812, load-one 4814–4823, load-lib 4836–4873; context.cpp
+  load_module 324–354; loader_dynamic.cpp load 721–777 (set_is_loaded after success); Clojure
+  core.clj load-one 5956, load-lib 5981–6026, Compiler.load 8130–8180, RT.load (FileNotFound).
+- Macro expansion: processor.cpp 3502–3530, error/analyze.cpp 172–209; Clojure macroexpand1
+  7509–7560.
+- Top-level def: evaluate.cpp eval(def) 333–362, evaluate::eval 304–322 (add_usage); Clojure
+  DefExpr.eval 456–479, Parser 524–575, Compiler.eval 7658–7720.
+- delay: delay.cpp 19–53; Clojure Delay.java.
+- future: core.cpp future 1091–1171, future.cpp deref 12–33; Clojure future-call/deref-future.
+- nREPL *e: evaluate.cpp safe_eval 733–778, exception_info.cpp 23–27.
+Read and found to agree (no model needed):
+- Locks: every lock on these paths is a scope guard (var.cpp bind_root/alter_root lock_guard,
+  delay.cpp, lazy_sequence.cpp, multi_function.cpp, the loader's folly::Synchronized locks, the JIT's
+  interpreter lock): [except.ctor] destructors run during unwinding, so no reported error leaves a
+  lock held. A grep of src/cpp/jank finds no bare lock()/unlock() call.
+- Binding frames: binding (core.jank 2794–2818) and with-bindings* (5126–5136) pop in finally; the
+  C++ binding_scope (context.cpp 663–676) is RAII; load_module, eval_file and read_string bind with
+  it, so *ns*, *current-module*, *current-file* are restored after a failure. The finally of a
+  generated try runs for every exception type (gen(try) 1053–1102, catch(...) { …; throw; }). The
+  only unpaired push is the future's (core.cpp 1126, round 1's D22).
+- A lazy seq whose body threw: both re-run the body (lazy_sequence.cpp force 135–143: fn is cleared
+  only after it returned; LazySeq.sval the same).
+- alter-var-root whose fn throws: both leave the root unchanged (var.cpp 106–112).
+- *loaded-libs*: neither side records a failed load (loader_dynamic.cpp 773; load-one).
+- *ns* after a failed load: restored on both sides.
+- An exception from a top-level def's value: jank throws it raw, Clojure wraps it in a
+  CompilerException; the root data is reachable on both sides (no B3 there).
+
+======================================================================
+(4) STILL LEFT OUT, AND WHY
+======================================================================
+- The printed report (error/report_dynamic.cpp: snippets, notes, ellipses, colors): text for a human,
+  with no Clojure counterpart (Clojure prints clojure.main/ex-triage's message). Read, not modeled.
+- Positions. jank names the offending token's own position (e.g. an unresolved symbol:
+  processor.cpp 1693–1696, meta_source of the symbol); Clojure names the innermost enclosing list's
+  (analyzeSeq 7604–7615 binds LINE/COLUMN from the list's meta; analyze wraps the exception with
+  them, 7634–7640; at a file's top level a bare symbol gets 0:0). So for `(foo nope)` on line 1,
+  jank's report says 1:6, Clojure's ex-data 1:1. A different rule, not a defect (jank's is the more
+  precise), and in jank the position is not data a program can read (B1, B12): it is only in the
+  report text. Token positions themselves agree (round 4's ★ jankPos_eq_cljPos). Not searched.
+- A thrown value of a foreign native type (neither object, std::exception nor error_ref): reachable
+  only through cpp/raw code; load_module lets it through, safe_eval's last handler catches it.
+- throw of a non-exception value (allowed by jank's book, a ClassCastException in Clojure) and
+  (catch :default e …) (jank binds nil; Clojure has no :default): by design, noted by round 4.
+- evaluate.cpp eval(def) 348–353 sets the thread-local current_def_var and resets it only after the
+  value's eval returns; an exception in between leaves it set, and a later top-level bare fn would
+  rebind that var at its first call. No user-reachable trigger was found (the fn's metadata is a
+  constant map, analyze_fn 2063–2066; gen_cpp's throws are internal failures), so it is a note.
+
+======================================================================
+(5) ASSUMPTIONS
+======================================================================
+- errA5-1. The NA9 mapping (round 4): jank's object handler stands for Clojure's catch of what was
+  thrown; a std::exception escaping it is jank's documented native class (not counted).
+- errA5-2. [except.handle]/3: `catch(object_ref)` matches only an object_ref, `catch(std::exception&)`
+  a class derived from std::exception; error_ref (jtl::ref<error::base>) derives from neither.
+- errA5-3. [thread.thread.constr]: an exception leaving a std::thread's function calls
+  std::terminate (libstdc++ and libc++ both).
+- errA5-4. The test runner's *ns* is clojure.core under run-main (U45): the tests use qualified
+  names and create their own namespace where a def is evaluated.
+- errA5-5. jank finds tests/jank_lean/r5_errors_fixture_a.cljc and _b.cljc on its module path (`--module-path .`
+  from tests/; loader_dynamic.cpp 188–207 registers .cljc entries).
+Earlier ones replaced: round 4's Jank/R4/Modules/Load.lean caught every failure in jank's load-lib
+(B2); round 2's Jank/Read.lean readString answered an EOF error for an empty text (B11).
+
+======================================================================
+(6) PROPERTIES CHECKED, WITH THEIR SOURCES
+======================================================================
+- An error a Clojure program can catch can be caught by jank's object handler (Clojure: try/catch of
+  Throwable, special_forms "try"; jank's book cpp-interop/native-exceptions.md: values thrown from
+  jank are caught as object_ref).
+- The root cause's data is reachable through ex-cause (core.clj ex-cause/ex-data docstrings;
+  CompilerException's cause, Compiler.java 7381).
+- A failed require leaves no namespace it created (core.clj load-lib 5999–6007).
+- A delay runs its body once and rethrows the same exception (delay docstring "will invoke the body
+  only the first time it is forced"; Delay.java).
+- A future's failure is reported by deref (future docstring; jank's book: forwarded).
+- A def whose value threw leaves no metadata (Compiler.java DefExpr.eval).
+- ex-info accepts a nil message and makes nil data {} (ExceptionInfo.java 1.12; ex-data docstring).
+- read-string throws at EOF unless :eof is given (read docstring, core.clj 3776: ":eof - on eof,
+  return value unless :eofthrow, then throw. if not specified, will throw"; LispReader.read).
+- *e after a compile error carries the compiler's data and cause (clojure.main repl sets *e to the
+  exception; CompilerException data).
+- No reported error leaves a lock held or a binding frame pushed (read, (3)).
+
+======================================================================
+(7) SEARCH RUNS
+======================================================================
+Both worlds are walked completely with censusUnder (every timeline; a timeline counts under the
+first class it violates).
+- jank5-errors world (World.lean): complete, 180 timelines, 57 disagree, 0 unexplained
+  (results/r5-errors-world.txt). Programs: 28 sources (read-string with 3 option maps × 4 texts;
+  4 inner errors — an ex-info, a native nth error, a read error, an analysis error through eval —
+  raised directly, by a required module's top level, by a macro's body, by a top-level def's value,
+  by a future's body; a require of a missing lib) × 4 looks (which handler catches it, the root
+  data, string?, the namespace after a require), delays over 5 bodies (two derefs), defs over 5
+  values, ex-info over messages and data maps, *e over the 28 sources. Classes:
+  B1 19, known native 2, B11 3, B3 2, B2 4, B7 1, B6 4, B4 1, B5 2, B8 4, B9 1, B10 1, U44+ (B12) 13.
+- jank5-errors nested (Nested.lean): complete, 155 timelines (5 bases × up to 2 contexts from delay,
+  future, module, macro, def), 136 disagree, 0 unexplained (results/r5-errors-nested.txt): B1 95,
+  B6 34, known native 7. Every interaction is one of the single mechanisms: an error_ref anywhere
+  below a future ends the process (e.g. @(future (require 'm)) with m failing, @(future (eval '(m)))
+  with a throwing macro, @(future @(delay (read-string "(")))); a module or a macro between an
+  ex-info and the caller turns it into an error_ref (B1, and B3 for its data); a delay or a def
+  passes what it got through.
+- Clojure 1.12.0: the 16 translated tests (vB12 is jank only) pass: 16 tests, 17 assertions, 0
+  failures (.r5-scratch/errors/clj-run-1.12.0.txt, run by .r5-scratch/clj-run.sh). A first run
+  failed vB3 because vB2 had required the same module: a failed load leaves the lib in
+  *loaded-libs* on Clojure too (the ns form records it), so the second require loaded nothing; the
+  two tests now load separate modules (fixtures a and b), and the replica's load records the lib
+  on both sides.
+- A Clojure 1.12.0 REPL session (results/r5-errors-clojure-repl.txt) confirms the Clojure side of
+  B3b ([{:k 1} :macro-syntax-check]), B4 (identical? true), B6 ([ExecutionException
+  RuntimeException]), B8 (meta {:ns …, :name vb8-x}), B11 (RuntimeException "EOF while reading"),
+  B12 ([true true :compile-syntax-check]).
+
+======================================================================
+(8) THEOREMS
+======================================================================
+See (2): 22 theorems printed, 17 of them ★ (for every input of their domain). `#print axioms`
+(results/r5-errors-axioms.txt): only propext, Classical.choice, Quot.sound, or none.
+
+======================================================================
+(9) LIBRARY GAPS
+======================================================================
+- No exception model in sdk/lean: built a thrown-value type with C++ handler matching, and a
+  process-ending outcome (std::terminate) beside value and exception.
+- Observations compared as text across two value models (jank's and Clojure's) with classification
+  by mechanism (as round 4's areas did).
+
+======================================================================
+(10) PROJECTS TRANSLATED
+======================================================================
+jank (MPL-2.0) and Clojure (EPL-1.0) paths, as in earlier rounds; nothing new.

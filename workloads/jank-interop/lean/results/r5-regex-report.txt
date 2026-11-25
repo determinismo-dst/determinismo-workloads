@@ -1,0 +1,219 @@
+ROUND 5, AREA E: REGEX
+jank main 94d32623 (upstream-r5/; its compiler+runtime is byte-identical to round 4's 7135b7708, so round 3's
+and round 4's regex line numbers stand). libstdc++ 15.3.0 (deps/libstdcxx-15.3.0/). java.util.regex: JDK 23's
+sources from the installed JDK's src.zip (.r5-scratch/regex/jdk23/). jank was not built or run.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+E1. \b and \B next to a combining mark. (new)
+  (re-find #"e\b" "e\u0301")                        ; Clojure nil              jank "e"
+  (re-seq #"\b\w+\b" "cafe\u0301 x")                ; Clojure ("x")            jank ("cafe" "x")
+  (clojure.string/replace "nai\u0308ve" #"\b" "|")   ; Clojure "|nai\u0308ve|"  jank "|nai|\u0308|ve|"
+  (re-find #"\b" "\u00e9\u0301")   (re-find #"\b" "\u0661\u0301")   ; Clojure ""   jank nil
+  (A mark after a non-ASCII letter or digit is a word character to Java, so a boundary appears between é or ١
+  and its mark; jank sees no word byte there. \B next to a mark also differs, but each jank \B match inside a
+  mark splits its bytes, so those questions count under R78.)
+  Java: Pattern.java Bound.check (5543-5593) counts a character as a word character when isWord(ch) holds
+  (ASCII [a-zA-Z0-9_], or CharPredicates.WORD() under (?U)) OR when it is a non-spacing mark
+  (Character.getType == NON_SPACING_MARK) and hasBaseCharacter (5599-5613) finds, walking back over marks, a
+  Character.isLetterOrDigit code point. This holds in every mode, (?U) or not, on every JDK (JDK 19 changed
+  isWord to ASCII, not the mark rule). So decomposed text (NFD: macOS file names, text from some input methods
+  and normalizers) has no word boundary between a letter and its accent, and a mark after a non-ASCII letter or
+  digit (é, \u0661) makes a boundary there.
+  jank: core.jank re-find 6379 -> core.cpp re_find 972-988 (std::regex_search); re-seq 6389; clojure.string
+  replace -> string_native.cpp 218-233 (std::regex_replace / sregex_iterator). The std::regex is
+  regex{ s.c_str(), ECMAScript } (re_pattern.cpp 9) under the global locale std::locale("") (c_api.cpp 1110).
+  \b is _M_word_boundary (regex_executor.tcc 551-571) with _M_is_word (regex_executor.h 159-164):
+  isctype(byte, lookup_classname("w")) per byte, and bytes 0x80-0xFF have no ctype class in a glibc UTF-8 locale
+  (round 3's RXA1), so the mark's bytes are non-word and a boundary falls between "e" and U+0301.
+  Not R78 (bytes for characters): matched over code points with the same ASCII \w, jank would still put the
+  boundary there. The census classifies it by a spec-side toggle (Java's Bound without the mark rule); that
+  toggle alone removes every question in the class, after all of rounds 3-4's toggles are on.
+  Spec: JDK 23's source above, checked on the JVM (section 7); the javadoc does not describe the rule.
+  Test: vE1-word-boundary-and-a-combining-mark (passes on Clojure 1.12.0). Confidence: high on both sides.
+
+E2. Java's Unicode line terminators in `.` and `$`. (extends R78 and R79)
+  (re-find #".+" "\u2028")      (re-matches #".*" "\u2028")   ; Clojure nil    jank "\u2028"
+  (re-find #".+" "a\u2028")                                   ; Clojure "a"    jank "a\u2028"
+  (re-find #"a$" "a\u2028")                                   ; Clojure "a"    jank nil
+  Java's line terminators are \n, \r\n, \r, U+0085, U+2028, U+2029 (Pattern javadoc "Line terminators",
+  Pattern.java 459-487; DOT() 5897-5905 for `.`; Dollar 3961- for `$`): `.` never matches them and `$` (without MULTILINE) also
+  matches before a final one. jank's `.` is libstdc++'s _AnyMatcher<_, true(ECMAScript), _, _> for char
+  (regex_compiler.h 368-398), which excludes only '\n' and '\r'; the U+2028/U+2029 exclusions are compiled only
+  for wide characters (`if constexpr (!is_same<_CharT, char>::value)`), and U+0085 is no ECMAScript line
+  terminator at all. jank's `$` matches only at the end (R79's mechanism).
+  Round 3 drew U+0085 among its extra inputs and counted these questions under "bytes (R78)"; round 5 separates
+  them by a spec-side toggle (`.`/`$` with only \n and \r), which removes the whole class. U+2028 in `$` is R79's
+  class with another terminator; `.` and U+0085/U+2028/U+2029 would differ even over code points.
+  Test: vE2-unicode-line-terminators (passes on Clojure 1.12.0). Confidence: high.
+
+(?U) and \p{…}: nothing new. libstdc++'s ECMAScript scanner rejects every "(?" other than "(?:", "(?=", "(?!"
+(regex_scanner.tcc 136-150), so every pattern holding (?U) (or (?i), (?u), ...) is a read error / re-pattern
+throw in jank: R18. Every \p{…}/\P{…} is a read error ("Invalid range in '{}'"): S31. [[:alpha:]] is a POSIX
+class to libstdc++ and a nested class to Java: S29. \w \d \s without (?U) are ASCII on both sides (Java:
+[a-zA-Z_0-9], [0-9], [ \t\n\x0B\f\r]; jank: glibc ctype over bytes, nothing above 0x7F in a UTF-8 locale), so
+they agree on non-ASCII text up to R78's byte splitting (\W, \S, \D and `.` match one byte of a multi-byte
+character). A Clojure program cannot ask for UNICODE_CHARACTER_CLASS other than through (?U) (re-pattern takes
+no flags), so no question with Java's Unicode classes can be matched by jank. Low yield, as expected.
+
+======================================================================
+2. PROOFS
+======================================================================
+Round 4's kept-aside proof (.r4-scratch/regex/ExecInv.lean.unfinished) is finished, in
+Jank/R5/Regex/ExecInv.lean (no sorry, no native_decide, no new axiom: results/r5-regex-axioms.txt).
+
+What is proved, for every Ctx (NFA, input buffer, end, step budget, round 3's EFix toggles), fuel, mode, state
+index, tail flag and executor state; only runs that return (.ok) count, an aborted run (fuel or budget) is no
+result:
+- ★ dfs_keeps_res: a run of _M_dfs that starts without a solution and ends without one leaves _M_results (res)
+  as it found it.
+- ★ searchFromFirst_fail_keeps_res: a start position of _M_search that finds nothing leaves _M_results as it was.
+- ★ search_found_from_initial_results: when _M_search (regex_search's DFS path) finds a match, the match is the
+  result of a single _M_search_from_first run from a state whose _M_results are the ones the search began
+  with; by round 4's searchFromFirst_starts_clean that run starts with _M_cur_results = _M_results.
+- ★ search_fail_keeps_res: a search that finds nothing leaves _M_results as it was.
+- loop_found: the same for the loop over the later start positions.
+
+What it makes complete: U35's jank side is now a statement about every NFA and every input, not a census: in a
+match jank returns, every capture was made during the one start position that matched, starting from the
+search's initial (unmatched) results, so a capture a lookahead made at an earlier, failed start position never
+appears (the mechanism behind (re-find #"(?=(a))x|b" "ab") giving ["b" ""]). Each step of jank's re-seq,
+replace and split is a fresh regex_search (regex_iterator), so the statement holds per step. The Java side of
+U35 (find() clears the groups once and keeps a capture from an earlier start position) stays a model checked on
+the JVM, as in round 4; round 4's censuses (13,144 of 1,717,065 and 178,668 of 39,495,600) are instances.
+
+How: three properties of a computation at a state (Kat: keeps hasSol and res; Gat: started without a solution,
+ends without one only with res unchanged; Hat: Gat, and a solution once found stays), one lemma per kind of step
+(get, set, modify, setCurRes, a call into dfs by the induction hypothesis followed by an H-continuation, a guarded
+call, the lookahead's sub-executor whose state is replaced by the caller's, _M_handle_accept with and without a
+solution, if, associativity), and a walk over dfs's unfolded body (induction on fuel). Why round 4's attempt
+failed, and two traps met here: round 4's one-macro walk simp'ed the whole StateT term and met a goal in
+function-application form; a simp/dsimp with setCurRes over the whole body timed out; and at default
+transparency `refine Gat_get ?_` unified `get >>= ?f` with an `if` by a first-order approximation
+(?f s s := the if), which made the walk loop without progress. The walk now unifies at reducible
+transparency only, keeps dfs irreducible, and tries the `if` lemmas first.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Jank/R5/Regex/ExecInv.lean: proofs over round 3's replica of libstdc++'s DFS executor
+  (Jank/R3/Regex/Executor.lean: _M_dfs with every handler, _M_main_dispatch, _M_search; regex_executor.tcc
+  41-57, 84-92, 186-, 206-520), no new model.
+- Jank/R5/Regex/JavaM5.lean: round 4's java.util.regex model (Jank/R4/Regex/JavaM.lean) copied with:
+  Bound.check's non-spacing-mark rule and hasBaseCharacter (Pattern.java 5543-5613); WORD() under (?U)
+  (CharPredicates.java 159-167: Alphabetic, Mn, Me, Mc, Nd, Pc, Join_Control); \p{…} by Pattern.family
+  (3018-3100): Is-names through forUnicodeProperty (CharPredicates.java 193-231), POSIX names through
+  forPOSIXName under (?U) (171-190, 233-235), general categories, the ASCII POSIX classes and java… methods
+  through forProperty (268-390), CASE_INSENSITIVE widening; Character.getType and Other_Lowercase/
+  Other_Uppercase for the drawn code points (gcat); the classifying toggles noMn and asciiTerm.
+- Also in JavaM5: Java's choice of StartS (Pattern.java 1962-1967): a pattern with a predicate that is not a
+  BmpCharPredicate (a negated class or escape, \P{…}, a Unicode category or property, (?U)'s classes;
+  newCharProperty 3101-3108, family 3091-3096) never starts a match between the two halves of a surrogate pair.
+  Round 4's JavaM took that flag only from supplementary code points in the pattern; the round-5 JVM rerun found
+  27 uni2 questions (a word character then U+1F600 under \B\W, \B\S, \B[^a]) where it mattered. All 27 are
+  R78 on jank's side, so no class count changed.
+- Jank/R5/Regex/Compare5.lean: round 4's question harness against JavaM5 (verdict5, classify5 with
+  fixOrder4 then the two spec toggles, rejectShape5 with \p{…} as S31, EDN lines for the JVM).
+- jank's side is unchanged: round 3's libstdc++ replica with round 4's c_str() cut (jankEval4).
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- \p{In…} blocks, \p{Is<script>}, \p{name=value}: not modelled (jank rejects every \p, S31, so they decide
+  nothing on jank's side).
+- Character data beyond the drawn code points: gcat is a table for ASCII, Latin-1, U+0100-U+0137, combining
+  marks U+0300-U+036F, Greek, Arabic-Indic and fullwidth digits, the general punctuation spaces and separators,
+  roman numerals U+2160-U+217F, U+1F600; checked against the JVM for every code point the searches draw.
+- (?U) and case-insensitive matching (?iu): modelled (round 4's Unicode case tables), never comparable (R18).
+- CANON_EQ, \X, \b{g}, \N{…}: as in round 4 ("not compared" on the spec side; S31 on jank's).
+- glibc's UTF-8 ctype table is still an assumption (RXA1: no class for bytes 0x80-0xFF), not fetched source.
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+- RXA5-1. The spec is JDK 23's java.util.regex (round 4's RXJ5), now including Bound's non-spacing-mark rule,
+  which the javadoc does not state; the rule is the same on every JDK since 1.4 (only isWord changed in JDK 19).
+- RXA5-2. Character data: Character.getType and the contributory properties as JDK 23 reports them for the drawn
+  code points (checked on the JVM, section 7).
+- RXA1 (round 3) stands: glibc's UTF-8 locales give bytes 0x80-0xFF no ctype class (not fetched; the C locale
+  agrees by C-ctype.c).
+- Round 4's RXJ5, RXJ6 and round 3's RXA1-RXA5, RXJ1 stand.
+- Replaced: none. Corrected (spec side): round 4's JM.boundAt (no mark rule) and JM.uWord (no marks, letter
+  numbers or join controls); round 4's searches drew no such code point, so no round-4 count changes.
+
+======================================================================
+6. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- Executor: a start position without a solution leaves _M_results as it was; a found match comes from one start
+  position's run that began from the search's initial results. Source: libstdc++ 15.3.0 regex_executor.tcc
+  41-57 (_M_search), 84-92 (_M_main_dispatch: _M_cur_results = _M_results), 429-452 (_M_handle_accept, the
+  only writer of _M_results, __glibcxx_assert(!_M_has_sol) at 433).
+- Regex agreement (every call returns Clojure's value): re-find, re-seq, re-matches, clojure.string/replace
+  with a template. Sources: clojure.core re-find/re-seq/re-matches docstrings and core.clj; clojure.string
+  replace docstring; java.util.regex.Pattern javadoc (predefined classes, POSIX and Unicode classes, line
+  terminators, UNICODE_CHARACTER_CLASS) and JDK 23's Pattern.java/CharPredicates.java where the javadoc is
+  silent (Bound's mark rule).
+
+======================================================================
+7. SEARCH RUNS
+======================================================================
+All complete (every question within the bounds), UTF-8 locale, Clojure's side JavaM5, jank's side round 4's
+jankEval4. Calls: re-find, re-seq, re-matches, clojure.string/replace with "<$0>".
+- uni2 (results/r5-regex-uni2.txt): 25 tokens (a é U+0301 . \w \W \b \B \s \S \d + * $ [^a] (?U) \p{L}
+  \p{Alpha} \p{Punct} \p{IsAlphabetic} \p{javaLowerCase} \p{Mn} \p{IsWhite_Space} [[:alpha:]] (?i)), patterns of
+  ≤ 2 tokens (650) × every input of ≤ 2 code points over 13 (a e é U+0301 \u0661 ¡ NBSP U+2028 _ space Ⅰ ZWJ 😀;
+  183) × 4 calls = 475,800 questions: 184,365 agree, 26,451 differ, 264,984 jank rejects, 0 jank accepts
+  invalid, 0 not compared.
+    differ: bytes (R78) 22,780; re-seq empty-match loop (R81) 1,594; [[:alpha:]] (S29) 1,384;
+    line terminators (E2) 479; combining mark in \b (E1) 214.
+    rejects: \p{…} (S31) 194,712; inline flags incl. (?U) (R18) 65,880; quantified assertion (S27) 4,392.
+- mn3 (results/r5-regex-mn3-p0.txt, -p1.txt): 9 tokens (a e U+0301 \w \b \B + . (?U)), patterns of ≤ 3 tokens
+  (819) × every input of ≤ 3 code points over 7 (a e U+0301 é \u0661 U+2028 space; 400) × 4 calls = 1,310,400
+  questions, in two parts:
+    part 0: 656,000: 452,270 agree, 18,130 differ (E1 4,378; R78 10,018; E2 3,056; R81 634; possessive S25 44),
+    185,600 rejects (R18 160,000; S27 25,600).
+    part 1: 654,400: 444,196 agree, 26,204 differ (E1 3,934; R78 20,628; E2 1,144; R81 498), 184,000 rejects
+    (R18 158,400; S27 25,600).
+    Both parts: 1,310,400 questions; E1 8,312, E2 4,200, R78 30,646, R81 1,132, S25 44; 9-11 s each.
+- Classification: a deviation's class is the first toggle (rounds 3-4's jank toggles, round 4's spec toggle,
+  then round 5's noMn and asciiTerm, accumulated in that order) that makes it agree; else its trigger (syntax
+  shape, else non-ASCII text = R78). No class "unexplained".
+- JVM (results/r5-regex-jvm-uni2.txt, -mn3.txt): every question of both censuses with the spec model's answer,
+  rerun on Clojure 1.12.0 / OpenJDK 23 (.r5-scratch/regex/clj/validate.clj): 475,800 and 1,310,400 questions,
+  all identical (after the StartS fix in section 3; before it, 27 differed, all explained).
+- Code point table (Character.getType, isAlphabetic, isLetterOrDigit, isLowerCase, isUpperCase, isDigit,
+  (?U)\s, (?U)\w for the 14 drawn code points): identical to the JVM's (.r5-scratch/regex/table-*.txt).
+
+======================================================================
+8. THEOREMS (no sorry, no native_decide, no new axiom; ★ = new for-every-input proof)
+======================================================================
+- ★ dfs_keeps_res, ★ searchFromFirst_fail_keeps_res, ★ search_found_from_initial_results,
+  ★ search_fail_keeps_res, loop_found (Jank/R5/Regex/ExecInv.lean); the combinator lemmas (Kat/Gat/Hat for get,
+  set, modify, setCurRes, bind, if, the lookahead's sub-executor, _M_handle_accept). Axioms of each main theorem:
+  propext, Classical.choice, Quot.sound only (results/r5-regex-axioms.txt).
+
+======================================================================
+9. LIBRARY GAPS (what sdk/lean lacks; built here)
+======================================================================
+- A way to reason about StateT-over-Except programs step by step: per-state predicates with one lemma per monadic
+  operation and a reducible-transparency walker (Lean's default unification approximates `get >>= ?f` against
+  an `if` and loops).
+- A Unicode character table (general category and contributory properties) for the code points drawn, checked
+  against a JVM; Lean has no Unicode database.
+
+======================================================================
+10. PROJECTS TRANSLATED (for NOTICE.md)
+======================================================================
+- libstdc++ 15.3.0 regex (through rounds 3-4's replica; GPL-3.0-or-later with the GCC Runtime Library Exception
+  3.1; Jank/R5/Regex/README.md, LICENSE, COPYING.RUNTIME).
+- java.util.regex (OpenJDK 23): a specification model written from the javadoc and the behaviour read in its
+  source; no JDK code copied (as round 4's JavaM).
+
+======================================================================
+TESTS
+======================================================================
+.r5-scratch/regex/tests.jank (namespace jank-lean.r5-regex-test): vE1-word-boundary-and-a-combining-mark,
+vE2-unicode-line-terminators. Clojure translation .r5-scratch/regex/clj/src/jank_lean/r5_regex_test.clj: 2 tests,
+6 assertions, all passing on Clojure 1.12.0 (JDK 23; .r5-scratch/regex/clj/run2.txt). No hang predicted. Every
+pattern goes through re-pattern inside a fn; no empty-match re-seq (R81 would loop in jank).

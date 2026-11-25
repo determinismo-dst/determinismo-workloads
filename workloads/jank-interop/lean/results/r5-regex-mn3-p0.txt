@@ -1,0 +1,28 @@
+  mn3 part 0/2 (UTF-8 locale): 656000 questions: 452270 agree, 18130 differ, 185600 jank rejects a valid pattern, 0 jank accepts an invalid one, 0 not compared
+    differ [re-seq-new-string (R81)]: 634
+      (re-seq #"\b" "a"): Clojure ("" ""), jank ("" "" …) infinite
+      (re-seq #"\b" "e"): Clojure ("" ""), jank ("" "" …) infinite
+      (re-seq #"\b" "aa"): Clojure ("" ""), jank ("" "" …) infinite
+    differ [non-spacing mark after a letter is a word character for \b (new)]: 4378
+      (re-seq #"\b" "é́"): Clojure ("" ""), jank nil
+      (re-seq #"\b" "١́"): Clojure ("" ""), jank nil
+      (re-find #"\b" "é́"): Clojure "", jank nil
+    differ [bytes (R78)]: 10018
+      (re-seq #"a." "á"): Clojure ("á"), jank ("a\xcc" (invalid UTF-8))
+      (re-seq #"a." "aé"): Clojure ("aé"), jank ("a\xc3" (invalid UTF-8))
+      (re-seq #"a." "a١"): Clojure ("a١"), jank ("a\xd9" (invalid UTF-8))
+    differ [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]: 3056
+      (re-seq #".+" " "): Clojure nil, jank (" ")
+      (re-find #".+" " "): Clojure nil, jank " "
+      (re-seq #".+" "a "): Clojure ("a"), jank ("a ")
+    differ [syntax: possessive quantifier read as a nested repeat]: 44
+      (re-seq #"́++" "́́"): Clojure ("́́"), jank ("́" "́")
+      (re-find #"́++" "́́"): Clojure "́́", jank "́"
+      (re-seq #"́++" "á́"): Clojure ("́́"), jank ("́" "́")
+    jank rejects [inline flags (R18)]: 160000
+      (re-seq #"(?U)" ""): Clojure (""), jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+      (re-find #"(?U)" ""): Clojure "", jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+    jank rejects [quantifier on an assertion]: 25600
+      (re-seq #"\B+" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-find #"\B+" ""): Clojure "", jank throws (Mismatched '(' and ')' in regular expression)
+  (9 s)

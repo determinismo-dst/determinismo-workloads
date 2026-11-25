@@ -1,0 +1,11 @@
+(vb12-undefined)
+[(some? (ex-data *e)) (some? (ex-cause *e)) (:clojure.error/phase (ex-data *e))]
+(defmacro m [] (throw (ex-info "x" {:k 1})))
+(m)
+[(ex-data (ex-cause *e)) (:clojure.error/phase (ex-data *e))]
+(read-string "")
+(class *e)
+(let [d (delay (nth [1 2] 5)) a (try @d (catch Throwable e e)) b (try @d (catch Throwable e e))] (identical? a b))
+(try @(future (read-string "(")) (catch Throwable e [(class e) (class (ex-cause e))]))
+(binding [*ns* (create-ns (quote x8))] (try (eval (list (quote def) (with-meta (quote vb8-x) {:vb8 1}) (list (quote throw) (list (quote clojure.core/ex-info) "vb8" {})))) (catch Throwable e (class e))))
+(meta (find-var (quote x8/vb8-x)))

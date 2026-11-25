@@ -1,0 +1,333 @@
+ROUND 5, AREA A (NATIVE): native object loading and the C API
+jank main 94d32623 (upstream-r5/). Paths below are under upstream-r5/compiler+runtime/ at 94d32623
+(identical to 7135b7708's tree). Every item is a hypothesis from Lean replicas and reading; jank was
+not built or run. Models: Jank/R5/Native/*.lean; driver Run/R5/Native.lean (exe jank5-native);
+runs: results/r5-native-*.txt; tests: .r5-scratch/native/tests.jank (+ clj/ counterparts).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+
+A1. An AOT-compiled program exits 0 when -main throws, under the dynamic runtime too.
+    Program: (ns app.core) (defn -main [& _] (throw (ex-info "boom" {})))
+    Clojure: clojure -M -m app.core prints the exception, exit status 1 (clojure.main).
+    jank (predicted): jank --module-path src compile app.core [--runtime dynamic|static], then
+      ./target/<name>: prints the exception, exit status 0 under BOTH runtimes.
+    Path: aot/processor.cpp 119-127 writes `jank_call2(jank_deref(apply), jank_deref(fn),
+      command_line_args); return 0;` into main's lambda; c_api.cpp jank_call2 168-181 wraps the call
+      in cpptrace::try_catch with handlers for std::exception, object_ref, error_ref and `...`, each
+      only printing, and returns nil. So nothing -main throws reaches jank_init_dynamic's handlers
+      (c_api_dynamic.cpp 103-129) or jank_init_static's (c_api.cpp 1140-1166). A throw while the
+      modules load (before -main) still reaches them: 1 under the dynamic runtime, 0 under the
+      static one (round 4's U47, c_api.cpp 1168).
+    Status: new for the dynamic runtime; for the static runtime it is a second cause of U47 (fixing
+      jank_init_static's `return 0;` alone would not change -main's case). Corrects round 4's
+      Jank/R4/Modules/Aot.lean (aotRun p false gave 1 after -main threw) and REPORT-4's U47 text
+      ("jank_init_dynamic ... returns ret").
+    Theorems: ★ aot_main_throw_status_zero (both runtimes, every kind of throw), ★
+      aot_dynamic_differs_iff, ★ aotRunR5_main_zero (round 4's whole AOT world).
+    Search: round 4's AOT world rerun with the corrected run (dynamic runtime): see section 7.
+    Test: none from a test file (exit status of a built binary). Shell steps:
+      mkdir -p app/src/app && printf '(ns app.core)\n(defn -main [& _] (throw (ex-info "boom" {})))\n' > app/src/app/core.jank
+      cd app && jank --module-path src --runtime dynamic compile app.core && ./target/a.out; echo "status $?"
+      (predicted: the exception printed, "status 0"; the same with --runtime static)
+    Confidence: high (the call and the catch are both literal in the source).
+
+A2. The C API's jank_call2 swallows what the called fn throws; jank_call0/1/3..11 do not.
+    Program (C caller, or jank through extern "C"): jank_call2(f, a, b) with f throwing.
+    Clojure: IFn.invoke(a, b) throws to its caller.
+    jank (predicted): the exception is printed (stderr/stdout via util::print_exception) and the
+      call returns nil; jank_call1(f, a) with the same f throws to its caller.
+    Path: c_api.cpp 168-181 (jank_call2's try_catch) vs 155-166, 183-379 (no catch).
+      jank_eval_file_c (65-75) also catches all, while jank_eval_file (59-63) does not.
+    Test: vA1-c-api-call2-lets-the-fns-exception-reach-the-caller (jank only: cpp/raw declares
+      jank_call2); control vA1b-c-api-call1-lets-the-fns-exception-reach-the-caller (predicted to
+      pass). Clojure counterparts pass on 1.12.0.
+    Status: new. Confidence: high (literal); the test's helper compiles only if the JIT accepts the
+      extern "C" declaration and object_ref::raw() (both used the same way in c_api.cpp).
+
+A3. jank_symbol_create and jank_keyword_intern with a nil namespace give the namespace "nil".
+    Programs: jank_symbol_create(jank_const_nil(), jank_string_create("a"));
+              jank_keyword_intern(jank_const_nil(), jank_string_create("a")).
+    Clojure: Symbol.intern(null, "a") is `a`; Keyword.intern(null, "a") is `:a`; jank's own
+      clojure.core `keyword` (core.cpp 521-542) also treats nil as no namespace.
+    jank (predicted): the symbol `nil/a` and the keyword `:nil/a`.
+    Path: c_api.cpp 433-438 -> obj/symbol.cpp symbol(object_ref ns, object_ref n) 60-65 stores
+      ns.to_string() ("nil"); c_api.cpp 139-147 -> context.cpp intern_keyword(ns, name, resolved =
+      true) 561-586 builds "nil/a".
+    Theorems: symbol_nil_ns, keyword_nil_ns, ★ symbol_create_agrees_iff (agrees with Clojure exactly
+      when the namespace is not nil).
+    Tests: vA2-c-api-symbol-with-a-nil-namespace-is-unqualified,
+      vA3-c-api-keyword-with-a-nil-namespace-is-unqualified (jank only; counterparts pass on 1.12.0).
+    Status: new. Confidence: high (low impact: no jank code calls these two with nil).
+
+A4. jank's C header is not C: c_api.h uses `bool` (lines 358, 367) without <stdbool.h>.
+    Program: a C file with `#include <jank/c_api.h>` compiled as C11/C17/gnu17.
+    Expected (the header's `#ifdef __cplusplus extern "C"` guard, lines 3-6, declares it for C):
+      it compiles. jank 94d32623: "error: unknown type name 'bool'" twice.
+    Checked on this Mac (Apple clang 16, -fsyntax-only on a copy of the header):
+      results/r5-native-capi-header.txt. C23 (where bool is a keyword) would accept it.
+    Status: new. Confidence: high (verified by compiling the header). Test: none (a C compile).
+
+A5. -lfoo: the JIT and the AOT link pick different library files.
+    Setting: -L dirA -L dirB, dirA holds libfoo.a, dirB (or a Clang default dir) holds libfoo.so.
+    GNU ld (ld.texi 731-738): per directory, lib<x>.so before lib<x>.a: dirA/libfoo.a.
+    jank's own spec (aot/processor.cpp 357-359: the AOT link's dirs replicate Clang's "so the same
+      libs are found as during JIT").
+    jank (predicted): `jank run`/`run-main` maps dirB/libfoo.so (resolve_libs 846-866 looks for
+      libfoo.so in EVERY directory before libfoo.a in any); `jank compile` passes -lfoo
+      (aot/processor.cpp 381-392) and ld links dirA/libfoo.a.
+    Path: jit/processor_dynamic.cpp resolve_libs 787-871, find_lib 737-785; aot/processor.cpp
+      246-249, 356-394.
+    Search: -l world, class J2 (section 7).
+    Test: none (CLI flags, two processes). Shell steps (Linux):
+      mkdir -p la lb && printf 'int which(void){return 1;}\n' > a.c && cc -c -fPIC a.c -o a.o && ar rcs la/libfoo.a a.o
+      printf 'int which(void){return 2;}\n' > b.c && cc -shared -fPIC b.c -o lb/libfoo.so
+      printf '(ns m)\n(cpp/raw "extern \\"C\\" int which();")\n(defn -main [] (println (cpp/which)))\n' > m.jank
+      jank -L$PWD/la -L$PWD/lb -lfoo --module-path . run-main m      # predicted 2
+      jank -L$PWD/la -L$PWD/lb -lfoo --module-path . compile m && ./target/a.out   # predicted 1
+    Status: new. Confidence: high on the rule; medium that the AOT driver puts the user's -L before
+      Clang's own (it does in build_compiler_args/build_linker_args order, 249 then 362).
+
+A6. -l with a path or a file name: the JIT loads it, the AOT link cannot find it.
+    The CLI help (util/cli.cpp 160-161): "-l <lib> Library identifiers, absolute or relative paths".
+    Programs: -l/abs/dir/libfoo.so, -l./libfoo.so, -llibfoo.so (found in a -L dir).
+    jank (predicted): run/run-main load the file (find_lib's literal step, 798-806); compile passes
+      "-l/abs/dir/libfoo.so" etc. to the linker (aot/processor.cpp 389-391, dynamic case), which
+      searches for "lib/abs/dir/libfoo.so.so"/".a" and fails: "cannot find -l/abs/dir/libfoo.so".
+      A static library given by path works (passed as its path, 387).
+    Search: -l world, class J1 (section 7).
+    Status: new. Confidence: high. Test: none (shell: as A5 with -l$PWD/lb/libfoo.so and compile).
+
+A7. A GNU ld script naming several files: the JIT maps only the first.
+    Program: libfoo.so is the text `INPUT ( /x/libfoo_core.so /x/libfoo_extra.so )`; jank -lfoo.
+    GNU ld (ld.texi 4417-4431): every file INPUT names is in the link.
+    jank (predicted): parse_ld_script (parse_ld_script.cpp 234-324) returns the first path outside
+      AS_NEEDED; load_dynamic_library_impl (processor_dynamic.cpp 905-948) loads that one only.
+      Symbols of libfoo_extra.so are unresolved under the JIT; the AOT link has them.
+      Also: only the first INPUT/GROUP command counts (83-149: "Real-world ld scripts only ever
+      contain one"); when every file is inside AS_NEEDED, the first one is loaded unconditionally.
+    Theorems: two_files_first_only, second_directive_ignored, as_needed_fallback (kernel-checked).
+    Search: ld-script census, class C1; -l world, class J2s.
+    Status: new. Confidence: high. Test: none (needs shared objects; shell as A5 with a text
+      libfoo.so).
+
+A8. A library file jank cannot dlopen ends in llvm::cantFail, not in a reported error.
+    Cases: (a) an ELF dlopen refuses (truncated, another machine, ET_REL); (b) a text file with no
+      INPUT/GROUP (e.g. only a comment, which ld accepts as an empty script); (c) an ld script whose
+      entry is relative and not in the script's own directory (ld then tries the current directory
+      and the -L path, ld.texi 4441-4445), is `-lname` (ld searches lib<name>, 4447-4449) or
+      `=/path` (sysroot, 4433-4439); (d) an unbalanced script, or a quoted name holding a
+      parenthesis (`GROUP ( "p(.so" )`: find_input_directive counts it, 116-131).
+    jank (predicted): load_dynamic_library_impl falls through to
+      llvm::cantFail(Interpreter::LoadDynamicLibrary(path)) (946-947); LoadDynamicLibrary returns
+      dlopen's failure (OrcIncrementalExecutor.cpp 108-120 at llvmorg-23.1.0), and cantFail on a
+      failure is llvm_unreachable (Error.h 769-781): undefined behavior in jank's release builds
+      (CMakeLists.txt 142-143 adds -DNDEBUG; likely the start-up continues without the library), an
+      abort with LLVM's message in a debug build. jank reports "Failed to find library" only when
+      no file is found at all (856), and std::runtime_error only for depth > 8 or self-reference.
+    Expected: an error naming the library (as `jank` does for a missing one, and as ld does:
+      "file format not recognized", "cannot find"); Clojure's System/load throws
+      UnsatisfiedLinkError.
+    Search: -l world classes J4e/J4t/J4m; ld-script census classes C2, C2s, C4, C4e.
+    Test: vA4-loading-a-file-that-is-not-a-library-is-an-error (jank only: calls
+      __rt_ctx->jit_prc.load_dynamic_library through cpp/raw; predicted: no exception, or an abort;
+      the counterpart, System/load, passes on 1.12.0).
+    Status: new. Confidence: high on the path; the visible outcome depends on the build type.
+
+A9. A module loaded from its compiled object (.o) never runs its C++ global initializers.
+    Program (src/m.jank):
+      (ns m)
+      (cpp/raw "inline int m_x = std::getenv(\"PATH\") ? 7 : 8;")
+      (defn -main [] (println (cpp/m_x)))
+    jank --module-path src run-main m: 7 (the JIT runs each input's initializers).
+    jank --module-path src compile-module m (writes <target>/_cache/<binary version>/m.o, which the
+      loader puts on the module path, loader_dynamic.cpp 393-415), then the same run-main: the
+      loader prefers m.o when it is at least as new as m.jank (find 591-635) and load_o (779-814)
+      calls load_object (processor_dynamic.cpp 610-676), which adds the object to ORC and never runs
+      its .init_array; the comment at 672-673 says so ("Object files won't be able to use global
+      ctors until jank is on the ORC runtime"). Predicted: 0.
+    Expected (the C++ standard, [basic.start.dynamic]; and Clojure, whose AOT classes run their
+      static initializers when loaded): 7 both times.
+    Status: new. Confidence: medium-high (the jank comment and load_object's code agree; whether
+      Clang folds the initializer statically is avoided by reading the environment). Test: none
+      (needs compile-module, then a second process); shell steps above.
+
+A10 (low). jank_eval_file_c prints "jank_eval_file_c <path>" on stdout before evaluating
+    (c_api.cpp 67): a debug line every embedder of the C API sees. Not tested (stdout of the
+    process, not *out*).
+
+A11 (low). Smaller differences of the ld-script reader from ld's lexer, all from the census:
+    backslash escapes and single quotes inside names (read_token 161-182; ld's quoted names keep
+    every character, ldlex.l 440-444, and ' has no rule in the INPUTLIST state), a quoted name with
+    a parenthesis (A8 d), an unterminated comment (ld: fatal "EOF in comment", ldlex.l 711-714;
+    jank: the rest of the file is dropped). Classes C3/C5 in section 7.
+
+Read and not a deviation:
+- jit/object_dynamic.cpp: stack-trace bookkeeping only (object-file symbols captured at
+  load_object, joined with JITLink's runtime addresses by resource key; upper_bound lookup of a PC;
+  Mach-O underscore aliasing). No effect on values a program sees.
+- jank_ratio_create builds an unnormalized-to-integer ratio (make_box(ratio_data) skips
+  ratio::create's denominator-1 case); its counterpart `new Ratio(n, d)` does not reduce either.
+- -l:name forces a static library; documented by jank's book (jank-build/overview.md 61-63), unlike
+  ld's -l:file (any file).
+- The loader prefers a module's .o when its mtime is >= the source's (loader_dynamic.cpp 631);
+  Clojure's RT.load requires the class file to be strictly newer (>). Low; not reported.
+
+======================================================================
+2. PROOFS
+======================================================================
+- ★ parseText_total (LdTheorems.lean): for every text, the replica of parse_ld_script finishes
+  within its fuel, i.e. it reads every script as the C++ does. Built from ★ findClose_fuel,
+  ★ findInputDirective_fuel (with tryDirectives_some), ★ readBare_fuel, ★ readQuoted_fuel,
+  readQuoted_bounds, readBare_bounds, readToken_some, readToken_adv (read_token advances at least one
+  character from a non-separator, non-parenthesis start and stays in range), skipSeps_ge, ★ scan_fuel.
+  This is the C++'s termination argument: every loop advances a position bounded by the size.
+- Kernel-checked readings (decide +kernel): glibc_libc (glibc's libc.so script gives libc.so.6),
+  two_files_first_only, lname_is_a_path, unbalanced_nothing, quoted_paren_nothing,
+  as_needed_fallback, second_directive_ignored.
+- ★ aot_main_throw_status_zero, ★ aot_dynamic_differs_iff, ★ aotRunR5_main_zero (CApi.lean).
+- ★ symbol_create_agrees_iff; symbol_nil_ns, keyword_nil_ns, clj_nil_ns.
+- Not done: agreement of the reader with ld on a well-formed subset for every input (e.g. every
+  `GROUP ( names… )` with plain names gives the first name). The complete census over every script
+  of <= 5 tokens and the control over glibc-shaped scripts stand in for it; a proof needs lemmas
+  that strip_comments is the identity on comment-free text and that find_input_directive stops at
+  the first GROUP, which I did not write.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Jank/R5/Native/LdScript.lean: parse_ld_script.cpp 20-324 (is_identifier_character,
+  is_separator, matches_directive, strip_comments, find_input_directive, read_token,
+  parse_ld_script), loops with explicit fuel (proved sufficient).
+- Jank/R5/Native/LdSpec.lean: GNU ld 2.45's reading of INPUT/GROUP/AS_NEEDED/OUTPUT_FORMAT scripts
+  (ldgram.y 310-408, ldlex.l 95-101, 133-134, 290-305, 400-448, 685-717); the script world.
+- Jank/R5/Native/Libs.lean: processor_dynamic.cpp shared_lib_name/static_lib_name/is_static_lib
+  51-80, build_library_dirs 99-143 (as an ordered list), find_lib 737-785 (Linux),
+  resolve_libs 787-871, load_libs 873-895, load_dynamic_library_impl 897-954 (depth 8, self
+  check, lexically_normal, relative to the script's directory), load_static_library 956-961,
+  is_elf_file (parse_ld_script.cpp 211-222); the AOT link (aot/processor.cpp 246-249, 356-394) and
+  GNU ld's -l search (ld.texi 724-738) and script-name search (4433-4449).
+- Jank/R5/Native/LibsWorld.lean: the -l world.
+- Jank/R5/Native/CApi.lean: the exception boundary of c_api.cpp's calling functions, the AOT
+  main's status (aot/processor.cpp 98-140 with c_api.cpp 1133-1169 and c_api_dynamic.cpp 84-130),
+  round 4's AOT world rerun with the corrected run (aotRunR5), jank_symbol_create /
+  jank_keyword_intern on nil.
+- Read, not modeled: object_dynamic.cpp 1-566, object_static.cpp, load_object 610-676, load_o
+  (loader_dynamic.cpp 779-814), the rest of c_api.cpp (constructors, box/unbox, function and
+  closure arity setters, truthy/equal/hash/to_string, to_integer/to_real, first/second, set_meta,
+  tag_pointer, throw, profile, module register), c_api_dynamic*.cpp, c_api_static.cpp.
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- macOS: find_lib's dlopen fallback (777-782) and Mach-O; the -l world is Linux.
+- ORC/JITLink behavior for objects beyond the comment at 672-673 (duplicate definitions between a
+  .o module and a static library would hit cantFail at addObjectFile, 675; not searched).
+- The C API's arity and type errors (try_object on a wrong type throws a std::runtime_error out of
+  an extern "C" function: std::terminate for a C caller without a C++ handler) — read, no Clojure
+  counterpart beyond "an exception reaches the caller", not tested.
+- jank_to_integer of a non-integer returns its hash (c_api.cpp 981-989, 1015-1019); Clojure's
+  RT.longCast truncates or throws. Unused inside jank; not reported.
+- GNU ld's own handling of a comma inside a name (FILENAMECHAR includes ',' in the INPUTLIST
+  state, ldlex.l 96/400): the census separates every comma by spaces, where both readings agree.
+- Agreement proof for every well-formed script (section 2).
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+- NatA5-1. jank release builds define NDEBUG (CMakeLists.txt 142-143, as earlier rounds' RC):
+  llvm::cantFail on a failure is llvm_unreachable, undefined behavior (LLVM_UNREACHABLE_OPTIMIZE
+  default on); a debug build aborts with a message.
+- NatA5-2. Scripts and paths are ASCII; std::isalnum/std::isspace in the environment's LC_CTYPE agree
+  with "C" on ASCII bytes.
+- NatA5-3. dlopen accepts exactly loadable ELF shared objects; a text file, an archive or a refused
+  ELF fails (the replica's Kind).
+- NatA5-4. jank's install directories (its process dir and resource lib dir, which the AOT link
+  also searches, aot/processor.cpp 187-195) hold no library of the user's name.
+- NatA5-5. The AOT link's -L order is the user's dirs, then Clang's defaults (compiler args before
+  linker args, aot/processor.cpp 249 and 362).
+- NatA5-6. GNU ld 2.45 is the spec for a script and for -l; lld follows the same -l and script
+  rules for these inputs.
+- NatA5-7. LLJIT without the ORC runtime does not run an added object file's initializers (jank's
+  own comment, processor_dynamic.cpp 672-673).
+- Replaced: round 4's AOT model (Jank/R4/Modules/Aot.lean aotRun p false) let -main's throw reach
+  jank_init_dynamic; it goes through jank_call2 (A1).
+
+======================================================================
+6. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- L1: the files jank loads for a .so script are the files GNU ld links (ld.texi 4417-4474,
+  ldgram.y 310-408).
+- L2 (control): on glibc-shaped scripts with at most one required file, jank loads that file.
+- J1: a -l the JIT accepts, the AOT link accepts (util/cli.cpp 160-161; aot/processor.cpp 357-359).
+- J2: the JIT maps the same library files as the AOT link (aot/processor.cpp 357-359).
+- J3: the JIT maps the files ld's -l would link (ld.texi 724-738).
+- J4: the JIT starts or reports an error; it never reaches cantFail with a failure (jank's
+  "Failed to find library" contract, book jank-build/packaging-system-lib.md 123; ld's errors).
+- C1: an exception thrown by a fn called through the C API reaches the caller (clojure.lang.IFn
+  invoke; c_api.cpp's other call functions).
+- C2: an AOT program's exit status after an uncaught exception is non-zero (clojure.main; jank's
+  run-main gives 1).
+- C3: a nil namespace names no namespace (Symbol.intern / Keyword.intern; core.cpp 521-542).
+- C4: c_api.h compiles as C (its extern "C" guard).
+
+======================================================================
+7. SEARCH RUNS (complete = every timeline within the bounds)
+======================================================================
+Outputs: results/r5-native-census.txt (and r5-native-examples.txt). Exe: jank5-native.
+- ld scripts vs GNU ld, every token sequence of length <= 5 over a 16-token alphabet (keywords,
+  parentheses, comma, relative/absolute/-l/=/quoted/quoted-with-paren/backslash names, a comment,
+  an unterminated comment): complete 1,118,481 timelines, 868 violate:
+    C3 ld rejects the script, jank reads a file from it: 578 (e.g. `GROUP GROUP ( GROUP )`;
+       `GROUP ( a ) /* x` — ld: "EOF in comment");
+    C1 several files, jank loads only the first: 108;
+    C4 ld reads files, jank none: 50 (a quoted name with a parenthesis: `GROUP ( "p(.so" )`);
+    C4e a script naming no file (ld adds nothing; jank dlopens the script itself): 42;
+    C2 `-lz` taken as a path: 30; C2s `=/path` taken as relative: 30;
+    C5 another file than ld's: 30 (`GROUP ( "a\b.so" )`: jank `ab.so`, ld `a\b.so`).
+  <= 4 tokens: complete 69,905, 19 (the same classes, C3 and C1 absent).
+- Control, glibc-shaped scripts (GROUP, AS_NEEDED, parentheses, absolute names, a comment,
+  OUTPUT_FORMAT), <= 6 tokens, those ld reads with at most one required file: complete 137,257,
+  nothing. So on the scripts glibc ships, jank loads the file ld would.
+- -l world (3 directories x 10 libfoo.so kinds x 2 libfoo.a kinds, 6 -l values): complete 82,944
+  timelines, 50,520 violate:
+    J1 the AOT link rejects a -l the JIT loads (path, ./path, file name): 23,464;
+    J4t cantFail on dlopen of a text file that is not an INPUT/GROUP script: 10,992;
+    J4m cantFail on a script entry missing where jank looks (its directory; -lz; =/path): 10,976;
+    J4e cantFail on an ELF dlopen refuses: 3,664;
+    J2s the AOT link has files the JIT never maps (a script naming several): 1,202;
+    J2 the JIT and the AOT link use different files (.so anywhere before .a): 222.
+  Classes are assigned in that priority; a timeline is counted once.
+- Round 4's AOT world (Jank/R4/Modules/Aot.lean), dynamic runtime, corrected run: complete 384,
+  42: 27 programs whose -main throws change from round 4's status 1 to 0 (A1); 15 start-up
+  failures with status 1 where Clojure gives 0 (round 4's U46/F2 class, unchanged).
+- Clojure 1.12.0: the 5 counterpart tests (6 assertions) pass (results/r5-native-clj.txt).
+
+======================================================================
+8. THEOREMS (no sorry, no native_decide, no new axiom; results/r5-native-axioms.txt)
+======================================================================
+LdTheorems.lean: ★ parseText_total, ★ findClose_fuel, ★ findInputDirective_fuel, ★ readBare_fuel,
+  ★ readQuoted_fuel, ★ scan_fuel, tryDirectives_some, skipSeps_ge, readQuoted_bounds,
+  readBare_bounds, readToken_some, readToken_adv; glibc_libc, two_files_first_only,
+  lname_is_a_path, unbalanced_nothing, quoted_paren_nothing, as_needed_fallback,
+  second_directive_ignored.
+CApi.lean: ★ aot_main_throw_status_zero, ★ aot_dynamic_differs_iff, ★ aotRunR5_main_zero,
+  ★ symbol_create_agrees_iff, symbol_nil_ns, keyword_nil_ns, clj_nil_ns.
+
+======================================================================
+9. LIBRARY GAPS
+======================================================================
+- A file-system model with kinds (loadable ELF, refused ELF, ld script, text, archive) and
+  lexically_normal paths; a two-linker comparison (JIT loader vs GNU ld).
+- Fuel-indexed loops with sufficiency proofs, so byte-level C++ loops reduce in the kernel.
+
+======================================================================
+10. PROJECTS TRANSLATED (for NOTICE.md)
+======================================================================
+- jank (MPL-2.0): parse_ld_script.cpp, processor_dynamic.cpp's library resolution, c_api.cpp.
+- GNU binutils ld 2.45 (GPL-3.0-or-later): ldgram.y/ldlex.l rules and ld.texi text used as the
+  spec of Jank/R5/Native/LdSpec.lean (a re-expression of the grammar, not a translation of code);
+  sources in deps/binutils-ld/ (fetched from sourceware, tag binutils-2_45).
+- LLVM 23.1.0 (Apache-2.0 WITH LLVM-exception): Error.h cantFail and OrcIncrementalExecutor's
+  LoadDynamicLibrary read (deps/llvm-23.1.0-native/).

@@ -1,0 +1,369 @@
+ROUND 5 — INTEROP (area F): jank 94d32623 (compiler+runtime identical to 7135b7708), CppInterOp 28b0830d,
+Clang/LLVM 23.1.0
+
+Scope: what round 4 left out of C++ operators — operator templates (non-member, member, hidden-friend, constrained,
+defaulted template parameters) and the subscript (`cpp/aget`), call (`()`), assignment (`cpp/=`) and compound
+assignment (`cpp/+=` …) operators, plus `++` and unary `&`; their member-only rules, built-in candidates and template
+argument deduction; and, found while tracing them, the value categories jank gives the operands.
+
+Sources read (pinned commits; jank history not needed: 7135b770..94d32623 touches only lein-jank):
+  upstream-r5/compiler+runtime/src/cpp/jank/analyze/processor.cpp (build_builtin_operator_call 196-249,
+    build_cpp_call 266-860, build_indirect_cpp_call 874-1010, determine/apply_implicit_conversion 1017-1185,
+    analyze_let 2292-2440, analyze_primitive_literal 3233-3246, analyze_call 3470-3615, analyze_cpp_symbol
+    3800-3960, analyze_cpp_call 4055-4130), analyze/cpp_util.cpp (instantiate_if_needed 37-110, literal_type
+    603-720, determine_implicit_conversion, find_best_overload, find_best_arg_types_with_conversions,
+    match_operator/operator_name 1749-1840), analyze/cppinterop.cpp (get_operator 752-767, wrappers),
+    analyze/expr/{cpp_constructor_call,cpp_call,cpp_member_call,cpp_builtin_operator_call,local_reference,
+    primitive_literal,cpp_literal}.cpp, evaluate.cpp 633-730, codegen/cpp_processor.cpp (lift_constant 132-200,
+    literal 608-614, cpp_value 1216-1276, cpp_literal 1278-1285, cpp_call 1352-1560, cpp_constructor_call
+    1563-1728, cpp_member_call 1730-1775, cpp_builtin_operator_call 1794-1821), jank's own tests
+    test/jank/cpp/operator/{equal,aget,slash,…} and test/jank/cpp/call/{functor,reference} (sources only),
+    book/src/cpp-interop/{native-functions,cpp-ns}.md, book/src/reference/error/analyze/invalid-cpp-capture.md;
+  deps/cppinterop/lib/CppInterOp/CppInterOp.cpp (GetName/GetCompleteName/GetQualifiedCompleteName 902-1060,
+    AddOverloadCandidates 1996-2124, BestOverloadMatch 2203-2238, GetOperatorArity 6954-6975, GetOperator
+    6977-7064, GetBuiltinOperatorType 7066-7210);
+  deps/llvm-23.1.0/clang: lib/Sema/SemaOverload.cpp (AddMethodCandidate 7907-7931, CompleteCandidates 13404-),
+    newly fetched at llvmorg-23.1.0 (raw files, no history): include/clang/Basic/OperatorKinds.def,
+    lib/Sema/SemaLookup.cpp (LookupDirect 1130-1148), include/clang/Sema/Lookup.h (iterator 154, addDecl 475),
+    include/clang/AST/UnresolvedSet.h (iterator operator* 51-57).
+Lean: Jank/R5/Interop/{Ops5,World5,Theorems5}.lean, Run/R5/Interop.lean (exe jank5-interop).
+Outputs: results/r5-interop-table.txt, results/r5-interop-search.txt, results/r5-interop-axioms.txt.
+Tests: .r5-scratch/interop/tests.jank (vF1 … vF10; C++ interop only, none runs on Clojure).
+
+
+=====================================================================================================
+1. DEVIATIONS (each a hypothesis; jank was not built or run). Paths: upstream-r5/compiler+runtime/…, 94d32623.
+=====================================================================================================
+
+The common root of F1-F6: jank gives C++ operands value categories of its own.
+  - processor.cpp build_cpp_call 565-572 turns every argument type that is not a pointer, reference or builtin
+    into `T&`, and CppInterOp's AddOverloadCandidates (CppInterOp.cpp 2022-2026) makes `T&` an lvalue: a class
+    TEMPORARY (`(cpp/T. …)`, a C++ prvalue) is an lvalue to overload resolution (F1, F2).
+  - A builtin argument keeps its non-reference type and is a prvalue (2022-2026), also when it is a NAMED variable:
+    a `let`-bound local's binding type is its init's type (analyze_let 2414-2421, local_reference.cpp 29-32), the
+    result of `cpp/aget` or `cpp/=` is typed by `getType()` without its value kind (CppInterOp.cpp 7101-7130)
+    (F5, F5b).
+  - Codegen names every operand (`auto t(lit)`, cpp_processor.cpp 1278-1285; `T t(args)`, 1655-1726; `auto &&t(…)`
+    for values): the emitted C++ sees lvalues. `cpp_call` wraps an argument in `std::move` when the chosen
+    function's parameter is an rvalue reference (1410-1417), `cpp_member_call` never does (1730-1775) (F3, F4).
+  - GetBuiltinOperatorType makes every operand except a non-reference nullptr_t an lvalue (CppInterOp.cpp
+    7080-7087); round 3 noticed `(cpp/= 1 2)` type-checks (IA5 contradicted) but reported no deviation (F6).
+  Clang then compiles the emitted text and resolves the call again from those lvalues (or xvalues), so the
+  function the JIT calls can differ from the one jank analysed (F2, F4) or not exist (F3).
+
+F1. Assigning a temporary of a move-only class picks the deleted copy assignment.                    NEW
+  (cpp/raw "struct mo { int v{}; mo() = default; mo(int x) : v(x) {} mo(mo &&) = default;
+                        mo &operator=(mo &&) = default; }; inline mo g;")
+  (let* [_ (cpp/= cpp/g (cpp/mo. 5))] (cpp/.-v cpp/g))
+      ; C++ `g = mo(5)`: the move assignment, 5
+      ; jank: "The `operator=` function cannot be called, since it's deleted."
+  - Path: processor.cpp build_cpp_call 461-462 (cppinterop::get_operator, OP_Equal) → CppInterOp.cpp GetOperator
+    7040 ForceDeclarationOfImplicitMembers (the implicit copy assignment, deleted by the user-declared move
+    assignment, [class.copy.assign]/2) and 7044-7050 → 565-572 (`mo` → `mo&`) → BestOverloadMatch: `mo&&` cannot
+    bind the lvalue, `mo const&` (deleted) is the best → cpp_util.cpp find_best_overload "cannot be called, since
+    it's deleted".
+  - Even with the temporary kept a prvalue, the member call would fail in the JIT (F3's codegen passes it as a
+    named lvalue): the replica classifies the case "class-temporary-is-lvalue+member-call-args-not-moved".
+  - Same root outside operators: every call with a parameter `S&&` rejects a temporary `(cpp/S. …)` in analysis
+    (no viable candidate), and a by-value parameter of a move-only class takes it as a copy (JIT error).
+  - Test vF1-assigning-a-temporary-moves-it. Confidence: high (path read whole; the deleted best is returned by
+    BestOverloadMatch 2219-2221 and refused at find_best_overload).
+
+F2. A forwarding operator template deduces `T = W&` for a temporary: a different specialization.     NEW
+  (cpp/raw "namespace vf2 { template <typename T> struct isl { static constexpr int v = 2; };
+            template <typename T> struct isl<T &> { static constexpr int v = 1; };
+            struct V {}; struct W {};
+            template <typename T> int operator+(V const &, T &&) { return isl<T>::v; } inline V gv; }")
+  ((fn [] (cpp/+ cpp/vf2.gv (cpp/vf2.W.))))   ; C++ `gv + W()`: T = W, 2      jank: T = W&, 1
+  - Path: as F1 to BestOverloadMatch → AddTemplateOverloadCandidate deduces from an lvalue `W` ([temp.deduct.call]/3)
+    → instantiate_if_needed (cpp_util.cpp 37-110) → cpp_call codegen `vf2::operator+(t0, t1)` (no template
+    arguments: GetQualifiedCompleteName, CppInterOp.cpp 991-1013; the parameter `W&` is not an rvalue reference,
+    so no std::move, 1410-1417) → Clang deduces T = W& again.
+  - Perfect forwarding (`emplace`-style operators, `std::forward` in expression templates) sees every jank
+    temporary as an lvalue: copies instead of moves, or a different overload.
+  - Test vF2-a-forwarding-operator-template-sees-a-temporary-as-an-rvalue. Confidence: high.
+
+F3. A member operator with an rvalue-reference parameter, given a literal: a JIT error.               NEW
+  (cpp/raw "struct vr { int operator*(int &&) const { return 1; } }; inline vr g;")
+  ((fn [] (cpp/* cpp/g 1)))   ; C++ `g * 1`: 1   jank: analysis accepts (1 is a prvalue there), the emitted
+                              ; `t0.operator*(t1)` binds `int&&` to the lvalue `auto t1(1)`: compile error
+  - Path: build_cpp_call 461-462 → BestOverloadMatch (prvalue int binds int&&) → cpp_member_call (664-675) →
+    determine_implicit_conversion: `none` ("same type or adding reference", cpp_util.cpp) → codegen
+    cpp_processor.cpp gen(cpp_member_call) 1730-1775 (arguments printed as they are) and gen(cpp_literal)
+    1278-1285 (`auto t1(1);`).
+  - The same holds for every member function, not only operators: `(cpp/.take obj 5)` with `void take(int &&)`.
+  - Test vF3-a-member-operator-takes-a-literal-by-rvalue-reference. Confidence: high.
+
+F4. A member operator template with a forwarding reference: analysed with T = int, called with T = int&. NEW
+  (cpp/raw "namespace vf4 { …isl as in F2…; struct R { template <typename T> int operator/(T &&) const
+            { return isl<T>::v; } }; inline R g; }")
+  ((fn [] (cpp// cpp/vf4.g 1)))   ; C++ `g / 1`: T = int, 2      jank: 1
+  - Path: GetOperator 7044-7050 (a member FunctionTemplateDecl; GetOperatorArity ~0 passes, 6973) →
+    AddOverloadCandidates register_member → AddMethodTemplateCandidate (2071-2073) with a prvalue int → T = int →
+    cpp_member_call codegen `t0.operator/(t1)` (GetName, no template arguments) → Clang deduces T = int&.
+  - Test vF4-a-member-operator-template-forwards-a-literal-as-an-rvalue. Confidence: high.
+
+F5. A `let`-bound builtin is an rvalue to jank's overload resolution.                                NEW
+  (cpp/raw "namespace vf5 { struct V {}; inline int operator-(V const &, int const &) { return 1; }
+            inline int operator-(V const &, int &&) { return 2; } inline V gv; }")
+  ((fn [] (let [x (cpp/int. 1)] (cpp/- cpp/vf5.gv x))))   ; C++ `int x = 1; gv - x`: 1      jank 2
+  - Path: analyze_let 2414-2421 (binding type = `int`) → local_reference::get_type → build_cpp_call 565-572 leaves
+    a builtin as is → AddOverloadCandidates: prvalue → `int&&` preferred ([over.ics.rank]/3.2.3) → cpp_call
+    codegen `vf5::operator-(t0, std::move(x))` → Clang agrees with the analysis (2).
+  - F5b, the visible consequence: a named builtin can't be an out-parameter.
+      (cpp/raw "inline void inc(int &i) { ++i; }")
+      ((fn [] (let [x (cpp/int. 1)] (cpp/inc x) x)))   ; C++ 2   jank: analysis error (no viable overload;
+                                                       ; find_best_arg_types_with_conversions converts only
+                                                       ; jank objects)
+    Also `(cpp/>> in x)` reading into a local (std::istream's `operator>>(int&)`), and in world XXII
+    `(cpp/* x cpp/vt.gv)` with `int operator*(int &, V const &)`.
+  - Tests vF5-a-named-local-is-an-lvalue-to-overload-resolution, vF5b-a-named-local-binds-a-non-const-reference.
+    Confidence: high on the analysis (the binding type and AddOverloadCandidates are explicit).
+
+F6. Built-in assignment, compound assignment, `++` and unary `&` accept a prvalue operand.           NEW (low)
+  ((fn [] (cpp/= 1 2)))    ; C++ `1 = 2`: ill-formed        jank 2
+  ((fn [] (cpp/+= 1 2)))   ; ill-formed                       jank 3
+  ((fn [] (cpp/++ 1)))     ; ill-formed                       jank 2
+  ((fn [] (cpp/& 1)))      ; ill-formed                       jank: the address of the generated function's
+                           ; local `t1`, dangling once the fn returns
+  Also with a temporary: `(cpp/= (cpp/int. 1) 2)` → 2.
+  - Path: build_cpp_call 392-411 → build_builtin_operator_call 196-249 → GetBuiltinOperatorType 7080-7087 (every
+    operand an lvalue) → codegen 1794-1821 `auto &&r( t1 = t2 );` over the mutable `auto t1(1);` (1278-1285).
+  - jank's own tests (operator/equal/fail-const.jank) reject a const left operand, so C++'s modifiable-lvalue rule
+    is the intended one; the value-category half of it is missing.
+  - Test vF6-built-in-assignment-needs-an-lvalue. Confidence: high on the path; low impact.
+
+F7. Argument-dependent lookup misses an operator brought into an associated namespace by a using-declaration. NEW
+  (cpp/raw "namespace lib { struct P {}; } namespace ext { inline int operator+(lib::P const &, lib::P const &)
+            { return 9; } } namespace lib { using ext::operator+; } inline lib::P p;")
+  ((fn [] (cpp/+ cpp/p cpp/p)))   ; C++ 9 ([basic.lookup.argdep]/4 finds the using-declaration)
+                                  ; jank "The operator `+` is not supported for the type `lib::P`."
+  - Path: CppInterOp.cpp GetOperator 7022-7031: LookupQualifiedName fills the LookupResult with the
+    UsingShadowDecl itself (SemaLookup.cpp LookupDirect 1139-1143; Lookup.h 154 and UnresolvedSet.h 51-57: the
+    iterator yields the stored decl), and the loop keeps only FunctionTemplateDecl/FunctionDecl. The TU lookup
+    (6999-7006) resolves shadows with getUnderlyingDecl, so only a global-namespace using-declaration is found.
+    Class members re-exported by `using Base::operator@` are skipped the same way (7044-7050) but reached through
+    the base as an associated class (F8).
+  - When the namespace also declares a worse operator directly, jank analyses that one and emits the qualified
+    `lib::operator+(…)`, which Clang resolves to the using-declared one (qualified lookup includes it): the JIT then
+    calls a function other than the analysed one.
+  - Theorem ★ jank_getOperator_ignores_namespace_using. Test vF7-argument-dependent-lookup-finds-a-using-declaration.
+    Confidence: high.
+
+F8. A base operator re-exported with a using-declaration is ambiguous against the derived class's own. EXTENDS U22
+  (cpp/raw "struct b { int operator()(int) const { return 3; } };
+            struct d : b { using b::operator(); int operator()(long) const { return 4; } }; inline d g;")
+  ((fn [] (cpp/g 1)))   ; C++ 3: b's operator() is a member of d for the implicit object parameter
+                        ; ([over.match.funcs]/4), so (identity, exact) beats (identity, int→long)
+                        ; jank "This call is ambiguous between 2 different overloads."
+  - Path: build_indirect_cpp_call 930-965 (a class object called: operator `()`) → GetOperator 7044-7050: d's
+    lookup holds `d::operator()(long)` and a UsingShadowDecl (skipped); b's own member is found because b is an
+    associated class → AddOverloadCandidates register_member: DeclAccessPair of b's method, so AddMethodCandidate
+    (SemaOverload.cpp 7914-7917) takes b as the acting context: a derived-to-base object conversion (conversion
+    rank) against d's exact one → neither better.
+  - Same code path as U22 (round 4: GetOperator adds every associated class's members), but a different C++ rule:
+    here nothing is hidden; C++ treats the using-declared member as the derived class's. Also for any operator:
+    `(cpp/| cpp/g 1)` with `using b::operator|`.
+  - The `overloaded{lambdas…}` visitor idiom (only using-declarations, no own operator()) is unaffected: every
+    candidate gets the same derived-to-base conversion (world XXII agrees).
+  - Theorems ★ base_acting_context_not_exact, ★ using_member_acting_context_exact.
+  - Test vF8-a-using-declared-base-call-operator. Confidence: high.
+
+F9. An object convertible to a pointer to function can't be called.                                  NEW (low)
+  (cpp/raw "inline int twice(int x) { return 2 * x; }
+            struct sf { using fp = int (*)(int); operator fp() const { return &twice; } }; inline sf g;")
+  ((fn [] (cpp/g 21)))   ; C++ 42 (a surrogate call function, [over.call.object]/2)
+                         ; jank "The operator `()` is not supported for the type `sf`."
+  - Path: build_indirect_cpp_call 930-965 → build_cpp_call → GetOperator(OP_Call) finds no operator() → 513-523.
+    BestOverloadMatch adds no surrogates (as it adds no built-in candidates, S53).
+  - Test vF9-calling-an-object-through-its-conversion-to-a-function-pointer. Confidence: high; rare in practice.
+
+F10. `aget`, `=`, `+=` on a class operand with a conversion: no built-in candidates.                  EXTENDS S53
+  (cpp/raw "struct bf { int d[3]{ 1, 2, 3 }; operator int *() { return d; } }; inline bf g;")
+  ((fn [] (cpp/aget cpp/g 1)))   ; C++ 2 (built-in `int &operator[](int *, std::ptrdiff_t)`, [over.built]/14)
+                                 ; jank "The operator `aget` is not supported for the type `bf`."
+  Also `(cpp/+ cpp/g 1)` (pointer arithmetic through the conversion), `(cpp/= x q)` and `(cpp/+= x q)` with a
+  local int x and a class q converting to int.
+  - Path: as S53 (round 3): build_cpp_call 495-523, BestOverloadMatch adds no built-in candidates.
+  - Test vF10-aget-through-a-conversion-to-a-pointer. Confidence: high.
+
+Also re-found (not new):
+  - U22 for assignment: a derived class's implicitly declared copy/move assignment hides the base's operator=
+    ([class.copy.assign]/7-8 with [namespace.udecl]); jank adds the base's: `(cpp/= d 1)` with
+    `struct B9 { B9 &operator=(int); }; struct D9 : B9 { D9(int); };` is ambiguous in jank, D9(1) move-assigned in
+    C++ (world XXII, class no-member-hiding).
+  - S53 for `+` with a converting class (round 4's world XVIII class no-builtin-candidates).
+
+Operator templates as such add nothing else: deduction, constraints (requires-clauses), default template
+arguments, hidden-friend templates and member templates go through Clang's own AddTemplateOverloadCandidate /
+AddMethodTemplateCandidate on both sides, and GetOperatorArity lets every template through (★
+templates_pass_arity), so they deviate only through lookup (F7, F8, U22, U23) or value categories (F2, F4, F5).
+The book's examples (call/functor: zero-, one-, two-, three-argument calls) agree: OP_Call is kBoth
+(OperatorKinds.def 99), so a zero-argument functor call passes the arity filter.
+
+=====================================================================================================
+2. PROOFS
+=====================================================================================================
+(Jank/R5/Interop/Theorems5.lean; no sorry, no native_decide, no new axiom; ★ = for every input.)
+  ★ class_temporary_is_lvalue — for every class and every `(cpp/T. …)` operand of it, jank's BestOverloadMatch
+    argument is an lvalue where C++'s expression is a prvalue (F1, F2).
+  ★ forwarding_deduction_record / ★ forwarding_deduction_builtin — for every class and builtin type, every value
+    category and template parameter: a forwarding reference deduces `A&` from an lvalue and `A` otherwise.
+  ★ temporary_forwarding_deduces_lref — so for every class temporary jank deduces `T = A&`, C++ `T = A` (F2).
+  ★ member_call_args_lvalue — for every parameter type, `cpp_member_call`'s emitted argument is an lvalue;
+    nonmember_call_moves — `cpp_call`'s is an xvalue for an rvalue-reference parameter (F3, F4).
+  ★ named_builtin_local_is_prvalue — for every builtin type, a `let`-bound local is a prvalue to jank's overload
+    resolution, an lvalue in C++ (F5, F5b).
+  ★ jank_getOperator_ignores_namespace_using — for every world, operator and argument list, adding
+    using-declarations to namespaces other than the global one never changes what jank's GetOperator finds (F7).
+  ★ base_acting_context_not_exact / ★ using_member_acting_context_exact — for every derived class and proper base:
+    jank's object conversion for a member found through the base is never exact; C++'s for a using-declared member
+    is exact (F8).
+  ★ templates_pass_arity — every operator template passes GetOperatorArity's filter at every arity.
+  Not proved: anything that runs round 3's `paramConv`/`builtinOp` (they are `partial def`s, opaque to the
+  kernel), so the per-case outcomes are established by the complete table and searches, not by theorems.
+
+=====================================================================================================
+3. WHAT WAS REPLICATED (Jank/R5/Interop/, Run/R5/Interop.lean)
+=====================================================================================================
+  - Ops5.lean:
+    * jank: match_operator's names (cpp_util.cpp 1749-1797); build_cpp_call's operator branches (processor.cpp
+      366-524: built-in path, `&` always built-in, `<primitive> op <object>` / `<object> op <primitive>` jank-object
+      branches recognised and never taken by C++ operands), the arity choice and the logical-operator fallback;
+      the argument type rule 565-572; build_indirect_cpp_call's functor path (930-965); GetOperator in full
+      (6977-7064: TU lookup with shadows resolved, associated namespaces with using-directives followed and
+      using-declarations dropped, associated classes' own members and hidden friends, implicit assignment
+      operators declared first, GetOperatorArity with templates ~0); AddOverloadCandidates' value kinds and acting
+      contexts (1996-2124); template deduction for by-value, `T const&` and forwarding parameters with defaults and a
+      requires-clause; BestViableFunction with the template tie-breaker; find_best_overload's deleted/ambiguous
+      errors; GetBuiltinOperatorType's all-lvalue operands; codegen's named operands, cpp_call's qualified name
+      and std::move, cpp_member_call's `obj.operator@(args)`; Clang re-resolving the emitted call (member lookup,
+      qualified lookup with using-declarations and using-directives, unqualified + ADL for globals and friends).
+    * C++: [over.match.oper]/3 (member lookup with hiding and using-declared members as the class's own,
+      [over.match.funcs]/4; non-member candidates by unqualified lookup and ADL with using-declarations, without
+      using-directives; hidden friends), member-only `=`/`[]`/`()`, built-in candidates of [over.built] for
+      `+ - * / % ^ & |` (promoted arithmetic and integral pairs, pointer arithmetic), `[]` (T*, ptrdiff_t) both
+      ways, `=`/`+=` (L&, R) with no conversion on the left ([over.match.oper]/4), `++` (T&); the /3.3.4 exclusion;
+      [over.match.oper]/11 (only class operands converted, then the built-in operator, so `bf[2.5]` stays
+      ill-formed); [over.call.object] with surrogate call functions; unary `&` falling back to the built-in.
+      Conversions and reference binding are round 3's paramConv with explicit value categories.
+    * Fix switches: each mechanism can be set to C++'s rule (class temporaries prvalue, member calls moving,
+      named locals lvalue, built-in operands by category, using-declarations resolved, using-declared members in
+      the derived context, surrogates, built-in candidates, hiding); a case's class is the smallest set of switches
+      that makes it agree.
+  - World5.lean: world XXII (13 classes in 5 namespaces, 16 operator functions with templates, a using-declaration
+    in a namespace, using-declared members, a move-only class, conversions to pointer/function pointer/int;
+    16 operand forms: globals, temporaries, literals, a `let`-bound local).
+  - Read, not searched: the `<primitive> op <jank object>` and `<jank object> op <primitive>` branches
+    (processor.cpp 411-470: the primitive is converted to the jank object's type and the built-in path is taken);
+    the trait-conversion fallback find_best_arg_types_with_conversions (jank objects only); access checks after
+    selection (find_best_overload: private/protected best → error, as C++).
+
+=====================================================================================================
+4. STILL LEFT OUT, AND WHY
+=====================================================================================================
+  - C++20 rewritten comparisons (documented as unsupported); the comparison operators therefore not in XXII.
+  - Partial ordering of function templates: world XXII never has two viable templates with equal conversions
+    (OpA5-3).
+  - C++23 static/multi-argument operator()/operator[]: jank compiles with -std=gnu++20 (util/clang.cpp 347);
+    jank's `aget` takes two operands (processor.cpp 380-389).
+  - Ref-qualified member operators (`&`/`&&` on the object), operator-> and ->*, comma, new/delete operators.
+  - Operators with jank objects (object_ref, typed refs) as operands: the trait conversions are jank's own rules,
+    with no C++ counterpart.
+  - Calls other than operators were not searched; F1/F5b's consequences for ordinary calls (rvalue-reference and
+    non-const reference parameters, move-only by-value parameters) are by reading the same lines.
+  - The emitted C++ is judged by C++ rules ("JIT error" = Clang rejects the emitted text), as in rounds 3-4.
+
+=====================================================================================================
+5. ASSUMPTIONS
+=====================================================================================================
+Replaced:
+  - Round 3/4's implicit "a builtin argument is a prvalue, a class argument an lvalue" as C++'s categories: they
+    are jank's (CppInterOp's synthesis); C++'s come from the source expression (F1-F5).
+  - Round 4's "operator templates: GetOperatorArity ~0, accepted, which matches C++": holds; templates otherwise
+    follow Clang on both sides (★ templates_pass_arity).
+Standing / new:
+  - OpA5-1: a `let`-bound native local is a named variable in C++'s sense (jank's own tests assign to them,
+    test/jank/cpp/operator/equal/pass-binary-compatible-types.jank, and reject a const one, fail-const.jank).
+  - OpA5-2: LookupResult iteration yields the stored UsingShadowDecl (Lookup.h 154, UnresolvedSet.h 51-57,
+    SemaLookup.cpp 1139-1143).
+  - OpA5-3: no two templates in the world tie (no partial ordering needed).
+  - OpA5-4: a surrogate call function's object conversion is user-defined (only compared when operator()
+    candidates exist; none in XXII's surrogate class).
+  - InteropA4-1 … A4-7 (round 4) and CXA1 … CXA13 (round 3) stand.
+
+=====================================================================================================
+6. PROPERTIES CHECKED (with sources)
+=====================================================================================================
+  P1 `(cpp/<op> a b)`, `(cpp/aget a i)`, `(obj args)` call what C++ selects for `a op b`, `a[i]`, `obj(args)`
+     ([over.match.oper]/3, [over.call.object], [over.built], C++20 N4861) and give its value; ill-formed exactly
+     when C++ is. jank's book: "basically all of them are available under the cpp/ namespace"
+     (book/src/cpp-interop/native-functions.md "Operators").
+  P2 template argument deduction from operator operands follows [temp.deduct.call]/2-3 with the operand's C++
+     value category ([basic.lval]: a function call returning a non-reference and a literal are prvalues, a
+     variable is an lvalue, [expr.prim.id.unqual]/3).
+  P3 a using-declaration in an associated namespace is found by ADL ([basic.lookup.argdep]/4, [namespace.udecl]/1);
+     a using-declared base member is the derived class's member for the implicit object parameter
+     ([over.match.funcs]/4).
+  P4 built-in `=`, compound assignment and prefix `++` need a modifiable lvalue left operand ([expr.ass]/1,
+     [expr.pre.incr]/1); unary `&` an lvalue ([expr.unary.op]/3).
+
+=====================================================================================================
+7. SEARCH RUNS (results/r5-interop-table.txt, results/r5-interop-search.txt; complete = every case)
+=====================================================================================================
+  World XXII: 3,056 cases = 11 binary operators (+ - * / | % ^ & = += aget) × 16² operand pairs, unary ++ and &
+  × 16, and a call of each of the 13 class objects × 16 arguments. 16 operands: 13 globals, 2 temporaries
+  (`(cpp/mo. 5)`, `(cpp/vt.W.)`), the literals 1 and 2.5, and a `let`-bound int.
+  - Table (complete): 106 of 3,056 cases deviate. Classes (smallest set of C++-rule switches that makes the case
+    agree):
+      no-builtin-candidates 60 (S53 extended: `+ - * / | % ^ &` with a class converting to int, pointer
+      arithmetic and `aget` through a conversion to `int*`, F10);
+      builtin-operand-always-lvalue 18 (F6: `= += ++ &` on literals and temporaries);
+      using-member-base-object 6 (F8: call and `|`);
+      class-temporary-is-lvalue+member-call-args-not-moved 4 (F1 and the member-template form of F2);
+      no-surrogate-call-functions 4 (F9);
+      named-builtin-local-is-rvalue 3 (F5, F5b's operator form);
+      member-call-args-not-moved 3 (F3, F4);
+      no-member-hiding 3 (U22 for assignment);
+      class-temporary-is-lvalue 2 (F2);
+      named-builtin-local-is-rvalue+no-builtin-candidates 2 (`(cpp/= x q)`, `(cpp/+= x q)`: F5 and S53 together);
+      using-declaration-in-namespace-dropped 1 (F7).
+    Per operator: + 17, - 11, * 9, / 11, | 8, % 5, ^ 5, binary & 5, = 12, += 7, aget 3 (of 256 each); unary ++ 2
+    and unary & 4 (of 16); calls 7 of 208.
+  - With every switch set to C++'s rule: 0 of 3,056 still deviate (no unexplained case).
+  - explore, 3,000 mixed seeds: found after 12 timelines (no-builtin-candidates), shrunk to 1 decision.
+  - Residual exhaust, each found class set aside in turn: found after 34, 47, 141, 154, 606, 850, 1,133, 2,238,
+    2,270, 2,285, 2,973 timelines (the 11 classes); then complete, 3,056 timelines, nothing.
+  - Templates in the world (forwarding, constrained `%`, defaulted `^`, hidden-friend `&`, member `/`): every
+    template case agrees unless a value-category or lookup class above applies.
+
+
+=====================================================================================================
+8. THEOREMS (see 2)
+=====================================================================================================
+  ★ class_temporary_is_lvalue, ★ forwarding_deduction_record, ★ forwarding_deduction_builtin,
+  ★ temporary_forwarding_deduces_lref, ★ member_call_args_lvalue, nonmember_call_moves,
+  ★ named_builtin_local_is_prvalue, usingTargets_append, ★ jank_getOperator_ignores_namespace_using,
+  norm_record, ★ base_acting_context_not_exact, ★ using_member_acting_context_exact, ★ templates_pass_arity.
+  #print axioms: results/r5-interop-axioms.txt.
+
+=====================================================================================================
+9. LIBRARY GAPS (built in the project; sdk/lean untouched)
+=====================================================================================================
+  - Value categories as a world dimension: each operand carries C++'s category and jank's (analysis, codegen).
+  - A second compilation stage: the emitted C++ text resolved again by C++ rules (what the JIT calls may differ
+    from what the analysis chose).
+  - Template argument deduction for by-value, const-reference and forwarding parameters with defaults and a
+    requires-clause, over round 3's type universe.
+  - Classification by minimal sets of C++-rule switches (one, then two), and a check that all switches together
+    leave nothing.
+
+=====================================================================================================
+10. PROJECTS TRANSLATED (for NOTICE.md)
+=====================================================================================================
+  - jank (MPL-2.0); CppInterOp (Apache-2.0 with LLVM exceptions): GetOperator, GetOperatorArity, AddOverloadCandidates,
+    BestOverloadMatch, GetBuiltinOperatorType, GetQualifiedCompleteName; Clang/LLVM 23.1.0 (Apache-2.0 with LLVM
+    exceptions): AddMethodCandidate's acting context, LookupDirect, OperatorKinds.def's arities — as models, no code
+    copied. No libstdc++ code.
+
+

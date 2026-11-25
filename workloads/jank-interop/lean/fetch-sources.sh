@@ -1,6 +1,7 @@
 #!/bin/sh
 # fetch-sources.sh: the sources this replica translates, at the commits it was written against, into
-# upstream/ (jank f3d82d654, round 1), upstream-main/ (jank main 7135b7708, rounds 2-3) and deps/
+# upstream/ (jank f3d82d654, round 1), upstream-main/ (jank main 7135b7708, rounds 2-4), upstream-r5/
+# (jank main 94d32623, round 5; its compiler+runtime tree is 7135b7708's) and deps/
 # (the libraries jank pins), all git-ignored. Only jank3-boost's header check reads one of them at
 # run time (deps/boost-multiprecision); the rest are there to follow the reports' line numbers.
 # Run it again any time: what is already at its commit is left alone.
@@ -24,6 +25,7 @@ pin() { # pin <dir> <url> <commit>
 
 pin upstream https://github.com/jank-lang/jank.git f3d82d65499920f81216e9235bd5d3a34a968e3f
 pin upstream-main https://github.com/jank-lang/jank.git 7135b770857d625630ab6f9abe5861c618d67b82
+pin upstream-r5 https://github.com/jank-lang/jank.git 94d32623e3e6f0f40c412d41802fe02693aec094
 pin deps/bdwgc https://github.com/jank-lang/bdwgc.git 327ef1f8c80a611b2f8b915850c8b2fd38e6595e
 pin deps/boost-multiprecision https://github.com/jank-lang/boost-multiprecision.git 2b3ab082fac41c0d4bdb5a1c3daf7411be6fd679
 pin deps/cppinterop https://github.com/jank-lang/CppInterOp.git 28b0830da72dfc52728bb58ba0b55d802d95c7eb
@@ -54,6 +56,34 @@ else
     cp "$found" "$regex/$name"
   done
   echo "$regex: fetched (GCC releases/gcc-15.3.0)"
+fi
+
+# Round 5: libstdc++ 15.3.0's <chrono> parser (the #inst replica), from the same GCC tag.
+if [ -f "$regex/chrono_io.h" ]; then
+  echo "$regex (chrono): present"
+else
+  gcc=deps/.gcc-15.3.0
+  [ -d "$gcc/.git" ] || git -c advice.detachedHead=false clone -q --depth 1 --branch releases/gcc-15.3.0 --filter=blob:none --sparse \
+    https://github.com/gcc-mirror/gcc.git "$gcc"
+  git -C "$gcc" sparse-checkout add libstdc++-v3/include/bits libstdc++-v3/include/std
+  cp "$gcc/libstdc++-v3/include/bits/chrono_io.h" "$gcc/libstdc++-v3/include/bits/chrono.h" \
+    "$gcc/libstdc++-v3/include/bits/istream.tcc" "$regex/"
+  cp "$gcc/libstdc++-v3/include/std/chrono" "$regex/chrono.std"
+  echo "$regex (chrono): fetched (GCC releases/gcc-15.3.0)"
+fi
+
+# Round 5: GNU ld 2.45's script grammar and docs (the spec of the ld-script replica), flat.
+ld=deps/binutils-ld
+if [ -f "$ld/ldgram.y" ]; then
+  echo "$ld: present"
+else
+  bu=deps/.binutils-2_45
+  [ -d "$bu/.git" ] || git -c advice.detachedHead=false clone -q --depth 1 --branch binutils-2_45 --filter=blob:none --sparse \
+    https://sourceware.org/git/binutils-gdb.git "$bu"
+  git -C "$bu" sparse-checkout set ld
+  mkdir -p "$ld"
+  for name in ldgram.y ldlex.l ld.texi ldfile.c ldlang.c; do cp "$bu/ld/$name" "$ld/$name"; done
+  echo "$ld: fetched (binutils-2_45)"
 fi
 
 echo "The LLVM 23.1.0 files CppInterOp reaches (deps/llvm-23.1.0*) are read only: llvm-project at llvmorg-23.1.0."

@@ -1,0 +1,119 @@
+jank5-interop: round 5 (jank 94d32623 = 7135b7708's compiler+runtime, CppInterOp 28b0830d, Clang 23.1.0)
+== XXII. operators: 3056 cases (11 binary operators × 16², 2 unary × 16, calls of each class object × 16)
+  table: 106 of 3056 cases deviate; classes: [class-temporary-is-lvalue (2), named-builtin-local-is-rvalue (3), no-builtin-candidates (60), using-declaration-in-namespace-dropped (1), member-call-args-not-moved (3), class-temporary-is-lvalue+member-call-args-not-moved (4), using-member-base-object (6), no-member-hiding (3), builtin-operand-always-lvalue (18), named-builtin-local-is-rvalue+no-builtin-candidates (2), no-surrogate-call-functions (4)]
+    [class-temporary-is-lvalue] (cpp/+ cpp/vt.gv (cpp/mo. 5)): C++ 2 (calls vt::operator+<T>(vt::V const&, T&&)<mo>); jank 1 (calls vt::operator+<T>(vt::V const&, T&&)<mo &>)
+    [class-temporary-is-lvalue] (cpp/+ cpp/vt.gv (cpp/vt.W.)): C++ 2 (calls vt::operator+<T>(vt::V const&, T&&)<vt::W>); jank 1 (calls vt::operator+<T>(vt::V const&, T&&)<vt::W &>)
+    [named-builtin-local-is-rvalue] (let [x (cpp/int. 1)] (cpp/+ cpp/vt.gv x)): C++ 1 (calls vt::operator+<T>(vt::V const&, T&&)<int &>); jank 2 (calls vt::operator+<T>(vt::V const&, T&&)<int>)
+    [named-builtin-local-is-rvalue] (let [x (cpp/int. 1)] (cpp/- cpp/vt.gv x)): C++ 1 (calls vt::operator-(vt::V const&, int const&)); jank 2 (calls vt::operator-(vt::V const&, int&&))
+    [named-builtin-local-is-rvalue] (let [x (cpp/int. 1)] (cpp/* x cpp/vt.gv)): C++ 3 (calls vt::operator*(int&, vt::V const&)); jank analysis error: No matching overload.
+    [no-builtin-candidates] (cpp/+ cpp/gbf cpp/gq): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ cpp/gbf 1): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/+ cpp/gbf x)): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ cpp/gq cpp/gbf): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ cpp/gq cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ cpp/gq 1): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/+ cpp/gq x)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ cpp/gq 2.5): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ 1 cpp/gbf): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ 1 cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/+ x cpp/gbf)): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/+ x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/+ 2.5 cpp/gq): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- cpp/gbf cpp/gq): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- cpp/gbf 1): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/- cpp/gbf x)): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- cpp/gq cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- cpp/gq 1): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/- cpp/gq x)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- cpp/gq 2.5): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- 1 cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/- x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/- 2.5 cpp/gq): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/* cpp/gq cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/* cpp/gq 1): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/* cpp/gq x)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/* cpp/gq 2.5): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/* 1 cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/* x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/* 2.5 cpp/gq): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp// cpp/gq cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp// cpp/gq 1): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp// cpp/gq x)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp// cpp/gq 2.5): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp// 1 cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp// x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp// 2.5 cpp/gq): C++ the built-in operator (double); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/| cpp/gq cpp/gq): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (cpp/| cpp/gq 1): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/| cpp/gq x)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [using-declaration-in-namespace-dropped] (cpp/+ cpp/lib.gp cpp/lib.gp): C++ 9 (calls ext::operator+(lib::P const&, lib::P const&)); jank analysis error: The operator is not supported for the type.
+    [member-call-args-not-moved] (cpp/* cpp/gvr 1): C++ 1 (calls vr::operator*(int&&) const); jank JIT error: no matching function for the emitted call
+    [member-call-args-not-moved] (cpp// cpp/gvr 1): C++ 2 (calls vr::operator/<T>(T&&) const<int>); jank 1 (calls vr::operator/<T>(T&&) const<int &>)
+    [member-call-args-not-moved] (cpp// cpp/gvr 2.5): C++ 2 (calls vr::operator/<T>(T&&) const<double>); jank 1 (calls vr::operator/<T>(T&&) const<double &>)
+    [class-temporary-is-lvalue+member-call-args-not-moved] (cpp// cpp/gvr (cpp/mo. 5)): C++ 2 (calls vr::operator/<T>(T&&) const<mo>); jank 1 (calls vr::operator/<T>(T&&) const<mo &>)
+    [class-temporary-is-lvalue+member-call-args-not-moved] (cpp// cpp/gvr (cpp/vt.W.)): C++ 2 (calls vr::operator/<T>(T&&) const<vt::W>); jank 1 (calls vr::operator/<T>(T&&) const<vt::W &>)
+    [class-temporary-is-lvalue+member-call-args-not-moved] (cpp/= cpp/gmo (cpp/mo. 5)): C++ 1000 (calls mo::operator=(mo&&)); jank analysis error: The function cannot be called, since it's deleted.
+    [class-temporary-is-lvalue+member-call-args-not-moved] (cpp/= (cpp/mo. 5) (cpp/mo. 5)): C++ 1000 (calls mo::operator=(mo&&)); jank analysis error: The function cannot be called, since it's deleted.
+    [using-member-base-object] (cpp/| cpp/gd6 cpp/gq): C++ 5 (calls B6::operator|(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+    [using-member-base-object] (cpp/| cpp/gd6 1): C++ 5 (calls B6::operator|(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+    [using-member-base-object] (let [x (cpp/int. 1)] (cpp/| cpp/gd6 x)): C++ 5 (calls B6::operator|(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+    [using-member-base-object] (cpp/gd6 cpp/gq): C++ 3 (calls B6::operator()(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+    [using-member-base-object] (cpp/gd6 1): C++ 3 (calls B6::operator()(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+    [using-member-base-object] (let [x (cpp/int. 1)] (cpp/gd6 x)): C++ 3 (calls B6::operator()(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+    [no-member-hiding] (cpp/= cpp/gd9 1): C++ 1000 (calls D9::operator=(D9&&)); jank analysis error: This call is ambiguous between 3 different overloads.
+    [no-member-hiding] (let [x (cpp/int. 1)] (cpp/= cpp/gd9 x)): C++ 1000 (calls D9::operator=(D9&&)); jank analysis error: This call is ambiguous between 3 different overloads.
+    [no-member-hiding] (cpp/= cpp/gd9 2.5): C++ 1000 (calls D9::operator=(D9&&)); jank analysis error: This call is ambiguous between 3 different overloads.
+    [builtin-operand-always-lvalue] (cpp/= 1 1): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (let [x (cpp/int. 1)] (cpp/= 1 x)): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (cpp/= 1 2.5): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (cpp/= 2.5 1): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (let [x (cpp/int. 1)] (cpp/= 2.5 x)): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (cpp/= 2.5 2.5): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (cpp/+= 1 1): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (let [x (cpp/int. 1)] (cpp/+= 1 x)): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (cpp/+= 1 2.5): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (cpp/+= 2.5 1): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (let [x (cpp/int. 1)] (cpp/+= 2.5 x)): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (cpp/+= 2.5 2.5): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (cpp/++ 1): C++ C++ error: no built-in operator; jank the built-in operator (int)
+    [builtin-operand-always-lvalue] (cpp/++ 2.5): C++ C++ error: no built-in operator; jank the built-in operator (double)
+    [builtin-operand-always-lvalue] (cpp/& (cpp/mo. 5)): C++ C++ error: no viable operator; jank the built-in operator (mo *)
+    [builtin-operand-always-lvalue] (cpp/& (cpp/vt.W.)): C++ C++ error: no viable operator; jank the built-in operator (vt::W *)
+    [builtin-operand-always-lvalue] (cpp/& 1): C++ C++ error: no built-in operator; jank the built-in operator (int *)
+    [builtin-operand-always-lvalue] (cpp/& 2.5): C++ C++ error: no built-in operator; jank the built-in operator (double *)
+    [named-builtin-local-is-rvalue+no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/= x cpp/gq)): C++ the built-in operator (int); jank analysis error: No matching overload.
+    [named-builtin-local-is-rvalue+no-builtin-candidates] (let [x (cpp/int. 1)] (cpp/+= x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+    [no-surrogate-call-functions] (cpp/gsf cpp/gq): C++ 7 (calls surrogate int(int) via sf::operator int (int) *); jank analysis error: The operator is not supported for the type.
+    [no-surrogate-call-functions] (cpp/gsf 1): C++ 7 (calls surrogate int(int) via sf::operator int (int) *); jank analysis error: The operator is not supported for the type.
+    [no-surrogate-call-functions] (let [x (cpp/int. 1)] (cpp/gsf x)): C++ 7 (calls surrogate int(int) via sf::operator int (int) *); jank analysis error: The operator is not supported for the type.
+    [no-surrogate-call-functions] (cpp/gsf 2.5): C++ 7 (calls surrogate int(int) via sf::operator int (int) *); jank analysis error: The operator is not supported for the type.
+  with every mechanism set to C++'s rule: 0 of 3056 still deviate
+  +: 17 of 256 deviate
+  -: 11 of 256 deviate
+  *: 9 of 256 deviate
+  /: 11 of 256 deviate
+  |: 8 of 256 deviate
+  %: 5 of 256 deviate
+  ^: 5 of 256 deviate
+  &: 5 of 256 deviate
+  =: 12 of 256 deviate
+  +=: 7 of 256 deviate
+  aget: 3 of 256 deviate
+  unary ++: 2 of 16 deviate
+  unary &: 4 of 16 deviate
+  (): 7 of 208 deviate
+== theorems (proved at build time; no sorry, no native_decide)
+  ★ class_temporary_is_lvalue
+  ★ forwarding_deduction_record
+  ★ forwarding_deduction_builtin
+  ★ temporary_forwarding_deduces_lref
+  ★ member_call_args_lvalue
+  nonmember_call_moves
+  ★ named_builtin_local_is_prvalue
+  usingTargets_append
+  norm_record
+  ★ jank_getOperator_ignores_namespace_using
+  ★ base_acting_context_not_exact
+  ★ using_member_acting_context_exact
+  ★ templates_pass_arity
+== done in 1 s

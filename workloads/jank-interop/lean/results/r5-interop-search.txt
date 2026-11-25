@@ -1,0 +1,33 @@
+jank5-interop: round 5 (jank 94d32623 = 7135b7708's compiler+runtime, CppInterOp 28b0830d, Clang 23.1.0)
+== XXII search (exhaust per class set aside, explore with mixed seeds)
+  explore (3000 mixed seeds): operator5:no-builtin-candidates after 12 timelines, 1 decisions: (let [x (cpp/int. 1)] (cpp/^ x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+  shrunk to 1 decisions: (let [x (cpp/int. 1)] (cpp/^ x cpp/gq)): C++ the built-in operator (int); jank analysis error: The operator is not supported for the type.
+  tape:
+    {"name":"r5.operator.case","options":3056,"value":1772}
+  XXII: found after 34 timelines (operator5:class-temporary-is-lvalue): (cpp/+ cpp/vt.gv (cpp/mo. 5)): C++ 2 (calls vt::operator+<T>(vt::V const&, T&&)<mo>); jank 1 (calls vt::operator+<T>(vt::V const&, T&&)<mo &>)
+  XXII: found after 47 timelines (operator5:named-builtin-local-is-rvalue): (let [x (cpp/int. 1)] (cpp/+ cpp/vt.gv x)): C++ 1 (calls vt::operator+<T>(vt::V const&, T&&)<int &>); jank 2 (calls vt::operator+<T>(vt::V const&, T&&)<int>)
+  XXII: found after 141 timelines (operator5:no-builtin-candidates): (cpp/+ cpp/gbf cpp/gq): C++ the built-in operator (int *); jank analysis error: The operator is not supported for the type.
+  XXII: found after 154 timelines (operator5:using-declaration-in-namespace-dropped): (cpp/+ cpp/lib.gp cpp/lib.gp): C++ 9 (calls ext::operator+(lib::P const&, lib::P const&)); jank analysis error: The operator is not supported for the type.
+  XXII: found after 606 timelines (operator5:member-call-args-not-moved): (cpp/* cpp/gvr 1): C++ 1 (calls vr::operator*(int&&) const); jank JIT error: no matching function for the emitted call
+  XXII: found after 850 timelines (operator5:class-temporary-is-lvalue+member-call-args-not-moved): (cpp// cpp/gvr (cpp/mo. 5)): C++ 2 (calls vr::operator/<T>(T&&) const<mo>); jank 1 (calls vr::operator/<T>(T&&) const<mo &>)
+  XXII: found after 1133 timelines (operator5:using-member-base-object): (cpp/| cpp/gd6 cpp/gq): C++ 5 (calls B6::operator|(int) const); jank analysis error: This call is ambiguous between 2 different overloads.
+  XXII: found after 2238 timelines (operator5:no-member-hiding): (cpp/= cpp/gd9 1): C++ 1000 (calls D9::operator=(D9&&)); jank analysis error: This call is ambiguous between 3 different overloads.
+  XXII: found after 2270 timelines (operator5:builtin-operand-always-lvalue): (cpp/= 1 1): C++ C++ error: no built-in operator; jank the built-in operator (int)
+  XXII: found after 2285 timelines (operator5:named-builtin-local-is-rvalue+no-builtin-candidates): (let [x (cpp/int. 1)] (cpp/= x cpp/gq)): C++ the built-in operator (int); jank analysis error: No matching overload.
+  XXII: found after 2973 timelines (operator5:no-surrogate-call-functions): (cpp/gsf cpp/gq): C++ 7 (calls surrogate int(int) via sf::operator int (int) *); jank analysis error: The operator is not supported for the type.
+  XXII: complete, 3056 timelines, nothing (set aside: [class-temporary-is-lvalue, named-builtin-local-is-rvalue, no-builtin-candidates, using-declaration-in-namespace-dropped, member-call-args-not-moved, class-temporary-is-lvalue+member-call-args-not-moved, using-member-base-object, no-member-hiding, builtin-operand-always-lvalue, named-builtin-local-is-rvalue+no-builtin-candidates, no-surrogate-call-functions])
+== theorems (proved at build time; no sorry, no native_decide)
+  ★ class_temporary_is_lvalue
+  ★ forwarding_deduction_record
+  ★ forwarding_deduction_builtin
+  ★ temporary_forwarding_deduces_lref
+  ★ member_call_args_lvalue
+  nonmember_call_moves
+  ★ named_builtin_local_is_prvalue
+  usingTargets_append
+  norm_record
+  ★ jank_getOperator_ignores_namespace_using
+  ★ base_acting_context_not_exact
+  ★ using_member_acting_context_exact
+  ★ templates_pass_arity
+== done in 2 s

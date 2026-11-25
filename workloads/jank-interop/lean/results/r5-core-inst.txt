@@ -1,0 +1,17 @@
+== census #inst timestamps (field variants): 3512418 timelines (complete), 254820 violate
+   G-inst: partial form rejected (U82): 144; first: #inst "2020": Clojure #inst "2020-01-01T00:00:00.000-00:00", jank read error
+   G-inst: Z offset rejected: 2366; first: #inst "2020Z": Clojure #inst "2020-01-01T00:00:00.000-00:00", jank read error
+   G-inst: partial form with offset rejected (U82): 664; first: #inst "2020+05:00": Clojure #inst "2019-12-31T19:00:00.000-00:00", jank read error
+   accepts-invalid: offset form: 3520; first: #inst "2020-01-01T00:00:00+0500": Clojure read error, jank #inst "2019-12-31T19:00:00.000-00:00" (format 2)
+   accepts-invalid: offset out of range: 2112; first: #inst "2020-01-01T00:00:00+24:00": Clojure read error, jank #inst "2019-12-31T00:00:00.000-00:00" (format 1)
+   accepts-invalid: other: 880; first: #inst "2020-01-01T00:00:00.": Clojure read error, jank #inst "2020-01-01T00:00:00.000-00:00" (format 3)
+   G-inst: (= x (read-string (pr-str x))) false below the millisecond: 1800; first: #inst "2020-01-01T00:00:00.0001": jank keeps 1577836800000100000 ns, prints #inst "2020-01-01T00:00:00.000-00:00"
+   G-inst: fraction of 10+ digits rejected: 4048; first: #inst "2020-01-01T00:00:00.1234567891": Clojure #inst "2020-01-01T00:00:00.123-00:00", jank read error
+   G-inst: fraction of 10+ digits read as an offset: 352; first: #inst "2020-01-01T00:00:00.12345678912": Clojure #inst "2020-01-01T00:00:00.123-00:00" (1577836800123), jank #inst "2019-12-31T12:00:00.123-00:00" (1577793600123)
+   accepts-invalid: one-digit field: 98193; first: #inst "2020-01-01T00:00:5+05:00": Clojure read error, jank #inst "2019-12-31T19:00:05.000-00:00" (format 1)
+   accepts-invalid: seconds without digits: 3784; first: #inst "2020-01-01T00:00:.5": Clojure read error, jank #inst "2020-01-01T00:00:00.500-00:00" (format 3)
+   G-inst: leap second rejected: 2200; first: #inst "2020-01-01T00:59:60": Clojure #inst "2020-01-01T01:00:00.000-00:00", jank read error
+   accepts-invalid: minute 60: 7524; first: #inst "2020-01-01T00:60:00": Clojure read error, jank #inst "2020-01-01T01:00:00.000-00:00" (format 3)
+   G-inst: sub-millisecond before 1970 rounds toward 1970: 828; first: #inst "1969-01-01T00:00:00.0001": Clojure #inst "1969-01-01T00:00:00.000-00:00" (-31536000000), jank #inst "1969-01-01T00:00:00.001-00:00" (-31535999999)
+   accepts-invalid: year not 4 digits or signed: 126405; first: #inst "20-01-01": Clojure read error, jank #inst "0020-01-01T00:00:00.000-00:00" (format 4)
+  (18 s)

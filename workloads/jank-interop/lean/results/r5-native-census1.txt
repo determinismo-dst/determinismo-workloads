@@ -1,0 +1,24 @@
+== census -l world: JIT vs AOT link vs ld: 82944 timelines (complete), 50520 violate
+   J4m the JIT reaches cantFail: a script's file is missing where jank looks (the script's directory): 24800; first: -l./libfoo.so with []: JIT Jank.R5.Native.Libs.JitOut.cantFail "dlopen of the missing file /cwd/./libfoo.so"; AOT link Jank.R5.Native.Libs.LinkOut.error "cannot find -l./libfoo.so"; ld -l Jank.R5.Native.Libs.LinkOut.error "cannot find -l./libfoo.so"
+   J1 the AOT link rejects a -l (a path or file name, as the CLI help allows) the JIT loads: 9640; first: -llibfoo.so with [("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.elfDyn)]: JIT Jank.R5.Native.Libs.JitOut.loaded ["/sys/libfoo.so"]; AOT link Jank.R5.Native.Libs.LinkOut.error "cannot find -llibfoo.so"; ld -l Jank.R5.Native.Libs.LinkOut.error "cannot find -llibfoo.so"
+   J4e the JIT reaches cantFail: dlopen refuses a file (bad ELF): 3664; first: -lfoo with [("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.elfBad)]: JIT Jank.R5.Native.Libs.JitOut.cantFail "dlopen refuses ELF file /sys/libfoo.so"; AOT link Jank.R5.Native.Libs.LinkOut.error "/sys/libfoo.so: file format not recognized"; ld -l Jank.R5.Native.Libs.LinkOut.error "/sys/libfoo.so: file format not recognized"
+   J2s the AOT link has files the JIT never maps (a script naming several): 1202; first: -lfoo with [("/sys/libfoo.so",
+  Jank.R5.Native.Libs.Kind.script
+    [Jank.R5.Native.LdSpec.Tok.group,
+     Jank.R5.Native.LdSpec.Tok.lp,
+     Jank.R5.Native.LdSpec.Tok.abs,
+     Jank.R5.Native.LdSpec.Tok.rel,
+     Jank.R5.Native.LdSpec.Tok.rp])]: JIT Jank.R5.Native.Libs.JitOut.loaded ["/lib/liby.so.6"]; AOT link Jank.R5.Native.Libs.LinkOut.linked ["/lib/liby.so.6", "/sys/libx.so.1"]; ld -l Jank.R5.Native.Libs.LinkOut.linked ["/lib/liby.so.6", "/sys/libx.so.1"]
+   J4t the JIT reaches cantFail: dlopen of a text file (not an INPUT/GROUP script): 10992; first: -lfoo with [("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.script [Jank.R5.Native.LdSpec.Tok.comment])]: JIT Jank.R5.Native.Libs.JitOut.cantFail "dlopen of the text file /sys/libfoo.so"; AOT link Jank.R5.Native.Libs.LinkOut.linked []; ld -l Jank.R5.Native.Libs.LinkOut.linked []
+   J2 the JIT and the AOT link use different library files: 222; first: -lfoo with [("/u2/libfoo.a", Jank.R5.Native.Libs.Kind.archive), ("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.elfDyn)]: JIT Jank.R5.Native.Libs.JitOut.loaded ["/sys/libfoo.so"]; AOT link Jank.R5.Native.Libs.LinkOut.linked ["/u2/libfoo.a"]; ld -l Jank.R5.Native.Libs.LinkOut.linked ["/u2/libfoo.a"]
+  (1 s)
+== census round 4's AOT world, dynamic runtime, corrected run: 384 timelines (complete), 42 violate
+   R4->R5: round 4's dynamic-runtime status corrected (-main's throw is caught by jank_call2): 27; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" []],
+  main := [Jank.R4.Modules.Load.Form.boom] }; clojure -m status 1; round 4 dynamic 1; corrected 0 (main)
+   status differs in phase startup: 15; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" [], Jank.R4.Modules.Load.Form.defv "inc"],
+  main := [Jank.R4.Modules.Load.Form.ref "inc"] }; clojure 0; jank dynamic AOT 1
+  (0 s)
+usage: jank5-native examples | ld N | ld-part N K | ldctl N | libs | aot
+usage: jank5-native examples | ld N | ld-part N K | ldctl N | libs | aot

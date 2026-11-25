@@ -1,0 +1,31 @@
+  uni2 part 0/0 (UTF-8 locale): 475800 questions: 184365 agree, 26451 differ, 264984 jank rejects a valid pattern, 0 jank accepts an invalid one, 0 not compared
+    differ [bytes (R78)]: 22780
+      (re-seq #"." "é"): Clojure ("é"), jank ("\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8))
+      (re-seq #"." "́"): Clojure ("́"), jank ("\xcc" (invalid UTF-8) "\x81" (invalid UTF-8))
+      (re-seq #"." "١"): Clojure ("١"), jank ("\xd9" (invalid UTF-8) "\xa1" (invalid UTF-8))
+    differ [re-seq-new-string (R81)]: 1594
+      (re-seq #"$" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"\B" ""): Clojure (""), jank ("" "" …) infinite
+      (re-seq #"$" "a"): Clojure (""), jank ("" "" "" …) infinite
+    differ [non-spacing mark after a letter is a word character for \b (new)]: 214
+      (re-seq #"\b" "é́"): Clojure ("" ""), jank nil
+      (re-seq #"\b" "١́"): Clojure ("" ""), jank nil
+      (re-find #"\b" "é́"): Clojure "", jank nil
+    differ [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]: 479
+      (re-seq #"$" " "): Clojure ("" ""), jank ("" "" "" …) infinite
+      (re-seq #"$" "a "): Clojure ("" ""), jank ("" "" "" …) infinite
+      (re-seq #"$" "e "): Clojure ("" ""), jank ("" "" "" …) infinite
+    differ [syntax: nested class / intersection / POSIX bracket]: 1384
+      (re-seq #"[[:alpha:]]" "e"): Clojure nil, jank ("e")
+      (re-find #"[[:alpha:]]" "e"): Clojure nil, jank "e"
+      (re-seq #"[[:alpha:]]" "ae"): Clojure ("a"), jank ("a" "e")
+    jank rejects [inline flags (R18)]: 65880
+      (re-seq #"(?U)" ""): Clojure (""), jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+      (re-seq #"(?i)" ""): Clojure (""), jank throws (Invalid '(?...)' zero-width assertion in regular expression)
+    jank rejects [property escape \p{…} (S31)]: 194712
+      (re-seq #"\p{L}" ""): Clojure nil, jank throws (Invalid range in '{}' in regular expression)
+      (re-find #"\p{L}" ""): Clojure nil, jank throws (Invalid range in '{}' in regular expression)
+    jank rejects [quantifier on an assertion]: 4392
+      (re-seq #"$+" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+      (re-seq #"$*" ""): Clojure (""), jank throws (Mismatched '(' and ')' in regular expression)
+  (9 s)

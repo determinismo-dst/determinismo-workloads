@@ -1,0 +1,235 @@
+ROUND 5, AREA D: THE nREPL (jank main 94d32623; compiler+runtime identical to 7135b7708)
+Files: Jank/R5/Nrepl/{Chunk,ParseK,Reduce,Interrupt}.lean, Run/R5/Nrepl.lean (exe jank5-nrepl),
+results/r5-nrepl-*.txt, .r5-scratch/nrepl/ (tests.jank, clj/interrupt_check.clj, scratch).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+D1 (more precise than R128; not new as a class). The interrupt op.
+  Program (in-process, as round 4's u41): clone, then
+    (handle-message {"op" "interrupt" "id" "i" "session" <the clone's>})
+  nREPL 1.8.0 (measured, results/r5-nrepl-interrupt-jvm.txt): {:status #{"session-idle" "done"}}.
+  jank: {:status [:error :unknown-op :done] :op "interrupt"} (handler.jank 5-8: no :interrupt
+  method; describe.jank 7-15 does not list it).
+  Every interrupt jank receives gets unknown-op: without a session (nREPL:
+  #{error session-ephemeral done}), an unknown session (#{error unknown-session done}), an idle
+  session (#{session-idle done}), a running eval with another interrupt-id (#{error
+  interrupt-id-mismatch done}), a running eval with its id or none (#{done}, and the eval gets
+  #{interrupted done}).
+  Ordering (core.jank handle-client 79-106): on the eval's connection the interrupt is read only
+  after the eval returns, so its reply follows the eval's value and done; nREPL handles each request
+  on a pool thread as it arrives (server.clj handle 39-48) and answers the interrupt while the eval
+  runs. With an eval that never returns, jank never answers the interrupt (nor the eval): the
+  connection's only thread is inside the eval. On another connection jank answers unknown-op at once
+  and the eval runs on (sessions are global in nREPL: one process-wide atom, session.clj 20, looked
+  up by id in `session` 311-350, so its interrupt reaches the eval from any connection; measured, its
+  #{interrupted done} for the eval then arrives on the interrupting connection).
+  World I census (results/r5-nrepl-interrupt.txt): 72 cases (eval ends / never returns × interrupt
+  sent right after it, after its done, on a second connection, with no eval × session the eval's /
+  absent / unknown × interrupt-id absent / the eval's / another). jank's outcome is one of nREPL's
+  only in the 9 cases where the interrupt is never sent (after the done of an eval that never ends);
+  in 54 the interrupt gets unknown-op where nREPL gives its status (the eval's own replies are one of
+  nREPL's outcomes); in 9 (sent right after an eval that never returns) jank never answers the
+  interrupt, which nREPL answers in every race. jank's side of the 36 cases whose eval ends rerun
+  through round 3's World T conn replica (requests as raw bytes): 1,535,724 schedules within 2
+  preemptions, every one ends as the code reading says, no World T property broken.
+  Tests: vD1-interrupt-of-an-idle-session, vD1b-interrupt-without-a-session (.r5-scratch/nrepl/
+  tests.jank; jank only: they call jank's handler namespace; nREPL's side is the JVM measurement).
+  The hang (interrupt on a diverging eval's connection) has no test form: shell steps, with jank's
+  nREPL on port P:
+    (printf 'd2:op5:clone2:id1:ce'; sleep 1; printf 'd2:op4:eval2:id1:e4:code17:(loop [] (recur))e';
+     sleep 1; printf 'd2:op9:interrupt2:id1:i12:interrupt-id1:ee'; sleep 10) | nc 127.0.0.1 P
+  nREPL 1.8.0 answers i at once (#{error session-ephemeral done}, as the request names no session; with
+  the clone's session added, #{done}, and e gets #{interrupted done}); jank answers the clone only:
+  neither e nor i ever gets a reply, and the connection's thread spins in the loop.
+  Status: R128 ("no interrupt; one connection is strictly sequential") made precise: the replies,
+  their order, and the unanswered interrupt. Confidence: high (the handler is 8 lines; the loop is
+  read; World T agrees).
+
+No new deviation from T7: the reduced world finds nothing (section 7), and T7's verdict is now
+complete at the bounds below.
+
+======================================================================
+2. PROOFS
+======================================================================
+T7 (round 3's World T, one client, partial reads, every op; ≈3.2·10¹¹ timelines at ≤1 preemption,
+round 4's Knuth estimate, rerun here: mean 320,945,244,760 over 300 paths).
+
+(a) The chunking, proved for every input (Chunk.lean).
+  readStep/readLoop replicate read-message (core.jank 58-70) over round 2's `parse` replica.
+  ★ chunking_independent: for every byte string m whose proper prefixes all parse to nil and which
+  parses whole to [v nil], and EVERY chunking of m (any number of parts, empty ones allowed), the loop
+  gives exactly v, once, at the part that completes m, and ends with an empty buffer; one whole read
+  gives ([v], none). (Lemmas readLoop_prefix, readLoop_empty.)
+  ★ chunking_independent_all: the same for every message of a list satisfying `hypsHold`.
+(b) T7's six requests satisfy the hypotheses (ParseK.lean). Round 2's parser is well-founded
+  recursion, which neither `decide` nor the kernel evaluates; ParseK.lean copies it as structural
+  recursion with a fuel argument (recK/listK/dictK), and
+  ★ k_agrees proves, for every fuel, input, depth, accumulator and position, that the copy either runs
+  out of fuel or gives exactly the original's result; ★ parseK_sound lifts it to `parse`.
+  t7_k evaluates the copy in the kernel on all 261 proper prefixes and the 6 whole requests, both
+  `char` signednesses; t7_hyps turns that into the hypotheses for round 2's own parse, and
+  ★ t7_chunking_independent: for every chunking of each of T7's requests, read-message's loop gives
+  the message a whole read gives, once, with an empty buffer.
+(c) The world-level reduction (Reduce.lean, header): a partial read that leaves a request incomplete,
+  and the `.top none` step after it, are stutter steps of the abstraction α (a connection's unread
+  bytes back in its inbox); the completing read leaves the state a whole read leaves; no other
+  thread reads a connection's remainder or inbox; the judge and the deadlock detail are α-invariant;
+  deleting stutter steps (and the client's no-op blocked steps after them) from a schedule gives a
+  schedule of the whole-read world with no more preemptions. Hence T7's verdicts at ≤ b preemptions
+  are those of the whole-read world at ≤ b.
+  - Steps 1-2 checked by execution of round 3's own tConnStep at every reachable pre-read state of
+    the whole-read world, every split point j (bytes already buffered) and every next chunk length n
+    (stutterCheck): at ≤1 preemption (5,312 timelines) and at ≤2
+    (218,400 timelines): 6 distinct pre-read states (one per request: every schedule reaches each
+    read in the same state), 13,227 runs of tConnStep, every one as claimed
+    (results/r5-nrepl-run2.txt, run3.txt).
+  - Cross-check on T7 itself: round 3's T7 world itself (partial reads on), walked completely over
+    every timeline with at most one partial read: ≤0 preemptions 16,384 timelines, ≤1 preemption
+    1,392,512 timelines (results/r5-nrepl-cuts1.txt); nothing, and every timeline ends in the one
+    final state of the whole-read world. (The walk skips a subtree as soon as a second partial read
+    is drawn: 13,857 and 996,600 such runs.)
+  - Steps 3-5 are an argument from Threads.lean's code (tClientStep, tAcceptStep, tJudge, tStuck,
+    interleavePB), not mechanized: the sdk has no notion of independence or of a process-level
+    simulation to state them in, and the World T state (closures in the jank world JW) has no
+    decidable equality to model-check a quotient with.
+(d) The whole-read world run to completion: ≤0 preemptions 64 timelines, ≤1 5,312, ≤2 218,400, all
+  complete, nothing (no deadlock, every request done, replies well-formed, :out and values as the
+  spec's). One more reduction, from the code: round 3's tConnStep draws `net.read.eintr` every time a
+  read finds the inbox empty, even with eintr off, because Lean lifts the `(← decideRare …)` out of
+  `m.cfg.eintr && (← decideRare …)` (Threads.lean 251); with eintr false its value is never used, so
+  timelines differing only there are the same timeline. Holding it at 0: ≤2 complete 3,335 (the same
+  verdict as the 218,400 above), ≤3 complete 89,835, ≤4 stopped at 688,909 (800 s; its resume path is in
+  results/r5-nrepl-run5.txt). Nothing in any.
+  So T7 at ≤1 and ≤2 preemptions, which rounds 3 and 4 stopped at 1,500,000 and 1,489,000 of
+  ≈3.2·10¹¹ and ≈1.2·10¹³, is decided (nothing), and so is ≤3, modulo steps 3-5.
+  Every timeline at every budget run ends in the same final state (one fingerprint: replies, evals,
+  fds, temp files, sockets, the jank world's shape): the one-client world is confluent at those bounds,
+  as the commutation argument says it is at every bound (the client only reads whole replies the
+  connection appended; the connection never reads the client's state).
+
+Where neither worked: the world-level steps 3-5 are not a Lean theorem (above). No other T scenario
+was reduced: two clients (T1-T6, T8-T10) share fd 1 and the jank world, so their steps do not commute.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Chunk.lean: read-message (core.jank 58-70) as readStep/readLoop over round 2's parse
+  (bencode.jank 78; Jank/Nrepl/Bencode.lean).
+- ParseK.lean: bencode.jank parse-recur and its list/dict loops (21-76) again, as structural
+  recursion with a fuel argument (kernel-evaluable), proved to agree with round 2's replica.
+- Reduce.lean: round 3's World T scheduler with an observer (interleavePBObs), state fingerprints,
+  the stutter checks, the pruned walk over T7's partial reads.
+- Interrupt.lean (World I): handler.jank 3-8 (:default), core.jank responses-for 33-45 and
+  handle-client 79-106, handler/describe.jank 5-17, handler/clone.jank 5-7; nREPL 1.8.0's
+  session.clj session-exec (181-265), interrupt-session (277-296), session (311-384),
+  server.clj handle (39-48), interruptible_eval.clj (181-204) as the spec, by race resolution (before / while / after the eval).
+- jank's side of World I also through round 3's World T (Threads.lean) with raw request bytes.
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- T7's world-level reduction steps 3-5 as Lean theorems (section 2).
+- T3 and T9 (two clients): no reduction (their connections share fd 1 and the jank world).
+- An eval that never returns inside World T (its evaluator has fuel; a diverging eval ends the
+  timeline at the limit), so World I's diverging cases are jank's code read, not World T runs.
+- nREPL behaviour that depends on the JDK (Thread.stop needs -Djdk.attach.allowAttachSelf on JDK 21+;
+  without it the measured interrupt still answers #{interrupted done} but the eval keeps running, and
+  an interruptible wait surfaces an eval-error after the done): reported as measured, not modeled.
+- The stdin op and session middleware (absent in jank: R127).
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+Round 3's NA1-NA9 and round 4's EA4-1..EA4-6 stand.
+- nREPLA5-1. nREPL 1.8.0 (the latest release on Clojars when read) is the interrupt op's spec, with its
+  docstring (session.clj 367-373) and source; where they differ from a JDK's behaviour, the source.
+- nREPLA5-2. World I's race: when nREPL handles an interrupt, the session is idle-before, running, or
+  idle-after (after only if the eval ends); the three are all reachable (pool threads, server.clj 45-48).
+- nREPLA5-3. T7's world-level reduction (Reduce.lean header, steps 3-5) as argued from the code.
+- nREPLA5-4. `net.read.eintr` is unused when eintr is off (Threads.lean 251, read above), so holding it
+  at 0 loses no timeline.
+- nREPLA5-5. A chunked run stays within round 3's 6,000-round step bound (a run past it is reported as
+  "the timeline ends within the step bound"; none was, in the cut walks).
+Round 3 model note (not a change to its verdicts): every World T tree is inflated by a factor of 2 per
+read that blocks, from the unused `net.read.eintr` draw; round 3's and 4's T-world counts and Knuth
+estimates include it.
+
+======================================================================
+6. PROPERTIES CHECKED (with sources)
+======================================================================
+- T7: round 3's World T properties (Threads.lean tJudge: replies end with done and carry id and
+  session; eval output reaches its client; values are the spec's; no deadlock; stdout restored).
+- Chunking: the messages read are those of whole reads. Sources: the format bencode.jank's comments
+  give (23 `i<base 10 integer>e`, 32 `l<items>e`, 44 `d<pairs>e`, 57 `<length>:<contents>`), and its
+  own contract for partial input (82-84: "When presented with incomplete input, parse simply returns
+  nil", so read-message keeps the bytes and reads more); TCP delivers a byte stream in any parts.
+- Interrupt: the replies nREPL documents for the op (session.clj 367-373: "interrupted", "session-
+  idle", "interrupt-id-mismatch", "session-ephemeral") and gives (measured), for every race.
+
+======================================================================
+7. SEARCH RUNS
+======================================================================
+All complete unless "stopped"; outputs in results/r5-nrepl-run{1,2,3,4,5}.txt, r5-nrepl-cuts1.txt,
+r5-nrepl-interrupt.txt.
+- T7's request bytes: specEncode ∘ tReqMap equals Chunk.t7Msgs (6 requests, 261 bytes); every
+  message nonempty, all 261 proper prefixes parse to nil, each parses whole: both char signednesses.
+- Knuth estimates (mixed seeds): T7 chunked ≤1, 300 paths: mean 320,945,244,760 (round 4: 3.2·10¹¹);
+  whole-read ≤2, 300 paths: mean 6,201 and ≤3, 400 paths: mean 78,705 (the walks found 218,400 and
+  more than 2.4 million: the estimator's spread is too wide to size these worlds).
+- Whole-read world (the reduced T7), every timeline's final state fingerprinted:
+  ≤0: complete 64 (1 final state); ≤1: complete 5,312 (1); ≤2: complete 218,400 (1); ≤3 stopped at
+  5,774,800 in two segments (1 final state).
+  With the unused `net.read.eintr` held at 0: ≤2 complete 3,335; ≤3 complete 89,835; ≤4 stopped at
+  688,909.
+  No violation anywhere; one final state in every walk.
+- Stutter checks (every reachable pre-read state × every split point × every chunk length, on round
+  3's tConnStep): ≤1: 5,312 timelines, 6 states, 13,227 step runs, all as claimed; ≤2: 218,400
+  timelines, the same 6 states, all as claimed.
+- T7 itself (partial reads), every timeline with at most one partial read: ≤0 complete 16,384;
+  ≤1 complete 1,392,512; nothing; all end in the whole-read world's final state.
+- World I: 72 cases (54 unknown-op, 9 never answered, 9 agree: interrupt not sent); World T for the
+  36 whose eval ends: 1,535,724 schedules (≤2 preemptions), all as jankOutcome.
+- nREPL 1.8.0 on OpenJDK 23 (results/r5-nrepl-interrupt-jvm.txt): idle session, idle with an id, no
+  session, unknown session, pipelined with the eval's id / no id / another id (an eval sleeping
+  1.5 s), a diverging eval interrupted on its connection and from another, after the eval's done,
+  describe's :ops.
+
+======================================================================
+8. THEOREMS (★ = for every input)
+======================================================================
+Chunk.lean:
+- ★ chunking_independent (every message satisfying the hypotheses, every chunking): read-message's
+  loop yields exactly the message, once, with an empty buffer; a whole read gives the same.
+- ★ readLoop_prefix (the invariant), ★ readLoop_empty (empty chunks change nothing).
+- ★ chunking_independent_all (every message of a list for which hypsHold is true).
+- prefixesNone_spec, isNoneP_iff, parse_none (helpers).
+ParseK.lean:
+- ★ k_agrees: for every fuel, input, depth, accumulator and position, recK/listK/dictK either run out
+  of fuel or give exactly what round 2's parseRecur/parseList/parseDict give (by induction on the
+  fuel; recK_succ/parseRecur_succ etc. identify both with one body; bodyR_mono, bodyL_mono,
+  bodyD_mono, agrees_bind).
+- ★ parseK_sound: a run of the copy that does not end in .crash is round 2's parse.
+- t7_k (kernel evaluation, decide +kernel): T7's requests, both signednesses, every prefix nil,
+  every request whole.
+- t7_hyps, t7_chunking_independent: for every chunking of each of T7's requests, the loop gives the
+  whole read's message, as theorems about round 2's parser.
+Axioms (results/r5-nrepl-axioms.txt): each of the nine main theorems depends on propext,
+Classical.choice and Quot.sound only. No sorry, no native_decide (t7_k is `decide +kernel`).
+
+======================================================================
+9. LIBRARY GAPS
+======================================================================
+- Preemption-bounded scheduling with an observer (interleavePBObs) to collect reachable states.
+- No decidable equality on World T states: fingerprints (strings) stand in for state equality.
+- Well-founded recursion does not evaluate in the kernel: a fuelled structural copy, with a proof that
+  it agrees whenever it does not run out of fuel (ParseK.lean), turns finite checks into theorems.
+- A pruned walk (timelines with at most k partial reads, subtrees past the bound skipped).
+
+======================================================================
+10. PROJECTS TRANSLATED
+======================================================================
+- jank (MPL-2.0): nrepl/server/core.jank, handler.jank, handler/describe.jank, handler/clone.jank,
+  bencode.jank (as round 2 did).
+- nREPL 1.8.0 (EPL-1.0), read as the protocol's spec: session.clj, server.clj,
+  interruptible_eval.clj (logic restated in Lean, no code copied).

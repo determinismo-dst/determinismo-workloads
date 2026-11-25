@@ -1,0 +1,45 @@
+== census -l world: JIT vs AOT link vs ld: 82944 timelines (complete), 50520 violate
+   J1 the AOT link rejects a -l (a path or file name, as the CLI help allows) the JIT loads: 23464; first: -l./libfoo.so with []: JIT Jank.R5.Native.Libs.JitOut.loaded ["/cwd/./libfoo.so"]; AOT link Jank.R5.Native.Libs.LinkOut.error "cannot find -l./libfoo.so"; ld -l Jank.R5.Native.Libs.LinkOut.error "cannot find -l./libfoo.so"
+   J4e the JIT reaches cantFail: dlopen refuses a file (bad ELF): 3664; first: -lfoo with [("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.elfBad)]: JIT Jank.R5.Native.Libs.JitOut.cantFail "dlopen refuses ELF file /sys/libfoo.so"; AOT link Jank.R5.Native.Libs.LinkOut.error "/sys/libfoo.so: file format not recognized"; ld -l Jank.R5.Native.Libs.LinkOut.error "/sys/libfoo.so: file format not recognized"
+   J2s the AOT link has files the JIT never maps (a script naming several): 1202; first: -lfoo with [("/sys/libfoo.so",
+  Jank.R5.Native.Libs.Kind.script
+    [Jank.R5.Native.LdSpec.Tok.group,
+     Jank.R5.Native.LdSpec.Tok.lp,
+     Jank.R5.Native.LdSpec.Tok.abs,
+     Jank.R5.Native.LdSpec.Tok.rel,
+     Jank.R5.Native.LdSpec.Tok.rp])]: JIT Jank.R5.Native.Libs.JitOut.loaded ["/lib/liby.so.6"]; AOT link Jank.R5.Native.Libs.LinkOut.linked ["/lib/liby.so.6", "/sys/libx.so.1"]; ld -l Jank.R5.Native.Libs.LinkOut.linked ["/lib/liby.so.6", "/sys/libx.so.1"]
+   J4m the JIT reaches cantFail: a script's file is missing where jank looks (the script's directory): 10976; first: -lfoo with [("/sys/libfoo.so",
+  Jank.R5.Native.Libs.Kind.script
+    [Jank.R5.Native.LdSpec.Tok.input,
+     Jank.R5.Native.LdSpec.Tok.lp,
+     Jank.R5.Native.LdSpec.Tok.lname,
+     Jank.R5.Native.LdSpec.Tok.rp])]: JIT Jank.R5.Native.Libs.JitOut.cantFail "dlopen of the missing file /sys/-lz"; AOT link Jank.R5.Native.Libs.LinkOut.linked ["/sys/libz.so"]; ld -l Jank.R5.Native.Libs.LinkOut.linked ["/sys/libz.so"]
+   J4t the JIT reaches cantFail: dlopen of a text file (not an INPUT/GROUP script): 10992; first: -lfoo with [("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.script [Jank.R5.Native.LdSpec.Tok.comment])]: JIT Jank.R5.Native.Libs.JitOut.cantFail "dlopen of the text file /sys/libfoo.so"; AOT link Jank.R5.Native.Libs.LinkOut.linked []; ld -l Jank.R5.Native.Libs.LinkOut.linked []
+   J2 the JIT and the AOT link use different library files: 222; first: -lfoo with [("/u2/libfoo.a", Jank.R5.Native.Libs.Kind.archive), ("/sys/libfoo.so", Jank.R5.Native.Libs.Kind.elfDyn)]: JIT Jank.R5.Native.Libs.JitOut.loaded ["/sys/libfoo.so"]; AOT link Jank.R5.Native.Libs.LinkOut.linked ["/u2/libfoo.a"]; ld -l Jank.R5.Native.Libs.LinkOut.linked ["/u2/libfoo.a"]
+  (10 s)
+== census round 4's AOT world, dynamic runtime, corrected run: 384 timelines (complete), 42 violate
+   R4->R5: round 4's dynamic-runtime status corrected (-main's throw is caught by jank_call2): 27; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" []],
+  main := [Jank.R4.Modules.Load.Form.boom] }; clojure -m status 1; round 4 dynamic 1; corrected 0 (main)
+   status differs in phase startup: 15; first: program { b := [Jank.R4.Modules.Load.Form.ns "b" [], Jank.R4.Modules.Load.Form.defv "x", Jank.R4.Modules.Load.Form.print "b"],
+  app := [Jank.R4.Modules.Load.Form.ns "app.core" [], Jank.R4.Modules.Load.Form.defv "inc"],
+  main := [Jank.R4.Modules.Load.Form.ref "inc"] }; clojure 0; jank dynamic AOT 1
+  (0 s)
+== census control: glibc-shaped scripts, ≤6 tokens, ≤1 required file: 137257 timelines (complete), 0 violate
+  (0 s)
+== census ld scripts, ≤4 tokens (16-token alphabet): jank vs GNU ld: 69905 timelines (complete), 19 violate
+   C4e a script naming no file: ld adds nothing; jank reads nothing (and dlopens the script): 11; first: script ``: ld some []; jank loads none
+   C2 -lname: jank takes "-lname" as a path; ld searches lib<name>: 2; first: script `GROUP ( -lz )`: ld some [{ name := "z", lib := true, asNeeded := false }]; jank loads some "-lz"
+   C2s =path: jank takes the sysroot prefix as a directory: 2; first: script `GROUP ( =/usr/lib/libw.so )`: ld some [{ name := "=/usr/lib/libw.so", lib := false, asNeeded := false }]; jank loads some "=/usr/lib/libw.so"
+   C4 ld reads files from the script; jank finds none: 2; first: script `GROUP ( "p(.so" )`: ld some [{ name := "p(.so", lib := false, asNeeded := false }]; jank loads none
+   C5 jank loads another file than ld would: 2; first: script `GROUP ( "a\b.so" )`: ld some [{ name := "a\\b.so", lib := false, asNeeded := false }]; jank loads some "ab.so"
+  (0 s)
+== census ld scripts, ≤5 tokens (16-token alphabet): jank vs GNU ld: 1118481 timelines (complete), 868 violate
+   C4e a script naming no file: ld adds nothing; jank reads nothing (and dlopens the script): 42; first: script ``: ld some []; jank loads none
+   C2 -lname: jank takes "-lname" as a path; ld searches lib<name>: 30; first: script `GROUP ( -lz )`: ld some [{ name := "z", lib := true, asNeeded := false }]; jank loads some "-lz"
+   C2s =path: jank takes the sysroot prefix as a directory: 30; first: script `GROUP ( =/usr/lib/libw.so )`: ld some [{ name := "=/usr/lib/libw.so", lib := false, asNeeded := false }]; jank loads some "=/usr/lib/libw.so"
+   C4 ld reads files from the script; jank finds none: 50; first: script `GROUP ( "p(.so" )`: ld some [{ name := "p(.so", lib := false, asNeeded := false }]; jank loads none
+   C5 jank loads another file than ld would: 30; first: script `GROUP ( "a\b.so" )`: ld some [{ name := "a\\b.so", lib := false, asNeeded := false }]; jank loads some "ab.so"
+   C3 ld rejects the script; jank reads a file from it: 578; first: script `GROUP GROUP ( GROUP )`: ld none; jank loads some "GROUP"
+   C1 several files: ld links every one; jank loads only the first: 108; first: script `GROUP ( GROUP GROUP )`: ld some [{ name := "GROUP", lib := false, asNeeded := false }, { name := "GROUP", lib := false, asNeeded := false }]; jank loads some "GROUP"
+  (19 s)

@@ -1,0 +1,15 @@
+== census errors: what a program sees of an error, jank vs Clojure: 180 timelines (complete), 57 violate
+   B11: read-string of a text without a form returns its eof value: 3; first: (read-string ""), looking at Jank.R5.Errors.World.Look.kind: Clojure :object, jank :returned
+   B1: an error_ref (read, analysis, load error) escapes the object catch: 19; first: (read-string "("), looking at Jank.R5.Errors.World.Look.kind: Clojure :object, jank :error
+   known: a std::exception escapes the object catch (book native-exceptions.md; R26, U79): 2; first: (nth [1 2] 5), looking at Jank.R5.Errors.World.Look.kind: Clojure :object, jank :native
+   B3: an ex-info raised under the compiler or the loader loses its data: 2; first: (require 'm) where m's top level runs (throw (ex-info "x" {:k 1})), looking at Jank.R5.Errors.World.Look.rootData: Clojure some (Jank.R5.Errors.Data.keys ["k"]), jank none
+   B2: a failed require leaves the namespace it created: 4; first: (require 'm) where m's top level runs (throw (ex-info "x" {:k 1})), looking at Jank.R5.Errors.World.Look.nsLeft: Clojure false, jank true
+   B7: a failed future rethrows a native error as a string: 1; first: @(future (nth [1 2] 5)), looking at Jank.R5.Errors.World.Look.isString: Clojure false, jank true
+   B6: a future whose body raises an error_ref ends the process: 4; first: @(future (read-string "(")), looking at Jank.R5.Errors.World.Look.kind: Clojure :object, jank process ended: std::terminate: an exception left the future's thread (core.cpp 1163–1169)
+   B4: a failed delay rethrows a native error as a string object: 1; first: (delay (nth [1 2] 5)) derefed twice, the kinds caught: Clojure [:object, :object], jank [:native, :object]
+   B5: a delay whose body raises an error_ref runs it again: 2; first: (delay (read-string "(")) derefed twice, the body's runs: Clojure 1, jank 2
+   B8: a top-level def whose value raises keeps the def's metadata: 4; first: (def ^{:vb 1} x (throw (ex-info "x" {:k 1}))), the var's metadata keys: Clojure [], jank [vb]
+   B9: ex-info rejects a nil message: 1; first: (ex-message (ex-info nil {})): Clojure none, jank :native
+   B10: (ex-info m nil) keeps nil data (Clojure 1.12: {}): 1; first: (ex-data (ex-info "m" Jank.R5.Errors.Data.nil)): Clojure Jank.R5.Errors.Data.keys [], jank nil
+   U44+: (ex-data *e) after a compile or load error is nil: 13; first: *e after (eval 'nope), (some? (ex-data *e)): Clojure true, jank false
+  (1 ms)

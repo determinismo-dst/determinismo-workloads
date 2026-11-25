@@ -1,0 +1,24 @@
+"GROUP ( /lib/x86_64-linux-gnu/libc.so.6 /usr/lib/x86_64-linux-gnu/libc_nonshared.a  AS_NEEDED ( /lib64/ld-linux-x86-64.so.2 ) )"
+  jank parse_ld_script: some "/lib/x86_64-linux-gnu/libc.so.6"
+"/* GNU ld script */\nOUTPUT_FORMAT(elf64-x86-64)\nGROUP ( /lib/x86_64-linux-gnu/libm.so.6  AS_NEEDED ( /lib/x86_64-linux-gnu/libmvec.so.1 ) )"
+  jank parse_ld_script: some "/lib/x86_64-linux-gnu/libm.so.6"
+"INPUT ( libfoo_core.so libfoo_extra.so )"
+  jank parse_ld_script: some "libfoo_core.so"
+"INPUT(-lfoo)"
+  jank parse_ld_script: some "-lfoo"
+"GROUP ( AS_NEEDED ( a.so ) )"
+  jank parse_ld_script: some "a.so"
+"GROUP ( \"p(.so\" b.so )"
+  jank parse_ld_script: none
+"GROUP ( a.so"
+  jank parse_ld_script: none
+"/* GROUP ( a.so )"
+  jank parse_ld_script: none
+""
+  jank parse_ld_script: none
+"GROUP ( \"a\\\\b.so\" )"
+  jank parse_ld_script: some "a\\b.so"
+"OUTPUT_FORMAT ( \"x)y\" ) GROUP ( a.so )"
+  jank parse_ld_script: some "a.so"
+"INPUT ( a.so ) GROUP ( b.so )"
+  jank parse_ld_script: some "a.so"

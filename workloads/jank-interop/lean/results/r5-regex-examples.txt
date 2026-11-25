@@ -1,0 +1,18 @@
+(re-find #"e\b" "é"): Clojure nil, jank "e"   [non-spacing mark after a letter is a word character for \b (new)]
+(re-seq #"\b\w+\b" "café x"): Clojure ("x"), jank ("cafe" "x")   [non-spacing mark after a letter is a word character for \b (new)]
+(clojure.string/replace "naïve" #"\b" "|"): Clojure "|naïve|", jank "|nai|̈|ve|"   [non-spacing mark after a letter is a word character for \b (new)]
+(clojure.string/replace "é" #"\B" "|"): Clojure "e|́", jank "e\xcc|\x81|" (invalid UTF-8)   [bytes (R78)]
+(re-find #"\b" "é́"): Clojure "", jank nil   [non-spacing mark after a letter is a word character for \b (new)]
+(re-find #"\b" "١́"): Clojure "", jank nil   [non-spacing mark after a letter is a word character for \b (new)]
+(clojure.string/replace "naïve" #"\b" "|"): Clojure "|na|ï|ve|", jank "|na|ï|ve|"   [agree]
+(re-seq #"\w+" "naïve"): Clojure ("nai" "ve"), jank ("nai" "ve")   [agree]
+(re-find #".+" " "): Clojure nil, jank " "   [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]
+(re-matches #".*" " "): Clojure nil, jank " "   [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]
+(re-find #".+" "a "): Clojure "a", jank "a "   [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]
+(re-find #"a$" "a "): Clojure "a", jank nil   [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]
+(re-find #"a$" "a"): Clojure "a", jank nil   [Unicode line terminators U+0085/U+2028/U+2029 in . and $ (R78/R79 refinement)]
+(re-find #"(?U)\w" "é"): Clojure "é", jank throws (Invalid '(?...)' zero-width assertion in regular expression)   [jank rejects: inline flags (R18)]
+(re-find #"\p{Alpha}" "é"): Clojure nil, jank throws (Invalid range in '{}' in regular expression)   [jank rejects: property escape \p{…} (S31)]
+(re-find #"(?U)\p{Alpha}" "é"): Clojure "é", jank throws (Invalid '(?...)' zero-width assertion in regular expression)   [jank rejects: inline flags (R18)]
+(re-find #"[[:alpha:]]" "é"): Clojure nil, jank nil   [agree]
+(re-find #"\W" "é"): Clojure "é", jank "\xc3" (invalid UTF-8)   [bytes (R78)]

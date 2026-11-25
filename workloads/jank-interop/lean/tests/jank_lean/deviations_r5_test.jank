@@ -1,0 +1,392 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 5 (main 94d32623): predictions from REPORT-5 (V1, V2, ...), each
+; test asserting Clojure 1.12's result (C++'s for the cpp tests, nREPL 1.8.0's for the nREPL ones),
+; so a failure confirms one. Values pass through functions so the runtime's generic paths run; forms
+; jank may refuse go through `ev` (eval of read-string) or `rd` (read-string at run time), so a
+; refusal fails its own test, not the namespace. Each cpp/raw runs in its own top-level eval before
+; its use is read (S71), and a prediction about compiled code wraps its form in a fn.
+; `thrown?` in jank catches only objects (clojure/test.jank 493-504), not jank::error_ref (read,
+; analysis and load errors, V7) or C++ exceptions, so tests that ask which handler sees an error use
+; `vb-outcome`, which has a handler for each.
+; Run each test in its own process, from tests/ with `--module-path .`, under a UTF-8 locale with
+; en_US.UTF-8 installed (inst.cpp imbues std::locale("en_US.utf-8")). v08 and v09 load the fixture
+; modules jank_lean/r5_errors_fixture_a.cljc and _b.cljc; v03 writes /tmp/jank-lean-va4-not-a-library.so.
+; v12 predicts an abort (std::terminate). No test predicts a hang. Jank only (no Clojure counterpart
+; in this file): v03, v18, v19, v19b, v21, v21b, v24, v25-v34 (C++), v37, v37b (jank's nREPL handler).
+(ns jank-lean.deviations-r5-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]))
+
+(defn- ev [s] (eval (read-string s)))
+
+(defn- va-boom2 [a b] (throw (ex-info "boom" {:a a :b b})))
+
+(defn- va-boom1 [a] (throw (ex-info "boom" {:a a})))
+
+(defn- vb-outcome
+  "Calls f: [:returned], [:object e] (an object handler saw e), [:native] (only a
+   std::exception handler sees it) or [:error] (only an error_ref handler sees it)."
+  [f]
+  (try (f) [:returned]
+       (catch cpp/jank.runtime.object_ref e [:object e])
+       (catch cpp/std.exception _ [:native])
+       (catch cpp/jank.error_ref _ [:error])))
+
+(defn- vb-kind [f] (first (vb-outcome f)))
+
+(defn- vb-data-with
+  "The first ex-data along e's ex-cause chain that has the key k."
+  [e k]
+  (loop [e e]
+    (when e
+      (if (contains? (ex-data e) k)
+        (ex-data e)
+        (recur (ex-cause e))))))
+
+(defmacro vb3-throwing-macro [] (throw (ex-info "vb3b" {:vb3b 1})))
+
+(defn- vb-nrepl-handle [msg]
+  (require 'jank.nrepl.server.handler.eval)
+  ((resolve 'jank.nrepl.server.handler/handle-message) msg))
+
+(defn- vb-nrepl-value [code]
+  (let [rs (vb-nrepl-handle {"op" "eval" "code" code "ns" "user"})]
+    (some #(get % :value) (filter map? (if (map? rs) [rs] rs)))))
+
+(defn- rfind [p s] (re-find (re-pattern p) s))
+
+(defn- rseq* [p s] (re-seq (re-pattern p) s))
+
+(defn- rreplace [s p r] (string/replace s (re-pattern p) r))
+
+(defn- nrepl-handle [msg]
+  (require 'jank.nrepl.server.handler.clone)
+  (require 'jank.nrepl.server.handler.eval)
+  ((resolve 'jank.nrepl.server.handler/handle-message) msg))
+
+(defn- statuses [r] (set (map name (:status r))))
+
+(defn- rd [s] (read-string s))
+
+(defn- ms-of [s] (inst-ms (rd s)))
+
+;; V3. A library jank can't dlopen: load_dynamic_library (jit/processor_dynamic.cpp 905-954) reads a
+;; non-ELF file as a GNU ld script; one without INPUT/GROUP goes to LoadDynamicLibrary under
+;; llvm::cantFail (946-947), so dlopen's failure is llvm_unreachable: undefined behavior in a
+;; release build (likely: nothing loaded, no error), an abort in a debug build. Clojure's
+;; System/load throws UnsatisfiedLinkError. Predicted on jank: no exception (or the process aborts).
+(deftest v03-loading-a-file-that-is-not-a-library-is-an-error
+  (spit "/tmp/jank-lean-va4-not-a-library.so" "hello\n")
+  (ev "(cpp/raw \"inline void v_a4_load(jank::runtime::object_ref p) { jank::runtime::__rt_ctx->jit_prc.load_dynamic_library(p.to_string()); }\")")
+  (let [load (ev "(fn [p] (cpp/v_a4_load p))")]
+    (is (thrown? (load "/tmp/jank-lean-va4-not-a-library.so")))))
+
+;; V7. Read, analysis and load errors are jank::error_ref values, which an object handler never
+;; sees (Clojure: exceptions any catch sees). jank: [:error].
+(deftest v07-a-read-error-reaches-an-object-catch
+  (is (= :object (vb-kind #(read-string (identity "("))))))
+
+(deftest v07b-an-analysis-error-from-eval-reaches-an-object-catch
+  (is (= :object (vb-kind #(eval (symbol "vb1b-no-such-name"))))))
+
+(deftest v07c-a-missing-namespace-reaches-an-object-catch
+  (is (= :object (vb-kind #(require (symbol "jank-lean.vb1c-no-such-namespace"))))))
+
+;; V8. A require whose module fails removes the namespace the module created (Clojure's
+;; load-lib); jank's load-lib catches only objects and load turns every failure into an
+;; error_ref, so the namespace stays.
+(deftest v08-a-failed-require-removes-the-namespace-it-created
+  (vb-outcome #(require 'jank-lean.r5-errors-fixture-a))
+  (is (nil? (find-ns 'jank-lean.r5-errors-fixture-a))))
+
+;; V9. The ex-info a module's top level (or a macro) threw reaches the caller with its data
+;; (Clojure: as the cause of a CompilerException). jank: an error_ref holding its printed form.
+(deftest v09-an-ex-info-thrown-while-loading-keeps-its-data
+  (let [[k e] (vb-outcome #(require 'jank-lean.r5-errors-fixture-b))]
+    (is (= {:vb3 1} (when (= :object k) (vb-data-with e :vb3))))))
+
+(deftest v09b-an-ex-info-thrown-by-a-macro-keeps-its-data
+  (let [[k e] (vb-outcome #(eval (list `vb3-throwing-macro)))]
+    (is (= {:vb3b 1} (when (= :object k) (vb-data-with e :vb3b))))))
+
+;; V10. A failed delay throws the same exception at every deref. jank: the native error the
+;; first time, then a string object holding its message ([:native] then [:object "…"]).
+(deftest v10-a-failed-delay-throws-the-same-kind-each-deref
+  (let [d (delay (nth (identity [1 2]) 5))]
+    (is (= (vb-kind #(deref d)) (vb-kind #(deref d))))))
+
+;; V11. A delay's body runs once, even when it raised. jank: an error_ref is not kept, so the
+;; body runs at every deref (2).
+(deftest v11-a-delay-whose-body-fails-to-read-runs-once
+  (let [n (atom 0)
+        d (delay (swap! n inc) (read-string (identity "(")))]
+    (vb-outcome #(deref d))
+    (vb-outcome #(deref d))
+    (is (= 1 @n))))
+
+;; V12. A future whose body raises an error_ref. Clojure: deref throws an ExecutionException.
+;; jank (predicted): the future's thread rethrows from catch(...), std::terminate, SIGABRT.
+(deftest v12-a-future-whose-body-fails-to-read-can-be-dereferenced
+  (is (= :object (vb-kind #(deref (future (read-string (identity "("))))))))
+
+;; V13. A failed future's deref throws an exception (Clojure: an ExecutionException whose cause
+;; is the body's). jank: for a native error, a string holding its message.
+(deftest v13-a-failed-futures-deref-throws-an-exception-not-a-string
+  (let [[k e] (vb-outcome #(deref (future (nth (identity [1 2]) 5))))]
+    (is (= :object k))
+    (is (not (string? e)))))
+
+;; V14. A top-level def whose value throws leaves its var without the def's metadata (Clojure's
+;; DefExpr.eval sets it after the value). jank sets it first: (:vb8 …) is 1.
+(deftest v14-a-def-whose-value-throws-sets-no-metadata
+  (let [ns (create-ns 'jank-lean.vb8-scratch)]
+    (binding [*ns* ns]
+      (vb-outcome #(eval (list 'def (with-meta 'vb8-x {:vb8 1})
+                               (list 'throw (list 'clojure.core/ex-info "vb8" {}))))))
+    (is (nil? (:vb8 (meta (find-var 'jank-lean.vb8-scratch/vb8-x)))))))
+
+;; V15. ex-info takes a nil message. jank: a native error (the message must be a string).
+(deftest v15-ex-info-takes-a-nil-message
+  (is (nil? (ex-message (ex-info (identity nil) {})))))
+
+;; V16. ex-info with nil data has {} as its data (Clojure 1.12). jank: nil.
+(deftest v16-ex-info-with-nil-data-has-empty-data
+  (is (= {} (ex-data (ex-info "vb10" (identity nil))))))
+
+;; V17. read-string of a text without a form throws "EOF while reading". jank: nil.
+(deftest v17-read-string-of-an-empty-text-throws
+  (is (= :object (vb-kind #(read-string (identity ""))))))
+
+(deftest v17b-read-string-of-a-comment-throws
+  (is (= :object (vb-kind #(read-string (identity "; only a comment"))))))
+
+(deftest v17c-read-string-with-options-but-no-eof-throws
+  (is (= :object (vb-kind #(read-string {} (identity " "))))))
+
+;; V18 (extends U44; jank only: jank's nREPL handler in-process). After a compile error at the
+;; nREPL, *e carries the compiler's data and cause: nREPL over Clojure gives a map with
+;; :clojure.error/phase and the "Unable to resolve symbol" exception as cause. jank: *e is an
+;; exception_info built from the error_ref (exception_info.cpp 23–27): nil data, no cause.
+(deftest v18-ex-data-and-cause-of-a-compile-error-in-star-e
+  (vb-nrepl-handle {"op" "eval" "code" "(vb12-undefined)" "ns" "user"})
+  (is (= "true" (vb-nrepl-value "(some? (ex-data *e))")))
+  (is (= "true" (vb-nrepl-value "(some? (ex-cause *e))"))))
+
+;; V19. jank_call2 (c_api.cpp 168-181) catches whatever the fn throws, prints it and returns nil;
+;; jank_call1 and jank_call3..11 let it reach the caller. Clojure's IFn.invoke throws.
+;; Predicted on jank: the exception is printed and `thrown?` sees nil (the assertion fails).
+(deftest v19-c-api-call2-lets-the-fns-exception-reach-the-caller
+  (ev "(cpp/raw \"extern \\\"C\\\" void *jank_call2(void *, void *, void *); inline jank::runtime::object_ref v_a1_call2(jank::runtime::object_ref f, jank::runtime::object_ref a, jank::runtime::object_ref b) { return jank::runtime::object_ref{ static_cast<jank::runtime::object *>(jank_call2(f.raw(), a.raw(), b.raw())) }; }\")")
+  (let [call2 (ev "(fn [f a b] (cpp/v_a1_call2 f a b))")]
+    (is (thrown? (call2 va-boom2 1 2)))))
+
+;; V19. Control, predicted to pass: jank_call1 lets the exception through.
+(deftest v19b-control-c-api-call1-lets-the-fns-exception-reach-the-caller
+  (ev "(cpp/raw \"extern \\\"C\\\" void *jank_call1(void *, void *); inline jank::runtime::object_ref v_a1b_call1(jank::runtime::object_ref f, jank::runtime::object_ref a) { return jank::runtime::object_ref{ static_cast<jank::runtime::object *>(jank_call1(f.raw(), a.raw())) }; }\")")
+  (let [call1 (ev "(fn [f a] (cpp/v_a1b_call1 f a))")]
+    (is (thrown? (call1 va-boom1 1)))))
+
+;; V21. jank_symbol_create(nil, "a") (c_api.cpp 433-438 -> obj/symbol.cpp 60-65 stores
+;; ns.to_string()) is the symbol nil/a. Clojure: (Symbol/intern nil "a") is a.
+(deftest v21-c-api-symbol-with-a-nil-namespace-is-unqualified
+  (ev "(cpp/raw \"extern \\\"C\\\" void *jank_symbol_create(void *, void *); inline jank::runtime::object_ref v_a2_sym(jank::runtime::object_ref ns, jank::runtime::object_ref n) { return jank::runtime::object_ref{ static_cast<jank::runtime::object *>(jank_symbol_create(ns.raw(), n.raw())) }; }\")")
+  (let [sym (ev "(fn [ns n] (cpp/v_a2_sym ns n))")
+        s (sym nil "a")]
+    (is (nil? (namespace s)))
+    (is (= 'a s))))
+
+;; V21. jank_keyword_intern(nil, "a") (c_api.cpp 139-147 -> context.cpp 561-586) is :nil/a.
+;; Clojure: (Keyword/intern nil "a") is :a (and jank's own `keyword`, core.cpp 521-542, gives :a).
+(deftest v21b-c-api-keyword-with-a-nil-namespace-is-unqualified
+  (ev "(cpp/raw \"extern \\\"C\\\" void *jank_keyword_intern(void *, void *); inline jank::runtime::object_ref v_a3_kw(jank::runtime::object_ref ns, jank::runtime::object_ref n) { return jank::runtime::object_ref{ static_cast<jank::runtime::object *>(jank_keyword_intern(ns.raw(), n.raw())) }; }\")")
+  (let [kw (ev "(fn [ns n] (cpp/v_a3_kw ns n))")]
+    (is (= :a (kw nil "a")))))
+
+;; V24. jank.math. The bundled namespace is installed on the module path
+;; (cmake/install.cmake 48-51, loader_dynamic.cpp 403) but cannot load: its first defn's body is
+;; `(native/raw ...)`, removed as a special form in 529718a6, so analysis fails with "The symbol
+;; `native/raw` could not be resolved." (analyze/processor.cpp 1693). No Clojure counterpart (jank only).
+(deftest v24-jank-math-loads
+  (require 'jank.math)
+  (is (= 2.0 ((resolve 'jank.math/sqrt) 4.0))))
+
+;; V25. A class temporary is an lvalue to jank's overload resolution (processor.cpp 565-572), so
+;; assigning a temporary of a move-only class picks the deleted copy assignment.
+;; jank predicted: "The `operator=` function cannot be called, since it's deleted."
+(deftest v25-cpp-assigning-a-temporary-moves-it
+  (ev "(cpp/raw \"struct vf1_mo { int v{}; vf1_mo() = default; vf1_mo(int x) : v(x) {} vf1_mo(vf1_mo &&) = default; vf1_mo &operator=(vf1_mo &&) = default; }; inline vf1_mo vf1_g;\")")
+  (is (= 5 ((ev "(fn [] (let* [_ (cpp/= cpp/vf1_g (cpp/vf1_mo. 5))] (cpp/.-v cpp/vf1_g)))")))))
+
+;; V26. The same rule through a forwarding operator template: T is deduced as W& for a temporary.
+;; jank predicted: 1.
+(deftest v26-cpp-a-forwarding-operator-template-sees-a-temporary-as-an-rvalue
+  (ev "(cpp/raw \"namespace vf2 { template <typename T> struct isl { static constexpr int v = 2; }; template <typename T> struct isl<T &> { static constexpr int v = 1; }; struct V {}; struct W {}; template <typename T> int operator+(V const &, T &&) { return isl<T>::v; } inline V gv; }\")")
+  (is (= 2 ((ev "(fn [] (cpp/+ cpp/vf2.gv (cpp/vf2.W.)))")))))
+
+;; V27. A member operator call passes a literal as a named variable (cpp_processor.cpp 1730-1775,
+;; never std::move), so an `int &&` parameter that analysis accepted fails in the JIT.
+;; jank predicted: a JIT compile error (rvalue reference to `int` cannot bind to an lvalue).
+(deftest v27-cpp-a-member-operator-takes-a-literal-by-rvalue-reference
+  (ev "(cpp/raw \"struct vf3_v { int operator*(int &&) const { return 1; } }; inline vf3_v vf3_g;\")")
+  (is (= 1 ((ev "(fn [] (cpp/* cpp/vf3_g 1))")))))
+
+;; V28. The same through a member operator template with a forwarding reference: analysis deduces
+;; T = int, the emitted `vf4_g.operator/(t)` deduces T = int&.
+;; jank predicted: 1.
+(deftest v28-cpp-a-member-operator-template-forwards-a-literal-as-an-rvalue
+  (ev "(cpp/raw \"namespace vf4 { template <typename T> struct isl { static constexpr int v = 2; }; template <typename T> struct isl<T &> { static constexpr int v = 1; }; struct R { template <typename T> int operator/(T &&) const { return isl<T>::v; } }; inline R g; }\")")
+  (is (= 2 ((ev "(fn [] (cpp// cpp/vf4.g 1))")))))
+
+;; V29. A `let`-bound builtin is a prvalue to jank's overload resolution (its binding type is `int`),
+;; and cpp_call moves it into an `int &&` parameter; C++ binds the named variable as an lvalue.
+;; jank predicted: 2.
+(deftest v29-cpp-a-named-local-is-an-lvalue-to-overload-resolution
+  (ev "(cpp/raw \"namespace vf5 { struct V {}; inline int operator-(V const &, int const &) { return 1; } inline int operator-(V const &, int &&) { return 2; } inline V gv; }\")")
+  (is (= 1 ((ev "(fn [] (let [x (cpp/int. 1)] (cpp/- cpp/vf5.gv x)))")))))
+
+;; V29. The same rule makes a let-bound builtin unusable as an out-parameter: a prvalue can't bind
+;; `int &` (a call, not an operator; the same mechanism; also `(cpp/* x cpp/vt.gv)` with
+;; `int operator*(int &, V const &)` in world XXII).
+;; jank predicted: an analysis error (no matching overload).
+(deftest v29b-cpp-a-named-local-binds-a-non-const-reference
+  (ev "(cpp/raw \"inline void vf5b_inc(int &i) { ++i; }\")")
+  (is (= 2 ((ev "(fn [] (let [x (cpp/int. 1)] (cpp/vf5b_inc x) x))")))))
+
+;; V30. GetBuiltinOperatorType makes every operand an lvalue (CppInterOp.cpp 7080-7087) and the
+;; emitted code assigns a named copy, so built-in assignment, compound assignment and ++ accept a
+;; prvalue. C++: `1 = 2`, `1 += 2`, `++1` are ill-formed (rejected: an error any handler of vb-kind sees).
+;; jank predicted: 2, 3 and 2.
+(deftest v30-cpp-built-in-assignment-needs-an-lvalue
+  (is (not= :returned (vb-kind #((ev "(fn [] (cpp/= 1 2))")))))
+  (is (not= :returned (vb-kind #((ev "(fn [] (cpp/+= 1 2))")))))
+  (is (not= :returned (vb-kind #((ev "(fn [] (cpp/++ 1))"))))))
+
+;; V31. GetOperator drops a namespace-scope using-declaration found by argument-dependent lookup
+;; (CppInterOp.cpp 7022-7031 keep only FunctionDecl and FunctionTemplateDecl).
+;; jank predicted: "The operator `+` is not supported for the type `vf7_lib::P`."
+(deftest v31-cpp-argument-dependent-lookup-finds-a-using-declaration
+  (ev "(cpp/raw \"namespace vf7_lib { struct P {}; } namespace vf7_ext { inline int operator+(vf7_lib::P const &, vf7_lib::P const &) { return 9; } } namespace vf7_lib { using vf7_ext::operator+; } inline vf7_lib::P vf7_p;\")")
+  (is (= 9 ((ev "(fn [] (cpp/+ cpp/vf7_p cpp/vf7_p))")))))
+
+;; V32. A base call operator re-exported with a using-declaration is a member of the derived class
+;; for the implicit object parameter ([over.match.funcs]/4); jank gives it a derived-to-base
+;; conversion (its acting context is the base), so the call is ambiguous.
+;; jank predicted: "This call is ambiguous between 2 different overloads."
+(deftest v32-cpp-a-using-declared-base-call-operator
+  (ev "(cpp/raw \"struct vf8_b { int operator()(int) const { return 3; } }; struct vf8_d : vf8_b { using vf8_b::operator(); int operator()(long) const { return 4; } }; inline vf8_d vf8_g;\")")
+  (is (= 3 ((ev "(fn [] (cpp/vf8_g 1))")))))
+
+;; V33. An object of a class with a conversion to a pointer to function is callable in C++ through a
+;; surrogate call function ([over.call.object]/2); jank looks only for operator().
+;; jank predicted: "The operator `()` is not supported for the type `vf9_sf`."
+(deftest v33-cpp-calling-an-object-through-its-conversion-to-a-function-pointer
+  (ev "(cpp/raw \"inline int vf9_twice(int x) { return 2 * x; } struct vf9_sf { using fp = int (*)(int); operator fp() const { return &vf9_twice; } }; inline vf9_sf vf9_g;\")")
+  (is (= 42 ((ev "(fn [] (cpp/vf9_g 21))")))))
+
+;; V34 (extends S53). `aget` on a class object with a conversion to a pointer: C++'s built-in
+;; candidate `int &operator[](int *, std::ptrdiff_t)`; jank adds no built-in candidates.
+;; jank predicted: "The operator `aget` is not supported for the type `vf10_bf`."
+(deftest v34-cpp-aget-through-a-conversion-to-a-pointer
+  (ev "(cpp/raw \"struct vf10_bf { int d[3]{ 1, 2, 3 }; operator int *() { return d; } }; inline vf10_bf vf10_g;\")")
+  (is (= 2 ((ev "(fn [] (cpp/aget cpp/vf10_g 1))")))))
+
+;; V35. \b: a non-spacing mark after a letter or digit is a word character in Java's Bound
+;; (Pattern.java hasBaseCharacter), in every mode; jank's libstdc++ executor tests each byte of
+;; the mark with ctype<char>, which gives bytes 0x80-0xFF no class, so \b falls between the letter
+;; and its mark (and none after a non-ASCII letter or digit). jank predicted: "e", ("cafe" "x"),
+;; "|nai|\u0308|ve|", nil.
+(deftest v35-word-boundary-and-a-combining-mark
+  (is (nil? (rfind "e\\b" "e\u0301")))
+  (is (= ["x"] (vec (rseq* "\\b\\w+\\b" "cafe\u0301 x"))))
+  (is (= "|nai\u0308ve|" (rreplace "nai\u0308ve" "\\b" "|")))
+  (is (= "" (rfind "\\b" "\u0661\u0301"))))
+
+;; V36 (extends R78/R79). Java's line terminators include U+0085, U+2028 and U+2029: `.` does not match
+;; them and `$` matches before a final one (Pattern.java Dot, Dollar). jank's `.` is libstdc++'s
+;; _AnyMatcher for char, which excludes only \n and \r (regex_compiler.h), so it matches the bytes of
+;; U+2028; its `$` matches only at the end (R79). jank predicted: "\u2028" and nil.
+(deftest v36-unicode-line-terminators
+  (is (nil? (re-matches (re-pattern ".*") "\u2028")))
+  (is (= "a" (rfind "a$" "a\u2028"))))
+
+;; V37. interrupt is answered unknown-op. nREPL: an idle session's interrupt gets
+;; #{"session-idle" "done"} (session.clj interrupt-session 288-289); jank (handler.jank 5-8, no
+;; :interrupt method): {:status [:error :unknown-op :done] :op "interrupt"}.
+(deftest v37-nrepl-interrupt-of-an-idle-session
+  (let [s (:new-session (nrepl-handle {"op" "clone" "id" "c"}))
+        r (nrepl-handle {"op" "interrupt" "id" "i" "session" s})]
+    (is (= #{"session-idle" "done"} (statuses r)))))
+
+;; V37. The same without a session. nREPL: #{"error" "session-ephemeral" "done"}
+;; (interrupt-session 282-283); jank: #{"error" "unknown-op" "done"}.
+(deftest v37b-nrepl-interrupt-without-a-session
+  (let [r (nrepl-handle {"op" "interrupt" "id" "i" "interrupt-id" "e"})]
+    (is (= #{"error" "session-ephemeral" "done"} (statuses r)))))
+
+;; V38. RFC 3339's `Z` offset: no jank format reads it (%z and %Oz need a digit); jank's
+;; predicted error: "Unrecognized date/time syntax: 2020-01-01T00:00:00Z".
+(deftest v38-inst-reads-a-z-offset
+  (is (= 1577836800000 (ms-of (identity "#inst \"2020-01-01T00:00:00Z\""))))
+  (is (= 1577836800500 (ms-of (identity "#inst \"2020-01-01T00:00:00.500Z\"")))))
+
+;; V39. A leap second (60 at minute 59, documented by clojure.instant/parse-timestamp): jank's
+;; from_stream sets failbit for it; predicted error "Unrecognized date/time syntax".
+(deftest v39-inst-reads-a-leap-second
+  (is (= 1483228800000 (ms-of (identity "#inst \"2016-12-31T23:59:60\"")))))
+
+;; V40. A fraction of more than 9 digits: Clojure keeps the first 9. jank reads 9 and gives the
+;; rest to the offset directive: 11 digits move the instant 12 hours back, 10 are a read error.
+(deftest v40-inst-fraction-of-more-than-nine-digits
+  (is (= 1577836800123 (ms-of (identity "#inst \"2020-01-01T00:00:00.12345678912\""))))
+  (is (= 1577836800123 (ms-of (identity "#inst \"2020-01-01T00:00:00.1234567891\"")))))
+
+;; V41. Before 1970, a fraction below the millisecond: Clojure's millisecond field is the
+;; fraction's, jank's duration_cast truncates the instant toward 1970 (one millisecond later).
+(deftest v41-inst-before-1970-keeps-its-millisecond
+  (is (= -1 (ms-of (identity "#inst \"1969-12-31T23:59:59.9995\""))))
+  (is (= "#inst \"1969-01-01T00:00:00.000-00:00\""
+         (pr-str (rd (identity "#inst \"1969-01-01T00:00:00.0001\""))))))
+
+;; V42. Insts equal to the millisecond are `=` (java.util.Date compares getTime); jank compares
+;; nanoseconds, so a value is not `=` to the read of its own printed form.
+(deftest v42-inst-equality-is-to-the-millisecond
+  (is (= (rd (identity "#inst \"2020-01-01T00:00:00.0001\""))
+         (rd (identity "#inst \"2020-01-01T00:00:00\""))))
+  (let [x (rd (identity "#inst \"2020-01-01T00:00:00.0001\""))]
+    (is (= x (read-string (pr-str x))))))
+
+;; V43. Insts are comparable (Date implements Comparable); jank's inst has no `compare`
+;; (object.cpp: "compare" unsupported).
+(deftest v43-insts-compare
+  (is (= -1 (compare (rd (identity "#inst \"2020-01-01\"")) (rd (identity "#inst \"2021-01-01\"")))))
+  (is (= [1577836800000 1609459200000]
+         (mapv inst-ms (sort [(rd (identity "#inst \"2021-01-01\"")) (rd (identity "#inst \"2020-01-01\""))])))))
+
+;; V44. *default-data-reader-fn* is for tags with no reader: Clojure reads #inst and #uuid with
+;; its default data readers first; jank calls the default fn before its built-in tags.
+(deftest v44-default-data-reader-fn-leaves-inst-and-uuid
+  (binding [*default-data-reader-fn* (fn [t v] (tagged-literal t v))]
+    (is (inst? (rd (identity "#inst \"2020-01-01\""))))
+    (is (uuid? (rd (identity "#uuid \"00000000-0000-0000-0000-000000000000\""))))))
+
+;; V45 (extends U82). An offset after a date, or after the hour: jank reads only full times.
+(deftest v45-inst-reads-an-offset-after-a-date
+  (is (= 1577854800000 (ms-of (identity "#inst \"2020-01-01-05:00\""))))
+  (is (= 1577872800000 (ms-of (identity "#inst \"2020-01-01T10\"")))))
+
+;; V46 (low; extends U39). `print` writes an inst as print-method does, with its tag.
+(deftest v46-print-of-an-inst-keeps-its-tag
+  (is (= "#inst \"2020-01-01T00:00:00.000-00:00\"" (print-str (rd (identity "#inst \"2020-01-01\""))))))
+
+;; V47 (low; unported names, the class of U49/U92). clojure.instant and its readers.
+(deftest v47-clojure-instant-exists
+  (is (some? (do (require 'clojure.instant) (resolve 'clojure.instant/read-instant-date)))))
+
+;; V48 (extends R55). A value jank's `=` finds unequal to itself (a string seq of non-ASCII text,
+;; R55) is never found again by CHAMP (`get` compares the stored value with the query), and adding
+;; it twice stores it twice (do_add merges the two into a collision node).
+(deftest v48-a-set-finds-its-own-string-seq
+  (let [x (seq (identity "é"))]
+    (is (contains? (hash-set x) x))
+    (is (= 1 (count (hash-set x x))))
+    (is (= 1 (get (hash-map x 1) x)))))

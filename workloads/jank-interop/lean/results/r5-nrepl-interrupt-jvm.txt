@@ -1,0 +1,37 @@
+idle session, no interrupt-id
+    {:id "i", :status ["done" "session-idle"]}
+idle session, interrupt-id given
+    {:id "i2", :status ["done" "session-idle"]}
+no session
+    {:id "i", :status ["done" "error" "session-ephemeral"]}
+unknown session
+    {:id "i", :status ["done" "error" "unknown-session"]}
+pipelined, interrupt-id = the eval's
+    {:id "e", :out "a", :status nil}
+    {:id "e", :status nil}
+    {:id "e", :status ["eval-error"]}
+    {:id "e", :status ["done" "interrupted"]}
+    {:id "i", :status ["done"]}
+pipelined, no interrupt-id
+    {:id "e", :out "a", :status nil}
+    {:id "e", :status ["done" "interrupted"]}
+    {:id "i", :status ["done"]}
+    {:id "e", :status nil}
+    {:id "e", :status ["eval-error"]}
+pipelined, another interrupt-id
+    {:id "e", :out "a", :status nil}
+    {:id "i", :status ["done" "error" "interrupt-id-mismatch"]}
+    {:id "e", :value "3", :status nil}
+    {:id "e", :status ["done"]}
+diverging eval, interrupt on the same connection
+    {:id "e", :status ["done" "interrupted"]}
+    {:id "i", :status ["done"]}
+diverging eval, interrupt from another connection: its replies
+    {:id "e", :status ["done" "interrupted"]}
+    {:id "i", :status ["done"]}
+ERROR: Cannot stop thread on JDK21+ without -Djdk.attach.allowAttachSelf enabled, see https://nrepl.org/nrepl/installation.html#jvmti.
+  and the eval's connection
+after the eval's done
+    {:id "i", :status ["done" "session-idle"]}
+ERROR: Cannot stop thread on JDK21+ without -Djdk.attach.allowAttachSelf enabled, see https://nrepl.org/nrepl/installation.html#jvmti.
+describe :ops has interrupt: true

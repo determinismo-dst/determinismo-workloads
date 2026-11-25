@@ -1,0 +1,72 @@
+depth 0: 8 timelines, 7 distinct programs
+depth 1: 3464 timelines, 2793 distinct programs
+depth 2: 354197993668 timelines, 181450370757 distinct programs
+depth 3: 1778665180058362482628326216842619768 timelines, 82256480997215332319952733163683305 distinct programs
+depth 2, per root kind (timelines / distinct programs):
+  0 int: 3 / 3
+  1 keyword: 2 / 2
+  2 local: 1 / 0
+  3 literal: 2 / 2
+  4 (log e): 3464 / 2793
+  5 (identity e): 3464 / 2793
+  6 (vector a b): 11999296 / 7800849
+  7 let: 28252384 / 19914090
+  8 let2: 312527871808 / 159591517260
+  9 loop: 12234 / 11802
+  10 if: 41565561344 / 21787771257
+  11 do: 11999296 / 7800849
+  12 fn call: 28263447 / 19923869
+  13 def: 20784 / 16758
+  14 try: 23998592 / 15601698
+  15 case: 2 / 2
+  16 loop2: 4078 / 3934
+  17 list?: 3464 / 2793
+  18 3: 1 / 1
+  19 case1: 2 / 2
+  total 354197993668
+== check1: 3464 depth-1 timelines, 0 differ; 2793 distinct programs (distinctCount 1 []: 2793)
+== checkpart 0 (int): 3 depth-2 timelines (cnt: 3), 0 differ; 3 distinct programs (count: 3)
+== checkpart 1 (keyword): 2 depth-2 timelines (cnt: 2), 0 differ; 2 distinct programs (count: 2)
+== checkpart 2 (local): 1 depth-2 timelines (cnt: 1), 0 differ; 1 distinct programs (count: 0)
+== checkpart 3 (literal): 2 depth-2 timelines (cnt: 2), 0 differ; 2 distinct programs (count: 2)
+== checkpart 4 ((log e)): 3464 depth-2 timelines (cnt: 3464), 0 differ; 2793 distinct programs (count: 2793)
+== checkpart 5 ((identity e)): 3464 depth-2 timelines (cnt: 3464), 0 differ; 2793 distinct programs (count: 2793)
+== checkpart 9 (loop): 12234 depth-2 timelines (cnt: 12234), 0 differ; 11802 distinct programs (count: 11802)
+== checkpart 13 (def): 20784 depth-2 timelines (cnt: 20784), 0 differ; 16758 distinct programs (count: 16758)
+== checkpart 15 (case): 2 depth-2 timelines (cnt: 2), 0 differ; 2 distinct programs (count: 2)
+== checkpart 16 (loop2): 4078 depth-2 timelines (cnt: 4078), 0 differ; 3934 distinct programs (count: 3934)
+== checkpart 17 (list?): 3464 depth-2 timelines (cnt: 3464), 0 differ; 2793 distinct programs (count: 2793)
+== checkpart 18 (3): 1 depth-2 timelines (cnt: 1), 0 differ; 1 distinct programs (count: 1)
+== checkpart 19 (case1): 2 depth-2 timelines (cnt: 2), 0 differ; 2 distinct programs (count: 2)
+== check2: 3000 random depth-2 timelines (mixed seeds 1..3000), 0 differ; verdict copy vs ProgSearch.run in both modes: 0 differ
+== seg eval -O0 kind 0 from 0: 3 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 1 from 1: 2 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 2 from 2: 1 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 3 from 3: 2 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 4 from 4: 3464 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 5 from 5: 3464 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 9 from 9: 12234 timelines, 0 violate, 2 s; next END
+== seg eval -O0 kind 13 from 13: 20784 timelines, 0 violate, 3 s; next END
+== seg eval -O0 kind 15 from 15: 2 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 16 from 16: 4078 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 17 from 17: 3464 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 18 from 18: 1 timelines, 0 violate, 0 s; next END
+== seg eval -O0 kind 19 from 19: 2 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 0 from 0: 3 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 1 from 1: 2 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 2 from 2: 1 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 3 from 3: 2 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 4 from 4: 3464 timelines, 16 violate, 0 s; next END
+   [def metadata] 16; first: (log (do (def ^{:k (quote [x])} v 0) [v (meta-of (var v))])): Clojure [0 {:k [x]}] printing [[0 {:k [x]}]], jank [0 {:k (quote [x])}] printing [[0 {:k (quote [x])}]] (path [4, 13, 0, 1, 0, 0])
+== seg module (AOT) kind 5 from 5: 3464 timelines, 16 violate, 0 s; next END
+   [def metadata] 16; first: (identity (do (def ^{:k (quote [x])} v 0) [v (meta-of (var v))])): Clojure [0 {:k [x]}], jank [0 {:k (quote [x])}] (path [5, 13, 0, 1, 0, 0])
+== seg module (AOT) kind 9 from 9: 12234 timelines, 48 violate, 2 s; next END
+   [def metadata] 48; first: (loop [L2 0] (if (lt L2 2) (recur (inc L2)) (do (def ^{:k (quote [x])} v 0) [v (meta-of (var v))]))): Clojure [0 {:k [x]}], jank [0 {:k (quote [x])}] (path [9, 0, 13, 0, 1, 0, 0])
+== seg module (AOT) kind 13 from 13: 20784 timelines, 6980 violate, 3 s; next END
+   [def metadata] 6980; first: (do (def ^{:k 1} v (do (def ^{:k (quote [x])} v 0) [v (meta-of (var v))])) [v (meta-of (var v))]): Clojure [[0 {:k [x]}] {:k 1}], jank [[0 {:k (quote [x])}] {:k 1}] (path [13, 0, 0, 13, 0, 1, 0, 0])
+== seg module (AOT) kind 15 from 15: 2 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 16 from 16: 4078 timelines, 16 violate, 0 s; next END
+   [def metadata] 16; first: (loop [M2 0] (let [z (do (def ^{:k (quote [x])} v 0) [v (meta-of (var v))])] (if (lt M2 2) (recur (inc M2)) z))): Clojure [0 {:k [x]}], jank [0 {:k (quote [x])}] (path [16, 13, 0, 1, 0, 0])
+== seg module (AOT) kind 17 from 17: 3464 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 18 from 18: 1 timelines, 0 violate, 0 s; next END
+== seg module (AOT) kind 19 from 19: 2 timelines, 0 violate, 0 s; next END

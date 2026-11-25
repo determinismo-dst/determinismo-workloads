@@ -1,0 +1,202 @@
+ROUND 5, AREA C: CODEGEN PROOFS — round 2's depth-2 control world
+jank main 94d32623 (upstream-r5/). Its compiler+runtime tree is byte-identical to 7135b7708, so
+round 2's and 3's line numbers stand; paths below are upstream-r5/compiler+runtime/<path>.
+
+Files: Jank/R5/Codegen/Tree.lean, Gen.lean, Distinct.lean, Sub.lean, Visit.lean;
+Run/R5/Codegen.lean (exe jank5-codegen); results/r5-codegen-checks.txt, r5-codegen-sub.txt,
+r5-codegen-census2.txt, r5-codegen-axioms.txt; scripts in .r5-scratch/codegen/.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+None new. The runs found only R43 in AOT mode (def metadata kept as code text:
+`(def ^{:k '[x]} v 0)` then `(:k (meta #'v))` is `(quote [x])` in jank, `[x]` in Clojure), the
+class round 3 already reported for this world ("module 7,402, all R43"). It is reachable because
+the clean grammar keeps the quoted metadata value for AOT (ProgSearch.lean 130–131); counts in
+section 7. No test: R43 has round 2's.
+
+======================================================================
+2. PROOFS
+======================================================================
+The world. Round 2's control (Jank/Codegen/ProgSearch.lean, `run cfg 2 src true`): a program drawn
+by `genE 2 { clean := true } true` runs through Clojure's meaning (`Spec.run`) and jank's pipeline
+(`jankRun`, Pipeline.lean: the analyzer replica, IR, passes, the emitted C++ text, its parse and
+check (CppAst), and its run (Exec)); the property is `agree`: the same value and output, both
+throw, or a model gap on one side (not a result). Modes: eval -O0 (the JIT, the REPL, `jank run`)
+and module (AOT, static runtime). The clean grammar leaves out every production of a class
+rounds 2–3 found: operator effects (R37), munge-alike names (R38: only x, y), loop names shared
+by nesting (R39: L<depth>, M<depth>), `my-f` (R40), two letfns (R41), `[[]]`/`[()]` (R42), local
+references in def metadata (R43 JIT), case keys past i32 (R44), the mixed-type case (R26),
+`(fn f [f] …)` (R47). R43 for AOT (quoted metadata) stays in.
+
+2a. Proved (no sorry, no native_decide, no new axiom; `#print axioms` in r5-codegen-axioms.txt
+shows only propext, Classical.choice, Quot.sound)
+- The generator as a decision tree. genE/genFnCall are `partial`, so nothing can be proved about
+  them. Tree.lean defines `DT` (a decision node per recorded decision, one child per option; a
+  decision with one option is no node, as Decisions.next records none) as a monad, with
+  `leaves` (timelines), `walk` (a path's value and decisions) and the counting lemmas
+  (`leaves_bind_const`, `leaves_dec`, `leaves_pick`, Sub.lean `leaves_pick_bind`,
+  `bind_assoc`). Gen.lean's `genT` restates the clean branches of ProgSearch.lean 60–181 in it,
+  with the same decisions in the same order, names and option counts. It is checked against the
+  original (section 7): every depth-1 timeline, every timeline of the small depth-2 partitions,
+  random depth-2 timelines; forms and decision lists identical.
+- ★ `leaves_genT` (every depth d, every context without a recur target): genT d c t has exactly
+  `cnt d (length c.locals)` timelines, `cnt` a closed recurrence over the 20 productions and 3
+  fn kinds. The proof carries `recurArity = none` into every subexpression, so it also shows the
+  clean grammar never builds a recur target (kind 14 always draws a `try`).
+- ★ `world1`: the depth-1 world has exactly 3,464 timelines (round 2's complete walk: equal).
+- ★ `world2`: the depth-2 world has exactly 354,197,993,668 timelines. Round 4's Knuth estimate
+  (≈3.3·10¹¹) was 7% low.
+- ★ `leaves_genK1`, `subWorld_size`: the sub-world of 2d has exactly 9,246,393 timelines.
+
+Exact sizes per root kind at depth 2 (timelines / distinct programs, see 2b):
+  0 int 3/3; 1 keyword 2/2; 2 local 1/0; 3 literal 2/2; 4 (log e) 3,464/2,793;
+  5 (identity e) 3,464/2,793; 6 (vector a b) 11,999,296/7,800,849; 7 let 28,252,384/19,914,090;
+  8 let2 312,527,871,808/159,591,517,260; 9 loop 12,234/11,802;
+  10 if 41,565,561,344/21,787,771,257; 11 do 11,999,296/7,800,849;
+  12 fn call 28,263,447/19,923,869; 13 def 20,784/16,758; 14 try 23,998,592/15,601,698;
+  15 case 2/2; 16 loop2 4,078/3,934; 17 list? 3,464/2,793; 18 `3` 1/1; 19 case1 2/2.
+  Total 354,197,993,668 / 181,450,370,757. Depth 3: 1.78·10³⁶ timelines.
+
+2b. The reduction used: distinct programs
+`ProgSearch.body` (ProgSearch.lean 222–231) draws the form e, then compares Spec.run [e] with
+jankRun [e] cfg, so the verdict is a function of e: timelines that draw the same program have
+the same verdict. In the clean grammar a program is drawn twice only at a leaf (kind 2 with no
+local in scope is the form 0, which kind 0 draws too; a pick among locals that repeat a name);
+every other production writes what it drew into the form. `distinctCount` (Distinct.lean)
+counts by that rule: 2,793 programs at depth 1 and 181,450,370,757 at depth 2. The count is
+computed, not proved: it equals the number of distinct program texts on every depth-1 timeline
+and on every small depth-2 partition (section 7).
+
+2c. Not done: the property for every input, or a reduction that completes the world
+Where it stops: the two root productions with three depth-1 subexpressions,
+  let2 (kind 8): 312,527,871,808 timelines, 159,591,517,260 distinct programs;
+  if (kind 10): 41,565,561,344 timelines, 21,787,771,257 distinct programs;
+together 99.97% of the world. Every other root kind has at most two subexpressions and at most
+28,263,447 timelines.
+
+Why the property was not proved for every input. jankRun runs about 100 `partial` definitions
+(Analyzer/Processor 30, Codegen/Processor 19, CppAst 14, Exec 11, Cpp 8, Surface 9, and others),
+which are opaque to proofs. A total restatement would have to carry, besides the analyzer and the
+code generator, a print/parse round trip of the emitted C++ text (Cpp.lean → CppAst.parseProgram)
+and the interpreter of that text: a correctness proof of a compiler for this fragment.
+
+Why no compositional reduction (the outcome of `(if c t e)` or `(let [n1 v1 n2 v2] b)` from the
+outcomes of its subexpressions). jank's pipeline threads state across siblings by construction,
+so "a subexpression means the same whatever its siblings are" is the statement that would need
+the proof. Each of these points is a mechanism an earlier round found a deviation through:
+  1. Lifted constants: one map per module keyed by very_equal_to_with_meta (ir/builder.cpp
+     99–123, emitted at codegen/cpp_processor.cpp 2071 and 2160–2175; Ir.lean bLiteral): a
+     literal in one sibling is the object another sibling gets (R42).
+  2. local_to_loop_shadow: set at loop entry (ir/processor.cpp 270, 541), read by recur (422,
+     439) and never restored (Processor.lean genLet): a sibling's loop leaves entries that a
+     later recur reads by munged name (R39).
+  3. A compound form's type and its children's positions depend on every branch:
+     find_branch_common_type (analyze/processor.cpp 2741 for if, 1509 for case) and
+     propagate_position (ir/processor.cpp 663, 756, 813) (R23, S57).
+  4. The locals map is keyed by munged name (ir/processor.cpp 206, 249, 519; Processor.lean
+     localsIndex/setLocalName) (R38).
+  5. __rt_ctx->unique_string is one process-wide counter (ir/builder.cpp 107, 281, 307;
+     cpp_processor.cpp 83, 1974; analyze/processor.cpp 1853, 2416): every identifier a sibling
+     emits depends on what the siblings before it emitted.
+The clean grammar avoids each mechanism's trigger, which is why it is a control; "it avoids the
+trigger, so the siblings don't interact" is a statement about the code generator's state on every
+program, the same correctness proof.
+- Symmetry: renaming x↔y and :a↔:b would at most quarter the distinct programs (to ≈4.5·10¹⁰).
+  Neither renaming can be proved to leave jankRun's outcome unchanged (C++ identifiers; keyword
+  hashes in the constant map's key), and a quarter is not enough.
+- Independence: no subexpression is dead for jank. A branch Clojure never evaluates is still
+  analyzed, compiled and checked, and could fail to compile.
+- Reduced estimate after what holds: 181,450,370,757 distinct programs, 181,379,288,517 of them
+  under let2 and if. At the rate the sub-world ran (about 3,700 programs/s in eval mode and
+  2,750/s in AOT on one core, with children smaller than the full world's), the distinct programs
+  alone would take at least 570 core-days in eval and 760 in AOT; a walk over timelines, which is
+  what a decision walk enumerates, at least 1,100 and 1,490.
+
+2d. What was run instead (section 7): every root kind with at most one depth-1 subexpression
+completely in both modes; the sub-world below completely in both modes; the two-subexpression
+root kinds as far as the shared job slots allowed.
+Sub-world (Sub.lean): root let2 or if, each depth-1 subexpression from the productions with at
+most one leaf subexpression (kinds 0–5, 9, 13, 15–19). It meets every pair and triple of such
+siblings: shared constants, loops and defs side by side, every leaf kind in the condition and
+both branches, the let2 bindings over each other. Exactly 9,246,393 timelines (★ subWorld_size).
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+Nothing new from jank's C++: this area restates round 2's own generator (ProgSearch.lean 60–181,
+clean branches) and round 2's verdict (ProgSearch.lean 222–231, Visit.lean `verdict`, checked
+against ProgSearch.run in both modes on random timelines). The pipeline is round 2's
+(Pipeline.lean jankRun), unchanged, at 94d32623 lines identical to 7135b7708's.
+
+======================================================================
+4. STILL LEFT OUT, AND WHY
+======================================================================
+- The property for every input and a completing reduction (2c).
+- let2 and if beyond the sub-world: 354,084,186,759 timelines of the two kinds (both modes).
+- The two-subexpression root kinds where section 7 records a stop.
+- -O1 and -O3 (round 2's control modes were -O0 and AOT; the -O1/-O3 classes R45–R48 are not
+  left out of the clean grammar for those levels).
+
+======================================================================
+5. ASSUMPTIONS
+======================================================================
+- CodegenA5-1. The restated generator is the original: checked, not proved (section 7). Every
+  count theorem is about the restatement.
+- CodegenA5-2. The distinct-program rule of 2b: checked on depth 1 and the small depth-2
+  partitions, not proved.
+Round 2's G assumptions and round 3's codegen assumptions stand. Replaced: round 4's Knuth
+estimate of the world's size (by world2).
+
+======================================================================
+6. PROPERTIES CHECKED, WITH THEIR SOURCES
+======================================================================
+- The emitted program means what Clojure means (round 2's property 7): clojure.org/reference/
+  evaluation and special_forms; Compiler.java (DefExpr metadata, 1.12.0 clojure-ref/); as Spec.lean
+  states them.
+- The restatement draws what the original draws (forms and decisions, Determinismo Decide.lean
+  `Decisions.next`, `pick`).
+
+======================================================================
+7. SEARCH RUNS
+======================================================================
+(filled by the coordinator from results/r5-codegen-checks.txt, r5-codegen-sub.txt, r5-codegen-census2.txt)
+- Restatement checks: every depth-1 timeline (3,464; 2,793 distinct programs), every timeline of the
+  depth-2 partitions of kinds 0-5, 9, 13, 15-19, and 3,000 random depth-2 timelines (mixed seeds): forms
+  and decisions identical to ProgSearch.lean's; verdict copy vs ProgSearch.run in both modes: 0 differ.
+- Root kinds with at most one depth-1 subexpression (0-5, 9, 13, 15-19), both modes: complete, 47,501
+  timelines each. eval -O0: 0 violate. AOT: 7,076 violate (kind 4: 16, 5: 16, 9: 48, 13: 6,980, 16: 16),
+  all R43 (def metadata kept as `(quote [x])`).
+- Sub-world (root let2 or if over the one-leaf productions), complete in both modes, 9,246,393 timelines
+  each (= subWorld_size), in two resumable segments per mode:
+    eval -O0: 4,796,000 + 4,450,393, 0 violate, 0 model gaps (1,300 s + 1,306 s);
+    AOT: 4,680,000 + 4,566,393, 667,833 + 639,247 violate, 0 model gaps (1,700 s + 1,519 s), all R43
+    (classes "def metadata", "def metadata (throws)", and "evaluation order", whose examples differ only
+    in the logged R43 value).
+- Root kind 6 (vector a b), eval -O0: complete, 11,999,296 timelines, 0 violate (1,551 s).
+- Not run: kind 6 in AOT; kinds 7, 11, 12, 14 in both modes; let2 and if beyond the sub-world.
+- Totals: eval -O0 complete over 21,293,190 timelines, AOT over 9,293,894, against round 3's 186,717
+  per mode; nothing but R43 found.
+
+======================================================================
+8. THEOREMS (★ = new for-every-input proof)
+======================================================================
+Tree.lean: DT.sumFin_congr, DT.sumFin_mul, DT.sumFin_const, ★ DT.leaves_bind_const,
+DT.leaves_pure, DT.bind_eq, DT.leaves_bind_const', ★ DT.leaves_dec, ★ DT.leaves_pick.
+Gen.lean: leaves_bind_eq, leaves_dec_bind, ★ leaves_localT, ★ leaves_leafT, ext_count,
+★ leaves_fnKindT, ★ leaves_fnCallT, ★ leaves_kindT, ★ leaves_genT, world1, world2.
+Sub.lean: bind_assoc, ★ leaves_pick_bind, ★ leaves_genK1, subWorld_size.
+
+======================================================================
+9. LIBRARY GAPS
+======================================================================
+- A generator written in sdk/lean's EStateM decisions cannot be counted or reasoned about; a
+  decision-tree monad (`DT`) with `leaves`, `walk` and depth-first resumable visiting
+  (`visitFrom`) was built here. A `partial` generator also blocks proofs: the restatement is
+  structural on depth.
+- Census segments that resume from a printed path (Run/R5/Codegen.lean `seg`, `sub`).
+
+======================================================================
+10. PROJECTS TRANSLATED
+======================================================================
+None new (round 2's own Lean code restated).

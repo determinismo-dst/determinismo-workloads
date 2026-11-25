@@ -1,0 +1,91 @@
+Round 5, step 1: catching up to jank main 94d32623 (2026-11-25)
+===================================================================
+
+1. 7135b770 -> 94d32623 (round 4's commit -> this round's)
+-----------------------------------------------------------
+- One commit: 94d32623 "Automatically set DEVELOPER_DIR (#1244)", 2026-11-24.
+- `git -C upstream-r5 diff --stat 7135b770 94d32623`: lein-jank/src/jank_build/util.clj only
+  (+26 -2: a `developer-dir` delay and `sh` setting DEVELOPER_DIR for children on macOS; lein-jank is
+  the Leiningen plugin, run on the JVM, no round replicates it).
+- `diff -rq upstream-main/compiler+runtime upstream-r5/compiler+runtime`: no output. The trees are
+  byte-identical, and every third-party submodule pin is the same (git ls-tree of
+  compiler+runtime/third-party at both commits).
+- Consequence: every replicated function is unchanged. Every prediction of rounds 1-4 has on
+  94d32623 exactly the status it had on 7135b7708, at the same file and line numbers. None changed
+  and none is gone in this step.
+
+2. f3d82d654 -> 94d32623 (what rounds 1-3 replicated)
+-----------------------------------------------------
+- 33 commits (7a1936cf 2026-11-11 ... 94d32623 2026-11-24); every compiler+runtime change is in
+  f3d82d654..7135b770. Round 2 compared those two trees without history
+  (results/upstream-f3d82d654-to-7135b7708-files.txt); with the history now readable, git's list of
+  changed non-test compiler+runtime files (50) is covered by round 2's list, plus the cppinterop
+  submodule pin f7e840b4 -> 28b0830d, which round 3 replicated at 28b0830d.
+- The commits behind each status change round 2 recorded (statuses unchanged since):
+  - D11 (= across non-sequential seqables) gone: 18b30dcf "Fix sequence equality with nil (#1222)",
+    seq.cpp sequence_equal 881-893 (is_sequential at 890), seq_ext.hpp equal 13-23.
+  - D14 (array-map transient shares its source) gone: f4ba1985 "Clone array maps when making them
+    transient (#1232)", transient_array_map.cpp 24-27 (`data{ d.clone() }`).
+  - D15 (transient vector nth after persistent!) gone: 607de3f9 "Check transient vector state on nth
+    (#1237)", transient_vector.cpp 53-56.
+  - D20 (deliver returns the promise every time) gone: 9149241e "Return nil when a promise is already
+    delivered (#1231)", promise.cpp 24-37.
+  - F1 (sort of [] gave a broken seq) gone: 7a1936cf "Fix `sort` of empty values (#1182)".
+  - F2-F8 gone and R126, R131, R132, R135, R137 changed, R138, R139, R140 new: 44eea86f "Various
+    nREPL compatibility/robustness fixes per "proof" (#1175)" (server.cpp, bencode.jank, core.jank,
+    handler.jank and handler/*.jank).
+  - R24 and R86 changed (truncation instead of a throw): 7fb70c1c "Allow implicit numeric trait
+    conversions (#1206)", convert/builtin.hpp 236-238 and 286-288.
+  - R120 changed (lazy and string seqs fixed): 2a4777bd "Fix `coll?` for lazy/persistent_string
+    sequence (#1192)".
+  - R26 new (case branches forced to one C++ type): 1b468573 "Improve `case` special form branch
+    analysis for C++ interop (#1116)", analyze/expr/case.cpp, cpp_util.cpp.
+  - Everything else round 1 cites (math.hpp, oref.hpp, math.cpp, big_decimal.cpp, hash.cpp,
+    persistent_vector.cpp, persistent_array_map.cpp, native_array_map.hpp, atom.cpp, core.jank,
+    delay.cpp, core.cpp, context.cpp, var.cpp, scope_exit.cpp, big_integer.cpp) has no commit in
+    f3d82d654..94d32623 (git log per file); lazy_sequence.cpp gained only `empty()` after line 110
+    (2a4777bd), below D12's hash lines 98-105; cpp_processor.cpp's two commits (220b42c9, a013d8df)
+    leave D24's try/scope_exit code (1054-1139) alone. So D1-D10, D12, D13, D16-D19, D21-D25 hold.
+
+3. The 59 "changed" citations in drift-94d32623.txt
+---------------------------------------------------
+Each was read at 94d32623 against the Lean comment that cites it (.r5-scratch/drift-cites.txt has
+the Lean context of each; the list is .r5-scratch/drift-list.txt). Verdict: all 59 already use
+7135b7708's numbering, which is 94d32623's, and the text at each cited line is the code the replica
+describes. No replicated behavior changed. Why the list flagged them:
+- it takes every round 1-3 citation as f3d82d654's; round 2 re-cited the models it kept at
+  7135b7708 (many comments say so: "7135b7708, cpp_util.cpp:388-397", "builtin.hpp:238 at
+  7135b7708", "seq.cpp:881 at 7135b7708", "7135b7708 lex.cpp:828-836", "handler/eval.jank 27-29:
+  jank does so since 7135b7708"), and round 3 cites 7135b7708 throughout;
+- bare file names resolved to the wrong jank file: `processor.hpp:75-101` (Jank/Codegen/Ir.lean:319,
+  `ir::module`) is include/cpp/jank/ir/processor.hpp 75-101 (`struct module`), not jit/processor.hpp;
+  `processor.cpp` ranges in Jank/Codegen/Ir.lean and Jank/Codegen/Processor.lean (find_block 48,
+  arity_flags 339-369, gen(function) 371-405 with the capture type at 394, gen(named_recursion) 459,
+  gen(let) 510-590 with 523-524, gen(letfn) 592, gen(if) 647, gen(try) 727) are ir/processor.cpp,
+  where each line is exactly that function at 94d32623, not analyze/ or aot/processor.cpp.
+Checked line by line at 94d32623 (file: cited lines -> what is there):
+- convert/builtin.hpp 238, 288 -> `static_cast<T>(o.to_integer())`, `static_cast<T>(o.to_real())`.
+- seq_ext.hpp 15 -> inside `equal` (13-23), the is_sequential check (17) the replica models.
+- cpp_util.cpp 388-397 -> the class-nested alias spelled by its canonical type; 1064
+  `mutable_type`; 1157 `non_void_type`.
+- analyze/processor.cpp 75-1217 (helpers), 367-505 (operator calls), 655-695 (is_ctor branch of the
+  matched-overload build), 2603 `analyze_loop`, 2644 `analyze_if`, 5372-5560 (`:member` forms).
+- codegen/cpp_processor.cpp 131-213 `lift_constant` (172: is_typed_object_ref), 1287-1338
+  `gen(cpp_into_object)`/`gen(cpp_from_object)`, 1321 `"auto &&{}(…convert<{}>…)"`, 1352-1440
+  `gen(cpp_call)`.
+- jit/processor_dynamic.cpp 165-307 -> the JIT's clang arguments, -O at 285-298, -g removal 301-.
+- nrepl/server.cpp 37-41 (read error ends the connection), 46-55 (`boost::asio::write`).
+- read/lex.cpp 547-1526 `processor::next`, 671-673/1159-1161 the number case and its fall-through,
+  828-836 the radix-denominator error (c5c27d18).
+- runtime/core/seq.cpp 881 `sequence_equal`; obj/promise.cpp 24-37 `promise::call`;
+  obj/transient_array_map.cpp 24-27 the cloning constructor.
+- nrepl/server/core.jank 86 (log of the abbreviated request), handler.jank 5-8 (:default ->
+  unknown-op), handler/describe.jank 5-17 (the ops), handler/eval.jank 27-29 (namespace-not-found),
+  31-36 (with-capture/binding), 41-42 (:out/:err when not blank), handler/lookup.jank 11 (fallback
+  to default-ns).
+The other 3,357 citations the list counts as "moved" keep their text; 0 cited files are gone.
+
+4. Round 4's run on 7135b7708 (validation/round-4-evidence.txt) and 94d32623
+----------------------------------------------------------------------------
+Every result there is a result on 94d32623 too (same compiler+runtime tree). Round 5 does not
+re-derive them; REPORT-5 notes where a round-5 item rests on one (U44, U45, U62-U64).

@@ -33,6 +33,22 @@ and D19; each has a test in its `test/`. D18: its strict-serializable-per-key ke
 The reports' `scratch/...` paths (the cases, Elle's and the service's answers, the patched
 namespaces as checked, the suite logs) are under [evidence/scratch/](evidence/scratch/).
 
+## Elle as written, our deployed Elle, and proposed fixes
+
+The replica is Elle as written: every switch in `Opts` (Elle/Txn.lean) defaults to `false`, and a
+search compares that with a run where some are on. The switches stand for three different things:
+
+- **Elle as written (Elle 0.2.8 / main 4e359e5):** every switch off. This is what the searches
+  call "Elle".
+- **Our deployed service** (determinismo's checkers/elle: patched namespaces loaded ahead of
+  Elle's jar, running in every determinismo check): `fixD3`, `fixD13`, `cpFixed` (D9, D10, D11)
+  and `perKeyFixed` (D19), together `Service.check (deployed := true)`.
+- **Proposed, deployed nowhere:** round 3's `fixD1`, `fixD2`, `fixD4`, `fixD5`, `fixD6`, `fixD7`,
+  `fixD8`, `fixD12`, `fixD20`, `fixD21`, `fixD22`. Each is checked here and as a patch of the
+  deployed namespaces (REPORT-3.md says which are safe); none is in Elle or in our service yet.
+
+When a proposal is deployed, this section moves it to the second list.
+
 ## Building and running
 
 With [elan](https://github.com/leanprover/elan) installed (it takes the Lean version from

@@ -20,6 +20,9 @@ departures from what they document; each prediction then checked on the real sys
   libraries it builds on (rounds 1-4), with tests run on jank.
 - [elle/lean](workloads/elle/README.md): Elle, Jepsen's consistency checker that determinismo's
   checks use (rounds 1-2), each finding reproduced on Elle itself.
+- [determinismo/lean](workloads/determinismo/lean/README.md): determinismo itself (its composer,
+  fault injector, verdicts and tapes; round 1): 13 counterexamples, fixed on the platform with a
+  test each that fails on the old code.
 
 Each replica cites the upstream lines it copies at the commit its round read. When upstream moves
 on, [workloads/lean-drift.py](workloads/lean-drift.py) maps every citation through the diff and

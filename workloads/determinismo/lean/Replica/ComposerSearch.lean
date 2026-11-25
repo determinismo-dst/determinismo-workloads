@@ -72,6 +72,20 @@ def worlds : List World :=
       scenario := { commands := [cmd "drive" .parallel_driver [1, 3] [.code 0, .code 1], cmd "check" .eventually [1]],
                     minDriveMs := some 0 }
       cmdline := { swarmOff := true }
+      consts := { Consts.tiny with pauseMax := 3 } },
+    -- Round 2's worlds.
+    { label := "a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm"
+      scenario := { commands := [cmd "holding" .parallel_driver [400], cmd "next" .parallel_driver [1]],
+                    parallelMax := some 1 }
+      cmdline := { swarmOff := true, timelineLimitMs := some 600 } },
+    { label := "singleton (1 or 200 ms) + parallel, drive_ms_max 60 ms, no swarm"
+      scenario := { commands := [cmd "alone" .singleton_driver [1, 200], cmd "drive" .parallel_driver [20]],
+                    driveMsMax := some 60 }
+      cmdline := { swarmOff := true } },
+    { label := "parallel (exits 0, or its own SIGKILL) + eventually, min_drive 0, pauses of 0 to 2 ms, no swarm"
+      scenario := { commands := [cmd "drive" .parallel_driver [1, 3] [.code 0, .signal 9], cmd "check" .eventually [1]],
+                    minDriveMs := some 0 }
+      cmdline := { swarmOff := true }
       consts := { Consts.tiny with pauseMax := 3 } } ]
 
 /-- The story of a world's timeline. -/

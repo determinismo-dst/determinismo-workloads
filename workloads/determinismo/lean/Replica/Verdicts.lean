@@ -2,7 +2,15 @@ import Replica.Prelude
 import Replica.Searching
 
 /-!
-# Property verdicts, replicated
+# Property verdicts, replicated (platform 3939448)
+
+Round 2: a property is its message and its kind (`Property.same`, events.zig:56-61, merged by it
+in report.zig:519-528); a message cut to 192 bytes carries the whole message's hash
+(events.zig:1483-1501, `identity` 50-54); a scenario's `sometimes` reached and never true waits
+for the other scenarios (`unmet_here` 366-370, `failing_violations` 389-396, `sometimes_unmet`
+400-407, main.zig:1106-1156 with `Catalog.made_true`, report.zig:140-145). The catalog stays
+keyed by identity alone, its kind the first noted (report.zig:128-136). The hash here is the
+whole message itself (Wyhash's collisions not modeled).
 
 How assertions become a run's verdict, from the Zig:
 
@@ -50,13 +58,23 @@ structure Timeline where
   events : List AEvent
   deriving Repr, Inhabited
 
-/-- events.zig:21 `Property`. -/
+/-- events.zig:21 `Property`. `full`: the whole message when it was cut (its hash's stand-in). -/
 structure Property where
   kind : AKind
   name : String
+  full : Option String := none
   hits : Nat := 0
   trues : Nat := 0
   deriving Repr, Inhabited
+
+/-- events.zig:50-54 `identity`: the name, and the whole message's hash when cut. -/
+def Property.identity (p : Property) : String :=
+  match p.full with
+  | some f => p.name ++ "#" ++ f
+  | none => p.name
+
+/-- events.zig:56-61 `same`: same kind, same hash, same name. -/
+def Property.same (p q : Property) : Bool := p.kind == q.kind && p.full == q.full && p.name == q.name
 
 /-- events.zig:47 `passing`: whether this timeline violates it. -/
 def Property.passing (p : Property) : Bool :=
@@ -70,11 +88,12 @@ def messageSizeMax : Nat := 192
 /-- events.zig:1457 `property_get_or_put` (its message cut to 192 bytes). -/
 def getOrPut (props : Array Property) (kind : AKind) (message : String) : Except String (Array Property × Nat) :=
   let name := String.ofList (message.toList.take messageSizeMax)
-  match props.findIdx? (·.name == name) with
+  let full := if message.length > messageSizeMax then some message else none
+  match props.findIdx? (fun p => p.name == name && p.full == full) with
   | some i =>
     if props[i]!.kind != kind then .error s!"the assertion \"{name}\" is both {props[i]!.kind.name} and {kind.name}"
     else .ok (props, i)
-  | none => .ok (props.push { kind, name }, props.size)
+  | none => .ok (props.push { kind, name, full }, props.size)
 
 /-- events.zig:1361 `on_assert` (and `emit`'s dispatch, events.zig:417): one line. An event
 carries no property. -/
@@ -112,14 +131,26 @@ def mustHit (k : AKind) : Bool := k == .always || k == .sometimes || k == .reach
 /-- report.zig:348 `unreached_here`. -/
 def Aggregate.unreachedHere (a : Aggregate) : Bool := mustHit a.property.kind && a.branchesHit == 0
 
-/-- report.zig:356 `failing`. -/
+/-- report.zig:372 `failing`. -/
 def Aggregate.failing (a : Aggregate) : Bool :=
   if a.unreachedHere then false
   else propertyFailing a.property.kind a.branchesHit a.branchesTrue a.branchesFailing
 
-/-- report.zig:491 `merge` (through `aggregate_find`, 481: by name). -/
+/-- report.zig:366-370 `unmet_here` (no run-level property modeled: run_failing null). -/
+def Aggregate.unmetHere (a : Aggregate) : Bool :=
+  a.property.kind == .sometimes && a.branchesHit > 0 && a.branchesTrue == 0
+
+/-- report.zig:389-396 `failing_violations`. -/
+def failingViolations (aggs : Array Aggregate) : Nat :=
+  (aggs.filter fun a => a.failing && !a.unmetHere).size
+
+/-- report.zig:400-407 `sometimes_unmet`: identities. -/
+def sometimesUnmet (aggs : Array Aggregate) : List String :=
+  (aggs.filter (·.unmetHere)).toList.map (·.property.identity)
+
+/-- report.zig:519-528 `merge` (through `aggregate_find`: by `same`, kind included). -/
 def merge (aggs : Array Aggregate) (p : Property) : Array Aggregate :=
-  let (aggs, i) := match aggs.findIdx? (·.property.name == p.name) with
+  let (aggs, i) := match aggs.findIdx? (·.property.same p) with
     | some i => (aggs, i)
     | none => (aggs.push { property := p }, aggs.size)
   let a := aggs[i]!
@@ -144,11 +175,17 @@ def catalogNote (cat : List (String × AKind × Bool)) (kind : AKind) (name : St
   | some _ => cat.map fun (n, k, r) => if n == name then (n, k, r || reached) else (n, k, r)
   | none => cat ++ [(name, kind, reached)]
 
-/-- report.zig:713 `catalog_reached`. -/
+/-- report.zig:752-765 `catalog_reached` (by identity). -/
 def catalogReached (cat : List (String × AKind × Bool)) (aggs : Array Aggregate) : List (String × AKind × Bool) :=
   aggs.foldl (fun cat a =>
     let reached := a.branchesHit > 0 && !propertyFailing a.property.kind a.branchesHit a.branchesTrue 0
-    catalogNote cat a.property.kind a.property.name reached) cat
+    catalogNote cat a.property.kind a.property.identity reached) cat
+
+/-- report.zig:140-145 `made_true`: the entry by identity, whatever its kind. -/
+def catalogMadeTrue (cat : List (String × AKind × Bool)) (identity : String) : Bool :=
+  match cat.find? (·.1 == identity) with
+  | some (_, _, r) => r
+  | none => false
 
 /-- report.zig:142 `judge`: how many unreached must-hit assertions fail. -/
 def catalogJudge (cat : List (String × AKind × Bool)) (everyScenario : Bool) : Nat :=
@@ -160,10 +197,16 @@ that ended it. `scenarios`: the scenarios explored, each its timelines in the or
 def explorerExit (scenarios : List (List Timeline)) (all : Nat) : Except String Nat := do
   let mut failingScenarios := 0
   let mut cat : List (String × AKind × Bool) := []
+  let mut unmet : List (List String) := []
   for ts in scenarios do
     let aggs ← multiverse ts
-    if aggs.any (·.failing) then failingScenarios := failingScenarios + 1
     cat := catalogReached cat aggs
+    -- main.zig:1143-1147 (3939448)
+    if failingViolations aggs > 0 then failingScenarios := failingScenarios + 1
+    else unmet := unmet ++ [sometimesUnmet aggs]
+  -- main.zig:1150-1155
+  for messages in unmet do
+    if messages.any (!catalogMadeTrue cat ·) then failingScenarios := failingScenarios + 1
   if catalogJudge cat (scenarios.length == all) > 0 then failingScenarios := failingScenarios + 1
   return if failingScenarios > 0 then 3 else 0
 
@@ -270,13 +313,19 @@ def showExit : Except String Nat → String
   | .ok n => s!"exit {n}"
   | .error e => s!"error: {e}"
 
+/-- An exit as the order-independence property compares it: an error (the worker ends, whichever
+timeline's mistake it names) or a status. -/
+def exitClass : Except String Nat → String
+  | .ok n => s!"exit {n}"
+  | .error _ => "an error"
+
 def orderIndependent : VProp :=
   { name := "the exploration's verdict does not depend on the order its timelines end"
     source := "README_AI.md: \"Branches run on every CPU (--jobs, same timelines as one worker)\"; report.zig:506: \"the summary does not depend on which worker finished first\"; ARCHITECTURE.md M9: \"parallel = sequential\""
     check := fun canon ended =>
       let a := explorerExit canon.timelines canon.timelines.length
       let b := explorerExit ended.timelines ended.timelines.length
-      if showExit a == showExit b then none
+      if exitClass a == exitClass b then none
       else some s!"in one order {showExit a}, in another {showExit b}" }
 
 def explorerAsDocumented : VProp :=
@@ -325,8 +374,30 @@ def eventsNoProperties : VProp :=
       if showExit withEvents == showExit without then none
       else some "an event changed the verdict" }
 
+/-- serve.zig:5904-5918 `recorded_status`: a run's status from its record's last summary (a
+summary per scenario; one scenario here): 3 when a summary line says `"failing":true` (each
+aggregate's `failing()`, report.zig:830) or a timeline failed (`failing_branches`), else 0. What
+an adopted run ends with (serve.zig:5983 in `runs_reap`, and 5821 in `runs_adopt`): the
+explorer's own `exit` file (main.zig:1166-1175) is not read there. -/
+def recordedStatus (ts : List Timeline) : Except String Nat := do
+  let aggs ← multiverse ts
+  let failingBranches := aggs.any (·.branchesFailing > 0)
+  return if aggs.any (·.failing) || failingBranches then 3 else 0
+
+def serveAdoptedAgrees : VProp :=
+  { name := "a run's state is the same whether serve reaped its explorer or adopted it across a restart"
+    source := "docs/AGENTS.md: \"A restarted serve adopts the runs still going\"; main.zig:1166-1170: \"How it ends, in its run's directory: serve learned it only from runs it reaped itself, and read the others' (... every run adopted across a restart) from their timelines' failing always properties alone\" (the exit file written for them); serve.zig:5912 \"A failing property fails the run, as explore exits\""
+    check := fun _ ended =>
+      if ended.timelines.length != 1 then none else
+      match explorerExit ended.timelines 1, recordedStatus ended.timelines[0]! with
+      | .ok reaped, .ok adopted =>
+        if reaped == adopted then none
+        else some s!"reaped: status {reaped} ({if reaped == 3 then "failed" else "passed"}); adopted: status {adopted} ({if adopted == 3 then "failed" else "passed"})"
+      | _, _ => none }
+
 def allVProps : List VProp :=
-  [orderIndependent, explorerAsDocumented, serveAsDocumented, explorerMatchesServe, eventsNoProperties]
+  [orderIndependent, explorerAsDocumented, serveAsDocumented, explorerMatchesServe, eventsNoProperties,
+   serveAdoptedAgrees]
 
 def judgeV (p : VProp) (wd : VWorld) (source : Source) : Ended :=
   match (do
@@ -372,7 +443,19 @@ def vworlds : List VWorld :=
       scenarios := 2, perScenario := 1 },
     { label := "one scenario, two timelines, two always messages sharing their first 192 bytes"
       menu := [.eval .always longA true, .eval .always longB false, .eval .always longB true, .declare .always longB],
-      lines := 2 } ]
+      lines := 2 },
+    -- Round 2's worlds.
+    { label := "one scenario, two timelines, one line each: a sometimes never true, or the message under another kind"
+      menu := [.eval .sometimes "m" false, .eval .always "m" true, .eval .always_or_unreachable "m" true,
+               .eval .reachable "m" true] },
+    { label := "one scenario, two timelines, one declaration each, of three kinds"
+      menu := [.declare .always_or_unreachable "m", .declare .reachable "m", .declare .sometimes "m"] },
+    { label := "two scenarios, one timeline each: a sometimes never true, or the message under another kind"
+      menu := [.eval .sometimes "m" false, .eval .sometimes "m" true, .eval .reachable "m" true],
+      scenarios := 2, perScenario := 1 },
+    { label := "one scenario, one timeline, two lines: declared must-hit assertions, reached or not"
+      menu := [.declare .reachable "m", .declare .always "m", .eval .reachable "n" true, .eval .always "n" true],
+      perScenario := 1, lines := 2 } ]
 
 /-- Every property over every world: each world's first counterexample (each world is one kind of
 mistake the search may find). -/

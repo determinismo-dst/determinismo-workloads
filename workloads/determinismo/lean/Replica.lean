@@ -7,3 +7,7 @@ import Replica.Faults
 import Replica.Verdicts
 import Replica.Tape
 import Replica.Theorems
+import Replica.Clock
+import Replica.Junit
+import Replica.Persist
+import Replica.Theorems2

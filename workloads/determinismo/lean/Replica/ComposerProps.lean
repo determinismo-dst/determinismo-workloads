@@ -176,8 +176,13 @@ def workloadKept : Prop' :=
       if let some (.violation "composer panics" msg) := stop then
         return some s!"the composer panics: {msg}"
       if !w.swarmed then return none
-      let marked := w.commands.any (·.workload)
+      -- Round 2: "marked" among the swarm's commands (a marked singleton or first is no
+      -- driver the swarm keeps: composer.zig:223-225 at 3939448); unmarked, one driver, or with
+      -- anytime commands alone, one of them.
+      let marked := w.commands.any fun c => c.workload && swarmable c.kind
+      let drivers := w.commands.any fun c => isDriver c.kind
       let ok := if marked then w.commands.any fun c => c.workload && c.kept && swarmable c.kind
+        else if drivers then w.commands.any fun c => c.kept && isDriver c.kind
         else w.commands.any fun c => c.kept && swarmable c.kind
       if ok then none else some (if marked then "no marked driver kept" else "no driver kept") }
 
@@ -233,10 +238,29 @@ def noStartPastHalfLimit : Prop' :=
           return some s!"{describeInst w i} starts past {ds + limit / 2}"
       return none }
 
+/-- Round 2: with a scenario's `drive_ms_max` (or --drive-max) and no --timeline, the driver
+phase's drawn length is at most that: no driver runs past it and the grace. The singleton
+timeline draws none (composer.zig:712-715: "a drawn length doesn't, a singleton running alone to
+its end by design"). -/
+def driveMaxBound : Prop' :=
+  { name := "with drive_ms_max, no driver runs past the driver phase's longest length and its grace"
+    source := "sdk/zig/schema.zig:643-648 Scenario.drive_ms_max: \"The driver phase's length in virtual time, drawn ... drivers started until it passed: a timeline's length no longer follows how slow its commands are\""
+    check := fun w stop => Id.run do
+      if !finished stop then return none
+      if w.cmdline.timelineMs.isSome then return none
+      let some ds := w.driveStart | return none
+      let some maxMs := w.scenario.driveMsMax <|> w.cmdline.driveMsMax | return none
+      let endT := ds + maxMs + w.consts.graceMs
+      for i in w.insts do
+        if !isDriving (kindOf w i.cmd) then continue
+        if (i.endedAt.getD (endT + 1)) > endT then
+          return some s!"{describeInst w i} runs past the drive's longest length {maxMs} and its grace (ends by {endT})"
+      return none }
+
 def allProps : List Prop' :=
   [oneEnding, eventuallyAlone, finallyAfterCompletion, finallyAfterCompletionStrict, singletonAlone,
    singletonAloneStrict, serialAlone, parallelismBound, faultsWindow, workloadKept, noPanic,
-   lengthBound, exitsJudged, noStartPastHalfLimit]
+   lengthBound, exitsJudged, noStartPastHalfLimit, driveMaxBound]
 
 /-- One timeline judged by one property. -/
 def judge (p : Prop') (scenario : Scenario) (cmdline : Cmdline) (consts : Consts) (source : Source) :

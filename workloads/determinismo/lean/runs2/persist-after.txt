@@ -1,0 +1,88 @@
+== persistence property: no hole before a kept page of a fresh file
+   source: docs/ANTITHESIS.md (Partial persistence at a power loss): "its new data ... as an ascending run from the start of one of its new ranges, as the flusher writes it (no hole before a kept page of a fresh file)"; nodes.zig:761-765
+search exhaust [no hole before a kept page of a fresh file / fresh files of 1 to 5 pages, each new data or a hole]: FOUND after 534 timelines (8 ms): no hole before a kept page of a fresh file: page 2 kept, page 0 (written before it in the file, new data) lost: zeros under the committed size (shrunk to 9 decisions from 9)
+--- counterexample [no hole before a kept page of a fresh file / fresh files of 1 to 5 pages, each new data or a hole]: no hole before a kept page of a fresh file
+detail: page 2 kept, page 0 (written before it in the file, new data) lost: zeros under the committed size
+values: [2, 1, 0, 1, 0, 0, 0, 0, 1]
+tape:
+{"name":"world.pages","options":5,"value":2}
+{"name":"world.page","options":2,"value":1}
+{"name":"world.page","options":2,"value":0}
+{"name":"world.page","options":2,"value":1}
+{"name":"fault.partial_commit","options":2,"value":0}
+{"name":"partial.chosen","options":3,"value":0}
+{"name":"partial.page","options":3,"value":0}
+{"name":"partial.left","options":2,"value":0}
+{"name":"partial.range","options":2,"value":1}
+story:
+  the file's pages: [new, hole, new]
+  its new data's ranges (first, count): [(0, 1), (2, 1)]
+  written back, in order: [2]
+  journal committed after: true
+  after the power loss: [(0, lost), (1, kept), (2, kept)]
+---
+search exhaust [no hole before a kept page of a fresh file / files of 1 to 4 pages, any page]: FOUND after 1618 timelines (8 ms): no hole before a kept page of a fresh file: page 2 kept, page 0 (written before it in the file, new data) lost: zeros under the committed size (shrunk to 9 decisions from 9)
+--- counterexample [no hole before a kept page of a fresh file / files of 1 to 4 pages, any page]: no hole before a kept page of a fresh file
+detail: page 2 kept, page 0 (written before it in the file, new data) lost: zeros under the committed size
+values: [2, 1, 0, 1, 0, 0, 0, 0, 1]
+tape:
+{"name":"world.pages","options":4,"value":2}
+{"name":"world.page","options":4,"value":1}
+{"name":"world.page","options":4,"value":0}
+{"name":"world.page","options":4,"value":1}
+{"name":"fault.partial_commit","options":2,"value":0}
+{"name":"partial.chosen","options":3,"value":0}
+{"name":"partial.page","options":3,"value":0}
+{"name":"partial.left","options":2,"value":0}
+{"name":"partial.range","options":2,"value":1}
+story:
+  the file's pages: [new, hole, new]
+  its new data's ranges (first, count): [(0, 1), (2, 1)]
+  written back, in order: [2]
+  journal committed after: true
+  after the power loss: [(0, lost), (1, kept), (2, kept)]
+---
+== persistence property: a file's new data is written back as an ascending run
+   source: docs/ANTITHESIS.md (Partial persistence at a power loss): "its new data ... as an ascending run from the start of one of its new ranges"
+search exhaust [a file's new data is written back as an ascending run / fresh files of 1 to 5 pages, each new data or a hole]: FOUND after 536 timelines (8 ms): a file's new data is written back as an ascending run: new pages written back in the order [2, 0] (shrunk to 9 decisions from 9)
+--- counterexample [a file's new data is written back as an ascending run / fresh files of 1 to 5 pages, each new data or a hole]: a file's new data is written back as an ascending run
+detail: new pages written back in the order [2, 0]
+values: [2, 1, 0, 1, 0, 0, 0, 1, 1]
+tape:
+{"name":"world.pages","options":5,"value":2}
+{"name":"world.page","options":2,"value":1}
+{"name":"world.page","options":2,"value":0}
+{"name":"world.page","options":2,"value":1}
+{"name":"fault.partial_commit","options":2,"value":0}
+{"name":"partial.chosen","options":3,"value":0}
+{"name":"partial.page","options":3,"value":0}
+{"name":"partial.left","options":2,"value":1}
+{"name":"partial.range","options":2,"value":1}
+story:
+  the file's pages: [new, hole, new]
+  its new data's ranges (first, count): [(0, 1), (2, 1)]
+  written back, in order: [2, 0]
+  journal committed after: true
+  after the power loss: [(0, kept), (1, kept), (2, kept)]
+---
+search exhaust [a file's new data is written back as an ascending run / files of 1 to 4 pages, any page]: FOUND after 1620 timelines (8 ms): a file's new data is written back as an ascending run: new pages written back in the order [2, 0] (shrunk to 9 decisions from 9)
+--- counterexample [a file's new data is written back as an ascending run / files of 1 to 4 pages, any page]: a file's new data is written back as an ascending run
+detail: new pages written back in the order [2, 0]
+values: [2, 1, 0, 1, 0, 0, 0, 1, 1]
+tape:
+{"name":"world.pages","options":4,"value":2}
+{"name":"world.page","options":4,"value":1}
+{"name":"world.page","options":4,"value":0}
+{"name":"world.page","options":4,"value":1}
+{"name":"fault.partial_commit","options":2,"value":0}
+{"name":"partial.chosen","options":3,"value":0}
+{"name":"partial.page","options":3,"value":0}
+{"name":"partial.left","options":2,"value":1}
+{"name":"partial.range","options":2,"value":1}
+story:
+  the file's pages: [new, hole, new]
+  its new data's ranges (first, count): [(0, 1), (2, 1)]
+  written back, in order: [2, 0]
+  journal committed after: true
+  after the power loss: [(0, kept), (1, kept), (2, kept)]
+---

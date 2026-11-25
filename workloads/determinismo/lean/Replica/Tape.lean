@@ -2,7 +2,14 @@ import Replica.Prelude
 import Replica.Searching
 
 /-!
-# Tapes and replay, replicated
+# Tapes and replay, replicated (platform 3939448)
+
+Round 2: a fork's index and serve's status pull say their `decision` event whether answered or
+replayed (vm.zig:3691-3694, 3805-3806); `check` stops a replay past the next checkpoint's count
+(tape.zig:223-233); `checkpoint_keep` thins again until a slot frees (tape.zig:593-608); and the
+tables a replay loads its tape into are modeled with their sizes: `override_count_max` (65,536,
+tape.zig:8, `override_parse` 554-556) and `reason_count_max` (1,024, tape.zig:117, 565-567), a
+fuller tape refused (`TapeTooLong`).
 
 A timeline's inputs recorded and replayed (src/core/tape.zig, src/core/vm.zig, src/core/decisions.zig):
 
@@ -94,6 +101,10 @@ structure Consts where
   interval : Nat := 4
   /-- checkpoint_count_max (16,384). -/
   checkpointMax : Nat := 3
+  /-- override_count_max (65,536): the overrides a replay holds. -/
+  overrideMax : Nat := 1000000
+  /-- reason_count_max (1,024): the decisions' reasons a replay holds. -/
+  reasonMax : Nat := 1000000
   deriving Repr, Inhabited
 
 /-- tape.zig:603 `checkpoint_kept`. -/
@@ -104,7 +115,9 @@ def kept (interval events every : Nat) : Bool := (events / interval) % every == 
 def checkpointKeep (c : Consts) (o : Overrides) (cp : Nat × UInt64) : Except String Overrides := do
   if !kept c.interval cp.1 o.checkpointEvery then return o
   let mut o := o
-  if o.checkpoints.size == c.checkpointMax then
+  -- tape.zig:595-606 (3939448): thinned again until a doubling frees a slot.
+  for _ in [0:32] do
+    if o.checkpoints.size != c.checkpointMax then break
     let every := o.checkpointEvery * 2
     o := { o with checkpointEvery := every,
                   checkpoints := o.checkpoints.filter fun e => kept c.interval e.1 every }
@@ -120,9 +133,13 @@ def parse (c : Consts) (lines : List Line) : Except String Overrides := do
     match l with
     | .checkpoint e h => o ← checkpointKeep c o (e, h)
     | .override pull value reason =>
+      -- tape.zig:554-556 and 565-567: the tables' sizes.
+      if o.entries.size == c.overrideMax then throw "TapeTooLong (override_count_max)"
       let kind := kindOf reason
       o := { o with entries := o.entries.push { pull, value, kind } }
-      if !reason.isEmpty && kind == .decision then o := { o with reasons := o.reasons.push (pull, reason) }
+      if !reason.isEmpty && kind == .decision then
+        if o.reasons.size == c.reasonMax then throw "TapeTooLong (reason_count_max)"
+        o := { o with reasons := o.reasons.push (pull, reason) }
   return o
 
 /-- tape.zig:159 `kind_at`. -/
@@ -154,8 +171,10 @@ def Overrides.check (o : Overrides) (events : Nat) (hash : UInt64) : Except Stri
   if o.checkpointCursor == o.checkpoints.size then .ok o
   else
     let (e, h) := o.checkpoints[o.checkpointCursor]!
-    if e != events then .ok o
-    else if h != hash then .error s!"ReplayDiverged at event {events}"
+    -- tape.zig:226-233 (3939448): below the next count nothing to compare; at or past it,
+    -- compared (past it: diverged).
+    if events < e then .ok o
+    else if e != events || h != hash then .error s!"ReplayDiverged at event {events}"
     else .ok { o with checkpointCursor := o.checkpointCursor + 1 }
 
 /-- tape.zig:232 `seek_inside`. -/
@@ -265,12 +284,13 @@ def decideRandom (vm : VM) (label : Label) : Except String (Nat × VM) := do
         taped := t
         vm := vm1
     match taped with
-    | some v => return (v, vm)
+    | some v => value := v
     | none =>
       value := vm.forkIndex
       vm := writeOverride vm pull value forkReason
-      vm := decisionEvent vm pull forkReason
-      return (value, vm)
+    -- vm.zig:3691-3694 (3939448): said whether answered or replayed.
+    vm := decisionEvent vm pull forkReason
+    return (value, vm)
   | .egressStatus | .ingressStatus | .serveStatus =>
     let (kind, reason) := match label with
       | .egressStatus => (OKind.egress, egressReason)
@@ -290,7 +310,7 @@ def decideRandom (vm : VM) (label : Label) : Except String (Nat × VM) := do
     match label with
     | .egressStatus => vm := decisionEvent vm pull reason -- vm.zig:3730: answered or replayed
     | .ingressStatus => if value != 1 then vm := decisionEvent vm pull reason -- 3765: when something came
-    | _ => if taped.isNone then vm := decisionEvent vm pull reason -- 3801: only when answered live
+    | _ => vm := decisionEvent vm pull reason -- 3805-3806 (3939448): answered or replayed
     return (value, vm)
   | .plain | .driveMs =>
     match vm.overrides with
@@ -478,7 +498,12 @@ def tworlds : List TWorld :=
     { label := "replays perturbed by a kernel line or a changed event", steps := 9, labels := [.plain],
       consoles := true, perturbs := true },
     { label := "guest events and kernel lines, a table of two checkpoints every two events", steps := 12,
-      labels := [], consoles := true, consts := { interval := 2, checkpointMax := 2 } } ]
+      labels := [], consoles := true, consts := { interval := 2, checkpointMax := 2 } },
+    -- Round 2: the replay's tables at a small size (65,536 overrides and 1,024 reasons in the Zig).
+    { label := "ingress polls (each answer on the tape), a table of 4 overrides", steps := 7,
+      labels := [.ingressStatus], consts := { overrideMax := 4 } },
+    { label := "plain pulls with strategy answers, a table of 2 reasons", steps := 7,
+      labels := [.plain], consts := { reasonMax := 2 } } ]
 
 def searchAll (exhaustRuns : Nat) : IO (List Found) := do
   let mut found := []

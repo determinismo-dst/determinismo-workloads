@@ -1,7 +1,12 @@
 import Replica.Prelude
 
 /-!
-# det-composer, replicated (guest/runtime/composer.zig, platform 0dea225)
+# det-composer, replicated (guest/runtime/composer.zig, platform 3939448)
+
+Round 2: the Zig's line numbers below are 3939448's where a function changed (swarm_commands
+221-283, reap 315-345, run_alone_until 413-419, main 434-552, rescue_counts 686-692,
+run_singleton 715-737, run_drivers 750-811, clock_start_draw 905-927); the others' kept
+round 1's numbers, their code unchanged but shifted by the additions above them.
 
 One timeline of a scenario, function by function, with the Zig's line numbers. Every decision
 keeps the Zig's name (`composer.swarm <name>`, `composer.load`, ...); the SDK's unnamed draws
@@ -89,6 +94,8 @@ structure Cmdline where
   /-- The explorer answers `composer.again` (advisor.zig:78): only for a return to an
   objective's best. Off: no second phase (the timeline's own draw says yes once in 2^62). -/
   againAsked : Bool := false
+  /-- det.clock_start_max_ms= (--clock-start-max; none: the composer's hour). -/
+  clockStartMaxMs : Option Nat := none
   deriving Repr, Inhabited
 
 /-- The composer's constants (ms). Defaults are the Zig's. -/
@@ -140,6 +147,16 @@ def Consts.small : Consts :=
     startsMax := 6, startsLog2 := 1, parallelismLog2Max := 1, runningMax := 4,
     quietBase := 10, quietRange := 2, loadBase := 20, loadRange := 2,
     runMenu := [1, 50], exitMenu := [.code 0, .code 1], irrelevantDraws := false, fuel := 20000 }
+
+/-- composer.zig:929-932 `clock_start_bands`: doublings from a second, the last ending at
+`max_ms`; none under a second. -/
+def clockStartBands (maxMs : Nat) : Nat :=
+  if maxMs < 1000 then 0 else Nat.log2 (maxMs / 1000) + 1
+
+/-- composer.zig:934-937 `clock_start_band`. -/
+def clockStartBand (maxMs band : Nat) : Nat × Nat :=
+  let low := 1000 * 2 ^ band
+  (low, min maxMs (2 * low - 1))
 
 /-- The property kinds (events.zig:19). -/
 inductive AKind where
@@ -273,13 +290,22 @@ def pick (kind : Kind) : M Nat := do
 def isDriver (k : Kind) : Bool := k == .parallel_driver || k == .serial_driver
 def swarmable (k : Kind) : Bool := isDriver k || k == .anytime
 
+/-- composer.zig:686-692 `rescue_counts` (3939448): the marked workload's among the swarm's
+commands when one is marked, else the drivers, else (none) the anytime commands. -/
+def rescueCounts (kind : Kind) (workload workloadMarked : Bool) (drivers : Nat) : Bool :=
+  if !isDriver kind && kind != .anytime then false
+  else if workloadMarked then workload
+  else if drivers > 0 then isDriver kind else kind == .anytime
+
 /-- composer.zig:221 `swarm_commands`. -/
 def swarmCommands : M Unit := do
   let w ← get
   if w.cmdline.swarmOff then return
   modify fun w => { w with swarmed := true }
-  let workloadMarked := w.commands.any (·.workload)
+  -- composer.zig:226-235 (3939448): marked among the swarm's commands only, drivers counted.
+  let workloadMarked := w.commands.any fun c => swarmable c.kind && c.workload
   let nSwarmable := w.commands.foldl (fun n c => if swarmable c.kind then n + 1 else n) 0
+  let drivers := w.commands.foldl (fun n c => if isDriver c.kind then n + 1 else n) 0
   if !workloadMarked && nSwarmable ≤ 4 then
     for i in [0:w.commands.size] do
       let c := (← get).commands[i]!
@@ -298,15 +324,14 @@ def swarmCommands : M Unit := do
     let v ← below s!"composer.swarm {c.name}" 8
     let kept := v < eighths || w.cmdline.keep.contains c.name
     setCommand i { c with kept }
-    let counts := if workloadMarked then c.workload else driver
+    let counts := rescueCounts c.kind c.workload workloadMarked drivers
     if counts then needed := needed + 1
     if counts && kept then neededKept := neededKept + 1
   if needed > 0 && neededKept == 0 then
     let mut pickIndex ← below "composer.swarm_one" needed
     for i in [0:w.commands.size] do
       let c := (← get).commands[i]!
-      let driver := isDriver c.kind
-      let counts := if workloadMarked then c.workload else driver
+      let counts := rescueCounts c.kind c.workload workloadMarked drivers
       if !counts then continue
       if pickIndex == 0 then setCommand i { c with kept := true }
       pickIndex := pickIndex - 1 -- `-|=`: saturating
@@ -372,13 +397,15 @@ def reap (killed hang : Bool) : M Bool := do
   let p := w.running[idx]!
   let bits := p.exit.bits
   let signaled := bits % 128 != 0 || (bits / 256) % 256 ≥ 128
-  if signaled || killed then modify fun w => { w with interrupted := w.interrupted + 1 }
-  reportExit p killed
+  -- composer.zig:335-340 (3939448): killed by the composer only when SIGKILL ended it.
+  let byKill := killed && bits % 128 == 9
+  if signaled || byKill then modify fun w => { w with interrupted := w.interrupted + 1 }
+  reportExit p byKill
   modify fun w =>
     let insts := w.insts.map fun inst =>
       if inst.pid == p.pid then
         { inst with endedAt := some p.stop, ownExit := if p.killed then none else some p.exit,
-                    killedByComposer := p.killed, reportedKilled := some killed }
+                    killedByComposer := p.killed, reportedKilled := some byKill }
       else inst
     { w with running := swapRemove w.running idx, insts }
   return true
@@ -431,6 +458,17 @@ def runToCompletion (ci : Nat) : M Unit := do
   start ci
   waitAll
 
+/-- composer.zig:413-419 `run_alone_until` (3939448): alone until it ends or `deadline` (a
+length's end; none: run_to_completion). -/
+def runAloneUntil (ci : Nat) (deadline : Option Nat) : M Unit := do
+  match deadline with
+  | none => runToCompletion ci
+  | some dl =>
+    check ((← get).running.size == 0) "run_alone_until with commands running (composer.zig:415)"
+    announce ci "complete"
+    start ci
+    waitUntil dl
+
 /-- composer.zig:338 `faults_start`. -/
 def faultsStart : M Unit := do
   let w ← get
@@ -456,8 +494,9 @@ def singletonDrawn : M Bool := do
   let eighths := 1 + (← below "composer.singleton_eighths" 7)
   return (← below "composer.singleton" 8) < eighths
 
-/-- composer.zig:665 `run_singleton`. -/
-def runSingleton : M Unit := do
+/-- composer.zig:715-737 `run_singleton` (3939448): its end when --timeline gave a length (a
+drawn length does not bound it, by design). -/
+def runSingleton : M (Option Nat) := do
   check (kindCount (← get) .singleton_driver > 0) "run_singleton (composer.zig:666)"
   if kindCount (← get) .anytime > 0 then
     if (← below "random_below" 2) == 0 then
@@ -467,7 +506,12 @@ def runSingleton : M Unit := do
   let d ← pick .singleton_driver
   announce d "start"
   start d
+  if let some length := (← get).cmdline.timelineMs then
+    let endT := (← nowM) + length
+    waitUntil endT
+    return some endT
   waitAll
+  return none
 
 /-- composer.zig:693 `starts_draw`. -/
 def startsDraw : M Nat := do
@@ -521,7 +565,7 @@ def driverStartBy (kinds : List Kind) (parallelism : Nat) (deadline : Option Nat
   | .serial_driver =>
     waitBelow 1 deadline
     if (← get).running.size > 0 then return
-    runToCompletion (← pick .serial_driver)
+    runAloneUntil (← pick .serial_driver) deadline
   | .parallel_driver | .anytime =>
     waitBelow parallelism deadline
     if (← get).running.size ≥ parallelism then return
@@ -563,15 +607,18 @@ def runDrivers (driveMsMax : Option Nat) (parallelMax : Option Nat) : M (Option 
   | none =>
     let stop := w.cmdline.timelineLimitMs.map fun limit => w.now + limit / 2
     for started in [0:starts] do
+      -- composer.zig:795-803 (3939448): the stop checked after a quiet stretch too.
+      for _ in [0:w.consts.fuel] do
+        tick
+        let (ok, l) ← loadNext load stop
+        load := l
+        if ok then break
+        if let some s := stop then
+          if (← nowM) ≥ s then break
       if let some s := stop then
         if (← nowM) ≥ s then
           note s!"drivers_stopped {started} {starts}"
           break
-      for _ in [0:w.consts.fuel] do
-        tick
-        let (ok, l) ← loadNext load none
-        load := l
-        if ok then break
       driverStartBy kinds load.parallelism none
     return none
 
@@ -661,6 +708,16 @@ def main : M Unit := do
   let selfDriven := drivers + singletons + kindCount w .anytime == 0
   if selfDriven && !sc.templates then throw (.violation "composer errs" "NoDriverCommands (composer.zig:463)")
   note "composer_start"
+  -- composer.zig:905-927 `clock_start_draw` (3939448): the wall clock's start, a band by name
+  -- then a plain draw in it. Changes no command's timing (the monotonic clock stays).
+  if w.consts.irrelevantDraws then
+    let maxMs := w.cmdline.clockStartMaxMs.getD 3600000
+    let bands := clockStartBands maxMs
+    if bands > 0 then
+      let band ← below "composer.clock_start" bands
+      let (low, high) := clockStartBand maxMs band
+      let ms := low + (← below "random_below" (high - low + 1))
+      note s!"clock_start {ms} {maxMs}"
   if w.consts.irrelevantDraws && w.cmdline.driversCpuWeight.isNone && !w.cmdline.swarmOff then
     let _ ← below "composer.drivers_cpu" 3
   if kindCount (← get) .first > 0 then runToCompletion (← pick .first)
@@ -688,7 +745,7 @@ def main : M Unit := do
     note s!"self_driven {length}"
     sleepUntil (driveStart + length)
   else if singletonTimeline then
-    runSingleton
+    lengthEnd ← runSingleton
   else
     lengthEnd ← runDrivers driveMax sc.parallelMax
     for _ in [0:4] do
@@ -696,7 +753,6 @@ def main : M Unit := do
       lengthEnd ← runDrivers driveMax sc.parallelMax
   modify fun w => { w with lengthEnd }
   let ending ← endingPick
-  let mut bounded := false
   if ending == .eventually then
     minDrive driveStart sc.minDriveMs
     killAll
@@ -704,12 +760,13 @@ def main : M Unit := do
     waitUntil (endT + (← get).consts.graceMs)
     if (← get).running.size > 0 then
       note s!"length_reached running={(← get).running.size}"
+      -- composer.zig:534-539 (3939448): only the length's own kills forgiven.
+      let interrupted := (← get).interrupted
       killAll
-      bounded := true
+      modify fun w => { w with interrupted }
   else waitAll
   faultsStop
   note "faults_phase stop"
-  if bounded then modify fun w => { w with interrupted := 0 }
   runEnding ending (sc.endingMsMax.getD (← get).consts.endingDefault)
   note s!"composer_done {(← get).startedCount}"
 

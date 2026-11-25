@@ -1,0 +1,49 @@
+== composer property: with drive_ms_max, no driver runs past the driver phase's longest length and its grace
+search exhaust [with drive_ms_max, no driver runs past the driver phase's longest length and its grace / singleton (1 or 200 ms) + parallel, drive_ms_max 60 ms, no swarm]: FOUND after 2 timelines (0 ms): with drive_ms_max, no driver runs past the driver phase's longest length and its grace: alone#1 [0,200] exited 0 runs past the drive's longest length 60 and its grace (ends by 90) (shrunk to 2 decisions from 2)
+--- counterexample [with drive_ms_max, no driver runs past the driver phase's longest length and its grace / singleton (1 or 200 ms) + parallel, drive_ms_max 60 ms, no swarm]: with drive_ms_max, no driver runs past the driver phase's longest length and its grace
+detail: alone#1 [0,200] exited 0 runs past the drive's longest length 60 and its grace (ends by 90)
+values: [0, 1]
+tape:
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms alone","options":2,"value":1}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start alone start
+  0 ms: assert reachable "test command started: alone" true
+  200 ms: assert reachable "test command completed: alone" true
+  200 ms: reaped alone#1: status 0
+  200 ms: assert always "test commands exit successfully" true
+  200 ms: faults stop
+  200 ms: faults_phase stop
+  200 ms: composer_done 1
+  truth: alone#1 [0,200] exited 0
+  end: none
+---
+search explore [with drive_ms_max, no driver runs past the driver phase's longest length and its grace / singleton (1 or 200 ms) + parallel, drive_ms_max 60 ms, no swarm]: FOUND at timeline 8 of seeds 0..1999 (0 ms): with drive_ms_max, no driver runs past the driver phase's longest length and its grace: alone#1 [0,200] exited 0 runs past the drive's longest length 60 and its grace (ends by 90) (shrunk to 2 decisions from 2)
+--- counterexample [with drive_ms_max, no driver runs past the driver phase's longest length and its grace / singleton (1 or 200 ms) + parallel, drive_ms_max 60 ms, no swarm]: with drive_ms_max, no driver runs past the driver phase's longest length and its grace
+detail: alone#1 [0,200] exited 0 runs past the drive's longest length 60 and its grace (ends by 90)
+values: [0, 1]
+tape:
+{"name":"random_below","options":2,"value":0}
+{"name":"world.run_ms alone","options":2,"value":1}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start alone start
+  0 ms: assert reachable "test command started: alone" true
+  200 ms: assert reachable "test command completed: alone" true
+  200 ms: reaped alone#1: status 0
+  200 ms: assert always "test commands exit successfully" true
+  200 ms: faults stop
+  200 ms: faults_phase stop
+  200 ms: composer_done 1
+  truth: alone#1 [0,200] exited 0
+  end: none
+---

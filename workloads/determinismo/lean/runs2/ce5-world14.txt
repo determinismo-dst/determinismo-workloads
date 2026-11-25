@@ -1,0 +1,57 @@
+== composer property: no driver starts past half the timeline's limit
+search exhaust [no driver starts past half the timeline's limit / a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm]: FOUND after 1 timelines (1 ms): no driver starts past half the timeline's limit: holding#2 [400,800] exited 0 starts past 300 (shrunk to 2 decisions from 2)
+--- counterexample [no driver starts past half the timeline's limit / a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm]: no driver starts past half the timeline's limit
+detail: holding#2 [400,800] exited 0 starts past 300
+values: [0, 0]
+tape:
+{"name":"composer.command","options":2,"value":0}
+{"name":"composer.command","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start holding start
+  0 ms: assert reachable "test command started: holding" true
+  400 ms: assert reachable "test command completed: holding" true
+  400 ms: reaped holding#1: status 0
+  400 ms: assert always "test commands exit successfully" true
+  400 ms: command_start holding start
+  400 ms: drivers_stopped 2 4
+  800 ms: reaped holding#2: status 0
+  800 ms: faults stop
+  800 ms: faults_phase stop
+  800 ms: composer_done 2
+  truth: holding#1 [0,400] exited 0
+  truth: holding#2 [400,800] exited 0
+  end: none
+---
+search explore [no driver starts past half the timeline's limit / a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm]: FOUND at timeline 1 of seeds 0..1999 (0 ms): no driver starts past half the timeline's limit: holding#2 [400,800] exited 0 starts past 300 (shrunk to 2 decisions from 4)
+--- counterexample [no driver starts past half the timeline's limit / a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm]: no driver starts past half the timeline's limit
+detail: holding#2 [400,800] exited 0 starts past 300
+values: [0, 0]
+tape:
+{"name":"composer.command","options":2,"value":0}
+{"name":"composer.command","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start holding start
+  0 ms: assert reachable "test command started: holding" true
+  400 ms: assert reachable "test command completed: holding" true
+  400 ms: reaped holding#1: status 0
+  400 ms: assert always "test commands exit successfully" true
+  400 ms: command_start holding start
+  400 ms: drivers_stopped 2 4
+  800 ms: reaped holding#2: status 0
+  800 ms: faults stop
+  800 ms: faults_phase stop
+  800 ms: composer_done 2
+  truth: holding#1 [0,400] exited 0
+  truth: holding#2 [400,800] exited 0
+  end: none
+---

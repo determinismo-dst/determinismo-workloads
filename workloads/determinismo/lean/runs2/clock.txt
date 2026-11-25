@@ -1,0 +1,47 @@
+== clock property: the wall clock's jump never takes it past what the setup made to expire (a token's hour)
+   source: guest/runtime/composer.zig:889-891 (clock_start_draw's comment): "Never back, and not past what a setup made to expire (a token's hour, a lease): a timeline failing on the jump would be no workload's failure"; main.zig:91-93 (--clock-start-max: 1h by default)
+search exhaust [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / a cap of 8 s, a credential valid 8 s (the cap's own length, as the hour is the default's)]: FOUND after 7001 timelines (18 ms): the wall clock's jump never takes it past what the setup made to expire (a token's hour): a credential issued in the setup for 8000 ms, 0 ms before the draw: the jump of 8000 ms puts the drivers' first use 0 ms past its expiry (shrunk to 2 decisions from 2)
+--- counterexample [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / a cap of 8 s, a credential valid 8 s (the cap's own length, as the hour is the default's)]: the wall clock's jump never takes it past what the setup made to expire (a token's hour)
+detail: a credential issued in the setup for 8000 ms, 0 ms before the draw: the jump of 8000 ms puts the drivers' first use 0 ms past its expiry
+values: [0, 3]
+tape:
+{"name":"world.elapsed","options":3,"value":0}
+{"name":"composer.clock_start","options":4,"value":3}
+story:
+  clock_start ms=8000 max_ms=8000 (band 3: 8000..8000)
+  the credential: valid 8000 ms from its issue in the setup, issued 0 ms before the draw
+  the drivers' first use: 8000 ms of wall time after its issue
+---
+search exhaust [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / a cap of 8 s, a credential valid 16 s]: complete, 21003 timelines, none broke it (27 ms)
+search explore [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / the default hour, a token's hour (the comment's example)]: FOUND at timeline 676 of seeds 0..19999 (1 ms): the wall clock's jump never takes it past what the setup made to expire (a token's hour): a credential issued in the setup for 3600000 ms, 30000 ms before the draw: the jump of 3587530 ms puts the drivers' first use 17530 ms past its expiry (shrunk to 3 decisions from 3)
+--- counterexample [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / the default hour, a token's hour (the comment's example)]: the wall clock's jump never takes it past what the setup made to expire (a token's hour)
+detail: a credential issued in the setup for 3600000 ms, 30000 ms before the draw: the jump of 3587530 ms puts the drivers' first use 17530 ms past its expiry
+values: [2, 11, 1539530]
+tape:
+{"name":"world.elapsed","options":3,"value":2}
+{"name":"composer.clock_start","options":12,"value":11}
+{"name":"random_below","options":1552001,"value":1539530}
+story:
+  clock_start ms=3587530 max_ms=3600000 (band 11: 2048000..3600000)
+  the credential: valid 3600000 ms from its issue in the setup, issued 30000 ms before the draw
+  the drivers' first use: 3617530 ms of wall time after its issue
+---
+search explore [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / the default hour, a lease of 60 s from the setup]: FOUND at timeline 1 of seeds 0..19999 (1 ms): the wall clock's jump never takes it past what the setup made to expire (a token's hour): a credential issued in the setup for 60000 ms, 0 ms before the draw: the jump of 128000 ms puts the drivers' first use 68000 ms past its expiry (shrunk to 3 decisions from 3)
+--- counterexample [the wall clock's jump never takes it past what the setup made to expire (a token's hour) / the default hour, a lease of 60 s from the setup]: the wall clock's jump never takes it past what the setup made to expire (a token's hour)
+detail: a credential issued in the setup for 60000 ms, 0 ms before the draw: the jump of 128000 ms puts the drivers' first use 68000 ms past its expiry
+values: [0, 7, 0]
+tape:
+{"name":"world.elapsed","options":3,"value":0}
+{"name":"composer.clock_start","options":12,"value":7}
+{"name":"random_below","options":128000,"value":0}
+story:
+  clock_start ms=128000 max_ms=3600000 (band 7: 128000..255999)
+  the credential: valid 60000 ms from its issue in the setup, issued 0 ms before the draw
+  the drivers' first use: 128000 ms of wall time after its issue
+---
+== clock property: the jump is a second to the cap, never back
+   source: tools/e2e.zig:8801-8840 (check_clock_start: "each start a second to an hour past the guest's own"); composer.zig:889 ("Never back")
+search exhaust [the jump is a second to the cap, never back / a cap of 8 s, a credential valid 8 s (the cap's own length, as the hour is the default's)]: complete, 21003 timelines, none broke it (26 ms)
+search exhaust [the jump is a second to the cap, never back / a cap of 8 s, a credential valid 16 s]: complete, 21003 timelines, none broke it (27 ms)
+search explore [the jump is a second to the cap, never back / the default hour, a token's hour (the comment's example)]: 20000 timelines (seeds 0..19999), none broke it (45 ms)
+search explore [the jump is a second to the cap, never back / the default hour, a lease of 60 s from the setup]: 20000 timelines (seeds 0..19999), none broke it (43 ms)

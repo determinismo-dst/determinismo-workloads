@@ -2,7 +2,10 @@ import Replica.Prelude
 import Replica.Searching
 
 /-!
-# det-faults' rules, replicated (guest/runtime/faults.zig, platform 0dea225)
+# det-faults' rules, replicated (guest/runtime/faults.zig, platform 3939448)
+
+Round 2: `links_collect` skips an excluded peer (faults.zig:1478-1490) and `outage_start` counts
+the nodes recovering outside the outage (faults.zig:3080-3111, `outage_down_already` 2122-2132).
 
 What decides when and to whom faults happen, function by function: the list of faults a system
 allows (`faults_collect`, fault exclusions), the swarm over kinds (`swarm_select`), the next
@@ -88,10 +91,12 @@ def links_add (node : NodeSpec) (peer : String) (peerPartition peerDegrade : Boo
   else [])
 
 /-- faults.zig:1475 `links_collect`: node `index`'s links with the runner and every later node. -/
-def links_collect (nodes : List NodeSpec) (index : Nat) : List Fault :=
+def links_collect (s : Setup) (nodes : List NodeSpec) (index : Nat) : List Fault :=
   let node := nodes[index]!
   (if node.runnerLinks then links_add node "runner" true true else []) ++
-  ((nodes.drop (index + 1)).flatMap fun peer => links_add node peer.name peer.partition peer.degrade)
+  -- faults.zig:1484-1489 (3939448): an excluded peer is in no link fault.
+  ((nodes.drop (index + 1)).flatMap fun peer =>
+    if excluded s peer.name then [] else links_add node peer.name peer.partition peer.degrade)
 
 /-- faults.zig:1373 `faults_collect` (the kinds modeled). -/
 def faults_collect (s : Setup) : List Fault := Id.run do
@@ -109,7 +114,7 @@ def faults_collect (s : Setup) : List Fault := Id.run do
     if node.stop then faults := faults ++ [{ kind := .stop, node := node.name }]
     if node.throttle then faults := faults ++ [{ kind := .throttle, node := node.name }]
     if node.syncStall then faults := faults ++ [{ kind := .sync_stall, node := node.name }]
-    faults := faults ++ links_collect nodes index
+    faults := faults ++ links_collect s nodes index
   let kept (n : NodeSpec) := !excluded s n.name
   let endpoints := true :: nodes.map fun n => n.partition && kept n
   let partitionable := (endpoints.filter id).length
@@ -287,9 +292,12 @@ def outageStart (a : Applied) : FM Unit := do
     femit (.skipped .outage "" "FewerThanTwoNodes" s.now)
     return
   if s.setup.nodesDownMax > 0 then
-    -- faults.zig:3063: the cap counts those already down (recovery windows not counted).
+    -- faults.zig:3095-3109 (3939448): those already down and those recovering, outside it
+    -- (`outage_down_already`, 2122-2132).
     let downAlready := (List.range s.setup.nodes.length).filter (fun i =>
-      match slotOf s i 0 with | some sl => takesDown sl.kind | none => false) |>.length
+      !taken.contains i &&
+      ((match slotOf s i 0 with | some sl => takesDown sl.kind | none => false) ||
+       s.downRecoveringUntil[i]! > s.now)) |>.length
     if downAlready + taken.length > s.setup.nodesDownMax then
       femit (.skipped .outage "" "NodesDownMax" s.now)
       return
@@ -512,7 +520,7 @@ structure FProp where
 
 def exclusionsHeld : FProp :=
   { name := "an excluded node gets no fault of its own and is in no partition, isolation or outage"
-    source := "docs/ANTITHESIS.md (Fault exclusions): \"a node whose name matches gets no fault of its own and is in no partition, isolation or outage\"; faults.zig:553"
+    source := "round 1's reading: docs/ANTITHESIS.md at 0dea225 (Fault exclusions): \"a node whose name matches gets no fault of its own and is in no partition, isolation or outage\"; at 3939448 the Custom faults row adds that an injected fault reaches \"a node --fault-exclusions leaves out (the scenario named it)\": documented since, so this strict form is no longer a promise"
     check := fun s => Id.run do
       for e in s.log do
         if let .fault a t := e then
@@ -525,6 +533,7 @@ def exclusionsHeld : FProp :=
 def exclusionsDrawnHeld : FProp :=
   { exclusionsHeld with
     name := "an excluded node is in no drawn fault (injected ones aside)"
+    source := "docs/ANTITHESIS.md at 3939448 (Fault exclusions; Custom faults: injected ones reach excluded nodes)"
     check := fun s => Id.run do
       for e in s.log do
         if let .fault a t := e then
@@ -557,7 +566,7 @@ def nodesDownRecovering : FProp :=
 
 def quietHeld : FProp :=
   { name := "in a quiet period no fault but a clock skip starts"
-    source := "docs/ANTITHESIS.md (Pausing faults): \"the fault under way ends, none but clock skips start\"; README_AI.md (quiet periods requested from any node or command)"
+    source := "round 1's reading: docs/ANTITHESIS.md at 0dea225 (Pausing faults): \"none but clock skips start\"; at 3939448: \"no drawn fault but clock skips starts ... A fault a scenario asks for (sdk.fault, det-faults inject) still starts\": no longer a promise"
     check := fun s => Id.run do
       let mut quietUntil := 0
       for e in s.log do
@@ -572,6 +581,7 @@ def quietHeld : FProp :=
 def quietDrawnHeld : FProp :=
   { quietHeld with
     name := "in a quiet period no drawn fault but a clock skip starts"
+    source := "docs/ANTITHESIS.md at 3939448 (Pausing faults): \"no drawn fault but clock skips starts\""
     check := fun s => Id.run do
       let mut quietUntil := 0
       for e in s.log do

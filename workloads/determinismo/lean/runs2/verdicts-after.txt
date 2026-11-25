@@ -1,0 +1,299 @@
+== verdict property: the exploration's verdict does not depend on the order its timelines end
+   source: README_AI.md: "Branches run on every CPU (--jobs, same timelines as one worker)"; report.zig:506: "the summary does not depend on which worker finished first"; ARCHITECTURE.md M9: "parallel = sequential"
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (11 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, two lines each, every kind of one message]: complete, 29282 timelines, none broke it (57 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (8 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (8 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (29 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: complete, 32 timelines, none broke it (8 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one declaration each, of three kinds]: FOUND after 4 timelines (8 ms): the exploration's verdict does not depend on the order its timelines end: in one order exit 0, in another exit 3 (shrunk to 3 decisions from 3)
+--- counterexample [the exploration's verdict does not depend on the order its timelines end / one scenario, two timelines, one declaration each, of three kinds]: the exploration's verdict does not depend on the order its timelines end
+detail: in one order exit 0, in another exit 3
+values: [0, 1, 1]
+tape:
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":1}
+{"name":"world.order","options":2,"value":1}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare reachable m"]
+  scenario 0, timeline 1 (in the order they ended): ["declare always_or_unreachable m"]
+  explorer: exit 3
+  serve: [[(reachable, (m, unreached)), (always_or_unreachable, (m, passing))]]
+  documented: fails [(reachable, m)]
+---
+search exhaust [the exploration's verdict does not depend on the order its timelines end / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: complete, 9 timelines, none broke it (8 ms)
+search exhaust [the exploration's verdict does not depend on the order its timelines end / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: complete, 16 timelines, none broke it (8 ms)
+== verdict property: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+   source: docs/ANTITHESIS.md (Assertions: "Judged as Antithesis does"; Assertion catalog: "A test program's catalog spans its scenarios and is judged over all of them"); SKILL.md (determinismo-workload): "one never true fails the run", "An always never evaluated fails too"
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (8 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two lines each, every kind of one message]: FOUND after 73 timelines (9 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]]] (shrunk to 5 decisions from 5)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two lines each, every kind of one message]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false,
+   Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]]]
+values: [0, 0, 3, 3, 0]
+tape:
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) m", "always(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["sometimes(false) m", "sometimes(false) m"]
+  explorer: exit 0
+  serve: [[(always, (m, passing)), (sometimes, (m, failing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (9 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (9 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (20 ms)
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: FOUND after 3 timelines (9 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true]]] (shrunk to 3 decisions from 3)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false],
+  [Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.always) "m" true]]]
+values: [0, 1, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":1}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["sometimes(false) m"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) m"]
+  explorer: exit 0
+  serve: [[(sometimes, (m, failing)), (always, (m, passing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one declaration each, of three kinds]: FOUND after 3 timelines (8 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 0; documented: fails [(reachable, m)]; timelines [[[Replica.Verdicts.AEvent.declare (Replica.Verdicts.AKind.always_or_unreachable) "m"],
+  [Replica.Verdicts.AEvent.declare (Replica.Verdicts.AKind.reachable) "m"]]] (shrunk to 3 decisions from 3)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, two timelines, one declaration each, of three kinds]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 0; documented: fails [(reachable, m)]; timelines [[[Replica.Verdicts.AEvent.declare (Replica.Verdicts.AKind.always_or_unreachable) "m"],
+  [Replica.Verdicts.AEvent.declare (Replica.Verdicts.AKind.reachable) "m"]]]
+values: [0, 1, 0]
+tape:
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":1}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare always_or_unreachable m"]
+  scenario 0, timeline 1 (in the order they ended): ["declare reachable m"]
+  explorer: exit 0
+  serve: [[(always_or_unreachable, (m, passing)), (reachable, (m, unreached))]]
+  documented: fails [(reachable, m)]
+---
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: FOUND after 3 timelines (8 ms): the exploration fails exactly when a property fails as documented (all scenarios explored together): explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]],
+ [[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.reachable) "m" true]]] (shrunk to 2 decisions from 2)
+--- counterexample [the exploration fails exactly when a property fails as documented (all scenarios explored together) / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: the exploration fails exactly when a property fails as documented (all scenarios explored together)
+detail: explorer exit 0; documented: fails [(sometimes, m)]; timelines [[[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.sometimes) "m" false]],
+ [[Replica.Verdicts.AEvent.eval (Replica.Verdicts.AKind.reachable) "m" true]]]
+values: [0, 2]
+tape:
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":2}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["sometimes(false) m"]
+  scenario 1, timeline 0 (in the order they ended): ["reachable(true) m"]
+  explorer: exit 0
+  serve: [[(sometimes, (m, failing))], [(reachable, (m, passing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the exploration fails exactly when a property fails as documented (all scenarios explored together) / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: complete, 16 timelines, none broke it (9 ms)
+== verdict property: serve's run (one scenario) shows a failing property exactly when one fails as documented
+   source: README_AI.md: "curl localhost:7878/runs/1/properties # every property's verdict so far"; store.zig:1112
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (8 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, two lines each, every kind of one message]: complete, 29282 timelines, none broke it (83 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (10 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (9 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (10 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, two timelines, one declaration each, of three kinds]: complete, 18 timelines, none broke it (9 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: complete, 9 timelines, none broke it (9 ms)
+search exhaust [serve's run (one scenario) shows a failing property exactly when one fails as documented / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: complete, 16 timelines, none broke it (9 ms)
+== verdict property: the explorer's verdict of a one-scenario run and serve's agree
+   source: store.zig:1112 ("as Antithesis judges it (report.property_failing)")
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two lines each, every kind of one message]: FOUND after 73 timelines (9 ms): the explorer's verdict of a one-scenario run and serve's agree: explorer exit 0, serve [(always, (m, passing)), (sometimes, (m, failing))] (shrunk to 5 decisions from 5)
+--- counterexample [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two lines each, every kind of one message]: the explorer's verdict of a one-scenario run and serve's agree
+detail: explorer exit 0, serve [(always, (m, passing)), (sometimes, (m, failing))]
+values: [0, 0, 3, 3, 0]
+tape:
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) m", "always(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["sometimes(false) m", "sometimes(false) m"]
+  explorer: exit 0
+  serve: [[(always, (m, passing)), (sometimes, (m, failing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (11 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (9 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (23 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: FOUND after 3 timelines (10 ms): the explorer's verdict of a one-scenario run and serve's agree: explorer exit 0, serve [(sometimes, (m, failing)), (always, (m, passing))] (shrunk to 3 decisions from 3)
+--- counterexample [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: the explorer's verdict of a one-scenario run and serve's agree
+detail: explorer exit 0, serve [(sometimes, (m, failing)), (always, (m, passing))]
+values: [0, 1, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":1}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["sometimes(false) m"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) m"]
+  explorer: exit 0
+  serve: [[(sometimes, (m, failing)), (always, (m, passing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one declaration each, of three kinds]: FOUND after 3 timelines (10 ms): the explorer's verdict of a one-scenario run and serve's agree: explorer exit 0, serve [(always_or_unreachable, (m, passing)), (reachable, (m, unreached))] (shrunk to 3 decisions from 3)
+--- counterexample [the explorer's verdict of a one-scenario run and serve's agree / one scenario, two timelines, one declaration each, of three kinds]: the explorer's verdict of a one-scenario run and serve's agree
+detail: explorer exit 0, serve [(always_or_unreachable, (m, passing)), (reachable, (m, unreached))]
+values: [0, 1, 0]
+tape:
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":1}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare always_or_unreachable m"]
+  scenario 0, timeline 1 (in the order they ended): ["declare reachable m"]
+  explorer: exit 0
+  serve: [[(always_or_unreachable, (m, passing)), (reachable, (m, unreached))]]
+  documented: fails [(reachable, m)]
+---
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: complete, 9 timelines, none broke it (10 ms)
+search exhaust [the explorer's verdict of a one-scenario run and serve's agree / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: complete, 16 timelines, none broke it (10 ms)
+== verdict property: events are not properties
+   source: SKILL.md (determinismo-workload): "is an `sdk.event`, searchable and no property"
+search exhaust [events are not properties / one scenario, two timelines, one line each, one message of one kind at a time (always)]: complete, 32 timelines, none broke it (10 ms)
+search exhaust [events are not properties / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [events are not properties / one scenario, two timelines, two lines each, every kind of one message]: complete, 29282 timelines, none broke it (62 ms)
+search exhaust [events are not properties / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (9 ms)
+search exhaust [events are not properties / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (8 ms)
+search exhaust [events are not properties / one scenario, two timelines, two always messages sharing their first 192 bytes]: complete, 512 timelines, none broke it (31 ms)
+search exhaust [events are not properties / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: complete, 32 timelines, none broke it (9 ms)
+search exhaust [events are not properties / one scenario, two timelines, one declaration each, of three kinds]: complete, 18 timelines, none broke it (9 ms)
+search exhaust [events are not properties / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: complete, 9 timelines, none broke it (9 ms)
+search exhaust [events are not properties / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: complete, 16 timelines, none broke it (10 ms)
+== verdict property: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+   source: docs/AGENTS.md: "A restarted serve adopts the runs still going"; main.zig:1166-1170: "How it ends, in its run's directory: serve learned it only from runs it reaped itself, and read the others' (... every run adopted across a restart) from their timelines' failing always properties alone" (the exit file written for them); serve.zig:5912 "A failing property fails the run, as explore exits"
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one line each, one message of one kind at a time (always)]: FOUND after 21 timelines (9 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 3 (failed); adopted: status 0 (passed) (shrunk to 3 decisions from 3)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one line each, one message of one kind at a time (always)]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 3 (failed); adopted: status 0 (passed)
+values: [2, 2, 0]
+tape:
+{"name":"world.assertion","options":4,"value":2}
+{"name":"world.assertion","options":4,"value":2}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare always m"]
+  scenario 0, timeline 1 (in the order they ended): ["declare always m"]
+  explorer: exit 3
+  serve: [[(always, (m, unreached))]]
+  documented: fails [(always, m)]
+---
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: FOUND after 21 timelines (9 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 3 (failed); adopted: status 0 (passed) (shrunk to 3 decisions from 3)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one line each, one message of one kind at a time (sometimes)]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 3 (failed); adopted: status 0 (passed)
+values: [2, 2, 0]
+tape:
+{"name":"world.assertion","options":4,"value":2}
+{"name":"world.assertion","options":4,"value":2}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare sometimes m"]
+  scenario 0, timeline 1 (in the order they ended): ["declare sometimes m"]
+  explorer: exit 3
+  serve: [[(sometimes, (m, unreached))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, two lines each, every kind of one message]: FOUND after 73 timelines (10 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 0 (passed); adopted: status 3 (failed) (shrunk to 5 decisions from 5)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, two lines each, every kind of one message]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 0 (passed); adopted: status 3 (failed)
+values: [0, 0, 3, 3, 0]
+tape:
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":0}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.assertion","options":11,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) m", "always(true) m"]
+  scenario 0, timeline 1 (in the order they ended): ["sometimes(false) m", "sometimes(false) m"]
+  explorer: exit 0
+  serve: [[(always, (m, passing)), (sometimes, (m, failing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / two scenarios, two timelines each, a sometimes alone]: complete, 324 timelines, none broke it (9 ms)
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / two scenarios, one timeline each, an always alone]: complete, 9 timelines, none broke it (10 ms)
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, two always messages sharing their first 192 bytes]: FOUND after 7 timelines (10 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 3 (failed); adopted: status 0 (passed) (shrunk to 5 decisions from 5)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, two always messages sharing their first 192 bytes]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 3 (failed); adopted: status 0 (passed)
+values: [0, 0, 0, 3, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":3}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["always(true) xxxxxxxxxxxxxxxxxxxx", "always(true) xxxxxxxxxxxxxxxxxxxx"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) xxxxxxxxxxxxxxxxxxxx", "declare always xxxxxxxxxxxxxxxxxxxx"]
+  explorer: exit 3
+  serve: [[(always, (xxxxxxxxxxxxxxxxxxxx, passing)), (always, (xxxxxxxxxxxxxxxxxxxx, unreached))]]
+  documented: fails [(always, xxxxxxxxxxxxxxxxxxxx)]
+---
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: FOUND after 3 timelines (9 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 0 (passed); adopted: status 3 (failed) (shrunk to 3 decisions from 3)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one line each: a sometimes never true, or the message under another kind]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 0 (passed); adopted: status 3 (failed)
+values: [0, 1, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":1}
+{"name":"world.order","options":2,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["sometimes(false) m"]
+  scenario 0, timeline 1 (in the order they ended): ["always(true) m"]
+  explorer: exit 0
+  serve: [[(sometimes, (m, failing)), (always, (m, passing))]]
+  documented: fails [(sometimes, m)]
+---
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one declaration each, of three kinds]: FOUND after 4 timelines (9 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 3 (failed); adopted: status 0 (passed) (shrunk to 3 decisions from 3)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, two timelines, one declaration each, of three kinds]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 3 (failed); adopted: status 0 (passed)
+values: [0, 1, 1]
+tape:
+{"name":"world.assertion","options":3,"value":0}
+{"name":"world.assertion","options":3,"value":1}
+{"name":"world.order","options":2,"value":1}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare reachable m"]
+  scenario 0, timeline 1 (in the order they ended): ["declare always_or_unreachable m"]
+  explorer: exit 3
+  serve: [[(reachable, (m, unreached)), (always_or_unreachable, (m, passing))]]
+  documented: fails [(reachable, m)]
+---
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / two scenarios, one timeline each: a sometimes never true, or the message under another kind]: complete, 9 timelines, none broke it (9 ms)
+search exhaust [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: FOUND after 1 timelines (9 ms): a run's state is the same whether serve reaped its explorer or adopted it across a restart: reaped: status 3 (failed); adopted: status 0 (passed) (shrunk to 2 decisions from 2)
+--- counterexample [a run's state is the same whether serve reaped its explorer or adopted it across a restart / one scenario, one timeline, two lines: declared must-hit assertions, reached or not]: a run's state is the same whether serve reaped its explorer or adopted it across a restart
+detail: reaped: status 3 (failed); adopted: status 0 (passed)
+values: [0, 0]
+tape:
+{"name":"world.assertion","options":4,"value":0}
+{"name":"world.assertion","options":4,"value":0}
+story:
+  scenario 0, timeline 0 (in the order they ended): ["declare reachable m", "declare reachable m"]
+  explorer: exit 3
+  serve: [[(reachable, (m, unreached))]]
+  documented: fails [(reachable, m)]
+---

@@ -1,0 +1,39 @@
+search explore [with drive_ms_max, no driver runs past the driver phase's longest length and its grace / drawn scenarios, the Zig's constants]: FOUND at timeline 72 of seeds 500..5499 (573 ms): with drive_ms_max, no driver runs past the driver phase's longest length and its grace: c0#1 [0,100000] exited 0 runs past the drive's longest length 30000 and its grace (ends by 60000) (shrunk to 15 decisions from 15)
+--- counterexample [with drive_ms_max, no driver runs past the driver phase's longest length and its grace / drawn scenarios, the Zig's constants]: with drive_ms_max, no driver runs past the driver phase's longest length and its grace
+detail: c0#1 [0,100000] exited 0 runs past the drive's longest length 30000 and its grace (ends by 60000)
+values: [0, 3, 0, 2, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"gen.commands","options":5,"value":0}
+{"name":"gen.kind","options":9,"value":3}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":2}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":2}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":1}
+{"name":"gen.parallel_max","options":3,"value":0}
+{"name":"gen.timeline","options":3,"value":0}
+{"name":"gen.limit","options":3,"value":0}
+{"name":"gen.no_swarm","options":4,"value":0}
+{"name":"composer.clock_start","options":12,"value":0}
+{"name":"random_below","options":1000,"value":0}
+{"name":"world.run_ms c0","options":2,"value":0}
+story:
+  scenario: [("c0", "singleton_driver", true, [100000, 400000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=(some 30000) parallelMax=none cmdline: swarmOff=true timelineMs=none limitMs=none
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: clock_start 1000 3600000
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start c0 start
+  0 ms: assert reachable "test command started: c0" true
+  100000 ms: assert reachable "test command completed: c0" true
+  100000 ms: reaped c0#1: status 0
+  100000 ms: assert always "test commands exit successfully" true
+  100000 ms: faults stop
+  100000 ms: faults_phase stop
+  100000 ms: composer_done 1
+  truth: c0#1 [0,100000] exited 0
+  end: none
+---

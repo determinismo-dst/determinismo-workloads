@@ -1,0 +1,65 @@
+search explore [no driver starts past half the timeline's limit / drawn scenarios, the Zig's constants]: FOUND at timeline 35 of seeds 500..5499 (6 ms): no driver starts past half the timeline's limit: c1#4 [400110,500110] exited 0 starts past 300110 (shrunk to 25 decisions from 72)
+--- counterexample [no driver starts past half the timeline's limit / drawn scenarios, the Zig's constants]: no driver starts past half the timeline's limit
+detail: c1#4 [400110,500110] exited 0 starts past 300110
+values: [1, 0, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+tape:
+{"name":"gen.commands","options":5,"value":1}
+{"name":"gen.kind","options":9,"value":0}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":9,"value":4}
+{"name":"gen.workload","options":4,"value":0}
+{"name":"gen.runs","options":4,"value":2}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.setup","options":4,"value":0}
+{"name":"gen.min_drive","options":3,"value":0}
+{"name":"gen.drive_max","options":3,"value":0}
+{"name":"gen.parallel_max","options":3,"value":1}
+{"name":"gen.timeline","options":3,"value":0}
+{"name":"gen.limit","options":3,"value":1}
+{"name":"gen.no_swarm","options":4,"value":0}
+{"name":"world.exit setup","options":2,"value":0}
+{"name":"composer.clock_start","options":12,"value":0}
+{"name":"random_below","options":1000,"value":0}
+{"name":"world.run_ms c0","options":3,"value":0}
+{"name":"random_below","options":60,"value":0}
+{"name":"world.run_ms c1","options":2,"value":1}
+{"name":"random_below","options":20,"value":0}
+{"name":"world.run_ms c1","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+story:
+  scenario: [("setup", "setup", false, [100], "[]"),
+ ("c0", "first", true, [10, 1000, 60000], "[Replica.Composer.Exit.code 0]"),
+ ("c1", "anytime", true, [100000, 400000], "[Replica.Composer.Exit.code 0]")] minDrive=none driveMsMax=none parallelMax=(some 1) cmdline: swarmOff=true timelineMs=none limitMs=(some 600000)
+  0 ms: command_start setup complete
+  0 ms: assert reachable "test command started: setup" true
+  100 ms: assert reachable "test command completed: setup" true
+  100 ms: reaped setup#1: status 0
+  100 ms: assert always "test commands exit successfully" true
+  100 ms: setup_complete
+  100 ms: composer_start
+  100 ms: clock_start 1000 3600000
+  100 ms: command_start c0 complete
+  100 ms: assert reachable "test command started: c0" true
+  110 ms: assert reachable "test command completed: c0" true
+  110 ms: reaped c0#2: status 0
+  110 ms: faults_phase start
+  110 ms: faults start
+  110 ms: assert reachable "the fault injector started" true
+  110 ms: command_start c1 start
+  110 ms: assert reachable "test command started: c1" true
+  400110 ms: assert reachable "test command completed: c1" true
+  400110 ms: reaped c1#3: status 0
+  400110 ms: command_start c1 start
+  400110 ms: drivers_stopped 2 4
+  500110 ms: reaped c1#4: status 0
+  500110 ms: faults stop
+  500110 ms: faults_phase stop
+  500110 ms: composer_done 4
+  truth: setup#1 [0,100] exited 0
+  truth: c0#2 [100,110] exited 0
+  truth: c1#3 [110,400110] exited 0
+  truth: c1#4 [400110,500110] exited 0
+  end: none
+---

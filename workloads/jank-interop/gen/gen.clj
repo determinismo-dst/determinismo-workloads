@@ -1,21 +1,24 @@
 ;; SPDX-License-Identifier: MIT
-;; gen.clj: generated differential tests of jank against Clojure. Random forms from a typed
-;; grammar over clojure.core (a seed, deterministic), each evaluated on Clojure 1.12 for its
-;; expected outcome, written as a jank test namespace whose assertions say what Clojure said. A
-;; failure on jank is a deviation, found without anyone writing its case (ephyra's method, as
-;; jankifier's second source of findings beside the Lean replica's rounds).
+;; gen.clj: generated differential tests of jank against Clojure (ephyra's method, as jankifier's
+;; second source of findings beside the Lean replica's rounds). Three stages, each run through
+;; determinismo-ci between them:
 ;;
-;;   clojure -M gen.clj <seed> <forms> <out dir>
+;;   clojure -M gen.clj gen <seed> <forms>          random forms from a typed grammar over
+;;       clojure.core (the seed decides them), Clojure 1.12's outcome for each as the expected one:
+;;       tests/jank_gen/gen_<seed>_test.jank, results/gen-<seed>-forms.edn
+;;   clojure -M gen.clj shrink <seed> <failures.json>   each form jank answered wrongly (or every
+;;       form of a test that crashed or hung), its subforms as cases of their own:
+;;       tests/jank_gen/shrink_<seed>_test.jank, results/shrink-<seed>-cases.edn
+;;   clojure -M gen.clj group <seed> <failures.json>    the shrink run's minimal failing subforms
+;;       grouped by signature (head, how jank differs): results/gen-<seed>-groups.md
 ;;
-;; Kept: forms whose Clojure result is deterministic (two evaluations print the same; a lazy
-;; result is realized, by printing it, inside the guarded evaluation), finite,
-;; and reads back equal to itself, or that throw (any exception, both times). Each test holds ten
-;; forms; each form is read and evaluated at run time (`ev`), so a form jank refuses fails its
-;; own assertion, not the namespace. Output: <out>/jank_gen/gen_<seed>_test.jank and
-;; <out>/gen-<seed>-forms.edn (every form with Clojure's outcome).
+;; Kept: forms whose Clojure outcome is deterministic (two evaluations print the same, a lazy
+;; result realized inside the guard), short, and reads back equal, or that throw both times. Ten
+;; cases a test, one assertion over them: the runner reports a test's first failure only.
 (ns gen
   (:require [clojure.string :as string]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.data.json :as json]))
 
 (def ^:dynamic ^java.util.Random *rng* nil)
 
@@ -120,9 +123,11 @@
     11 (list (pick '[some every?]) (pick '[odd? even? pos?]) (gen-coll (dec d)))))
 
 (defn- outcome
-  "Clojure's outcome for a form: [:value v], [:throws class-name] or [:skip why]."
+  "Clojure's outcome for a form: [:value v], [:throws class-name] or [:skip why]. A lazy result
+   is realized (printed) inside the guarded evaluation, as the jank side's `ev` does."
   [form]
-  (let [run (fn [] (let [f (future (try (let [v (eval form)] (pr-str v) [:value v]) (catch Throwable e [:throws (.getName (class e))])))
+  (let [run (fn [] (let [f (future (try (let [v (eval form)] (pr-str v) [:value v])
+                                        (catch Throwable e [:throws (.getName (class e))])))
                          r (deref f 2000 [:skip "timeout"])]
                      (when (= r [:skip "timeout"]) (future-cancel f))
                      r))
@@ -135,48 +140,170 @@
       :else (let [v (second a)
                   printed (pr-str v)]
               (cond
-                (> (count printed) 2000) [:skip "large"]
+                ;; Short, so that a test's mismatches (jank's values) fit an event's details.
+                (> (count printed) 300) [:skip "large"]
                 (fn? v) [:skip "a fn"]
                 (not (try (= v (read-string printed)) (catch Throwable _ false))) [:skip "no read-back"]
                 :else a)))))
 
-(defn -main [& [seed n out]]
-  (let [seed (Long/parseLong (or seed "1"))
-        n (Long/parseLong (or n "500"))
-        out (or out ".")
-        forms (binding [*rng* (java.util.Random. seed)]
+(defn- case-row
+  "A case as the jank file holds it: [code :value v] or [code :throws class-name]."
+  [{:keys [form outcome]}]
+  [(pr-str form) (if (= :value (first outcome)) :value :throws) (second outcome)])
+
+(def ^:private preamble
+  (str "(defn- ev\n"
+       "  \"The form's value, realized, or [:jank-gen/threw what] for any throw jank's handlers can\n"
+       "   see (an object, a native exception or a jank::error_ref): every form gets its own\n"
+       "   verdict. An object's message only: printing an ex-info makes jank crash as it exits\n"
+       "   (jankifier's S1).\"\n"
+       "  [s]\n"
+       "  (try (let [v (eval (read-string s))] (pr-str v) v)\n"
+       "       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (ex-message e)])\n"
+       "       (catch cpp/std.exception e [:jank-gen/threw (str (.what e))])\n"
+       "       (catch cpp/jank.error_ref e [:jank-gen/threw (str (.-message (cpp/* e)))])))\n\n"
+       "(defn- threw? [v] (and (vector? v) (= :jank-gen/threw (first v))))\n\n"
+       "(defn- mismatches\n"
+       "  \"The cases jank answers differently from Clojure, as {:i index :jank outcome}: one\n"
+       "   assertion a test, so that its failure (the runner reports a test's first) names them all.\"\n"
+       "  [cases]\n"
+       "  (vec (remove nil? (map-indexed (fn [i [code kind v]]\n"
+       "                                   (let [got (ev code)\n"
+       "                                         same (try (if (= kind :throws) (threw? got) (= v got))\n"
+       "                                                   (catch cpp/jank.runtime.object_ref _ false))]\n"
+       "                                     (when-not same {:i i :jank got})))\n"
+       "                                 cases))))\n\n"))
+
+(defn- write-namespace!
+  "A jank test namespace: one deftest per [test-name rows], each one assertion over its rows."
+  [file ns-name header tests]
+  (io/make-parents file)
+  (spit file
+        (str ";; SPDX-License-Identifier: MIT\n" header
+             "(ns " ns-name "\n  (:require [clojure.test :refer [deftest is]]\n            [clojure.string]))\n\n"
+             preamble
+             (string/join "\n\n"
+                          (for [[test-name rows] tests]
+                            (str "(deftest " test-name "\n  (let [found (mismatches (quote [\n"
+                                 (string/join "\n" (map #(str "      " (binding [*print-meta* false] (pr-str %))) rows))
+                                 "]))]\n    (is (= [] found))))")))
+             "\n")))
+
+(defn- generate [seed n out]
+  (let [forms (binding [*rng* (java.util.Random. seed)]
                 (loop [kept [] tries 0]
                   (if (or (>= (count kept) n) (> tries (* 20 n)))
                     kept
                     (let [form (gen-any 4)
-                          o (outcome form)]
+                          ;; A bare literal tests only the reader: forms with a call at least.
+                          o (if (some seq? (tree-seq coll? seq form)) (outcome form) [:skip "no call"])]
                       (recur (if (= :skip (first o)) kept (conj kept {:form form :outcome o})) (inc tries))))))
-        groups (partition-all 10 forms)
-        ns-name (str "jank-gen.gen-" seed "-test")
-        file (io/file out "jank_gen" (str "gen_" seed "_test.jank"))
-        assertion (fn [{:keys [form outcome]}]
-                    (let [code (pr-str (pr-str form))]
-                      (if (= :value (first outcome))
-                        (str "  (is (= (quote " (binding [*print-meta* false] (pr-str (second outcome))) ") (ev " code ")))")
-                        (str "  (is (threw? (ev " code ")) " (pr-str (str "Clojure throws " (second outcome))) ")"))))]
-    (io/make-parents file)
+        tests (map-indexed (fn [i group] [(format "g%04d" i) (mapv case-row group)]) (partition-all 10 forms))
+        file (io/file out "tests" "jank_gen" (str "gen_" seed "_test.jank"))]
+    (write-namespace! file (str "jank-gen.gen-" seed "-test")
+                      (str ";; Generated by workloads/jank-interop/gen/gen.clj, seed " seed ": each case's expected\n"
+                           ";; outcome is Clojure 1.12's for a random form, so a mismatch on jank is a deviation.\n")
+                      tests)
+    (spit (io/file out "results" (str "gen-" seed "-forms.edn"))
+          (with-out-str (doseq [[i f] (map-indexed vector forms)]
+                          (prn (assoc f :test (format "g%04d" (quot i 10)) :i (mod i 10))))))
+    (println (count forms) "forms," (count tests) "tests, in" (str file))))
+
+;; The run's failures: a JSON object {"<ns>::<test>": "<what the runner said>"} (serve's SQL over the
+;; run's assert events, as README says). A said text holding "actual: (not (= [] [...]))" names
+;; the mismatches; any other (a crash, a hang) leaves all of that test's cases suspect.
+(defn- read-failures [file]
+  (into {}
+        (for [[k said] (json/read-str (slurp file))]
+          (let [test-name (last (string/split k #"::|/"))
+                at (string/index-of said "actual: (not (= [] ")
+                found (when at
+                        (try (read-string (subs said (+ at (count "actual: (not (= [] "))))
+                             (catch Throwable _ nil)))]
+            [test-name (if (vector? found) found :unknown)]))))
+
+(defn- subforms
+  "Every list or vector inside a form (itself included) that stands alone: no `x` free of its let
+   or fn, no fn form itself (its value, a fn, is never compared)."
+  [form]
+  (let [binds? #(and (seq? %) (#{'let 'fn} (first %)))
+        free-x? (fn free-x? [f] (cond (= f 'x) true
+                                      (binds? f) false
+                                      (coll? f) (some free-x? f)
+                                      :else false))
+        all (tree-seq #(and (coll? %) (not (map? %)) (not (and (seq? %) (= 'fn (first %))))) seq form)]
+    (distinct (filter #(and (or (seq? %) (vector? %)) (not (and (seq? %) (= 'fn (first %)))) (not (free-x? %))
+                            (some seq? (tree-seq coll? seq %)))
+                      all))))
+
+(defn- shrink
+  "Each suspect form's subforms, Clojure's outcome for each, as a test namespace of their own: the
+   smallest one jank still answers wrongly is the deviation's minimal case."
+  [seed failures-file out]
+  (let [forms (map read-string (string/split-lines (slurp (io/file out "results" (str "gen-" seed "-forms.edn")))))
+        failures (read-failures failures-file)
+        suspect (filter (fn [{:keys [test i]}]
+                          (let [f (get failures test)]
+                            (or (= f :unknown) (some #(= i (:i %)) f))))
+                        forms)
+        tests (for [{:keys [test i form]} suspect]
+                [(str "s" (subs test 1) "-" i)
+                 (vec (for [sub (subforms form)
+                            :let [o (outcome sub)]
+                            :when (not= :skip (first o))]
+                        (case-row {:form sub :outcome o})))])
+        file (io/file out "tests" "jank_gen" (str "shrink_" seed "_test.jank"))]
+    (write-namespace! file (str "jank-gen.shrink-" seed "-test")
+                      (str ";; Generated by workloads/jank-interop/gen/gen.clj from seed " seed "'s failures: each\n"
+                           ";; suspect form's subforms, so the smallest one jank answers wrongly is its minimal case.\n")
+                      tests)
+    (spit (io/file out "results" (str "shrink-" seed "-cases.edn"))
+          (with-out-str (doseq [[t rows] tests] (prn [t rows]))))
+    (println (count suspect) "suspect forms," (reduce + (map (comp count second) tests)) "subform cases, in" (str file))))
+
+(defn- contains-form? [outer inner]
+  (and (not= outer inner) (some #(= inner %) (tree-seq coll? seq outer))))
+
+(defn- group
+  "The shrink run's verdicts grouped by signature: a minimal failing subform (no failing subform
+   inside it), its head and how jank differs. Writes results/gen-<seed>-groups.md."
+  [seed failures-file out]
+  (let [cases (map read-string (string/split-lines (slurp (io/file out "results" (str "shrink-" seed "-cases.edn")))))
+        failures (read-failures failures-file)
+        rows (for [[t tcases] cases
+                   :let [f (get failures t)
+                         failed (cond (nil? f) {}
+                                      ;; Each suspect form ran in a process of its own: a crash or a
+                                      ;; hang is the whole form's (case 0, the form itself).
+                                      (= f :unknown) {0 :unknown}
+                                      :else (into {} (map (juxt :i :jank) f)))
+                         bad (for [[i jank] failed] (let [[code kind v] (nth tcases i)] {:form (read-string code) :code code :kind kind :clojure v :jank jank}))]
+                   b bad
+                   :when (not-any? #(contains-form? (:form b) (:form %)) bad)]
+               (assoc b :test t))
+        kind-of (fn [{:keys [kind jank]}]
+                  (cond (= jank :unknown) "no verdict (crash or hang)"
+                        (and (= kind :value) (vector? jank) (= :jank-gen/threw (first jank))) "jank throws, Clojure returns"
+                        (= kind :throws) "jank returns, Clojure throws"
+                        :else "jank returns another value"))
+        sig (fn [r] [(let [f (:form r)] (if (seq? f) (str (first f)) "vector")) (kind-of r)])
+        groups (sort-by (comp - count val) (group-by sig (distinct rows)))
+        file (io/file out "results" (str "gen-" seed "-groups.md"))]
     (spit file
-          (str ";; SPDX-License-Identifier: MIT\n"
-               ";; Generated by workloads/jank-interop/gen/gen.clj, seed " seed ": each assertion is Clojure 1.12's\n"
-               ";; outcome for a random form, so a failure on jank is a deviation. Do not edit.\n"
-               "(ns " ns-name "\n  (:require [clojure.test :refer [deftest is]]\n            [clojure.string]))\n\n"
-               "(defn- ev\n  \"The form's value, or [:jank-gen/threw what] for any throw jank's handlers can see (an\n   object, a native exception or a jank::error_ref): `is` catches objects only, and an\n   uncaught error would end the test before its other forms. An object's message only:\n   printing an ex-info makes jank crash as it exits (jankifier's S1).\"\n  [s]\n"
-               "  (try (eval (read-string s))\n       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (ex-message e)])\n"
-               "       (catch cpp/std.exception e [:jank-gen/threw (str (.what e))])\n"
-               "       (catch cpp/jank.error_ref e [:jank-gen/threw (str (.-message (cpp/* e)))])))\n\n"
-               "(defn- threw? [v] (and (vector? v) (= :jank-gen/threw (first v))))\n\n"
-               (string/join "\n\n"
-                            (map-indexed (fn [i group]
-                                           (str (format "(deftest g%04d\n" i) (string/join "\n" (map assertion group)) ")"))
-                                         groups))
-               "\n"))
-    (spit (io/file out (str "gen-" seed "-forms.edn")) (with-out-str (doseq [f forms] (prn f))))
-    (println (count forms) "forms," (count groups) "tests, in" (str file))
-    (shutdown-agents)))
+          (str "# Seed " seed ": deviations by signature\n\n"
+               (string/join "\n"
+                            (for [[[head kind] rs] groups
+                                  :let [r (first (sort-by (comp count :code) rs))]]
+                              (str "## `" head "`: " kind " (" (count rs) ")\n\n```clojure\n" (:code r)
+                                   "\n;; Clojure: " (pr-str (:clojure r)) "\n;; jank:    " (pr-str (:jank r)) "\n```\n")))))
+    (println (count groups) "signatures from" (count rows) "minimal cases, in" (str file))))
+
+(defn -main [& [mode & args]]
+  (case mode
+    "gen" (let [[seed n] args] (generate (Long/parseLong seed) (Long/parseLong n) "."))
+    "shrink" (let [[seed failures] args] (shrink (Long/parseLong seed) failures "."))
+    "group" (let [[seed failures] args] (group (Long/parseLong seed) failures "."))
+    (println "clojure -M gen.clj gen <seed> <forms> | shrink <seed> <failures.json> | group <seed> <failures.json>"))
+  (shutdown-agents))
 
 (apply -main *command-line-args*)

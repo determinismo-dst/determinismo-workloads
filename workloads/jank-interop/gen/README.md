@@ -1,28 +1,36 @@
 # Generated differential tests of jank
 
 `gen.clj` draws random forms from a typed grammar over clojure.core (edge values, sequence and
-map functions, strings, `let`, `if`, higher-order calls), evaluates each on Clojure 1.12, and
-writes a jank test namespace whose assertions are Clojure's outcomes. Every failure on jank is a
-deviation found without anyone writing its case: a second source of jank findings beside the Lean
-replica's rounds (ephyra's method; [jankifier](https://github.com/pfeodrippe/jankifier) keeps
-the confirmed ones).
+map functions, strings, `let`, `if`, higher-order calls), takes Clojure 1.12's outcome for each
+as the expected one, and writes jank tests from them. Every mismatch on jank is a deviation found
+without anyone writing its case: a second source of jank findings beside the Lean replica's
+rounds (ephyra's method; [jankifier](https://github.com/pfeodrippe/jankifier) keeps the
+confirmed ones).
+
+Three stages, with a determinismo-ci run (examples' ci-jank) after each of the first two:
 
 ```sh
-clojure -M gen.clj <seed> <forms> tests     # tests/jank_gen/gen_<seed>_test.jank, results/gen-<seed>-forms.edn
+clojure -M gen.clj gen 1 500                  # tests/jank_gen/gen_1_test.jank, results/gen-1-forms.edn
+python3 failures.py <serve> <run> f1.json     # the run's failed tests and what the runner said
+clojure -M gen.clj shrink 1 f1.json           # tests/jank_gen/shrink_1_test.jank: suspects' subforms
+python3 failures.py <serve> <run> s1.json
+clojure -M gen.clj group 1 s1.json            # results/gen-1-groups.md: minimal cases by signature
 ```
 
-- Kept: forms whose Clojure result is deterministic, finite and reads back equal to itself, or
-  that throw (the jank test then asks for any throw its handlers can see: an object, a native
-  exception or a `jank::error_ref`).
-- Each form is read and evaluated at run time by `ev`, which returns `[:jank-gen/threw message]`
-  for any throw (`is` catches only objects, and an uncaught `jank::error_ref` would end the test
-  before its other forms), so every form gets its own verdict; ten forms a test, each test in its
-  own jank process (examples' ci-jank runner).
-- No form depends on a set's or map's element order, which Clojure leaves unspecified: keys are
+- Kept: forms with a call whose Clojure outcome is deterministic, short, and reads back equal to
+  itself, or that throw both times (the jank case then asks for any throw).
+- Ten cases a test and one assertion over them: the runner reports a test's first failure only,
+  so a failure lists every mismatch as `{:i case :jank outcome}`.
+- `ev` reads and evaluates each case at run time and realizes its value; any throw (an object, a
+  native exception, a `jank::error_ref`) comes back as `[:jank-gen/threw message]`, so every
+  case gets its own verdict.
+- No case depends on a set's or map's element order, which Clojure leaves unspecified: keys are
   sorted by `str`, sets appear only as results or a predicate's argument, and `str`/`pr-str`
   print ordered values only.
-- The same seed gives the same file.
+- Shrinking: each suspect form (a mismatch, or every case of a test that crashed or hung) becomes
+  a test of its own with its subforms as cases; the minimal case is a failing subform with no
+  failing subform inside it, and a crash or hang there is the whole form's.
+- The same seed gives the same files.
 
-Runs go through determinismo-ci (examples/ci-jank, `ci-gen-<seed>.json`), as the Lean tests do.
-Next: failures grouped by signature, and the grammar steered toward jank code the coverage build
-reports unreached.
+Next: the grammar steered toward jank code the coverage build reports unreached (an agent
+rewriting the generator from the uncovered lines, ephyra's loop).

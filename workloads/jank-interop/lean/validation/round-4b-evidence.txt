@@ -1,0 +1,27 @@
+# Round 4's rerun: 24 tests on jank main 7135b7708 (determinismo-ci, 4 shards x 3 timelines,
+# each test failing in all 3 of its timelines), the runner recording jank's error text.
+# kind  test  what jank said
+uncaught-error  jank-lean.deviations-r3-test::s01-var-quote-of-a-non-symbol                 uncaught jank error: Invalid var reader macro.
+uncaught-error  jank-lean.deviations-r3-test::s36-literal-local-in-a-call-never-made        uncaught jank error: There is no call operator for `int`.
+uncaught-error  jank-lean.deviations-r3-test::s37-case-analyzes-its-clauses-first           uncaught jank error: The symbol `s37-h` could not be resolved.
+uncaught-error  jank-lean.deviations-r3-test::s42-eleven-parameters                         uncaught jank error: This function has too many parameters. The max is 10. If you need more, use a variadic function.
+uncaught-error  jank-lean.deviations-r4-hangs-test::u89-sh-reads-output-past-a-pipes-capacity uncaught jank error: Unable to compile C++ source.
+uncaught-error  jank-lean.deviations-r4-test::u05-cpp-function-pointer-with-a-reference-parameter uncaught jank error: Unable to call function since argument 0 is not convertible from `int` to `const long &`.
+uncaught-error  jank-lean.deviations-r4-test::u06-cpp-built-in-operator-on-a-converting-class uncaught jank error: The operator `+` is not supported for the type `u_b3_meters`.
+uncaught-error  jank-lean.deviations-r4-test::u12-with-meta-on-a-fn-not-yet-called          uncaught jank error: #object [jank-lean.deviations-r4-test/ua5-f deferred_cpp_function 0x7efd1b2e2000] [deferred_cpp_function] can't hold any metadata.
+uncaught-error  jank-lean.deviations-r4-test::u17-push-thread-bindings-takes-an-array-map   uncaught jank error: invalid thread binding map (must be hash map): {#'jank-lean.deviations-r4-test/*ua9* 1}
+uncaught-error  jank-lean.deviations-r4-test::u21-scoped-enum-operands-use-their-user-operator uncaught jank error: The binary operator `|` is not supported for the types `u_b7_e` and `u_b7_e`.
+uncaught-error  jank-lean.deviations-r4-test::u22-a-derived-operator-hides-the-bases        uncaught jank error: This call is ambiguous between 2 different overloads.
+uncaught-error  jank-lean.deviations-r4-test::u48-load-takes-a-resource-path                uncaught jank error: The module `/clojure/walk` could not be found.
+uncaught-error  jank-lean.deviations-r4-test::u59-compile-at-run-time                       uncaught jank error: Unable to write module, given output target 'unspecified'.
+wrong-value     jank-lean.deviations-r4-test::u64-a-printed-exception-shows-every-cause     expected: (string/includes? (pr-str (ex-info "a" {} (ex-info "b" {} (ex-info "c" {})))) "\"c\"") actual: (not (string/includes? "#error {\n :cause \"a\"\n :data {}\n :via\n [{:at [\"jank::runtime::ex
+wrong-value     jank-lean.deviations-r4-test::u72-areduce-over-an-array                     expected: (= 6 (areduce a i ret 0 (+ ret (aget a i)))) actual: #error {  :cause "TODO: port unchecked-inc-int"  :data {}  :via  [{:at ["jank::runtime::ex_info" "jank" 1], :message "TODO: port uncheck
+wrong-value     jank-lean.deviations-r4-test::u73-newline-and-flush                         expected: (= "\n" (with-out-str (newline))) actual: #error {  :cause "TODO: port newline"  :data {}  :via  [{:at ["jank::runtime::ex_info" "jank" 1], :message "TODO: port newline", :data {}}]  :trace
+wrong-value     jank-lean.deviations-r4-test::u74-unchecked-arithmetic                      expected: (= 3 (unchecked-add (identity 1) 2)) actual: #error {  :cause "TODO: port unchecked-add"  :data {}  :via  [{:at ["jank::runtime::ex_info" "jank" 1], :message "TODO: port unchecked-add", :da
+wrong-value     jank-lean.deviations-r4-test::u74b-collection-predicates                    expected: (true? (reversible? (identity []))) actual: #error {  :cause "TODO: port reversible?"  :data {}  :via  [{:at ["jank::runtime::ex_info" "jank" 1], :message "TODO: port reversible?", :data {}
+uncaught-cpp    jank-lean.deviations-r4-test::u79-slurp-of-a-missing-file-throws-a-catchable-error uncaught C++ exception: filesystem error: cannot get file size: No such file or directory [/jank-lean-no-such-dir/x.txt]
+uncaught-cpp    jank-lean.deviations-r4-test::u80-reduce-kv-over-a-seq-of-entries           uncaught C++ exception: Objects of type `persistent_array_map_sequence` do not support `reduce-kv`.
+wrong-value     jank-lean.deviations-r4-test::u81-zipmap-keeps-the-first-equal-key          expected: (vector? (first (keys (zipmap (identity [[1] (quote (1))]) [:a :b])))) actual: (not (vector? (1)))
+uncaught-error  jank-lean.deviations-r4-test::u82-inst-reads-a-year                         uncaught jank error: locale::facet::_S_create_c_locale name not valid
+uncaught-error  jank-lean.deviations-r4-test::u88-sh-passes-each-string-unchanged           uncaught jank error: Unable to compile C++ source.
+uncaught-error  jank-lean.deviations-r4-test::u90-sh-env-takes-names-and-values-of-any-kind uncaught jank error: Unable to compile C++ source.

@@ -65,9 +65,16 @@ on the real jank.
     U59) and 3 with a cut text (U72, U73, U74b), each where an error was predicted; U74's
     evidence was another test's, and U88-U90 (jank.shell) failed with an error, none predicted.
   - U64, U79, U80, U81, U82 left no result: a failure text spanning lines broke the runner's
-    report and swallowed the next testcase (fixed since). They, and the errors without text,
-    are rerun with the runner reporting jank's error text.
-  - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt).
+    report and swallowed the next testcase (fixed since).
+  - The rerun (2026-11-25): those, the errors without text, and round 3's four (S1, S36, S37,
+    S42), 24 tests with the runner reporting jank's error text, each failing in all 3 of its
+    timelines. 16 confirmed their prediction (U5, U6, U12, U17, U21, U22, U48, U59, U64, U72,
+    U73, U74, U74b, U79, U80, U81); U82 failed on another bug first (reading any `#inst` needs
+    the `en_US.UTF-8` locale: inst.cpp 41), its own prediction untested; U88-U90 couldn't load
+    `jank.shell` in the test image ("Unable to compile C++ source", Boost.Process's headers
+    present), still untested; round 3's four errors are the ones predicted.
+  - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt),
+    the rerun's [validation/round-4b-evidence.txt](validation/round-4b-evidence.txt).
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).

@@ -56,6 +56,19 @@ on the real jank.
   the hangs file) are not yet run on jank; the 72 that need no C++ interop or jank-only namespace
   pass on Clojure 1.12.0 (1.11.1: all but u69, a 1.12 change).
 
+- **Round 4**: 91 tests run on jank main 7135b7708 (round 4's 87 and round 2's 4 left without a
+  result), UTF-8 locale, each in its own process with a 120 s limit.
+  - Round 2's b01, b11, b24, b29: all 4 confirmed, so rounds 1 and 2 stand at 108 of 120.
+  - Round 4, 82 with a result: 61 confirmed by the value or error predicted (U7b, a control,
+    passed as predicted), the 5 predicted hangs (U13, U13b, U19, U28, U28b) and U26's segfault;
+    8 failed with an error whose text the runner didn't record (U5, U6, U12, U17, U21, U22, U48,
+    U59) and 3 with a cut text (U72, U73, U74b), each where an error was predicted; U74's
+    evidence was another test's, and U88-U90 (jank.shell) failed with an error, none predicted.
+  - U64, U79, U80, U81, U82 left no result: a failure text spanning lines broke the runner's
+    report and swallowed the next testcase (fixed since). They, and the errors without text,
+    are rerun with the runner reporting jank's error text.
+  - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt).
+
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
 

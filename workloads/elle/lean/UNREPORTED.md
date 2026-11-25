@@ -390,6 +390,21 @@ named); the `:GSIb`/`:G-SIb` spelling mismatch in the lattice; lost update imply
 than G-single-item; the timeout fallback searching the wrong graph; the README demo rejected by
 jepsen.history 0.1.9.
 
+## Fixes written and checked (round 3, REPORT-3.md)
+
+Each a patch on the deployed namespaces, checked over every interpretation of 40,000 histories
+(no new false positive, no lost verdict, no exception), on real Elle's minimal histories, against
+the Lean replica on random cases, and with Elle's suite:
+- **Safe:** D7 (a read of the transaction's own later write: `:future-read`), D1 (G-singles
+  through appends nobody read: a second cycle search, some anomaly names change), D21 (predicate
+  rows as item reads), D8 (garbage reads: `:garbage-read`, no crash), D6 (every external read;
+  `:fuzzy-read`), D22, D20 (mixed item and predicate cycles), D5 with D4 (an `:info` writer may
+  have aborted, for models allowing G1a), D2 (the process order beside a real-time model).
+- **Not safe alone:** D4 (3 new false positives in 40,000 without D5).
+- **Not strictly safe:** D12 (deterministic now, but 1 lost verdict in 40,000; a refinement is
+  proposed).
+- **Safe only compiled ahead of time:** D15 (jepsen.history's pair index across chunks).
+
 ## Fixed in our service (checkers/elle, platform next 3810980)
 
 Elle's own code, as patched namespaces loaded ahead of its jar, each checked over every
@@ -400,3 +415,22 @@ G1a, which removes D5's false positives), D9, D10 with D11, D13 with D14. Our se
 D18 (our strict-serializable-per-key is stricter than its stated "serializable, each key
 linearizable", as YDB's own suite is): the user kept the stricter reading; its description now
 says so, and a failure under it is reported with that note.
+
+Found in round 3 in our own fix, **D23**: the deployed D3 fix (no real time into `:info`
+completions for models allowing G1a) loses some strong read uncommitted verdicts Elle 0.2.8
+reached through an `:info` transaction (105 of 1,152,552 timelines of round 1's E2 space):
+
+```clojure
+(la/check {:consistency-models [:strong-read-uncommitted]}
+          (h/history
+            [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+             {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]] [:append 0 1]]}
+             {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+             {:process 0, :type :ok, :f :txn, :value [[:r 0 [3 4]] [:append 0 2]]}
+             {:process 0, :type :invoke, :f :txn, :value [[:append 0 3] [:append 0 4]]}
+             {:process 0, :type :info, :f :txn, :value [[:append 0 3] [:append 0 4]]}]))
+;; Elle 0.2.8: invalid, G0-realtime   our service: valid   expected: invalid in every interpretation
+```
+
+The `:info` transaction can't have committed (its `[3 4]` and the first's `[2]` aren't on one
+trace), so 2 precedes 1: T1 -ww-> T0, with real time T0 → T1. D5's extended fix restores it.

@@ -97,7 +97,9 @@ and run directly (one process each; the workflow `flecs-lean` runs them on GitHu
   - F17's other half, the next system skipped after a self-disabling one: Update ran (back to the
     replica, round 4).
   - F19's uninitialized read (`change_detection_fixed_source_added.c`): neither its plain run nor
-    MemorySanitizer showed it; valgrind on Linux is in the workflow.
+    valgrind nor MemorySanitizer showed it (Linux, the workflow).
+
+[UNREPORTED.md](UNREPORTED.md) lists every confirmed finding by kind, each with its repro.
 
 ## Building and running
 

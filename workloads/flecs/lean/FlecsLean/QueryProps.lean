@@ -29,6 +29,10 @@ inductive QOp
   | op (o : Op)
   | iter (q : Nat) (mode : W.IterMode) (ask : Bool)
   | changed (q : Nat)
+  /-- round 3: `ecs_query_is_true` (api.c 706-713, iter.c 511-526) -/
+  | isTrue (q : Nat)
+  /-- round 3: `ecs_query_count` (api.c 667-704) -/
+  | count (q : Nat)
   deriving Repr, BEq, Inhabited
 
 structure QProg where
@@ -162,6 +166,16 @@ def runQProg (p : QProg) : QOutcome := Id.run do
                     W.noteViol s!"P-Q3 groups: query {qi} returned to group {g} after leaving it ({gids})"
                   seen := seen ++ [g]
                   last := some g
+        | .isTrue qi | .count qi => do
+          if qi ≥ (← get).queries.size then return
+          if !(← fixedAlive (← W.qGet qi)) then return
+          -- an iterator with EcsIterNoData: is_true takes the first result
+          -- and finishes the iterator (its fini runs change detection on
+          -- that result, eval_iter.c 670-686); count skips every result
+          modify fun w => { w with iterNoData := true, iterQuiet := true }
+          let mode := match o with | .isTrue _ => W.IterMode.first | _ => .skipAll
+          discard <| W.iterate qi mode false
+          modify fun w => { w with iterNoData := false, iterQuiet := false }
         | .changed qi => do
           if qi ≥ (← get).queries.size then return
           if !(← W.qGet qi).detect then return
@@ -173,6 +187,11 @@ def runQProg (p : QProg) : QOutcome := Id.run do
           for g in q.groups do
             for m in g.tables do
               if (← W.oracleChanged qi m.table) then expected := true
+          -- flecs.h 4797-4810: true after tables "have been matched or
+          -- unmatched": a table the user last iterated is no longer matched
+          let now := q.groups.foldl (fun acc g => acc ++ g.tables.toList.map (·.table)) []
+          let unmatched := (((← get).ouser[qi]?).getD []).filter (fun t => !now.contains t)
+          if !unmatched.isEmpty then expected := true
           let got ← W.queryChanged qi
           if expected && !got then
             let mut why := ""
@@ -182,6 +201,8 @@ def runQProg (p : QProg) : QOutcome := Id.run do
                   why := why ++ s!" table {m.table}: {(← get).osnap[(qi, m.table)]?} -> {← W.oracleState qi m.table};"
             if (← W.oracleFixedChanged qi) then
               why := why ++ s!" fixed: {(← get).ofixed[qi]?} -> {← W.oracleFixedState qi}"
+            if !unmatched.isEmpty then
+              why := why ++ s!" unmatched since the last iteration: tables {unmatched}"
             W.noteViol s!"P-CD1 ecs_query_changed: query {qi} returned false after a documented change:{why}"
       match act.run w with
       | .error f => return { fail := some f, viol := viol ++ w.viol }
@@ -211,6 +232,11 @@ def traceQProg (p : QProg) : List String := Id.run do
           let r ← W.iterate qi md a
           return s!"results {repr (r.toList.map (fun x => (x.table, x.ents, x.changed)))}"
         | .changed qi => do return s!"changed = {← W.queryChanged qi}"
+        | .isTrue qi | .count qi => do
+          modify fun w => { w with iterNoData := true, iterQuiet := true }
+          let r ← W.iterate qi (match o with | .isTrue _ => W.IterMode.first | _ => .skipAll) false
+          modify fun w => { w with iterNoData := false, iterQuiet := false }
+          return s!"probe results {r.size}"
       match act.run w with
       | .error f => out := out ++ [s!"{repr o}: FAIL {f}"]; return out
       | .ok (msg, w') =>
@@ -264,7 +290,9 @@ def queryMenu (k : Nat) (fixedSlot : Nat) : QCache :=
 def queryMenuSize : Nat := 11
 
 def genQOp (ents : Nat) (nq : Nat) : m QOp := do
-  match (← Pick.pick "q.kind" 4) with
+  match (← Pick.pick "q.kind" 5) with
+  | 4 => if (← Pick.pick "q.probe" 2) == 0 then return .isTrue (← Pick.pick "q.query" nq)
+         else return .count (← Pick.pick "q.query" nq)
   | 0 =>
     let qi ← Pick.pick "q.query" nq
     let md ← pickOf "q.mode" #[W.IterMode.full, .skipAll, .first]
@@ -340,7 +368,33 @@ def qcaseFixedAdded : QProg :=
     ops := [wo (.set .world 1 .c1 1), .changed 0, .iter 0 .full false,
           wo (.set .world 0 .c0 1), .changed 0] }
 
+/-- query_is_true_consumes_change.c (F27): ecs_query_is_true syncs the
+    first result's monitor, so a set is no longer reported. -/
+def qcaseIsTrueSet : QProg :=
+  { nEnts := 1,
+    queries := #[{ terms := #[qIn C0], detect := true }],
+    ops := [wo (.set .world 0 .c0 1), .changed 0, .iter 0 .full false, .changed 0,
+            wo (.set .world 0 .c0 2), .isTrue 0, .changed 0] }
+
+/-- query_is_true_consumes_change.c, second part (F27): a table unmatched
+    through up traversal, then ecs_query_is_true resets prev_match_count. -/
+def qcaseIsTrueUnmatched : QProg :=
+  { nEnts := 2,
+    queries := #[qC1C0 .up],
+    ops := [wo (.set .world 0 .c0 1), wo (.add .world 1 (.pair .childOf 0)), wo (.set .world 1 .c1 1),
+            .changed 0, .iter 0 .full false, .changed 0,
+            wo (.remove .world 0 .c0), .isTrue 0, .changed 0] }
+
+/-- the same with ecs_query_count (F27) -/
+def qcaseCountUnmatched : QProg :=
+  { qcaseIsTrueUnmatched with ops := [wo (.set .world 0 .c0 1), wo (.add .world 1 (.pair .childOf 0)), wo (.set .world 1 .c1 1),
+            .changed 0, .iter 0 .full false, .changed 0,
+            wo (.remove .world 0 .c0), .count 0, .changed 0] }
+
 def qcases : List (String × QProg) := [
+  ("query_is_true_consumes_change (set)", qcaseIsTrueSet),
+  ("query_is_true_consumes_change (unmatched)", qcaseIsTrueUnmatched),
+  ("query_count_consumes_change (unmatched)", qcaseCountUnmatched),
   ("change_detection_fixed_source_moved", qcaseFixedMoveSet),
   ("change_detection_parent_moved", qcaseUpMoveSet),
   ("change_detection_fixed_source_removed", qcaseFixedRemoved),
@@ -358,6 +412,8 @@ def shrinkQ (p : QProg) : List QProg := Id.run do
       let ops' := p.ops.filterMap (fun o => match o with
         | .iter qi md a => if qi == i then none else some (.iter (rn qi) md a)
         | .changed qi => if qi == i then none else some (.changed (rn qi))
+        | .isTrue qi => if qi == i then none else some (.isTrue (rn qi))
+        | .count qi => if qi == i then none else some (.count (rn qi))
         | o => some o)
       out := out ++ [{ p with queries := p.queries.eraseIdx! i, ops := ops' }]
   return out

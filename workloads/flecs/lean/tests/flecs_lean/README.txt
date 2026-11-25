@@ -1,5 +1,6 @@
-C tests for the predictions in ../../REPORT.md (round 1, F1-F14) and
-../../REPORT-2.md (round 2, F2 corrected and F15-F23), against flecs v4.2.0.
+C tests for the predictions in ../../REPORT.md (round 1, F1-F14),
+../../REPORT-2.md (round 2, F2 corrected and F15-F23) and ../../REPORT-3.md
+(round 3, F24-F28), against flecs v4.2.0.
 
 Each file is one program.  main() returns 0 when flecs behaves as its
 documentation says; a non-zero return or an abort confirms the prediction.
@@ -27,3 +28,15 @@ Round 2:
   F21             instantiate_resurrects_deleted_handle.c
   F22             batch_set_remove_add_value.c
   F23             staged_childof_recycled_parent.c
+
+Round 3:
+  F24             override_cache_stale_ref.c (abort at table.c 979),
+                  override_cache_stale_value.c,
+                  override_cache_onset_missing.c,
+                  override_cache_onset_source.c
+  F25             pipeline_system_stays_inactive.c
+  F26             workers_spurious_wakeup.c (needs threads: link with
+                  -lpthread; it installs a cond_wait that wakes once
+                  without a signal)
+  F27             query_is_true_consumes_change.c
+  F28             instantiate_child_outside_range.c

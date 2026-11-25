@@ -252,10 +252,12 @@ def oracleFixedState (qi : Nat) : M String := do
   return ",".intercalate parts.toList
 
 def oracleSync (qi t : Nat) : M Unit := do
+  if (← get).iterQuiet then return
   let s ← oracleState qi t
   modify fun w => { w with osnap := w.osnap.insert (qi, t) s }
 
 def oracleFixedSync (qi : Nat) : M Unit := do
+  if (← get).iterQuiet then return
   let s ← oracleFixedState qi
   modify fun w => { w with ofixed := w.ofixed.insert qi s }
 
@@ -456,6 +458,8 @@ def isWriteField (t : QTerm) : Bool :=
 /-- `flecs_query_mark_fields_dirty` (change_detection.c 464-527) for one
     result; the oracle counts the write. -/
 def markFieldsDirty (qi : Nat) (t : Nat) (m : QMatch) (ents : Array UInt64) : M Unit := do
+  -- change_detection.c 478-480: nothing is marked for EcsIterNoData
+  if (← get).iterNoData then return
   let q ← qGet qi
   let ts := cachedTerms q
   let hasDirty := (← get).hasDirty
@@ -667,6 +671,10 @@ def iterate (qi : Nat) (mode : IterMode) (ask : Bool) : M (Array QResult) := do
   let q ← qGet qi
   qSet qi { q with prevMatchCount := q.matchCount }
   let q ← qGet qi
+  -- round 3 oracle: a user iteration (any mode) sees the cache's tables
+  if !(← get).iterQuiet then
+    let ts := q.groups.foldl (fun acc g => acc ++ g.tables.toList.map (·.table)) []
+    modify fun w => { w with ouser := w.ouser.insert qi ts }
   -- fixed-source terms are evaluated first; if one fails nothing is yielded
   let slots := (← get).slots
   let mut fixedOk := true

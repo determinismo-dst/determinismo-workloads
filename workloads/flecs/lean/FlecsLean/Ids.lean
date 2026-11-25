@@ -12,6 +12,8 @@ def ENTITY_MASK : UInt64 := 0xFFFFFFFF
 def GENERATION_MASK : UInt64 := (0xFFFF : UInt64) <<< 32
 def COMPONENT_MASK : UInt64 := ~~~ ID_FLAGS_MASK
 def PAIR : UInt64 := (1 : UInt64) <<< 63
+/-- `ECS_AUTO_OVERRIDE` (world.c 11) -/
+def AUTO_OVERRIDE : UInt64 := (1 : UInt64) <<< 62
 
 def generation (e : UInt64) : UInt64 := (e &&& GENERATION_MASK) >>> 32
 /-- `ECS_GENERATION_INC` (api_defines.h 335): the 16-bit generation wraps. -/

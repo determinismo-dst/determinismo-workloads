@@ -23,6 +23,9 @@ inductive RelK | childOf | remove | delete | panic | c0 | isA
   deriving Repr, BEq, Inhabited, DecidableEq
 
 inductive IdS | c0 | c1 | tag | prefab | pair (r : RelK) (t : Nat)
+  /-- round 3: `ECS_AUTO_OVERRIDE | C0` / `| C1` (`ecs_auto_override`,
+      entity.c 1444-1453) -/
+  | auto0 | auto1
   deriving Repr, BEq, Inhabited, DecidableEq
 
 inductive Op where
@@ -60,6 +63,9 @@ structure Scenario where
   hooks : List (Id × Hooks) := []
   obs : List Obs := []
   ops : List Op := []
+  /-- round 3: `(OnInstantiate, X)` traits added to C0/C1 before the program
+      (ComponentTraits.md: traits are applied before the component is used) -/
+  traits : List (Id × InstK) := []
   deriving Repr, Inhabited
 
 /-! ### Scenario menu: hooks and observers that call back into the world -/
@@ -96,6 +102,11 @@ def menu (tag : UInt64) (k : Nat) : List (Id × Hooks) × List Obs :=
   -- round 2: up observers on C0 for OnAdd, OnRemove and OnSet, recording
   | 11 => ([], [{ event := .onAdd, pattern := C0, src := .up }, { event := .onRemove, pattern := C0, src := .up },
                 { event := .onSet, pattern := C0, src := .up }])
+  -- round 3: OnSet observers with the default source of each component: C1
+  -- (Inherit when the scenario says so) self|up(IsA), C0 self
+  -- (ObserversManual.md "OnSet and Inheritance")
+  | 12 => ([], [{ event := .onSet, pattern := C1, src := .selfUp, trav := EcsIsA },
+                { event := .onSet, pattern := C0 }])
   -- observers on everything (OnAdd/OnRemove/OnSet), recording only
   | _ => ([], [{ event := .onAdd, pattern := C0 }, { event := .onRemove, pattern := C0 },
                { event := .onSet, pattern := C0 }, { event := .onAdd, pattern := C1 },
@@ -140,6 +151,7 @@ def initWorld (s : Scenario) (noBatch : Bool) : Except Fail (World × Rels) := d
     let rRemove ← if s.panicFirst then apiNew .world else pure rRemove
     let rDelete ← apiNew .world
     modify fun w => { w with
+      inst := Std.HashMap.ofList s.traits,
       odt := (w.odt.insert rDelete .delete).insert rPanic .panic,
       stages := Array.replicate s.stages {},
       hooks := HashMap.ofList (s.hooks ++ (menu tag s.cfg).1),
@@ -182,6 +194,8 @@ def idOfS (rs : Rels) (slots : Array UInt64) : IdS → Id
   | .tag => rs.tag
   | .prefab => EcsPrefab
   | .pair r t => mkPair (relOf rs r) (slots.getD t 0)
+  | .auto0 => AUTO_OVERRIDE ||| C0
+  | .auto1 => AUTO_OVERRIDE ||| C1
 
 /-- P7: for every monitor and slot entity, what the monitor reported equals
     whether the entity matches the monitor's term now. -/
@@ -344,6 +358,24 @@ def summarize (w : World) : Array (Nat × Bool × List Id × List (Id × Nat)) :
 
 namespace W
 
+/-- `ecs_get` (entity.c 1572-1634) of a data component: the entity's own
+    value, else for components with the Inherit trait the first base (depth
+    first over IsA pairs in type order) that has it
+    (`flecs_get_base_component`, instantiate.c 485-555): (source, value). -/
+partial def effective (e : UInt64) (id : Id) (depth : Nat := 0) : M (Option (UInt64 × Nat)) := do
+  if depth > 32 then return none
+  let r := (← getIx).recOf e
+  let some t := r.table | return none
+  let x ← tbl t
+  if let some c := colIndex x id then return some (e, (x.cols.getD c #[]).getD r.row 0)
+  if (← instOf id) != .inherit then return none
+  for p in x.type do
+    if isPair p && pairFirst p == EcsIsA then
+      let b ← getAlive (pairSecond p)
+      if b == 0 then continue
+      if let some res ← effective b id (depth + 1) then return some res
+  return none
+
 /-- The target slot of an op's id, if it is a pair. -/
 def opPairTarget : IdS → Option (RelK × Nat)
   | .pair r t => some (r, t)
@@ -404,6 +436,54 @@ def replayOne (rs : Rels) (op : Op) : M Unit := do
 
 end W
 
+/-- Round 3, P-I3: the effective (source, value) of `id` on every slot. -/
+def inhSnapshot (w : World) (id : Id) : Array (UInt64 × Option (UInt64 × Nat)) := _root_.Id.run do
+  let mut out := #[]
+  for e in w.slots do
+    let v := if w.ix.isAlive e then
+        (match (W.effective e id).run w with
+          | .ok (r, _) => r
+          | .error _ => none)
+      else none
+    out := out.push (e, v)
+  return out
+
+/-- P-I3 (ObserversManual.md "OnSet and Inheritance", for components with
+    the Inherit trait and an observer with the default self|up(IsA) source):
+    which entities a world call must produce an OnSet for.
+    - "Adding an IsA pair": the entity newly inherits the component.
+    - "Removing an Override": the entity owned it and now inherits it.
+    - "Setting an Inherited Component": every entity that inherited it from
+      the entity that was set, before and after. -/
+def inhExpected (rs : Rels) (slots : Array UInt64) (id : Id) (op : Op)
+    (pre post : Array (UInt64 × Option (UInt64 × Nat))) : Array (UInt64 × String) := _root_.Id.run do
+  let get := fun (xs : Array (UInt64 × Option (UInt64 × Nat))) (e : UInt64) =>
+    ((xs.find? (·.1 == e)).map (·.2)).getD none
+  let idS := W.idOfS rs slots
+  let mut out := #[]
+  match op with
+  | .add .world e (.pair .isA _) =>
+    let E := slots.getD e 0
+    match get pre E, get post E with
+    | none, some (src, _) => if src != E then out := out.push (E, "adding an IsA pair made it inherit the component")
+    | _, _ => pure ()
+  | .remove .world e x =>
+    if idS x == id then
+      let E := slots.getD e 0
+      match get pre E, get post E with
+      | some (s0, _), some (s1, _) => if s0 == E && s1 != E then out := out.push (E, "removing the override re-exposed the inherited component")
+      | _, _ => pure ()
+  | .set .world p x _ =>
+    if idS x == id then
+      let P := slots.getD p 0
+      for (E, v0) in pre do
+        if E == P then continue
+        match v0, get post E with
+        | some (s0, _), some (s1, _) => if s0 == P && s1 == P then out := out.push (E, s!"the inherited component was set on its base {P}")
+        | _, _ => pure ()
+  | _ => pure ()
+  return out
+
 /-- Run a scenario.  Stops at the first failure.  With `reference`, calls on
     a stage are not enqueued in the replica's command queue: they are kept
     aside and replayed as world calls when the stage is merged, in order,
@@ -444,10 +524,33 @@ def runScenario (s : Scenario) (noBatch : Bool := false) (checkEach : Bool := tr
           | _ => pure ()
       for (isReplay, o) in steps do
         let act := if isReplay then W.replayOne rs o else W.runOp rs o
+        let ixBefore := w.ix
+        let inh := s.cfg == 12 && s.traits.any (fun (c, k) => c == C1 && k == .inherit) && !isReplay
+        let pre := if inh then inhSnapshot w C1 else #[]
+        let logBefore := w.log.size
         match act.run w with
         | .error f =>
           return { fail := some f, violations := viol ++ w.viol, state := summarize w, log := w.log, stale := w.staleReads }
         | .ok ((), w2) => w := w2
+        -- P2k (round 3): every entity a call creates while a range is
+        -- active falls in the range (EntitiesComponents.md "Ranges": "both
+        -- newly issued and recycled ids fall within the range"), including
+        -- the children an instantiation creates
+        -- (ecs_new_from_range issues from the range it is given, and
+        -- ecs_make_alive asks for a specific id: not checked)
+        let fromRange := match o with | .newFromRange _ | .makeAlive _ _ => true | _ => false
+        if let some r := ixBefore.activeRange then
+          if !fromRange then
+            for i in [1:w.ix.alive] do
+              let e := w.ix.denseAt i
+              if !ixBefore.isAlive e && w.ix.isAlive e && !EIndex.rangeContains r (lo32 e) then
+                viol := viol.push s!"P2k range: after {repr o}: entity {lo32 e} was created outside the active range [{r.min}, {r.max}]"
+        if inh then
+          let post := inhSnapshot w C1
+          let fresh := w.log.extract logBefore w.log.size
+          for (E, why) in inhExpected rs w.slots C1 o pre post do
+            if !fresh.any (fun l => !l.hook && l.ev == .onSet && l.entity == E && l.id == C1) then
+              viol := viol.push s!"P-I3 OnSet for inheritance: after {repr o}: {why}, but no OnSet observer was invoked for entity {E}" 
       if !usesMakeAlive then
         for e in w.slots do
           if w.ix.isAlive e then
@@ -459,6 +562,9 @@ def runScenario (s : Scenario) (noBatch : Bool := false) (checkEach : Bool := tr
         match W.checkStorage.run w with
         | .ok (vs, _) => viol := viol ++ vs.map (fun v => s!"after {repr op}: {v}")
         | .error f => viol := viol.push s!"storage check failed: {f}"
+        match W.reachInvariant.run w with
+        | .ok (vs, _) => viol := viol ++ vs.map (fun v => s!"{v} (after {repr op})")
+        | .error _ => pure ()
         -- P7: outside deferred mode, each monitor has reported exactly the
         -- entities that match its term (ObserversManual.md "Monitors")
         let ownQueues := w.stages.all (fun st => st.levels.all (fun c => c.queue.isEmpty))

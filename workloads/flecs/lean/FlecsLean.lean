@@ -14,3 +14,6 @@ import FlecsLean.Pipeline
 import FlecsLean.Query
 import FlecsLean.QueryProps
 import FlecsLean.TheoremsPipe
+import FlecsLean.Workers
+import FlecsLean.Activity
+import FlecsLean.TheoremsInh

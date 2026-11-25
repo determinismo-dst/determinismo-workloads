@@ -1,5 +1,6 @@
 import FlecsLean.Theorems
 import FlecsLean.TheoremsPipe
+import FlecsLean.TheoremsInh
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -27,3 +28,10 @@ import FlecsLean.TheoremsPipe
 #print axioms Flecs.Pipe.write_then_read_asks_merge
 #print axioms Flecs.Pipe.wildcard_write_missed
 #print axioms Flecs.Pipe.any_read_missed
+#print axioms Flecs.R3.invalidate_invalid
+#print axioms Flecs.R3.invalidate_valid
+#print axioms Flecs.R3.changes_invalid
+#print axioms Flecs.R3.override_cache_misses_changes
+#print axioms Flecs.R3.override_cache_sees_first_change
+#print axioms Flecs.R3.reachable_invalid_state
+#print axioms Flecs.Activity.addToCache_keeps_empty

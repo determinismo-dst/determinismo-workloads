@@ -44,6 +44,24 @@ run yet):
 Query caches, grouping and sorting agreed with a fresh evaluation in every run. The round-1
 generation lemmas are re-proved without `bv_decide`.
 
+## Round 3
+
+[REPORT-3.md](REPORT-3.md): prefab inheritance (the override cache, OnInstantiate traits,
+auto-override, OnSet through IsA), worker-thread synchronization, system activity, reachable
+caches. Five new predictions, F24-F28, 8 new C tests (none run yet):
+- F24: a table's override cache refreshes only when its base's reachable-cache generation changes,
+  which stops once that cache is invalid: later changes of the base are missed (an internal
+  assert at table.c 979 with default traits, new instances constructed instead of copied, a
+  missing or misdirected OnSet).
+- F25: after `ecs_run_aperiodic(EcsAperiodicEmptyQueries)`, a system stays inactive when its query
+  matches entities again.
+- F26: the worker threads' sync waits without re-checking its condition: one spurious wakeup
+  trips internal asserts or runs systems during a merge.
+- F27: `ecs_query_is_true` and `ecs_query_count` clear the change state `ecs_query_changed`
+  reports.
+- F28: with an entity range active, instantiating a prefab with children creates children
+  outside the range.
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled

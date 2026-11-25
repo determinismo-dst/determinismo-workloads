@@ -190,6 +190,67 @@ def caseChildOfRecycledParent : Scenario := { ops := [
   .new,                                     -- 2 q (recycles p's id)
   .merge 0 ] }
 
+/-! ### Round 3 -/
+
+/-- override_cache_stale_ref.c (F24, assert): default (Copy) trait, a plain
+    base.  The table [C0, (IsA, base)] keeps a ref to a base that lost C0. -/
+def caseOverrideStaleRef : Scenario := { ops := [
+  .new, .new,                             -- 0 base, 1 inst
+  .set .world 0 .c0 1,
+  .add .world 1 (.pair .isA 0),           -- copy; validates (IsA, base)
+  .add .world 0 .tag,                     -- generation 0 -> 1
+  .remove .world 1 .c0,
+  .add .world 1 .c0,                      -- refs refreshed at 1: base
+  .remove .world 0 .c0,                   -- invalid already: no increment
+  .remove .world 1 .c0,
+  .add .world 1 .c0 ] }                   -- stale ref: table.c 979
+
+/-- override_cache_stale_value.c (F24, value): new instances are
+    constructed instead of copied. -/
+def caseOverrideStaleValue : Scenario := { ops := [
+  .new, .new, .new, .new,                 -- 0 base, 1 inst, 2 inst2, 3 inst3
+  .set .world 0 .c0 1,
+  .add .world 1 (.pair .isA 0),
+  .remove .world 0 .c0,                   -- generation 0 -> 1
+  .remove .world 1 .c0,
+  .add .world 1 .c0,                      -- refs refreshed at 1: none
+  .set .world 0 .c0 99,                   -- invalid already: no increment
+  .add .world 2 (.pair .isA 0),           -- constructed, not copied
+  .add .world 3 (.pair .isA 0) ] }
+
+/-- override_cache_onset_missing.c (F24, missing OnSet): C1 Inherit, an
+    OnSet observer with the default self|up(IsA) source (menu 12). -/
+def caseOverrideOnSetMissing : Scenario := { cfg := 12, traits := [(C1, .inherit)], ops := [
+  .new, .new,                             -- 0 base, 1 inst
+  .add .world 0 .prefab,
+  .add .world 1 (.pair .isA 0),
+  .add .world 0 .tag,                     -- generation 0 -> 1
+  .add .world 1 .c1,                      -- override; refs: none
+  .set .world 0 .c1 50,                   -- invalid already
+  .remove .world 1 .c1 ] }                -- re-exposes 50: no OnSet
+
+/-- override_cache_onset_source.c (F24, OnSet from a base without the
+    component). -/
+def caseOverrideOnSetSource : Scenario := { cfg := 12, traits := [(C1, .inherit)], ops := [
+  .new, .new,
+  .add .world 0 .prefab,
+  .add .world 1 (.pair .isA 0),
+  .set .world 0 .c1 50,                   -- generation 0 -> 1
+  .add .world 1 .c1,                      -- override; refs: base
+  .remove .world 0 .c1,                   -- invalid already
+  .remove .world 1 .c1 ] }                -- OnSet with source base
+
+/-- instantiate_child_outside_range.c (F28): with a range active, an
+    instance child gets the id instance + offset, past the range's end. -/
+def caseInstantiateOutsideRange : Scenario := { ops := [
+  .new, .new, .new,                       -- 0 prefab, 1 prefab child, 2 instance
+  .add .world 0 .prefab,
+  .add .world 1 (.pair .childOf 0),
+  .rangeNew 5000 5010,
+  .rangeSet 0,
+  .new,                                   -- 3 = 5000
+  .add .world 2 (.pair .isA 0) ] }        -- child id = instance + 1
+
 def allCases : List (String × Scenario) := [
   ("batch_remove_dead_target", caseBatchRemoveDeadTarget),
   ("batch_remove_dead_target_panic", caseBatchRemovePanic),
@@ -215,6 +276,11 @@ def allCases : List (String × Scenario) := [
   ("monitor_up_grandparent", caseMonitorGrandparent),
   ("monitor_up_grandparent (self|up)", caseMonitorGrandparentSelfUp),
   ("instantiate_resurrects_deleted_handle", caseInstantiateResurrects),
-  ("staged_childof_recycled_parent", caseChildOfRecycledParent) ]
+  ("staged_childof_recycled_parent", caseChildOfRecycledParent),
+  ("override_cache_stale_ref", caseOverrideStaleRef),
+  ("override_cache_stale_value", caseOverrideStaleValue),
+  ("override_cache_onset_missing", caseOverrideOnSetMissing),
+  ("override_cache_onset_source", caseOverrideOnSetSource),
+  ("instantiate_child_outside_range", caseInstantiateOutsideRange) ]
 
 end Flecs

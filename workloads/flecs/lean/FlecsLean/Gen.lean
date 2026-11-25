@@ -140,6 +140,81 @@ def genIsAScenario (ents len : Nat) : m Scenario := do
   for k in [0:stages] do ops := ops.push (.merge k)
   return { stages, ops := ops.toList, cfg := 0 }
 
+/-- Round 3: prefab inheritance.  Prefabs, IsA (to lower slots: no
+    cycles), prefab variants, children of prefabs, set/add/remove/ensure of
+    C0 and C1 on prefabs and instances (overrides), auto-overrides, deletes,
+    new entities, staged calls and merges. -/
+def genInhOp (ents stages : Nat) : m Op := do
+  let e ← Pick.pick "flecs.entity" ents
+  let tg ← if stages == 0 then pure Tgt.world else genTgt stages
+  let comp : m IdS := pickOf "flecs.id.component" #[IdS.c0, .c1]
+  match (← Pick.pick "flecs.call" 13) with
+  | 0 => return .add tg e .prefab
+  | 1 | 2 => if e == 0 then return .add tg e .prefab
+             else return .add tg e (.pair .isA (← Pick.pick "flecs.pair.target" e))
+  | 3 => if e == 0 then return .remove tg e .c1
+         else return .remove tg e (.pair .isA (← Pick.pick "flecs.pair.target" e))
+  | 4 | 5 => return .set tg e (← comp) (← genVal)
+  | 6 => return .remove tg e (← comp)
+  | 7 => return .add tg e (← comp)
+  | 8 => return .add tg e (← pickOf "flecs.id.auto" #[IdS.auto0, .auto1])
+  | 9 => return .ensure tg e (← comp) (← genVal)
+  | 10 => if e == 0 then return .delete tg e
+          else return .add tg e (.pair .childOf (← Pick.pick "flecs.pair.target" e))
+  | 11 => if (← Pick.pick "flecs.new" 2) == 0 then return .delete tg e else return .new
+  | _ => if stages == 0 then return .add tg e .tag
+         else return .merge (← Pick.pick "flecs.merge.stage" stages)
+
+/-- `staged`: calls on stages too (else world calls only). -/
+def genInhScenario (ents len : Nat) (staged : Bool := true) : m Scenario := do
+  let stages ← if staged then do pure ((← Pick.pick "flecs.stages" 2) + 1) else pure 1
+  let cfg := if (← Pick.pick "flecs.hooks" 2) == 0 then 0 else 12
+  let c1 ← pickOf "inh.c1" #[InstK.inherit, .copy]
+  let c0 ← pickOf "inh.c0" #[InstK.copy, .dontInherit, .inherit]
+  let mut ops : Array Op := Array.replicate ents .new
+  for _ in [0:len] do
+    ops := ops.push (← genInhOp ents (if staged then stages else 0))
+  for k in [0:stages] do ops := ops.push (.merge k)
+  return { stages, ops := ops.toList, cfg, traits := [(C0, c0), (C1, c1)] }
+
+/-- Round 3, small exhaustive menu: entity 0 is the base, entities 1 and
+    2 may become its instances; world calls only. -/
+def genInhSmallOp : m Op := do
+  match (← Pick.pick "inh.call" 9) with
+  | 0 => return .set .world 0 .c1 (← pickOf "flecs.value" #[50, 99])
+  | 1 => return .remove .world 0 .c1
+  | 2 => return .add .world 0 .tag
+  | k =>
+    let e := if k % 2 == 1 then 1 else 2
+    match (k - 3) / 2 with
+    | 0 => return .add .world e (.pair .isA 0)
+    | 1 => return .add .world e .c1
+    | _ => return .remove .world e .c1
+
+def genInhSmall (len : Nat) : m Scenario := do
+  let c1 ← pickOf "inh.c1" #[InstK.inherit, .copy]
+  let cfg := if (← Pick.pick "flecs.hooks" 2) == 0 then 0 else 12
+  let mut ops : Array Op := #[.new, .new, .new]
+  for _ in [0:len] do ops := ops.push (← genInhSmallOp)
+  return { cfg, ops := ops.toList, traits := [(C1, c1)] }
+
+/-- Round 3: instantiation with entity ranges (F21's area meets F8's): a
+    prefab (slot 0) with a child (slot 1), then entities, ranges, instances
+    and deletes. -/
+def genRangeInstOp (ents : Nat) : m Op := do
+  match (← Pick.pick "ri.call" 6) with
+  | 0 => return .new
+  | 1 => return .rangeNew (← pickOf "flecs.range.min" #[5000, 6000]) (← pickOf "flecs.range.max" #[0, 5003, 6003])
+  | 2 => return .rangeSet (← Pick.pick "flecs.range" 2)
+  | 3 => return .add .world ((← Pick.pick "flecs.entity" ents) + 2) (.pair .isA 0)
+  | 4 => return .delete .world ((← Pick.pick "flecs.entity" ents) + 2)
+  | _ => return .newFromRange (← Pick.pick "flecs.range" 2)
+
+def genRangeInst (ents len : Nat) : m Scenario := do
+  let mut ops : Array Op := #[.new, .new, .add .world 0 .prefab, .add .world 1 (.pair .childOf 0)]
+  for _ in [0:len] do ops := ops.push (← genRangeInstOp ents)
+  return { ops := ops.toList }
+
 /-- Entity-index programs: entities, deletes, make_alive, ranges. -/
 def genEIOp (maxEnts : Nat) : m Op := do
   match (← Pick.pick "flecs.ei.call" 7) with
@@ -212,9 +287,16 @@ def checkAll (s : Scenario) : List Verdict := _root_.Id.run do
   if !a.stale.isEmpty then
     out := out ++ [{ ok := false, property := "P1 no-stale-read", detail := a.stale[0]! }]
   let isP7 := fun (v : String) => ((v.splitOn "P7 monitor").length > 1)
-  let strong := a.violations.filter (fun v => !v.startsWith "view:" && !isP7 v && !v.startsWith "P8")
+  let isI := fun (v : String) => v.startsWith "P-I2" || v.startsWith "P-I3" || v.startsWith "P-RC"
+  let strong := a.violations.filter (fun v => !v.startsWith "view:" && !isP7 v && !v.startsWith "P8" && !isI v)
   if !strong.isEmpty then
     out := out ++ [{ ok := false, property := "P2 oracle", detail := strong[0]! }]
+  -- round 3: P-I2 override values, P-I3 OnSet for inheritance
+  for (pfx, name) in [("P-I2", "P-I2 override value"), ("P-I3", "P-I3 OnSet for inheritance"),
+                      ("P-RC", "P-RC reachable cache")] do
+    let vs := a.violations.filter (·.startsWith pfx)
+    if !vs.isEmpty then
+      out := out ++ [{ ok := false, property := name, detail := vs[0]! }]
   let p7 := a.violations.filter isP7
   if !p7.isEmpty then
     out := out ++ [{ ok := false, property := "P7 monitor", detail := p7[0]! }]
@@ -226,7 +308,11 @@ def checkAll (s : Scenario) : List Verdict := _root_.Id.run do
   let bf := b.fail.map (·.code)
   -- a locked-storage error is a hook body's misuse (Manual.md "Deferred
   -- operations"); runs where it occurs on either side are not compared
-  let misuse := af == some .lockedStorage || bf == some .lockedStorage
+  let misuse := af == some .lockedStorage || bf == some .lockedStorage ||
+    -- round 3: whether the instance is its prefab's own child depends on
+    -- batching (round 2, "Not counted"): not compared
+    (a.fail.map (·.site == "addons/prefab/instantiate.c 253-260")).getD false ||
+    (b.fail.map (·.site == "addons/prefab/instantiate.c 253-260")).getD false
   if misuse then pure ()
   else if af != bf then
     out := out ++ [{ ok := false, property := "P3 batching", detail := s!"batched fail {repr af} vs one-by-one {repr bf}" }]
@@ -248,7 +334,9 @@ def checkAll (s : Scenario) : List Verdict := _root_.Id.run do
   -- P5: the merge gives the state of the documented one-call-at-a-time replay
   let c := runScenario s false true true
   let cf := c.fail.map (·.code)
-  if af == some .lockedStorage || cf == some .lockedStorage then pure ()
+  if af == some .lockedStorage || cf == some .lockedStorage ||
+      (a.fail.map (·.site == "addons/prefab/instantiate.c 253-260")).getD false ||
+      (c.fail.map (·.site == "addons/prefab/instantiate.c 253-260")).getD false then pure ()
   else if a.fail.isNone && c.fail.isNone && a.state.toList != c.state.toList then
     out := out ++ [{ ok := false, property := "P5 staged = replayed", detail := s!"final state differs: merge {repr a.state.toList} vs replay {repr c.state.toList}" }]
   else if a.fail.isNone && c.fail.isNone &&

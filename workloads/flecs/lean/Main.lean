@@ -4,6 +4,8 @@ import FlecsLean.Threads
 import FlecsLean.Search2
 import FlecsLean.Pipeline
 import FlecsLean.QueryProps
+import FlecsLean.Workers
+import FlecsLean.Activity
 
 open Flecs
 
@@ -119,6 +121,48 @@ def queryMain (args : List String) : IO UInt32 := do
   | _ => IO.println "usage: query explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | lib MODE SEED N ENTS LEN PROP"; return 1
   return 0
 
+instance : Repr Activity.AProg := ⟨fun p _ => .text s!"kinds={p.kinds.toList} ops={p.ops.map (fun o => toString (repr o))}"⟩
+
+def actMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : Activity.AProg) => gshrink Activity.shrinkA Activity.check sig p
+  match args with
+  | ["explore", seed, n, len] =>
+    let g : TapeM Activity.AProg := Activity.genAProg len.toNat!
+    greport s!"activity explore seed={seed} n={n} len={len}" (gexplore g Activity.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, len] =>
+    let g : TapeM Activity.AProg := Activity.genAProg len.toNat!
+    let (st, done) := gexhaust g Activity.check limit.toNat!
+    greport s!"activity exhaust len={len} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, len, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Activity.AProg := Activity.genAProg len.toNat!
+    glib mode g Activity.check prop n.toNat! seed.toNat! sh
+  | _ => IO.println "usage: act explore SEED N LEN | exhaust LIMIT LEN | lib MODE SEED N LEN PROP"; return 1
+  return 0
+
+def workersMain (args : List String) : IO UInt32 := do
+  match args with
+  | [mode, stages, ops, frames, spurious, n, seed, filt] =>
+    let opsArr : Array Workers.POp := (ops.splitOn ",").toArray.map (fun o => { mt := o == "mt" })
+    let cfg : Workers.Cfg := { stages := stages.toNat!, frames := frames.toNat!, spurious := spurious.toNat!, ops := opsArr }
+    let run := fun src =>
+      let e := Workers.timeline cfg src
+      match e.violation with
+      | some (p, d) => if filt == "all" || ((p ++ " " ++ d).splitOn filt).length > 1 then e
+                       else { e with violation := none }
+      | none => e
+    IO.println s!"== workers {mode} stages={stages} ops={ops} frames={frames} spurious={spurious} filter={filt}"
+    match (← findWith mode run n.toNat! seed.toNat!) with
+    | none => IO.println "  no counterexample"
+    | some c =>
+      let c' := Determinismo.shrink run c
+      IO.println s!"  counterexample after {c.runs} timelines"
+      IO.println s!"  property: {c'.property}"
+      IO.println s!"  detail: {c'.detail}"
+      IO.println "  tape:"
+      IO.println (Determinismo.tape c'.taken)
+    return 0
+  | _ => IO.println "usage: workers explore|exhaust STAGES OPS FRAMES SPURIOUS N SEED FILTER"; return 1
+
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["cases"] =>
@@ -155,6 +199,46 @@ def main (args : List String) : IO UInt32 := do
     let g : TapeM Scenario := genIsAScenario ents.toNat! len.toNat!
     let (st, done) := exhaust g [] limit.toNat!
     report s!"IsA exhaust ents={ents} len={len} limit={limit} complete={done}" st true
+  | ["trace-case", name] =>
+    for (nm, sc) in allCases do
+      if nm != name then continue
+      match W.initWorld sc false with
+      | .error f => IO.println s!"init failed {f}"
+      | .ok (w0, rs) =>
+        let mut w := w0
+        for op in sc.ops do
+          match (W.runOp rs op).run w with
+          | .error f => IO.println s!"{repr op}: FAIL {f}"; break
+          | .ok ((), w') =>
+            w := w'
+            IO.println s!"{repr op}"
+            for (id, c) in w.crs.toList do
+              if isPair id && !isWildcard id && (pairFirst id == EcsIsA || pairFirst id == EcsChildOf) then
+                IO.println s!"   cr ({pairFirst id}, {pairSecond id}) cur={c.reachCur} gen={c.reachGen} reach={repr (c.reach.map (fun e => (e.id, e.src, e.table)))}"
+            for t in [0:w.tables.size] do
+              let x := w.tables.getD t default
+              if x.live && x.over.isSome then
+                IO.println s!"   table {t} type={x.type} over={repr x.over} ents={x.ents.extract 0 x.count}"
+            for e in w.slots do
+              IO.println s!"   slot {e} rec={repr (w.ix.recOf e)}"
+            IO.println s!"   state {repr (summarize w).toList} viol={w.viol}"
+  | ["inh-explore", seed, n, ents, len, staged, props] =>
+    let g : TapeM Scenario := genInhScenario ents.toNat! len.toNat! (staged == "1")
+    let ps := if props == "all" then [] else props.splitOn ","
+    report s!"inheritance explore seed={seed} n={n} ents={ents} len={len} staged={staged} props={props}" (explore g ps seed.toNat! n.toNat!) true
+  | ["inh-exhaust", limit, ents, len, staged, props] =>
+    let g : TapeM Scenario := genInhScenario ents.toNat! len.toNat! (staged == "1")
+    let ps := if props == "all" then [] else props.splitOn ","
+    let (st, done) := exhaust g ps limit.toNat!
+    report s!"inheritance exhaust ents={ents} len={len} limit={limit} staged={staged} props={props} complete={done}" st true
+  | ["range-inst", limit, ents, len] =>
+    let g : TapeM Scenario := genRangeInst ents.toNat! len.toNat!
+    let (st, done) := exhaust g [] limit.toNat!
+    report s!"range+instantiate exhaust ents={ents} len={len} limit={limit} complete={done}" st true
+  | ["inh-small", limit, len] =>
+    let g : TapeM Scenario := genInhSmall len.toNat!
+    let (st, done) := exhaust g [] limit.toNat!
+    report s!"inheritance exhaust-small len={len} limit={limit} complete={done}" st true
   | ["ei-explore", seed, n, len] =>
     let g : TapeM Scenario := genEIScenario len.toNat!
     report s!"entity-index explore seed={seed} n={n} len={len}" (explore g [] seed.toNat! n.toNat!) true
@@ -166,12 +250,17 @@ def main (args : List String) : IO UInt32 := do
     -- determinismo's explore/exhaust/shrink/tape on one property
     let g : EStateM Determinismo.Stop Determinismo.Decisions Scenario :=
       if mode == "obs" then genObsScenario cfgOrEnts.toNat! len.toNat!
+      else if mode == "inh" then genInhScenario cfgOrEnts.toNat! len.toNat!
+      else if mode == "inhw" then genInhScenario cfgOrEnts.toNat! len.toNat! false
+      else if mode == "inhs" || mode == "inhsx" then genInhSmall len.toNat!
+      else if mode == "rix" then genRangeInst cfgOrEnts.toNat! len.toNat!
       else if mode == "isa" then genIsAScenario cfgOrEnts.toNat! len.toNat!
       else if mode == "explore" then genScenario cfgOrEnts.toNat! len.toNat!
       else if mode == "ei" then genEIScenario len.toNat!
       else genSmallScenario cfgOrEnts.toNat! 1 2 len.toNat! true
     -- "xsmall": the small call menu, explored at random
-    let mode := if mode == "xsmall" || mode == "obs" || mode == "isa" then "explore" else mode
+    let mode := if mode == "xsmall" || mode == "obs" || mode == "isa" || mode == "inh" || mode == "inhw" || mode == "inhs" then "explore"
+      else if mode == "inhsx" || mode == "rix" then "exhaust" else mode
     let props := if prop == "all" then [] else [prop]
     let run := timeline g props
     let found ← findWith mode run n.toNat! seed.toNat!
@@ -203,6 +292,8 @@ def main (args : List String) : IO UInt32 := do
       IO.println "  tape:"
       IO.println (Determinismo.tape c'.taken)
   | "pipe" :: rest => return (← pipeMain rest)
+  | "workers" :: rest => return (← workersMain rest)
+  | "act" :: rest => return (← actMain rest)
   | "query" :: rest => return (← queryMain rest)
   | _ =>
     IO.println "usage: flecs-search explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | ei-explore SEED N LEN | ei-exhaust LIMIT LEN"

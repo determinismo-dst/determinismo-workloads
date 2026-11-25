@@ -18,10 +18,132 @@ inductive EnsurePtr | table (p : W.Ptr) | cmd (k lvl idx : Nat) | null
 
 namespace W
 
+/-! ### Round 3: inheritance (IsA) helpers -/
+
+def hasIsA (x : Table) : Bool := x.type.any (fun i => isPair i && pairFirst i == EcsIsA)
+
+/-- `EcsTableHasTraversable` (`table->_->traversable_count != 0`, table.c
+    89-90, 1366-1377): some entity in the table is a target of a traversable
+    pair. -/
+def hasTraversable (t : Nat) : M Bool := do
+  let w ← get
+  let some x := w.tables[t]? | return false
+  for i in [0:x.count] do
+    if hasFlag (w.ix.recOf (x.ents.getD i 0)).flags FIsTraversable then return true
+  return false
+
+/-- `flecs_emit_propagate_invalidate_tables` (observable.c 489-551): bump
+    the generation of each traversable record `(R, e)` whose cache is valid,
+    then do the same below it.  A record whose cache is already invalid is
+    skipped with its subtree ("Subtree is already marked invalid", 505-508). -/
+partial def invalidateTables (e : UInt64) (depth : Nat := 0) : M Unit := do
+  if depth > 64 then return
+  if (← crGet (mkPair EcsWildcard (lo32 e))).isNone then return
+  for rel in [EcsIsA, EcsChildOf] do
+    let some c ← crGet (mkPair rel (lo32 e)) | continue
+    if c.reachCur != c.reachGen then continue
+    crSet { c with reachGen := c.reachGen + 1 }
+    for t in c.cache do
+      if !(← hasTraversable t) then continue
+      let x := (← get).tables.getD t default
+      for i in [0:x.count] do
+        let y := x.ents.getD i 0
+        let r := (← getIx).recOf y
+        if (← isAlive y) && hasFlag r.flags FIsTraversable then
+          invalidateTables y (depth + 1)
+
+/-- `flecs_emit_propagate_invalidate` (observable.c 553-569) -/
+def propagateInvalidate (t row count : Nat) : M Unit := do
+  for i in [0:count] do
+    let x ← tbl t
+    let e := x.ents.getD (row + i) 0
+    let r := (← getIx).recOf e
+    if (← isAlive e) && hasFlag r.flags FIsTraversable then invalidateTables e
+
+/-- `ecs_search_relation(world, table, 0, id, EcsIsA, EcsUp, &base, ...)`
+    (search.c 203-350): depth first over the table's IsA pairs in type order,
+    the target's own table first, then its IsA pairs; components with the
+    DontInherit trait are never found (`flecs_type_can_inherit_id`,
+    175-200).  Returns the entity that has `id`. -/
+partial def searchIsA (t : Nat) (id : Id) (depth : Nat := 0) : M (Option UInt64) := do
+  if depth > 32 then fail .invalidOperation "search.c" "cycle detected in IsA relationship"
+  if (← instOf id) == .dontInherit then return none
+  let x ← tbl t
+  for p in x.type do
+    if isPair p && pairFirst p == EcsIsA then
+      let b := pairSecond p
+      let r := (← getIx).recOf b
+      match r.table with
+      | none => continue
+      | some bt =>
+        let bx ← tbl bt
+        if bx.type.contains id then return some (← getAlive b)
+        if let some f ← searchIsA bt id (depth + 1) then return some f
+  return none
+
+/-- `flecs_table_update_overrides` (table.c 471-508) -/
+def updateOverrides (t : Nat) : M Unit := do
+  let x ← tbl t
+  let some o := x.over | return
+  let gen := fun (pid : Id) => do return ((← crGet pid).map (·.reachGen)).getD 0
+  let mut stale := false
+  for (pid, g) in o.bases do
+    if g != (← gen pid) then stale := true
+  if !stale then return
+  let mut bases := #[]
+  for (pid, _) in o.bases do bases := bases.push (pid, ← gen pid)
+  let mut refs := #[]
+  for c in x.colIds do refs := refs.push (← searchIsA t c)
+  setTbl t { (← tbl t) with over := some { bases, refs } }
+
+/-- the value of component `id` on entity `b`, if its table has the column -/
+def ownVal (b : UInt64) (id : Id) : M (Option Nat) := do
+  let r := (← getIx).recOf b
+  match r.table with
+  | none => return none
+  | some bt =>
+    let bx ← tbl bt
+    match colIndex bx id with
+    | some c => return (bx.cols.getD c #[])[r.row]?
+    | none => return none
+
+/-- `flecs_table_invoke_ctor` (table.c 963-993) for one row of column `ci`:
+    with an override ref the value is copied from the base through
+    `ecs_ref_get_id` (ref.c 90-162, which re-resolves the base's current
+    table); otherwise the ctor runs (0 in the model).  The P-I2 oracle
+    compares with a fresh search (PrefabsManual.md "Component Overriding":
+    an override is "initialized with the value from the prefab component";
+    ComponentTraits.md "DontInherit": "its value is not copied"). -/
+def ctorVal (t ci : Nat) : M Nat := do
+  let x ← tbl t
+  let cid := x.colIds.getD ci 0
+  let mut produced : Nat := 0
+  let mut via : Option UInt64 := none
+  if let some o := x.over then
+    if let some b := o.refs.getD ci none then
+      via := some b
+      if !(← isAlive b) then
+        fail .internalError "storage/table.c 979" s!"ecs_assert(base_ptr != NULL): the override ref of table {t} for {cid} points at {b}, which is not alive"
+      match (← ownVal b cid) with
+      | some v => produced := v
+      | none =>
+        fail .internalError "storage/table.c 979" s!"ecs_assert(base_ptr != NULL): the override ref of table {t} for {cid} points at {b}, which no longer has it"
+  if (← get).checkOverrides && hasIsA x then
+    let fresh ← searchIsA t cid
+    let expect ← match fresh with
+      | some b => do pure ((← ownVal b cid).getD 0)
+      | none => pure 0
+    if fresh != via || expect != produced then
+      modify fun w => { w with viol := w.viol.push s!"P-I2 override value: table {t} constructs {cid} from {via} = {produced}, but the base the entity inherits from is {fresh} = {expect}" }
+  return produced
+
 /-! ### Small storage helpers -/
 
 /-- Append `e` at row `count`; columns get a default-constructed value. -/
 def appendRaw (t : Nat) (e : UInt64) : M Nat := do
+  -- flecs_table_grow_data (table.c 1562): tables with IsA refresh the
+  -- override cache before they grow
+  if ((← tbl t).over).isSome then updateOverrides t
   let x ← tbl t
   let row := x.count
   let ents := if row < x.ents.size then x.ents.set! row e else x.ents.push e
@@ -102,6 +224,34 @@ structure Diff where
 def diffOf (src dst : Array Id) : Diff :=
   { added := dst.filter (fun i => !src.contains i), removed := src.filter (fun i => !dst.contains i) }
 
+/-- `flecs_type_add`: sorted insert, no duplicate -/
+def typeAdd (ty : Array Id) (id : Id) : Array Id :=
+  if ty.contains id then ty
+  else ty.filter (· < id) ++ #[id] ++ ty.filter (· > id)
+
+/-- `flecs_add_overrides_for_base` (table_graph.c 718-790): the base's
+    auto-overridden ids and ids with the Copy trait join the new type, then
+    the same for the base's own IsA targets. -/
+partial def addOverridesForBase (ty : Array Id) (pair : Id) (depth : Nat := 0) : M (Array Id) := do
+  if depth > 32 then fail .invalidOperation "table_graph.c" "cycle detected in IsA relationship"
+  let b ← getAlive (pairSecond pair)
+  if b == 0 then fail .invalidParameter "table_graph.c 723-724" "target of IsA pair is not alive"
+  let r := (← getIx).recOf b
+  let some bt := r.table | return ty
+  let bx ← tbl bt
+  let mut ty := ty
+  for id in bx.type do
+    let mut toAdd : Id := 0
+    if (id &&& AUTO_OVERRIDE) != 0 then toAdd := id &&& ~~~AUTO_OVERRIDE
+    else if (← instOf id) == .copy then toAdd := id
+    if toAdd != 0 then
+      let excl := isPair toAdd && (← isExclusive (pairFirst toAdd))
+      if !excl || !ty.any (fun i => isPair i && pairFirst i == pairFirst toAdd) then
+        ty := typeAdd ty toAdd
+  for id in bx.type do
+    if isPair id && pairFirst id == EcsIsA then ty ← addOverridesForBase ty id (depth + 1)
+  return ty
+
 /-- `flecs_table_traverse_add` (table_graph.c 1047-1070) through
     `flecs_table_traverse_dont_fragment` (923-977) and
     `flecs_find_table_with` (792-867).  Graph edges are not cached: the only
@@ -119,6 +269,15 @@ def traverseAdd (t : Nat) (id : Id) : M (Nat × Diff) := do
   match (← typeWith x.type id) with
   | none => return (t, {})
   | some ty =>
+    -- flecs_find_table_with (table_graph.c 833-844): a new IsA pair brings
+    -- the base's overrides; a child of a prefab is a prefab
+    let mut ty := ty
+    if isPair id && pairFirst id == EcsIsA then ty ← addOverridesForBase ty id
+    if isPair id && pairFirst id == EcsChildOf then
+      let o ← getAlive (pairSecond id)
+      if o != 0 then
+        if let some ot := ((← getIx).recOf o).table then
+          if (← tbl ot).type.contains EcsPrefab then ty := typeAdd ty EcsPrefab
     let d ← tableEnsure ty
     return (d, diffOf x.type ty)
 
@@ -404,9 +563,10 @@ def monitorInvoke (oi : Nat) (o : Obs) (ev : Ev) (t : Nat) (other : Option Nat) 
 
 /-- Invoke up observers (and self|up ones when the table does not own the
     id) for a propagated or forwarded event, and the monitors among them
-    (observable.c 339-358, 666-702). -/
+    (observable.c 339-358, 666-702).  Only observers whose term traverses
+    `trav` are invoked (`flecs_uni_observer_invoke`, observer.c 409-412). -/
 def invokeUp (ev : Ev) (id : Id) (t : Nat) (other : Option Nat) (row count : Nat) (src : UInt64)
-    (skipUpNotify : Bool) : M Unit := do
+    (skipUpNotify : Bool) (trav : Id := EcsChildOf) : M Unit := do
   let _ := skipUpNotify
   let w ← get
   let owned := ((w.tables.getD t default).type.contains id)
@@ -415,63 +575,131 @@ def invokeUp (ev : Ev) (id : Id) (t : Nat) (other : Option Nat) (row count : Nat
     if !idMatch id o.pattern then continue
     if o.src == .self then continue
     if o.src == .selfUp && owned then continue
+    if o.trav != trav then continue
     if o.monitor then monitorInvoke oi o ev t other row count src
     else if o.event == ev then
       for i in [0:count] do
         let e ← tableEnt t (row + i)
         modify fun w => { w with obsLog := w.obsLog.push (oi, ev, e, src) }
+        if ev == .onSet then
+          let v ← ownVal src id
+          logEv false .onSet e id v
+          if v.isNone then
+            modify fun w => { w with viol := w.viol.push s!"OnSet observer for {id} invoked for entity {e} with source {src}, which does not have the component" }
 
-/-- `flecs_emit_propagate` (observable.c 310-475) for ChildOf: every table
-    holding (ChildOf, x); below a table that does not own `id`, the children
-    of its entities.  The source stays the entity the event started from. -/
-partial def propagate (ev : Ev) (id : Id) (x : UInt64) (src : UInt64) (depth : Nat := 0) : M Unit := do
+/-- `flecs_emit_propagate` (observable.c 310-475): every table holding a
+    traversable pair `(R, x)`; below a table that does not own `id`, the
+    targets among its entities.  Below a ChildOf hop only ChildOf is
+    followed; below an IsA hop every relationship is (424-430).  The
+    source stays the entity the event started from. -/
+partial def propagate (ev : Ev) (id : Id) (x : UInt64) (src : UInt64) (depth : Nat := 0)
+    (propTrav : Id := 0) : M Unit := do
   if depth > 64 then return
-  let some c ← crGet (mkPair EcsChildOf (lo32 x)) | return
-  for t in c.cache do
-    let w ← get
-    let some tx := w.tables[t]? | continue
-    if !tx.live then continue
-    let owned := tx.type.contains id
-    if tx.count != 0 then invokeUp ev id t none 0 tx.count src false
-    if owned then continue
-    let tx := ((← get).tables.getD t default)
-    for i in [0:tx.count] do
-      let y := tx.ents.getD i 0
-      if (← isParent y) then propagate ev id y src (depth + 1)
+  for rel in [EcsIsA, EcsChildOf] do
+    if propTrav != 0 && propTrav != rel && propTrav != EcsIsA then continue
+    let some c ← crGet (mkPair rel (lo32 x)) | continue
+    for t in c.cache do
+      let w ← get
+      let some tx := w.tables[t]? | continue
+      if !tx.live then continue
+      let owned := tx.type.contains id
+      if tx.count != 0 then invokeUp ev id t none 0 tx.count src false rel
+      if owned then continue
+      let tx := ((← get).tables.getD t default)
+      for i in [0:tx.count] do
+        let y := tx.ents.getD i 0
+        if hasFlag ((← getIx).recOf y).flags FIsTraversable then
+          propagate ev id y src (depth + 1) rel
 
-/-- The reachable ids of (ChildOf, p) (`flecs_reachable_cache_ensure`,
-    observable.c 708-780), computed fresh: p's ids, and through p's own
-    ChildOf pair the reachable ids of its parent that p does not have. -/
-partial def reachable (p : UInt64) (depth : Nat := 0) : M (Array (Id × UInt64)) := do
-  if depth > 64 then return #[]
-  let r := (← getIx).recOf p
-  let some pt := r.table | return #[]
-  let x := ((← get).tables.getD pt default)
-  let mut out := #[]
-  for id in x.type do
-    if isPair id && pairFirst id == EcsChildOf then
-      let gp ← getAlive (pairSecond id)
-      if gp != 0 then
-        for (i, s) in (← reachable gp (depth + 1)) do
-          if !x.type.contains i then out := out.push (i, s)
-    else out := out.push (id, p)
+/-- `flecs_reachable_cache_ensure` (observable.c 708-780): the ids reachable
+    through `(trav, tgt)`: the target's ids (for IsA only those with the
+    Inherit trait, 734-736), and through its own `(trav, x)` and `(IsA, x)`
+    pairs the ids reachable there that the target's table does not have.
+    Kept in the record; valid while `current == generation`. -/
+partial def reachEnsure (pid : Id) (depth : Nat) (validate : Bool) : M (Array RElem) := do
+  let some c ← crGet pid | return #[]
+  if c.reachCur == c.reachGen then return c.reach
+  if depth >= 64 then fail .internalError "observable.c 720-722" "cycle in traversable relationship"
+  let trav := pairFirst pid
+  let tgt ← getAlive (pairSecond pid)
+  let mut out : Array RElem := #[]
+  if tgt != 0 then
+    let r := (← getIx).recOf tgt
+    if let some t := r.table then
+      let x ← tbl t
+      for id in x.type do
+        if trav == EcsIsA && (← instOf id) != .inherit then continue
+        if isPair id && (pairFirst id == trav || pairFirst id == EcsIsA) then
+          let sub ← reachEnsure id (depth + 1) true
+          for el in sub do
+            if !x.type.contains el.id then out := out.push el
+        else out := out.push { id, src := tgt, table := t }
+  let some c ← crGet pid | return out
+  crSet { c with reach := out, reachCur := if validate then c.reachGen else c.reachCur }
   return out
 
-/-- `flecs_emit_forward` (observable.c 799-888) for (ChildOf, p) -/
-def forward (ev : Ev) (pairId : Id) (t : Nat) (other : Option Nat) (row count : Nat) : M Unit := do
-  let p ← getAlive (pairSecond pairId)
-  if p == 0 then return
-  let reach ← reachable p
-  for (id, src) in reach do
-    invokeUp ev id t other row count src true
+/-- The reachable ids of `(trav, tgt)` computed from scratch (the same walk
+    as `reachEnsure`, without reading or writing any cache). -/
+partial def reachFresh (pid : Id) (depth : Nat := 0) : M (Array RElem) := do
+  if depth >= 64 then return #[]
+  let trav := pairFirst pid
+  let tgt ← getAlive (pairSecond pid)
+  let mut out : Array RElem := #[]
+  if tgt != 0 then
+    let r := (← getIx).recOf tgt
+    if let some t := r.table then
+      let x ← tbl t
+      for id in x.type do
+        if trav == EcsIsA && (← instOf id) != .inherit then continue
+        if isPair id && (pairFirst id == trav || pairFirst id == EcsIsA) then
+          let sub ← reachFresh id (depth + 1)
+          for el in sub do
+            if !x.type.contains el.id then out := out.push el
+        else out := out.push { id, src := tgt, table := t }
+  return out
+
+/-- P-RC (internal invariant): a reachable cache that says it is valid
+    (`current == generation`) holds what a fresh walk finds. -/
+def reachInvariant : M (Array String) := do
+  let w ← get
+  let mut out := #[]
+  for (id, c) in w.crs.toList do
+    if !isPair id || isWildcard id then continue
+    if pairFirst id != EcsIsA && pairFirst id != EcsChildOf then continue
+    if c.reachCur != c.reachGen then continue
+    if !(← isAlive (← getAlive (pairSecond id))) then continue
+    let f ← reachFresh id
+    if f != c.reach then
+      out := out.push s!"P-RC reachable cache: ({pairFirst id}, {pairSecond id}) is valid (generation {c.reachGen}) but holds {repr (c.reach.map (fun e => (e.id, e.src, e.table)))}; a fresh walk finds {repr (f.map (fun e => (e.id, e.src, e.table)))}"
+  return out
+
+/-- `flecs_emit_forward` (observable.c 799-888) for a traversable pair
+    `(ChildOf, p)` or `(IsA, b)`: the cached reachable ids (validated for
+    OnAdd/OnRemove, 811-812) are forwarded to up observers (and, for an
+    added IsA pair, as OnSet for ids with storage, 690-704), then events for
+    newly reachable ids propagate downwards. -/
+def forward (ev : Ev) (pairId : Id) (t : Nat) (other : Option Nat) (row count : Nat)
+    (onset : Bool := false) : M Unit := do
+  let trav := pairFirst pairId
+  let reach ← reachEnsure pairId 0 (ev == .onAdd || ev == .onRemove)
+  for el in reach do
+    -- observable.c 827-829
+    if !(← isAlive el.src) then
+      fail .internalError "observable.c 827-828" s!"ecs_assert(flecs_entities_get(world, elem->src) == r): reachable source {el.src} is not alive"
+    let r := (← getIx).recOf el.src
+    if r.table != some el.table then
+      fail .internalError "observable.c 829" s!"ecs_dbg_assert(r->table == elem->table): reachable id {el.id} from {el.src} cached for table {el.table}, now in {r.table}"
+    invokeUp ev el.id t other row count el.src true trav
+    if onset && hasTypeInfo el.id then
+      invokeUp .onSet el.id t other row count el.src false trav
   -- propagate events for new reachable ids downwards (observable.c 836-887)
   let x ← tbl t
-  for (id, src) in reach do
-    if x.type.contains id then continue
-    if !(← anyObsFor ev id) then continue
+  for el in reach do
+    if x.type.contains el.id then continue
+    if !(← anyObsFor ev el.id) then continue
     for i in [0:count] do
       let e ← tableEnt t (row + i)
-      if (← isParent e) then propagate ev id e src
+      if hasFlag ((← getIx).recOf e).flags FIsTraversable then propagate ev el.id e el.src
 
 /-- `ecs_new_from_range` (entity_ranges.c 228-267) -/
 def newFromRange (h : Nat) : M UInt64 := do
@@ -617,19 +845,21 @@ partial def emit (ev : Ev) (ids : Array Id) (t : Nat) (row count : Nat) (setPtr 
   for id in ids do
     if id != EcsAny && isWildcard id then continue
     if (← crGet id).isNone then continue
-    -- forwarding for a new or removed ChildOf pair (observable.c 1196-1235)
-    if (ev == .onAdd || ev == .onRemove) && isPair id && pairFirst id == EcsChildOf then
-      forward ev id t other row count
-    -- adding (IsA, base) instantiates the base's children (observable.c
-    -- 1200-1228), once per emitted entity
-    if ev == .onAdd && isPair id && pairFirst id == EcsIsA && !(← get).instantiating then
-      let base ← getAlive (pairSecond id)
-      if base != 0 then
-        modify fun w => { w with instantiating := true }
-        for i in [0:count] do
-          let e ← tableEnt t (row + i)
-          instantiate base e base e 0
-        modify fun w => { w with instantiating := false }
+    -- a traversable pair (observable.c 1196-1240): adding (IsA, base)
+    -- instantiates the base's children (1200-1228), once per emitted
+    -- entity; then the target's reachable ids are forwarded, with OnSet for
+    -- the newly inherited ones when IsA is added
+    if (ev == .onAdd || ev == .onRemove) && isPair id &&
+        (pairFirst id == EcsChildOf || pairFirst id == EcsIsA) then
+      if ev == .onAdd && pairFirst id == EcsIsA && !(← get).instantiating then
+        let base ← getAlive (pairSecond id)
+        if base != 0 then
+          modify fun w => { w with instantiating := true }
+          for i in [0:count] do
+            let e ← tableEnt t (row + i)
+            instantiate base e base e 0
+          modify fun w => { w with instantiating := false }
+      forward ev id t other row count (ev == .onAdd && pairFirst id == EcsIsA)
     if !(← anyObsFor ev id) then continue
     -- monitors on the entity's own table (self and self|up terms)
     do
@@ -646,7 +876,7 @@ partial def emit (ev : Ev) (ids : Array Id) (t : Nat) (row count : Nat) (setPtr 
       if (tableHas x id || (isPair id && pairFirst id == EcsChildOf)) && count != 0 then
         for i in [0:count] do
           let e ← tableEnt t (row + i)
-          if (← isParent e) then propagate ev id e e
+          if hasFlag ((← getIx).recOf e).flags FIsTraversable then propagate ev id e e
     let os ← obsFor ev id
     if os.isEmpty then continue
     let x ← tbl t
@@ -676,6 +906,74 @@ partial def emit (ev : Ev) (ids : Array Id) (t : Nat) (row count : Nat) (setPtr 
             modify fun w => { w with viol := w.viol.push s!"OnSet observer for id {id} invoked for entity {e}, but the set was on entity {x}" }
         runActs e v o.acts
     unlockT t
+  -- OnSet for overrides (observable.c 1325-1360)
+  if count != 0 then
+    let x ← tbl t
+    let canAdd := ev == .onAdd && hasIsA x
+    let mut canRemove := false
+    if ev == .onRemove then
+      if let some o := other then
+        canRemove := hasIsA (← tbl o)
+    if canAdd || canRemove then
+      for id in ids do
+        if id < HI && !(← nonTrivialSet id) then continue
+        if (← crGet id).isNone then continue
+        if (← instOf id) == .dontInherit || !hasTypeInfo id then continue
+        if canAdd then onSetOverrideOnAdd id t other row count
+        else onSetOverrideOnRemove id t row count
+
+/-- `flecs_table_get_override` (table.c 2310-2340) -/
+partial def getOverride (t : Nat) (id : Id) : M (Option UInt64) := do
+  let x ← tbl t
+  if !hasIsA x then return none
+  let some _ := x.over | return none
+  let some ci := colIndex x id | return none
+  updateOverrides t
+  let x ← tbl t
+  return (x.over.bind (fun o => o.refs.getD ci none))
+
+/-- OnSet observers on an id (any source), for the override events -/
+partial def onSetObs (id : Id) : M Bool :=
+  return (← get).obs.any (fun o => !o.monitor && o.event == .onSet && idMatch id o.pattern)
+
+/-- `flecs_emit_on_set_for_override_on_add` (observable.c 890-943): an
+    override that came with its (IsA, base) in the same event gets an OnSet
+    for the entity's own value (self and self|up observers). -/
+partial def onSetOverrideOnAdd (id : Id) (t : Nat) (other : Option Nat) (row count : Nat) : M Unit := do
+  let some base ← getOverride t id | return
+  if let some o := other then
+    if (← tbl o).type.contains (mkPair EcsIsA (lo32 base)) then return
+  if !(← onSetObs id) then return
+  let w ← get
+  for oi in [0:w.obs.size] do
+    let o := w.obs.getD oi default
+    if o.monitor || o.event != .onSet || !idMatch id o.pattern || o.src == .up then continue
+    for i in [0:count] do
+      let e ← tableEnt t (row + i)
+      let v ← ownVal e id
+      modify fun w => { w with obsLog := w.obsLog.push (oi, .onSet, e, 0) }
+      logEv false .onSet e id v
+
+/-- `flecs_emit_on_set_for_override_on_remove` (observable.c 946-1001):
+    removing an override re-exposes the base's value: OnSet with the base
+    from the table's override ref as source, for self|up and up observers
+    traversing IsA. -/
+partial def onSetOverrideOnRemove (id : Id) (t : Nat) (row count : Nat) : M Unit := do
+  let some base ← getOverride t id | return
+  if !(← onSetObs id) then return
+  let w ← get
+  for oi in [0:w.obs.size] do
+    let o := w.obs.getD oi default
+    if o.monitor || o.event != .onSet || !idMatch id o.pattern || o.src == .self || o.trav != EcsIsA then continue
+    for i in [0:count] do
+      let e ← tableEnt t (row + i)
+      modify fun w => { w with obsLog := w.obsLog.push (oi, .onSet, e, base) }
+      let v ← ownVal base id
+      logEv false .onSet e id v
+      if v.isNone then
+        -- flecs_field_shared (iter.c 206-245) reads the column of a table
+        -- record that is NULL
+        modify fun w => { w with viol := w.viol.push s!"OnSet observer for {id} invoked for entity {e} with source {base}, which does not have the component (observable.c 978-1000: base_tr is NULL)" }
 
 /-- `flecs_instantiate_alloc_child_id` (addons/prefab/instantiate.c 45-71):
     the instance child keeps the prefab child's offset from the prefab.  The
@@ -827,10 +1125,19 @@ partial def tableMove (e : UInt64) (dst : Nat) (dstRow : Nat) (src : Nat) (srcRo
       let v := (s.cols.getD sc #[]).getD srcRow 0
       setTbl dst { d with cols := d.cols.modify dc (fun col => col.set! dstRow v) }
     | _, _ => pure ()
-  if !(← isComplex d) && !(← isComplex s) then
+  -- table.c 1838-1843: the fast path needs neither table complex nor with IsA
+  if !(← isComplex d) && !(← isComplex s) && !hasIsA d && !hasIsA s then
     for c in d.colIds do
       if s.colIds.contains c then copyCol c c
     return
+  -- table.c 1845
+  updateOverrides dst
+  -- flecs_table_invoke_add_hooks (table.c 1009-1033): ctor (from the
+  -- override ref when there is one), then the on_add hook
+  let ctorCol : Nat → M Unit := fun ci => do
+    let v ← ctorVal dst ci
+    let d ← tbl dst
+    setTbl dst { d with cols := d.cols.modify ci (fun col => if dstRow < col.size then col.set! dstRow v else col) }
   lockT dst
   lockT src
   let mut i := 0
@@ -840,6 +1147,7 @@ partial def tableMove (e : UInt64) (dst : Nat) (dstRow : Nat) (src : Nat) (srcRo
     let sid := s.colIds.getD j 0
     if did == sid then copyCol did sid
     else if did < sid then
+      ctorCol i
       if let some acts := (← hooksOf did).onAdd then invokeHook dst #[e] dstRow did .onAdd acts none
     else
       if let some acts := (← hooksOf sid).onRemove then invokeHook src #[e] srcRow sid .onRemove acts none
@@ -847,6 +1155,7 @@ partial def tableMove (e : UInt64) (dst : Nat) (dstRow : Nat) (src : Nat) (srcRo
     if did >= sid then j := j + 1
   while i < d.colIds.size do
     let did := d.colIds.getD i 0
+    ctorCol i
     if let some acts := (← hooksOf did).onAdd then invokeHook dst #[e] dstRow did .onAdd acts none
     i := i + 1
   while j < s.colIds.size do
@@ -861,8 +1170,11 @@ partial def moveEntity (e : UInt64) (dst : Nat) (diff : Diff) : M Unit := do
   let r ← getRec e
   let some src := r.table | fail .internalError "entity.c 162" "move: no source table"
   if src == dst then fail .internalError "entity.c 163" "move to same table"
-  -- flecs_actions_move_remove (component_actions.c 435-502): OnRemove observers
-  if !diff.removed.isEmpty then emit .onRemove diff.removed src r.row 1 none none (some dst)
+  -- flecs_actions_move_remove (component_actions.c 435-502): the reachable
+  -- caches below the entity are invalidated (466-467), then OnRemove
+  if !diff.removed.isEmpty then
+    if (← hasTraversable src) then propagateInvalidate src r.row 1
+    emit .onRemove diff.removed src r.row 1 none none (some dst)
   let r ← getRec e
   let srcRow := r.row
   let dstRow := (← tbl dst).count
@@ -870,8 +1182,15 @@ partial def moveEntity (e : UInt64) (dst : Nat) (diff : Diff) : M Unit := do
   tableMove e dst dstRow src srcRow
   modRec e (fun r => { r with table := some dst, row := dstRow })
   tableDelete src srcRow false
-  -- flecs_actions_move_add (component_actions.c 404-433): OnAdd observers
-  if !diff.added.isEmpty then emit .onAdd diff.added dst dstRow 1 none none (some src)
+  -- flecs_actions_move_add (component_actions.c 404-433): invalidation
+  -- (421-423), then OnAdd observers
+  if !diff.added.isEmpty then
+    if (← hasTraversable dst) then propagateInvalidate dst dstRow 1
+    emit .onAdd diff.added dst dstRow 1 none none (some src)
+  -- entity.c 198-200
+  if diff.added.isEmpty && hasFlag ((← getIx).recOf e).flags FIsTraversable then
+    let r ← getRec e
+    if r.table == some dst then propagateInvalidate dst r.row 1
 
 /-- `flecs_commit` (entity.c 209-258) -/
 partial def commit (e : UInt64) (dst : Nat) (diff : Diff) : M Unit := do
@@ -956,7 +1275,10 @@ partial def setIdMove (e : UInt64) (id : Id) (v : Nat) (isSet : Bool) : M Unit :
   if isSet then bumpWrite e id
   if isSet then
     let x ← tbl t
-    let hasObs := !(← obsFor .onSet id).isEmpty && tableHas x id
+    -- EcsTableHasOnSet (entity.c 1966): set for tables with an id that has
+    -- OnSet observers of any source kind (observer.c 104-127: up and self|up
+    -- observers count too); round 3 correction, round 2 counted self only
+    let hasObs := (← get).obs.any (fun o => !o.monitor && o.event == .onSet && idMatch id o.pattern) && tableHas x id
     if hasObs || (← hooksOf id).onSet.isSome then
       notifyOnSet t r.row id true (some p)
 
@@ -1078,6 +1400,8 @@ partial def batchForEntity (k lvl : Nat) (e : UInt64) (start : Nat) : M Unit := 
   let some t := r.table | fail .internalError "commands.c 1277" "batch: r->table is NULL after commit (entity deleted by a hook/observer)"
   if !added.isEmpty then
     commandsBegin 0
+    -- flecs_actions_move_add (commands.c 1282-1290, component_actions.c 421)
+    if (← hasTraversable t) then propagateInvalidate t r.row 1
     emit .onAdd added t r.row 1 none none (some startTable)
     commandsEnd 0
   if split != 0 then
@@ -1282,8 +1606,12 @@ partial def tableMerge (d s : Nat) : M Unit := do
       | some sc => (sx.cols.getD sc #[]).extract 0 sx.count
       | none => Array.replicate sx.count 0
     base ++ srcCol)
+  -- table.c 2121: the source's traversable count, read before the merge
+  let srcTrav ← hasTraversable s
   setTbl d { dx with cols, count := dx.count + sx.count }
   setTbl s { sx with count := 0 }
+  -- table.c 2202-2203
+  if srcTrav then propagateInvalidate d dx.count sx.count
   -- table.c 2167 (each dst column shared with src) and 2183; the source's
   -- dirty state is not marked
   for ci in [0:dx.colIds.size] do
@@ -1307,6 +1635,8 @@ partial def tableClearEntities (t : Nat) : M Unit := do
     for c in x.colIds do
       if let some acts := (← hooksOf c).onRemove then
         invokeHook t ents 0 c .onRemove acts none
+  -- table.c 1097-1101
+  if (← hasTraversable t) then propagateInvalidate t 0 count
   for e in ents do
     if !(← isValid e) then fail .internalError "storage/table.c 1112-1113" "entity being cleared is not valid"
     let ix ← liftE ((← getIx).remove e)
@@ -1478,7 +1808,7 @@ partial def apiEnsureWrite (tg : Tgt) (e : UInt64) (id : Id) (v : Nat) : M Unit 
     let mut p ← getMut e id
     if p.isNone && (← crGet id).isNone && !(← get).mt then
       discard <| crEnsure id
-    let (_, p') ← deferSkipRemoved k e id p
+    let (removed, p') ← deferSkipRemoved k e id p
     p := p'
     let lvl ← stageCur k
     if p.isNone then
@@ -1488,6 +1818,14 @@ partial def apiEnsureWrite (tg : Tgt) (e : UInt64) (id : Id) (v : Nat) : M Unit 
     let (idx, _) ← cmdNewBatched k e { kind := .add, id, entity := e }
     match p with
     | none =>
+      -- commands.c 590-611: the command's value starts as the inherited
+      -- value: through the table's override ref when the component was
+      -- removed in this batch (flecs_table_get_override refreshes the
+      -- cache), else flecs_get_base_component.  The program then writes
+      -- the whole value, so only the cache refresh is observable.
+      if removed then
+        if let some t := (← getRec e).table then
+          if hasIsA (← tbl t) then discard <| getOverride t id
       modCmds k lvl (fun c => { c with queue := c.queue.modify idx (fun cm => { cm with kind := .ensure, value := some v }) })
     | some ptr => writePtr ptr v
   | .world =>
@@ -1560,6 +1898,8 @@ partial def apiDelete (tg : Tgt) (e : UInt64) : M Unit := do
       match r.table with
       | some t =>
         let x ← tbl t
+        -- flecs_actions_move_remove (entity.c 1387-1388)
+        if x.type.size != 0 && (← hasTraversable t) then propagateInvalidate t r.row 1
         if x.type.size != 0 then emit .onRemove x.type t r.row 1 none
         let r ← rawRec e
         tableDelete t r.row true

@@ -22,6 +22,11 @@ def isDataComp (id : Id) : Bool := id == C0 || id == C1
 def hasTypeInfo (id : Id) : Bool :=
   isDataComp id || (isPair id && !isWildcard id && isDataComp (pairFirst id))
 
+/-- The `OnInstantiate` trait of a component (ComponentTraits.md
+    "OnInstantiate trait"; api_flags.h 66-70, 112-114: no flag is Copy). -/
+inductive InstK | copy | inherit | dontInherit
+  deriving Repr, BEq, Inhabited, DecidableEq
+
 inductive Policy | remove | delete | panic
   deriving Repr, BEq, Inhabited, DecidableEq
 
@@ -65,6 +70,8 @@ structure Obs where
   /-- a monitor (`EcsMonitor`): OnAdd when an entity starts matching the
       term, OnRemove when it stops (observer.c 654-773) -/
   monitor : Bool := false
+  /-- the relationship `up` follows (`term->trav`, observer.c 409-412) -/
+  trav : Id := EcsChildOf
   deriving Repr, Inhabited
 
 structure Hooks where
@@ -83,6 +90,22 @@ structure LogEv where
 
 /-! ### Storage -/
 
+/-- `ecs_table_overrides_t` (table.h 31-36) -/
+structure TOver where
+  bases : Array (Id × Int)
+  refs : Array (Option UInt64)
+  deriving Repr, Inhabited
+
+/-- `ecs_reachable_elem_t`: an id reachable through a traversable pair, the
+    entity that has it, and the table it was in when the cache was built
+    (the C code keeps `tr` and `record` pointers; `table` is the debug
+    field checked by observable.c 827). -/
+structure RElem where
+  id : Id
+  src : UInt64
+  table : Nat
+  deriving Repr, BEq, Inhabited
+
 structure Table where
   type : Array Id
   ents : Array UInt64 := #[]
@@ -95,6 +118,10 @@ structure Table where
   /-- `table->dirty_state` (table.c 1380-1450): per column + 1 counters,
       allocated on first use by change detection (all 1), NULL before -/
   dirty : Option (Array Int) := none
+  /-- `table->data.overrides` (table.c 436-508), for tables with IsA pairs:
+      per (IsA, base) pair the reachable generation the refs were computed
+      at (-1 initially), and per column the base entity the ref points at -/
+  over : Option TOver := none
   deriving Inhabited
 
 structure CR where
@@ -102,6 +129,11 @@ structure CR where
   cache : Array Nat := #[]
   refcount : Int := 1
   marked : Bool := false
+  /-- `cr->pair->reachable` (component_index.c 432: current = -1,
+      generation = 0 from bcalloc) -/
+  reachCur : Int := -1
+  reachGen : Int := 0
+  reach : Array RElem := #[]
   deriving Inhabited
 
 /-! ### Commands (commands.h 10-58) -/
@@ -274,6 +306,18 @@ structure World where
   /-- `world->stages[0]->base` (observable.c 1210-1228): set while a prefab
       is instantiated, so instantiation does not recurse through flecs_emit -/
   instantiating : Bool := false
+  /-- round 3: `(OnInstantiate, X)` traits of the components (default Copy) -/
+  inst : HashMap Id InstK := {}
+  /-- round 3: check the override-value oracle (P-I2) on every construct -/
+  checkOverrides : Bool := true
+  /-- round 3: an iterator created by ecs_query_is_true/ecs_query_count:
+      `EcsIterNoData` (no fields marked dirty) and not a user iteration for
+      the change oracle -/
+  iterNoData : Bool := false
+  iterQuiet : Bool := false
+  /-- round 3 oracle: per query, the cached tables when the user last
+      iterated it (any mode) -/
+  ouser : HashMap Nat (List Nat) := {}
   deriving Inhabited
 
 abbrev M := StateT World (Except Fail)
@@ -334,6 +378,16 @@ def nonTrivialSet (id : Id) : M Bool := return (← get).nonTrivialSet.contains 
 def policyOf (rel : UInt64) : M Policy := do
   if rel == EcsChildOf then return .delete
   return ((← get).odt[rel]?).getD .remove
+/-- The `OnInstantiate` flag of an id's record: from the relationship for a
+    pair, from the component for an `AUTO_OVERRIDE` id
+    (`flecs_component_get_flags_intern`, component_index.c 278-319).  IsA
+    is Inherit, ChildOf and Prefab DontInherit (prefab.c 150-194). -/
+def instOf (id : Id) : M InstK := do
+  let base := if isPair id then pairFirst id else (id &&& COMPONENT_MASK)
+  if base == EcsIsA then return .inherit
+  if base == EcsChildOf || base == EcsPrefab then return .dontInherit
+  return ((← get).inst[base]?).getD .copy
+
 def isExclusive (rel : UInt64) : M Bool := do
   if rel == EcsChildOf then return true
   return (← get).exclusive.contains rel
@@ -365,7 +419,9 @@ partial def crEnsure (id : Id) : M CR := do
         fail .invalidParameter "storage/component_index.c 462-465" s!"target {tgt} of pair is not alive"
       if alive != EcsWildcard then
         addFlag alive FIsTarget
-        if rel == EcsChildOf then addFlag alive FIsTraversable
+        -- ChildOf (511-513) and relationships with the Traversable trait
+        -- (535-538): IsA is Traversable (bootstrap.c 946)
+        if (rel == EcsChildOf || rel == EcsIsA) && !isWildcard id then addFlag alive FIsTraversable
     if rel != EcsWildcard && rel != EcsChildOf then
       let r ← getAlive rel
       addFlag r FIsId
@@ -437,7 +493,12 @@ partial def tableEnsure (type : Array Id) : M Nat := do
   let w ← get
   let t := w.tables.size
   let colIds := type.filter hasTypeInfo
-  set { w with tables := w.tables.push { type, colIds, cols := colIds.map (fun _ => #[]) },
+  -- flecs_table_init_overrides (table.c 436-459, called at 890-893): tables
+  -- with IsA pairs and at least one column get the override cache
+  let isas := type.filter (fun i => isPair i && pairFirst i == EcsIsA)
+  let over : Option TOver := if isas.isEmpty || colIds.isEmpty then none
+    else some { bases := isas.map (fun i => (i, -1)), refs := colIds.map (fun _ => none) }
+  set { w with tables := w.tables.push { type, colIds, cols := colIds.map (fun _ => #[]), over },
                byType := w.byType.insert type.toList t }
   for i in recs do
     let some c ← crGet i | fail .internalError "table.c 812" "missing record"

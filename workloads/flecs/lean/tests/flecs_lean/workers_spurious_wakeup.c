@@ -47,7 +47,9 @@ static void on_abort(void) {
 }
 
 static void Slow(ecs_iter_t *it) {
-    if (ecs_stage_get_id(it->world) != 0) {
+    /* Round 4 correction: it->world is the world (stage id 0 on every
+     * thread); the worker's stage is it->stage. */
+    if (ecs_stage_get_id(it->stage) != 0) {
         usleep(200 * 1000); /* the main thread reaches the sync point first */
     }
 }

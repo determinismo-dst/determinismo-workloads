@@ -31,8 +31,15 @@ static ecs_entity_t phase_entity(ecs_world_t *world, const char *name) {
 static ecs_entity_t Likes, Hates, Bob, Alice, e_new;
 static int seen;
 
+/* Round 4 correction: v4.2's it->world is the world itself, and a world
+ * operation runs immediately (Manual.md: "Pass an explicit stage to enqueue
+ * ECS operations. Pass the world to execute operations immediately ...
+ * Observer and system iterators expose it->stage for queued operations").
+ * In a readonly system that trips the readonly assert of flecs_table_ensure
+ * (storage/table_graph.c 527) instead of queueing the command.  The
+ * command is queued on it->stage, as the prediction assumes. */
 static void Writer(ecs_iter_t *it) {
-    ecs_add_pair(it->world, e_new, Likes, Bob);
+    ecs_add_pair(it->stage, e_new, Likes, Bob);
 }
 
 static void Reader(ecs_iter_t *it) {

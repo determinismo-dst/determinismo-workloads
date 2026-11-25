@@ -1,6 +1,7 @@
 import FlecsLean.Theorems
 import FlecsLean.TheoremsPipe
 import FlecsLean.TheoremsInh
+import FlecsLean.TheoremsR4
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -35,3 +36,12 @@ import FlecsLean.TheoremsInh
 #print axioms Flecs.R3.override_cache_sees_first_change
 #print axioms Flecs.R3.reachable_invalid_state
 #print axioms Flecs.Activity.addToCache_keeps_empty
+#print axioms Flecs.R4.or_sparse_cache_crash
+#print axioms Flecs.R4.or_sparse_uncached_ok
+#print axioms Flecs.R4.or_sparse_merges_chain
+#print axioms Flecs.R4.searchUp_dontFragment_one_level
+#print axioms Flecs.R4.two_levels_get_vs_search
+#print axioms Flecs.R4.two_levels_sparse_found
+#print axioms Flecs.R4.update_keeps_schedule
+#print axioms Flecs.R4.parent_disable_keeps_count
+#print axioms Flecs.R4.childof_disable_bumps_count

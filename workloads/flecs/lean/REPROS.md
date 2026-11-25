@@ -16,6 +16,15 @@ curl -fsSL https://github.com/SanderMertens/flecs/archive/refs/tags/v4.2.0.tar.g
 
 ## Crashes: flecs's own internal or parameter asserts on documented use
 
+- [ ] **F29: A cached query (or a system) whose Or chain ends with a Sparse component crashes when it is created**. Story, code path and the docs it breaks: REPORT-4.md, F29.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_sparse_cache_crash.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# creating the cached query
+# (SIGSEGV)
+```
+
 - [ ] **F3: A queued set of a pair whose target is deleted before the merge aborts the merge**. Story, code path and the docs it breaks: REPORT.md, F3.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
 
@@ -64,20 +73,12 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_write_read_same_sy
 # fatal: flecs.c: 63591: assert(needs_merge == false) (INTERNAL_ERROR), in flecs_pipeline_update
 ```
 
-- [ ] **F16: No sync point between a wildcard or Any write annotation and an overlapping read**. Story, code path and the docs it breaks: REPORT-2.md, F16.
-  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
-
-```sh
-cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_wildcard_sync_point.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
-# fatal: flecs.c: 44780: assert(!(world->flags & EcsWorldReadonly)) (INTERNAL_ERROR), in flecs_table_ensure
-```
-
 - [ ] **F17: A system that disables itself makes the pipeline skip the next systems in that frame** (the assert half). Story, code path and the docs it breaks: REPORT-2.md, F17.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_disabled_systems_assert.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
-# fatal: flecs.c: 44780: assert(!(world->flags & EcsWorldReadonly)) (INTERNAL_ERROR), in flecs_table_ensure
+# fatal: flecs.c: 63706: assert((pq->cur_op <= ecs_vec_last_t(&pq->ops, ecs_pipeline_op_t))) (INTERNAL_ERROR)
 ```
 
 - [ ] **F24: The table override cache misses changes of the base, so overrides are copied from the wrong place**. Story, code path and the docs it breaks: REPORT-3.md, F24.
@@ -93,7 +94,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_cache_stale_ref.c 
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_spurious_wakeup.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
-# fatal: flecs.c: 64383: assert(world->workers_waiting == (stage_count - 1)) (INTERNAL_ERROR), in flecs_wait_for_sync
+# fatal: flecs.c: 64383: assert(world->workers_waiting == (stage_count - 1)) (INTERNAL_ERROR)
 ```
 
 ## Panics where the docs say none, and none where they say one
@@ -115,6 +116,39 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/panic_target_order.c flecs/
 ```
 
 ## Wrong values, wrong entities, wrong ids
+
+- [ ] **F16: No sync point between a wildcard or Any write annotation and an overlapping read**. Story, code path and the docs it breaks: REPORT-2.md, F16.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_wildcard_sync_point.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL (variant a): reader saw 1 entities in the first frame, expected 2 (no sync point after the writer)
+# FAIL (variant b): reader saw 1 entities in the first frame, expected 2 (no sync point after the writer)
+```
+
+- [ ] **F30: A call during an iteration that removes a table from the query's cache makes the iterator skip another table**. Story, code path and the docs it breaks: REPORT-4.md, F30.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_iter_skips_table.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: e2 returned 1 times, e3 returned 0 times (expected 1 and 1); neither moved, the call deleted another table
+```
+
+- [ ] **F32: Overriding a DontFragment Inherit component inherited through two IsA levels constructs it instead of copying it**. Story, code path and the docs it breaks: REPORT-4.md, F32.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_dont_fragment_2_levels.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: DontFragment, 2 levels: after ecs_add the instance owns=1 Position = {0, 0}, expected the inherited {10, 20}
+```
+
+- [ ] **F33: Worker threads of a multi-threaded change-detection system allocate a table's dirty state without synchronization (double allocation, a leak, a data race)**. Story, code path and the docs it breaks: REPORT-4.md, F33.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_dirty_state_double_alloc.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: the dirty state of one table was allocated 2 times by the worker threads of one system; all but one leak
+```
 
 - [ ] **F1: A batched remove of a pair whose target died earlier in the merge deletes the entity**. Story, code path and the docs it breaks: REPORT.md, F1.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
@@ -242,6 +276,33 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_add_hook_view.c flecs/di
 
 ## Missed or extra events (observers, monitors, change detection, system activity)
 
+- [ ] **F31: The pipeline keeps a stale schedule when its query's match changes outside the cache (a system in a disabled module's Parent hierarchy keeps running; custom pipelines with a fixed-source or DontFragment term too)**. Story, code path and the docs it breaks: REPORT-4.md, F31.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_parent_module_disabled.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: the system in the Parent hierarchy ran 2 times in the two frames after its module was disabled
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_custom_uncached_term.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: variant 0 (System, Running(Game)): the system ran 3 times; the pipeline query stopped matching it after the first frame
+# FAIL: variant 1 (System, Foo (DontFragment)): the system ran 3 times; the pipeline query stopped matching it after the first frame
+```
+
+- [ ] **F17: A system that disables itself as the first of its frame makes the pipeline skip the next system (corrected tests: no builtin system first, it->stage)**. Story, code path and the docs it breaks: REPORT-2.md and REPORT-4.md, F17.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_disabled_system_skips_next.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: after one frame Init ran 1 times, Update ran 0 times (expected 1 and 1)
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_disabled_system_skips_next_init.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: after one frame Init ran 1 times, Update ran 0 times (expected 1 and 1)
+```
+
 - [ ] **F18: Change detection misses a write to a source entity that moved to another table**. Story, code path and the docs it breaks: REPORT-2.md, F18.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
 
@@ -289,7 +350,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_is_true_consumes_chan
 
 - F2 as first predicted (`batch_remove_dead_target_panic.c`): flecs behaved as documented; a model
   error, corrected in round 2 (the entry above).
-- F17's other half (`pipeline_disabled_system_skips_next.c`): the system after a self-disabling one
-  still ran in that frame.
+- F17's first test (`ecs_init()`, whose builtin ProgressTasks system ran first): Update still ran.
+  Corrected in round 4 (the entry above), where the skip shows.
 - F19's uninitialized read (`change_detection_fixed_source_added.c`): its plain run, valgrind and
   MemorySanitizer (on Linux) showed nothing.

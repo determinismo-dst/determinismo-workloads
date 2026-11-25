@@ -17,3 +17,8 @@ import FlecsLean.TheoremsPipe
 import FlecsLean.Workers
 import FlecsLean.Activity
 import FlecsLean.TheoremsInh
+import FlecsLean.Validator
+import FlecsLean.InhDF
+import FlecsLean.PipeQ
+import FlecsLean.WorkersCD
+import FlecsLean.TheoremsR4

@@ -423,9 +423,18 @@ def checkProg (u : List Id) (p : Prog) : List (String × String) := Id.run do
   | .ok st =>
     -- systems enabled and active at the start and never disabled during the
     -- frame
+    -- round 4 correction: also not disabled in the middle of the frame (a
+    -- system that ran and disabled it); round 2 compared only the start
+    -- and the end of the frame
+    let ranK := st.ran.toList.map (·.1)
+    let disabledMid := fun (k : Nat) => ranK.any fun j =>
+      match (p.sys.getD j default).effect with
+      | .disable x => x == k
+      | .disableSelf => j == k
+      | _ => false
     let stable := (List.range p.sys.size).filter fun k =>
       let s := p.sys.getD k default
-      s.enabled && s.active && (st.sys.getD k default).enabled
+      s.enabled && s.active && (st.sys.getD k default).enabled && !disabledMid k
     for k in stable do
       let n := (st.ran.filter (·.1 == k)).size
       if n != 1 then
@@ -585,5 +594,35 @@ def showProg (p : Prog) : String :=
 instance : Repr Prog := ⟨fun p _ => .text (showProg p)⟩
 
 def check (p : Prog) : List (String × String) := checkProg concrete p
+
+/-! ### Round 4: the builtin systems of `ecs_init()`
+
+`ecs_init()` imports FlecsScript (world.c 987-989), whose async addon creates
+`ProgressTasks` (addons/script/eval/async.c 1428-1433): an immediate system
+without terms in `EcsPreUpdate`, so it is always active.  Systems in
+`EcsOnUpdate` and later phases run after it; systems in `EcsOnLoad` and
+`EcsPostLoad` run before it (the cascade on DependsOn, pipeline.c 935-985).
+Round 2's frame model had only the program's systems. -/
+
+def progressTasks : Sys := { terms := [], immediate := true }
+
+def shiftEffect (d : Nat) : Effect → Effect
+  | .disable j => .disable (j + d)
+  | .enable j => .enable (j + d)
+  | .activate j => .activate (j + d)
+  | e => e
+
+/-- The program in a world made by `ecs_init()`: `ProgressTasks` runs before
+    the program's systems (`front`, phases from OnUpdate on) or after them
+    (OnLoad, PostLoad). -/
+def withBuiltin (p : Prog) (front : Bool) : Prog :=
+  if front then { p with sys := #[progressTasks] ++ p.sys.map (fun s => { s with effect := shiftEffect 1 s.effect }) }
+  else { p with sys := p.sys.push progressTasks }
+
+/-- The systems that ran in one frame, in order, or the assert. -/
+def frameRuns (p : Prog) : Except String (List Nat) := do
+  let st0 : RunSt := { sys := p.sys, lastFrame := Array.replicate p.sys.size 0 }
+  let st ← runFrame st0
+  return st.ran.toList.map (·.1)
 
 end Flecs.Pipe

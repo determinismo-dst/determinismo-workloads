@@ -224,6 +224,14 @@ structure QMatch where
   setFields : Array Bool := #[]
   /-- `_monitor`: [0] for the table, [f+1] per field, -1 untracked -/
   monitor : Option (Array Int) := none
+  /-- round 4: the pair a wildcard term matched for this result (0 when the
+      query has no wildcard term) -/
+  pair : Id := 0
+  /-- round 4: `wildcard_matches` (match.c 174-286): the pairs of the further
+      results for the same table, and the identity of the vector (0 is
+      NULL); a freed vector's identity is in `World.vecFreed` -/
+  wildPairs : Array Id := #[]
+  wildVec : Nat := 0
   deriving Repr, Inhabited
 
 /-- `ecs_query_cache_group_t` -/
@@ -318,6 +326,10 @@ structure World where
   /-- round 3 oracle: per query, the cached tables when the user last
       iterated it (any mode) -/
   ouser : HashMap Nat (List Nat) := {}
+  /-- round 4: identities of `wildcard_matches` vectors: the next one, and
+      the freed ones -/
+  vecNext : Nat := 1
+  vecFreed : Array Nat := #[]
   deriving Inhabited
 
 abbrev M := StateT World (Except Fail)

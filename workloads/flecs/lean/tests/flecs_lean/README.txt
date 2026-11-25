@@ -1,6 +1,7 @@
 C tests for the predictions in ../../REPORT.md (round 1, F1-F14),
-../../REPORT-2.md (round 2, F2 corrected and F15-F23) and ../../REPORT-3.md
-(round 3, F24-F28), against flecs v4.2.0.
+../../REPORT-2.md (round 2, F2 corrected and F15-F23), ../../REPORT-3.md
+(round 3, F24-F28) and ../../REPORT-4.md (round 4, F29-F33, and the
+corrected F16, F17 and F26 tests), against flecs v4.2.0.
 
 Each file is one program.  main() returns 0 when flecs behaves as its
 documentation says; a non-zero return or an abort confirms the prediction.
@@ -40,3 +41,29 @@ Round 3:
                   without a signal)
   F27             query_is_true_consumes_change.c
   F28             instantiate_child_outside_range.c
+
+Round 4:
+  F29             query_or_sparse_cache_crash.c (a crash, SIGSEGV, confirms)
+  F30             query_iter_skips_table.c
+  F31             pipeline_parent_module_disabled.c,
+                  pipeline_custom_uncached_term.c
+  F32             override_dont_fragment_2_levels.c
+  F33             workers_dirty_state_double_alloc.c (needs threads: link
+                  with -lpthread; it wraps the OS API malloc so that two
+                  threads meet in the allocation of one table's dirty state)
+
+Round 4 corrections to earlier tests (see REPORT-4.md, "Model errors and
+test errors corrected"):
+  F17             pipeline_disabled_system_skips_next.c and
+                  pipeline_disabled_systems_assert.c now use ecs_mini() with
+                  the pipeline module (ecs_init()'s ProgressTasks, an always
+                  active immediate system in PreUpdate, ran before the OnUpdate
+                  systems and gave the rebuild a correct resume point), and
+                  enqueue through it->stage. New:
+                  pipeline_disabled_system_skips_next_init.c (ecs_init(),
+                  systems in OnLoad).
+  F16             pipeline_wildcard_sync_point.c: the writer enqueues through
+                  it->stage (it->world executes at once; in a readonly
+                  system that is the readonly assert of flecs_table_ensure).
+  F26             workers_spurious_wakeup.c: the worker's stage id comes from
+                  it->stage (it->world is the world on every thread).

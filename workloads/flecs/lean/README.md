@@ -62,6 +62,13 @@ caches. Five new predictions, F24-F28, 8 new C tests (none run yet):
 - F28: with an entity range active, instantiating a prefab with children creates children
   outside the range.
 
+## Round 4
+
+[REPORT-4.md](REPORT-4.md): query caches and Or chains with Sparse components, iteration under
+table removal, the pipeline's rebuild trigger, DontFragment overrides, workers' lazy allocations;
+F17 explained (ecs_init's ProgressTasks ran first) and three tests corrected. F29-F33, 7 new C
+tests (48 in all).
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled
@@ -98,6 +105,13 @@ and run directly (one process each; the workflow `flecs-lean` runs them on GitHu
     replica, round 4).
   - F19's uninitialized read (`change_detection_fixed_source_added.c`): neither its plain run nor
     valgrind nor MemorySanitizer showed it (Linux, the workflow).
+
+Round 4's tests on flecs v4.2.0 (2026-11-25, run directly on macOS; Linux in the `flecs-lean`
+workflow): F29 (a SIGSEGV creating the cached query), F30, F31 (both tests), F32 and F33 (the
+dirty state allocated twice by two workers) behave as predicted. Round 4's corrected tests confirm
+F17 whole (the skip, with no builtin system before the self-disabling one, and the pipeline's
+`cur_op` assert) and show F16's missing sync point (the first test aborted on an `it->world` misuse
+instead).
 
 [REPROS.md](REPROS.md) lists every confirmed finding by kind, each with its repro.
 

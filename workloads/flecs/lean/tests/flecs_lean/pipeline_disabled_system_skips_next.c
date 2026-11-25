@@ -13,6 +13,20 @@
  * keep their old values (op 0, system 0); flecs_pipeline_next_system then
  * moves past the new op 0, which now holds Update.
  *
+ * Round 4 correction of this test (the model's code path is unchanged):
+ * - Round 2's version used ecs_init(). ecs_init() imports FlecsScript, whose
+ *   async addon creates ProgressTasks (addons/script/eval/async.c
+ *   1428-1433): an immediate system without terms in EcsPreUpdate, always
+ *   active. It runs before every OnUpdate system, so Init was not the only
+ *   system that had run: the rebuild found ProgressTasks as the last system
+ *   that ran and resumed correctly, and Update ran. The real flecs did
+ *   exactly that. This version uses ecs_mini() with the pipeline module
+ *   only, so Init is the first system of the frame (see also
+ *   pipeline_disabled_system_skips_next_init.c for an ecs_init() world).
+ * - The command goes through it->stage (Manual.md: "Pass an explicit stage
+ *   to enqueue ECS operations"); it is flushed at the end of the immediate
+ *   op (flecs_commands_end, pipeline.c 663), as before.
+ *
  * Documented: Systems.md "Pipelines" ("A pipeline is a list of systems that
  * is executed when the ecs_progress/world::progress function is invoked");
  * Systems.md "Disabling systems" (ecs_enable on a system entity). */
@@ -32,7 +46,7 @@ static int init_runs, update_runs;
 
 static void Init(ecs_iter_t *it) {
     init_runs ++;
-    ecs_enable(it->world, it->system, false);
+    ecs_enable(it->stage, it->system, false);
 }
 
 static void Update(ecs_iter_t *it) {
@@ -41,7 +55,8 @@ static void Update(ecs_iter_t *it) {
 }
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_world_t *world = ecs_mini();
+    ECS_IMPORT(world, FlecsPipeline);
 
     ecs_system(world, {
         .entity = phase_entity(world, "Init"),

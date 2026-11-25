@@ -33,6 +33,10 @@ inductive QOp
   | isTrue (q : Nat)
   /-- round 3: `ecs_query_count` (api.c 667-704) -/
   | count (q : Nat)
+  /-- round 4: iterate `q` one result at a time; after the `k`-th result run
+      `body` on the world, with the result's table locked as the C++ `each`
+      does (Queries.md "Iteration"), then finish the iteration -/
+  | iterBody (q : Nat) (k : Nat) (body : Op)
   deriving Repr, BEq, Inhabited
 
 structure QProg where
@@ -68,8 +72,30 @@ def refResults (q : QCache) : M (List (UInt64 × Array (Option Nat))) := do
     | none => pure ()
     | some m =>
       let vals ← fieldVals q m 0 x.count
-      for i in [0:x.count] do
-        out := out ++ [(x.ents.getD i 0, vals.getD i #[])]
+      for _ in [0:1 + m.wildPairs.size] do
+        for i in [0:x.count] do
+          out := out ++ [(x.ents.getD i 0, vals.getD i #[])]
+  return out
+
+/-- Round 4: what the query matches, as (entity, matched pair) pairs (the
+    pair is 0 without a wildcard term), and where each slot entity is. -/
+def refPairs (q : QCache) : M (List (UInt64 × Id)) := do
+  let slots := (← get).slots
+  for t in q.terms do
+    match t.src with
+    | .fixed k => if t.oper == .and && !(← has (slots.getD k 0) t.id) then return []
+    | _ => pure ()
+  let w ← get
+  let mut out := []
+  for t in [1:w.tables.size] do
+    let x := w.tables.getD t default
+    if !x.live || x.count == 0 then continue
+    match (← evalMatch q t) with
+    | none => pure ()
+    | some m =>
+      for p in #[m.pair] ++ m.wildPairs do
+        for i in [0:x.count] do
+          out := out ++ [(x.ents.getD i 0, p)]
   return out
 
 end W
@@ -166,6 +192,63 @@ def runQProg (p : QProg) : QOutcome := Id.run do
                     W.noteViol s!"P-Q3 groups: query {qi} returned to group {g} after leaving it ({gids})"
                   seen := seen ++ [g]
                   last := some g
+        | .iterBody qi k body => do
+          if qi ≥ (← get).queries.size then return
+          let q ← W.qGet qi
+          if !(← fixedAlive q) then return
+          -- only world calls on other entities, as the C++ each allows
+          let isWorld := match body with
+            | .add .world _ _ | .remove .world _ _ | .set .world _ _ _ | .delete .world _
+            | .clear .world _ | .modified .world _ _ => true
+            | _ => false
+          if !isWorld then return
+          if !(← W.allowed rs body) then return
+          -- the cursor transcribes the group/wildcard iteration only: no
+          -- order_by (table slices) and no fixed-source terms
+          if q.orderBy || q.terms.any (fun t => match t.src with | .fixed _ => true | _ => false) then return
+          -- a fixed source of another query stays alive (as for `.op`)
+          if let .delete _ e := body then
+            if p.queries.any (fun q => q.terms.any (fun t => t.src == .fixed e)) then return
+          -- hierarchies are trees: a parent is a lower slot (as for `.op`)
+          if let .add _ e (.pair .childOf t) := body then
+            if t ≥ e then return
+          let before ← W.refPairs q
+          let w0 ← get
+          let recsBefore := w0.slots.map (fun e => (w0.ix.recOf e).table)
+          let mut c ← W.cursorInit qi
+          let mut got : List (UInt64 × Id) := []
+          let mut n := 0
+          let mut bodyRan := false
+          for _ in [0:200] do
+            W.cursorSyncElem qi c
+            let (c', r) ← W.cursorNext qi c
+            c := c'
+            match r with
+            | none => break
+            | some (t, pair) =>
+              let x ← W.tbl t
+              for i in [0:x.count] do got := got ++ [(x.ents.getD i 0, pair)]
+              n := n + 1
+              if n == k then
+                -- the body, with the iterated table locked
+                W.lockT t
+                W.runOp rs body
+                W.drainQueryEvents
+                W.unlockT t
+                bodyRan := true
+          if !bodyRan then return
+          -- "Done iterating": nothing more to check here
+          let after ← W.refPairs (← W.qGet qi)
+          let w1 ← get
+          let recsAfter := w1.slots.map (fun e => (w1.ix.recOf e).table)
+          let slots := (← get).slots
+          let moved := (List.range slots.size).filterMap (fun i =>
+            if recsBefore.getD i none != recsAfter.getD i none then some (slots.getD i 0) else none)
+          let stable := before.filter (fun x => after.contains x && !moved.contains x.1)
+          for x in stable.eraseDups do
+            let cnt := (got.filter (· == x)).length
+            if cnt != 1 then
+              W.noteViol s!"P-IT1 iteration: query {qi}: entity {x.1} (pair {x.2}) matched before and after the call made after result {k}, and the call did not move it, but the iteration returned it {cnt} times (returned {got}, matched before {before}, after {after})"
         | .isTrue qi | .count qi => do
           if qi ≥ (← get).queries.size then return
           if !(← fixedAlive (← W.qGet qi)) then return
@@ -232,6 +315,23 @@ def traceQProg (p : QProg) : List String := Id.run do
           let r ← W.iterate qi md a
           return s!"results {repr (r.toList.map (fun x => (x.table, x.ents, x.changed)))}"
         | .changed qi => do return s!"changed = {← W.queryChanged qi}"
+        | .iterBody qi k body => do
+          let mut c ← W.cursorInit qi
+          let mut msg := ""
+          let mut n := 0
+          for _ in [0:200] do
+            W.cursorSyncElem qi c
+            let (c', r) ← W.cursorNext qi c
+            c := c'
+            match r with
+            | none => break
+            | some (t, pair) =>
+              n := n + 1
+              msg := msg ++ s!" result {n}: table {t} pair {pair} ents {((← W.tbl t).ents.extract 0 (← W.tbl t).count)};"
+              if n == k then
+                W.lockT t; W.runOp rs body; W.drainQueryEvents; W.unlockT t
+                msg := msg ++ s!" [body {repr body}]"
+          return msg
         | .isTrue qi | .count qi => do
           modify fun w => { w with iterNoData := true, iterQuiet := true }
           let r ← W.iterate qi (match o with | .isTrue _ => W.IterMode.first | _ => .skipAll) false
@@ -262,7 +362,8 @@ def checkQ (p : QProg) : List (String × String) := Id.run do
     if !allowedFail f then out := out ++ [("P1 no-crash", toString f)]
   for v in o.viol do
     let prop := if v.startsWith "P-" then (v.splitOn ":").headD v
-      else if v.startsWith "uninit" then "P1 uninitialized read" else "P2 oracle"
+      else if v.startsWith "uninit" then "P1 uninitialized read"
+      else if v.startsWith "P1 " then "P1 no-crash" else "P2 oracle"
     out := out ++ [(prop, v)]
   return out
 
@@ -285,12 +386,28 @@ def queryMenu (k : Nat) (fixedSlot : Nat) : QCache :=
   | 7 => { terms := #[{ id := C0, io := .in_ }, { id := C1, oper := .optional, io := .in_ }], detect := true }
   | 8 => { terms := #[{ id := C0, src := .up, io := .in_ }], detect := true }
   | 9 => { terms := #[{ id := C0, io := .in_ }], orderBy := true, groupBy := some 387 }
-  | _ => { terms := #[{ id := C0 }, { id := C1, src := .fixed fixedSlot }] }
+  | 10 => { terms := #[{ id := C0 }, { id := C1, src := .fixed fixedSlot }] }
+  -- round 4: a wildcard term on the Remove relationship (387), with and
+  -- without an up term, and grouped by the Delete relationship
+  | 11 => { terms := #[{ id := mkPair 387 EcsWildcard }, { id := C0, src := .up, io := .in_ }], detect := true }
+  | 12 => { terms := #[{ id := mkPair 387 EcsWildcard }, { id := C1, io := .in_ }], detect := true }
+  | _ => { terms := #[{ id := C0, io := .in_ }, { id := C1, src := .up, io := .in_ }], groupBy := some 388, detect := true }
 
-def queryMenuSize : Nat := 11
+def queryMenuSize : Nat := 14
 
 def genQOp (ents : Nat) (nq : Nat) : m QOp := do
-  match (← Pick.pick "q.kind" 5) with
+  match (← Pick.pick "q.kind" 6) with
+  | 5 =>
+    let qi ← Pick.pick "q.query" nq
+    let k := (← Pick.pick "q.k" 2) + 1
+    let e ← Pick.pick "flecs.entity" ents
+    let x ← pickOf "flecs.id" #[IdS.c0, .c1, .tag, .pair .childOf 0, .pair .childOf 1, .pair .remove 0, .pair .remove 1, .pair .delete 0]
+    let body ← match (← Pick.pick "q.body" 4) with
+      | 0 => pure (Op.delete .world e)
+      | 1 => pure (Op.add .world e x)
+      | 2 => pure (Op.remove .world e x)
+      | _ => pure (Op.set .world e .c0 9)
+    return .iterBody qi k body
   | 4 => if (← Pick.pick "q.probe" 2) == 0 then return .isTrue (← Pick.pick "q.query" nq)
          else return .count (← Pick.pick "q.query" nq)
   | 0 =>
@@ -322,6 +439,42 @@ def genQProg (ents len : Nat) : m QProg := do
   ops := ops ++ [.op (.merge 0)]
   for i in [0:nq] do ops := ops ++ [.changed i, .iter i .full true]
   return { nEnts := ents, queries := qs, ops }
+
+/-- Round 4: iteration programs for exhaustive search.  Four entities, each
+    built as one of eight kinds (C0; C0+C1; C0+(R, e0); C1+ChildOf e0;
+    C1+ChildOf e1; ChildOf e0 + (R, e1) + (R, e2); C0 alone as a parent;
+    C0+(R, e0) then deleted, leaving an empty table); a query of four
+    shapes; then one iteration with a call after result k. -/
+def genIterProg : m QProg := do
+  let shape ← Pick.pick "it.query" 4
+  let q : QCache := match shape with
+    | 0 => { terms := #[{ id := C0 }] }
+    | 1 => { terms := #[{ id := C1, io := .in_ }, { id := C0, src := .up, io := .in_ }], detect := true }
+    | 2 => { terms := #[{ id := mkPair 387 EcsWildcard }, { id := C0, src := .up, io := .in_ }], detect := true }
+    | _ => { terms := #[{ id := mkPair 387 EcsWildcard }], detect := true }
+  let mut ops : List QOp := []
+  let mut later : List QOp := []
+  for e in [0:4] do
+    let k ← Pick.pick "it.kind" 8
+    let add := fun (x : IdS) => QOp.op (.add .world e x)
+    ops := ops ++ (match k with
+      | 0 => [add .c0]
+      | 1 => [add .c1, add .c0]
+      | 2 => [add (.pair .remove 0), add .c0]
+      | 3 => [add (.pair .childOf 0), add .c1]
+      | 4 => [add (.pair .childOf 1), add .c1]
+      | 5 => [add (.pair .childOf 0), add (.pair .remove 1), add (.pair .remove 2)]
+      | 6 => [QOp.op (.set .world e .c0 1)]
+      | _ => [add (.pair .remove 0), add .c0])
+    if k == 7 then later := later ++ [QOp.op (.delete .world e)]
+  let k := (← Pick.pick "it.k" 3) + 1
+  let tgt ← Pick.pick "it.target" 4
+  let body := match (← Pick.pick "it.body" 4) with
+    | 0 => Op.delete .world tgt
+    | 1 => Op.remove .world tgt .c0
+    | 2 => Op.add .world tgt .c0
+    | _ => Op.add .world tgt .c1
+  return { nEnts := 4, queries := #[q], ops := ops ++ later ++ [.iterBody 0 k body] }
 
 end
 
@@ -391,6 +544,44 @@ def qcaseCountUnmatched : QProg :=
             .changed 0, .iter 0 .full false, .changed 0,
             wo (.remove .world 0 .c0), .count 0, .changed 0] }
 
+/-- Round 4, F30: iterating `C0` (cached); after the first result the
+    target of a relationship is deleted, which deletes an empty table
+    earlier in the cache; the last table moves into its slot and is never
+    returned. -/
+def qcaseIterSkipDelete : QProg :=
+  { nEnts := 4,
+    queries := #[{ terms := #[{ id := C0 }] }],
+    ops := [wo (.add .world 1 (.pair .remove 0)), wo (.add .world 1 .c0),
+            wo (.add .world 2 .c0),
+            wo (.add .world 3 .c1), wo (.add .world 3 .c0),
+            wo (.delete .world 1),
+            .iterBody 0 1 (.delete .world 0)] }
+
+/-- Round 4, F30: `[in] C1, [in] C0(up)`; after the second result the first
+    table's parent loses C0, its table is unmatched (a rematch), the last
+    table moves into its slot and is never returned. -/
+def qcaseIterSkipRematch : QProg :=
+  { nEnts := 6,
+    queries := #[{ terms := #[{ id := C1, io := .in_ }, { id := C0, src := .up, io := .in_ }], detect := true }],
+    ops := [wo (.set .world 0 .c0 1), wo (.set .world 1 .c0 1), wo (.set .world 2 .c0 1),
+            wo (.add .world 3 (.pair .childOf 0)), wo (.set .world 3 .c1 1),
+            wo (.add .world 4 (.pair .childOf 1)), wo (.set .world 4 .c1 1),
+            wo (.add .world 5 (.pair .childOf 2)), wo (.set .world 5 .c1 1),
+            .iterBody 0 2 (.remove .world 0 .c0)] }
+
+/-- Round 4, F30: `(R, *), [in] C0(up)`; an entity with (R, e0) and (R, e1)
+    under a parent with C0.  After the first result (the first pair) the
+    parent loses C0: the table is unmatched and its wildcard_matches vector
+    freed while the iterator reads it. -/
+def qcaseIterWildFreed : QProg :=
+  { nEnts := 4,
+    queries := #[{ terms := #[{ id := mkPair 387 EcsWildcard }, { id := C0, src := .up, io := .in_ }], detect := true }],
+    ops := [wo (.set .world 0 .c0 1),
+            wo (.add .world 3 (.pair .childOf 0)), wo (.add .world 3 (.pair .remove 1)),
+            wo (.add .world 3 (.pair .remove 2)),
+            .iterBody 0 1 (.remove .world 0 .c0)] }
+
+
 def qcases : List (String × QProg) := [
   ("query_is_true_consumes_change (set)", qcaseIsTrueSet),
   ("query_is_true_consumes_change (unmatched)", qcaseIsTrueUnmatched),
@@ -398,7 +589,10 @@ def qcases : List (String × QProg) := [
   ("change_detection_fixed_source_moved", qcaseFixedMoveSet),
   ("change_detection_parent_moved", qcaseUpMoveSet),
   ("change_detection_fixed_source_removed", qcaseFixedRemoved),
-  ("change_detection_fixed_source_added", qcaseFixedAdded) ]
+  ("change_detection_fixed_source_added", qcaseFixedAdded),
+  ("iter_skip_after_table_delete", qcaseIterSkipDelete),
+  ("iter_skip_after_rematch", qcaseIterSkipRematch),
+  ("iter_wildcard_matches_freed", qcaseIterWildFreed) ]
 
 def shrinkQ (p : QProg) : List QProg := Id.run do
   let mut out := []
@@ -414,6 +608,7 @@ def shrinkQ (p : QProg) : List QProg := Id.run do
         | .changed qi => if qi == i then none else some (.changed (rn qi))
         | .isTrue qi => if qi == i then none else some (.isTrue (rn qi))
         | .count qi => if qi == i then none else some (.count (rn qi))
+        | .iterBody qi k b => if qi == i then none else some (.iterBody (rn qi) k b)
         | o => some o)
       out := out ++ [{ p with queries := p.queries.eraseIdx! i, ops := ops' }]
   return out

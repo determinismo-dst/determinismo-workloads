@@ -7,6 +7,19 @@
  * ecs_vec_last_t(&pq->ops, ...), ECS_INTERNAL_ERROR). In a release build the
  * schedule reads past the end of its op array.
  *
+ * Round 4 correction of this test:
+ * - Round 2's A and C called ecs_enable(it->world, ...). In v4.2 it->world is
+ *   the world itself and a world operation runs immediately (Manual.md:
+ *   "Pass an explicit stage to enqueue ECS operations. Pass the world to
+ *   execute operations immediately"); in a readonly system that creates a
+ *   table in readonly mode, the assert of flecs_table_ensure
+ *   (storage/table_graph.c 527). That is the abort the real flecs showed,
+ *   not the predicted one. They now enqueue through it->stage.
+ * - ecs_init()'s ProgressTasks (an always-active immediate system in
+ *   EcsPreUpdate, addons/script/eval/async.c 1428-1433) runs before these
+ *   OnUpdate systems and gives the rebuild a correct resume point. The world
+ *   is ecs_mini() with the pipeline module only.
+ *
  * Documented: Systems.md "Pipelines", "Disabling systems", "Immediate
  * systems"; Manual.md "Error handling". */
 #include "flecs.h"
@@ -28,9 +41,9 @@ static void on_abort(void) {
 
 static int a_runs, b_runs, c_runs;
 
-static void A(ecs_iter_t *it) { a_runs ++; ecs_enable(it->world, it->system, false); }
+static void A(ecs_iter_t *it) { a_runs ++; ecs_enable(it->stage, it->system, false); }
 static void B(ecs_iter_t *it) { (void)it; b_runs ++; }
-static void C(ecs_iter_t *it) { c_runs ++; ecs_enable(it->world, it->system, false); }
+static void C(ecs_iter_t *it) { c_runs ++; ecs_enable(it->stage, it->system, false); }
 
 int main(void) {
     ecs_os_set_api_defaults();
@@ -38,7 +51,8 @@ int main(void) {
     os_api.abort_ = on_abort;
     ecs_os_set_api(&os_api);
 
-    ecs_world_t *world = ecs_init();
+    ecs_world_t *world = ecs_mini();
+    ECS_IMPORT(world, FlecsPipeline);
 
     ecs_system(world, {
         .entity = phase_entity(world, "A"),

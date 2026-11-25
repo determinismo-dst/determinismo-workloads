@@ -5,16 +5,18 @@
   (:require [clojure.test :refer [deftest is]]
             [clojure.string]))
 
-(defn- ev [s] (eval (read-string s)))
+(defn- ev
+  "The form's value, or [:jank-gen/threw what] for any throw jank's handlers can see (an
+   object, a native exception or a jank::error_ref): `is` catches objects only, and an
+   uncaught error would end the test before its other forms. An object's message only:
+   printing an ex-info makes jank crash as it exits (jankifier's S1)."
+  [s]
+  (try (eval (read-string s))
+       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (ex-message e)])
+       (catch cpp/std.exception e [:jank-gen/threw (str (.what e))])
+       (catch cpp/jank.error_ref e [:jank-gen/threw (str (.-message (cpp/* e)))])))
 
-(defn- outcome
-  "[:throws] for any throw jank's handlers can see (an object, a native exception or a
-   jank::error_ref), else the value's kind."
-  [f]
-  (try (f) :returned
-       (catch cpp/jank.runtime.object_ref _ :throws)
-       (catch cpp/std.exception _ :throws)
-       (catch cpp/jank.error_ref _ :throws)))
+(defn- threw? [v] (and (vector? v) (= :jank-gen/threw (first v))))
 
 (deftest g0000
   (is (= (quote {:a 1}) (ev "{:a 1}")))
@@ -24,17 +26,17 @@
   (is (= (quote #{}) (ev "(into #{} (mapv keyword? (sort-by identity (take 0 (list 1 2)))))")))
   (is (= (quote 256) (ev "(let [x 256] (* x 1))")))
   (is (= (quote 2) (ev "(let [x (compare 128 0)] (* x (mod (first (vector (count (list 1 2)))) 3)))")))
-  (is (= :throws (outcome #(ev "(neg? false)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(neg? false)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote [1 2 3]) (ev "[1 2 3]")))
   (is (= (quote 128) (ev "128"))))
 
 (deftest g0001
   (is (= (quote :c) (ev ":c")))
   (is (= (quote false) (ev "false")))
-  (is (= :throws (outcome #(ev "(let [x (dec -3)] (* x (quot (max (inc 9223372036854775807) 3) 1)))"))) "Clojure throws java.lang.ArithmeticException")
+  (is (threw? (ev "(let [x (dec -3)] (* x (quot (max (inc 9223372036854775807) 3) 1)))")) "Clojure throws java.lang.ArithmeticException")
   (is (= (quote #{2}) (ev "(into #{} (filter even? (conj [1 2 3] 127)))")))
   (is (= (quote {:a 1}) (ev "(zipmap [:a] (sort (list 1 2)))")))
-  (is (= :throws (outcome #(ev "(if (set? (if (neg? :x) (inc 255) (if (odd? (let [x 255] (* x 2))) (name :a) (frequencies [])))) (pos? (clojure.string/join \"-\" [3 1 2])) (concat [1 2 3] (list 1 2)))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (set? (if (neg? :x) (inc 255) (if (odd? (let [x 255] (* x 2))) (name :a) (frequencies [])))) (pos? (clojure.string/join \"-\" [3 1 2])) (concat [1 2 3] (list 1 2)))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote [0 1 2 3 4]) (ev "[0 1 2 3 4]")))
   (is (= (quote nil) (ev "nil")))
   (is (= (quote #{1 2}) (ev "(into #{} (list 1 2))")))
@@ -45,7 +47,7 @@
   (is (= (quote #{0 7 -1}) (ev "(into #{} (sort-by str (keys (frequencies [0 -1 7 7]))))")))
   (is (= (quote nil) (ev "(get (frequencies (drop 1 (sort-by identity []))) :b)")))
   (is (= (quote (0 [3 3] -1 [1 1] 7 [2 2])) (ev "(interleave [0 -1 7 7] (mapv (fn [x] [x x]) [3 1 2]))")))
-  (is (= :throws (outcome #(ev "(reduce + 0 (partition 1 (conj (sort-by identity [1 2 3]) 0)))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(reduce + 0 (partition 1 (conj (sort-by identity [1 2 3]) 0)))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote 1) (ev "(let [x (compare (nth (vector (min 0 1) (nth (vector 3 256) 1)) 0) (min -128 7))] (max x (min (max (first (vector 0)) (nth (vector 255 -9223372036854775808) 0)) (compare (count [0 -1 7 7]) (compare 1000 127)))))")))
   (is (= (quote false) (ev "(number? (some pos? (list 1 2)))")))
   (is (= (quote false) (ev "(every? pos? (take 1 (interleave (sort-by identity [0 1 2 3 4]) (map dec [1 2 3]))))")))
@@ -58,10 +60,10 @@
   (is (= (quote 4) (ev "(count (conj (map dec [1 1 1]) 1000))")))
   (is (= (quote false) (ev "(if (some? (count \"é\")) (vector? (keyword? (get {:a 1} :x))) (if (string? (if (vector? (get {:a 1} :c)) (clojure.string/reverse \"Ab-C\") (into #{} []))) (into #{} (remove odd? [3 1 2])) :k/v))")))
   (is (= (quote false) (ev "(string? 256)")))
-  (is (= :throws (outcome #(ev "(if (even? \\z) 0 (get {} :k/v))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(if (even? \\z) 0 (get {} :k/v))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote nil) (ev "(some pos? (map (fn [x] (* x 2)) (butlast (filter pos? []))))")))
   (is (= (quote "") (ev "\"\"")))
-  (is (= :throws (outcome #(ev "(some even? (sort-by str (keys {:k/v \"x\", :a [1]})))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(some even? (sort-by str (keys {:k/v \"x\", :a [1]})))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote [0 -1 7 7]) (ev "[0 -1 7 7]"))))
 
 (deftest g0004
@@ -70,7 +72,7 @@
   (is (= (quote #{1 2 127 9223372036854775807}) (ev "(into #{} (filter pos? (conj (conj (list 1 2) 127) (nth (vector 9223372036854775807 9223372036854775807) 1))))")))
   (is (= (quote 1) (ev "1")))
   (is (= (quote [0 -1 7 7]) (ev "[0 -1 7 7]")))
-  (is (= :throws (outcome #(ev "(vector? (zero? (merge {:k/v \"x\", :a [1]} {:a 1})))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(vector? (zero? (merge {:k/v \"x\", :a [1]} {:a 1})))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote nil) (ev "(get {} :c)")))
   (is (= (quote "a b") (ev "\"a b\"")))
   (is (= (quote 3) (ev "(get (zipmap [:a] (remove even? (concat [3 1 2] []))) :a)")))
@@ -95,20 +97,20 @@
   (is (= (quote 2) (ev "(let [x 1] (* x 2))")))
   (is (= (quote {:k/v "x", :a [1]}) (ev "{:k/v \"x\", :a [1]}")))
   (is (= (quote :c) (ev ":c")))
-  (is (= :throws (outcome #(ev "(every? odd? (partition-all 3 [3 1 2]))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(every? odd? (partition-all 3 [3 1 2]))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote false) (ev "(if (number? (let [x (- (first (vector -3)) -128)] (* x 128))) false \\a)")))
   (is (= (quote nil) (ev "(get (assoc {:a 1} :c (dec (nth (vector 10 7) 0))) :k/v)")))
-  (is (= :throws (outcome #(ev "(str (subs \"hello\" 2) sym)"))) "Clojure throws clojure.lang.Compiler$CompilerException"))
+  (is (threw? (ev "(str (subs \"hello\" 2) sym)")) "Clojure throws clojure.lang.Compiler$CompilerException"))
 
 (deftest g0007
   (is (= (quote nil) (ev "(get (frequencies (mapv keyword? [3 1 2])) :b)")))
   (is (= (quote false) (ev "(seq? \\a)")))
-  (is (= :throws (outcome #(ev "(if (some? (get (frequencies (sort-by str (keys {:a 1, :b 2}))) :b)) (if (odd? -0.0) (get (merge {:a 1} {:a 1}) :k/v) false) (every? odd? [0 -1 7 7]))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(if (some? (get (frequencies (sort-by str (keys {:a 1, :b 2}))) :b)) (if (odd? -0.0) (get (merge {:a 1} {:a 1}) :k/v) false) (every? odd? [0 -1 7 7]))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote "127clojure.lang.LazySeq@745f") (ev "(str 127 (map dec [1 1 1]))")))
   (is (= (quote 9223372036854775807) (ev "(max 0 9223372036854775807)")))
   (is (= (quote {true [-3 3]}) (ev "(group-by odd? [(nth (vector -3 (compare 127 0)) 0) (count [1 2 3])])")))
   (is (= (quote (1 2)) (ev "(list 1 2)")))
-  (is (= :throws (outcome #(ev "(if (seq? (sort-by identity (partition 2 (remove odd? [0 1 2 3 4])))) (pos? (subs \"abcdef\" 1)) (nil? (let [x (reduce + 0 [0 -1 7 7])] (* x -128))))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (seq? (sort-by identity (partition 2 (remove odd? [0 1 2 3 4])))) (pos? (subs \"abcdef\" 1)) (nil? (let [x (reduce + 0 [0 -1 7 7])] (* x -128))))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote ()) (ev "(if (string? (partition-all 2 [3])) (if (some? -3) nil -3) (take 1 []))")))
   (is (= (quote 256) (ev "256"))))
 
@@ -118,7 +120,7 @@
   (is (= (quote 0) (ev "(count (sort-by - (interleave (remove pos? [1 2 3]) (sort-by - [0 -1 7 7]))))")))
   (is (= (quote #{}) (ev "(into #{} (into [] (into [] [])))")))
   (is (= (quote {0 1, 1 1, 2 1, 3 1, 4 1}) (ev "(frequencies [0 1 2 3 4])")))
-  (is (= :throws (outcome #(ev "(concat (filter odd? (partition 3 (vec [1 2 3]))) [1 2 3])"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(concat (filter odd? (partition 3 (vec [1 2 3]))) [1 2 3])")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote nil) (ev "nil")))
   (is (= (quote #{1 2 :a}) (ev "(into #{} (concat (drop 0 (list 1 2)) (sort-by str (keys {:a 1}))))")))
   (is (= (quote {}) (ev "(group-by pos? (remove even? (into [] [])))")))
@@ -142,7 +144,7 @@
   (is (= (quote true) (ev "(every? odd? (filter odd? (conj (take 0 []) 3)))")))
   (is (= (quote (true false 2 1)) (ev "(into (list) (concat (list 1 2) (sort-by str (keys (group-by even? [1 2 3])))))")))
   (is (= (quote 3) (ev "3")))
-  (is (= :throws (outcome #(ev "(some even? (sort-by str (keys (merge (select-keys {:k/v \"x\", :a [1]} []) {:a 1}))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(some even? (sort-by str (keys (merge (select-keys {:k/v \"x\", :a [1]} []) {:a 1}))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote "c") (ev "(name :c)")))
   (is (= (quote 1.0E10) (ev "1.0E10")))
   (is (= (quote {:k/v "x", :a [1]}) (ev "(dissoc (dissoc (dissoc (merge {:k/v \"x\", :a [1]} {:k/v \"x\", :a [1]}) :b) :x) :x)")))
@@ -151,7 +153,7 @@
 (deftest g0011
   (is (= (quote :k/v) (ev ":k/v")))
   (is (= (quote nil) (ev "(get {:k/v \"x\", :a [1]} :x)")))
-  (is (= :throws (outcome #(ev "(every? odd? (sort-by str (keys (group-by pos? (remove odd? [0 -1 7 7])))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(every? odd? (sort-by str (keys (group-by pos? (remove odd? [0 -1 7 7])))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote true) (ev "(some even? [0 -1 7 7])")))
   (is (= (quote \a) (ev "\\a")))
   (is (= (quote nil) (ev "(get (zipmap [:a] []) :x)")))
@@ -175,7 +177,7 @@
 (deftest g0013
   (is (= (quote #{1 3 2}) (ev "(into #{} [3 1 2])")))
   (is (= (quote "A B") (ev "(clojure.string/upper-case \"a b\")")))
-  (is (= :throws (outcome #(ev "(if (coll? (- -9223372036854775808 128)) (if (vector? (assoc (group-by even? [3 1 2]) :b (count \"a\"))) :k/v (get (assoc {:a 1, :b 2} :k/v 10) :k/v)) (nth (vector (count (clojure.string/upper-case \"é\")) 1) 1))"))) "Clojure throws java.lang.ArithmeticException")
+  (is (threw? (ev "(if (coll? (- -9223372036854775808 128)) (if (vector? (assoc (group-by even? [3 1 2]) :b (count \"a\"))) :k/v (get (assoc {:a 1, :b 2} :k/v 10) :k/v)) (nth (vector (count (clojure.string/upper-case \"é\")) 1) 1))")) "Clojure throws java.lang.ArithmeticException")
   (is (= (quote true) (ev "true")))
   (is (= (quote true) (ev "(some pos? (concat [3 1 2] [0 -1 7 7]))")))
   (is (= (quote 1) (ev "(first (vector 1))")))
@@ -188,10 +190,10 @@
   (is (= (quote -9223372036854775807) (ev "(inc -9223372036854775808)")))
   (is (= (quote nil) (ev "(get {:k/v \"x\", :a [1]} :b)")))
   (is (= (quote 3) (ev "3")))
-  (is (= :throws (outcome #(ev "(if (coll? :c) 1.0E10 (some pos? (concat (sort-by str (keys {:a 1, :b 2})) [0 1 2 3 4])))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (coll? :c) 1.0E10 (some pos? (concat (sort-by str (keys {:a 1, :b 2})) [0 1 2 3 4])))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote -128) (ev "-128")))
   (is (= (quote (0 false)) (ev "(butlast (concat (filter even? [0 -1 7 7]) (mapv keyword? (drop 1 [1 2 3]))))")))
-  (is (= :throws (outcome #(ev "(some pos? (seq (remove odd? (partition 1 [0 1 2 3 4]))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(some pos? (seq (remove odd? (partition 1 [0 1 2 3 4]))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote 10) (ev "(reduce + 0 (map dec (concat (list 1 2) (map (fn [x] (* x 2)) [3 1 2]))))")))
   (is (= (quote 0) (ev "(mod 7 7)")))
   (is (= (quote :c) (ev ":c"))))
@@ -212,7 +214,7 @@
   (is (= (quote 0) (ev "(inc -1)")))
   (is (= (quote {}) (ev "(select-keys (dissoc {:a 1} :k/v) [])")))
   (is (= (quote true) (ev "(every? pos? [])")))
-  (is (= :throws (outcome #(ev "(sort-by - (filter neg? (remove odd? (sort-by str (keys {:k/v \"x\", :a [1]})))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(sort-by - (filter neg? (remove odd? (sort-by str (keys {:k/v \"x\", :a [1]})))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote :b) (ev ":b")))
   (is (= (quote [0 1 2]) (ev "(vec (take 3 (conj (into [] [0 1 2 3 4]) (compare -128 9223372036854775807))))")))
   (is (= (quote false) (ev "false")))
@@ -222,7 +224,7 @@
 
 (deftest g0017
   (is (= (quote nil) (ev "(get {} :x)")))
-  (is (= :throws (outcome #(ev "(get (group-by pos? (concat (conj [0 -1 7 7] -128) (partition-all 1 [1 1 1]))) :k/v)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(get (group-by pos? (concat (conj [0 -1 7 7] -128) (partition-all 1 [1 1 1]))) :k/v)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote {:a 1, :k/v -1}) (ev "(if (map? :c) (if (zero? (get {:a 1} :a)) :k/v \\z) (assoc {:a 1} :k/v -1))")))
   (is (= (quote nil) (ev "(some even? (reverse [(quot 255 -2)]))")))
   (is (= (quote false) (ev "(every? even? (filter pos? (drop 3 (conj [1 2 3] 7))))")))
@@ -236,7 +238,7 @@
   (is (= (quote ((1 2))) (ev "(partition 2 (list 1 2))")))
   (is (= (quote 11) (ev "(inc (reduce + 0 [0 1 2 3 4]))")))
   (is (= (quote ()) (ev "(remove even? (sort-by identity (remove pos? (interleave [1 1 1] [3 1 2]))))")))
-  (is (= :throws (outcome #(ev "sym"))) "Clojure throws clojure.lang.Compiler$CompilerException")
+  (is (threw? (ev "sym")) "Clojure throws clojure.lang.Compiler$CompilerException")
   (is (= (quote {:k/v "x", :a [1]}) (ev "{:k/v \"x\", :a [1]}")))
   (is (= (quote ()) (ev "(sort-by - (drop 3 (remove even? [0 1 2 3 4])))")))
   (is (= (quote 1) (ev "1")))
@@ -245,8 +247,8 @@
   (is (= (quote 1) (ev "(first (vector (compare 256 -1)))"))))
 
 (deftest g0019
-  (is (= :throws (outcome #(ev "sym"))) "Clojure throws clojure.lang.Compiler$CompilerException")
-  (is (= :throws (outcome #(ev "(neg? true)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "sym")) "Clojure throws clojure.lang.Compiler$CompilerException")
+  (is (threw? (ev "(neg? true)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote 1) (ev "1")))
   (is (= (quote false) (ev "(if (string? (first (vector 7))) (if (odd? (merge (select-keys {:k/v \"x\", :a [1]} [:a]) (zipmap [:a] []))) :b 7) (number? {}))")))
   (is (= (quote true) (ev "(map? (merge (frequencies (list 1 2)) (select-keys (group-by even? [1 2 3]) [:a :b])))")))
@@ -258,7 +260,7 @@
 
 (deftest g0020
   (is (= (quote nil) (ev "(get {:a 1, :b 2} :c)")))
-  (is (= :throws (outcome #(ev "(every? pos? (concat [] (conj (mapv (fn [x] (if (odd? x) :odd :even)) [0 1 2 3 4]) (nth (vector 9223372036854775807 -1) 1))))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(every? pos? (concat [] (conj (mapv (fn [x] (if (odd? x) :odd :even)) [0 1 2 3 4]) (nth (vector 9223372036854775807 -1) 1))))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote #{}) (ev "(into #{} (map dec []))")))
   (is (= (quote true) (ev "(every? even? (filter odd? (sort-by str (keys {}))))")))
   (is (= (quote 256) (ev "256")))
@@ -282,7 +284,7 @@
 
 (deftest g0022
   (is (= (quote 0) (ev "(quot 2 3)")))
-  (is (= :throws (outcome #(ev "(even? (* 1000 (inc (min 127 -9223372036854775808))))"))) "Clojure throws java.lang.ArithmeticException")
+  (is (threw? (ev "(even? (* 1000 (inc (min 127 -9223372036854775808))))")) "Clojure throws java.lang.ArithmeticException")
   (is (= (quote false) (ev "(map? false)")))
   (is (= (quote true) (ev "(every? pos? [(count [0 1 2 3 4])])")))
   (is (= (quote {true [1], false [2], :a 1}) (ev "(merge (group-by odd? (rest (drop 0 [3 1 2]))) (zipmap [:a] (list 1 2)))")))
@@ -319,18 +321,18 @@
 (deftest g0025
   (is (= (quote "abc") (ev "\"abc\"")))
   (is (= (quote "v") (ev "(name :k/v)")))
-  (is (= :throws (outcome #(ev "(if (pos? (every? even? (filter neg? [0 1 2 3 4]))) (count [0 -1 7 7]) \"é\")"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (pos? (every? even? (filter neg? [0 1 2 3 4]))) (count [0 -1 7 7]) \"é\")")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote 216) (ev "(let [x (first (vector -1))] (max x (* (quot 256 7) (count (concat [3 1 2] [3 1 2])))))")))
-  (is (= :throws (outcome #(ev "(if (odd? (into #{} [])) \\z (str :b :b))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(if (odd? (into #{} [])) \\z (str :b :b))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote false) (ev "(keyword? {:a 1, :b 2})")))
   (is (= (quote -3) (ev "-3")))
   (is (= (quote 128) (ev "128")))
-  (is (= :throws (outcome #(ev "(if (coll? (into #{} (sort-by - (mapv (fn [x] (if (odd? x) :odd :even)) [0 -1 7 7])))) (some odd? (rest [0 1 2 3 4])) :k/v)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (coll? (into #{} (sort-by - (mapv (fn [x] (if (odd? x) :odd :even)) [0 -1 7 7])))) (some odd? (rest [0 1 2 3 4])) :k/v)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote #{0 4 2}) (ev "(into #{} (sort-by - (filter even? (concat [0 1 2 3 4] [0 -1 7 7]))))"))))
 
 (deftest g0026
   (is (= (quote "a") (ev "\"a\"")))
-  (is (= :throws (outcome #(ev "(if (vector? (reduce + 0 (partition-all 3 (sort-by - [1 1 1])))) (count (interleave (remove even? []) (partition-all 2 [0 1 2 3 4]))) (let [x (+ -9223372036854775808 (reduce + 0 [1 1 1]))] (+ x (dec (count \"abc\")))))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (vector? (reduce + 0 (partition-all 3 (sort-by - [1 1 1])))) (count (interleave (remove even? []) (partition-all 2 [0 1 2 3 4]))) (let [x (+ -9223372036854775808 (reduce + 0 [1 1 1]))] (+ x (dec (count \"abc\")))))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote :k/v) (ev ":k/v")))
   (is (= (quote nil) (ev "(get (merge (select-keys (assoc {:k/v \"x\", :a [1]} :x 255) [:a]) (select-keys (dissoc {:k/v \"x\", :a [1]} :b) [])) :b)")))
   (is (= (quote "é") (ev "\"é\"")))
@@ -349,8 +351,8 @@
   (is (= (quote [0 -1 7 7 255]) (ev "(conj [0 -1 7 7] 255)")))
   (is (= (quote nil) (ev "(get {:k/v \"x\", :a [1]} :b)")))
   (is (= (quote :x) (ev ":x")))
-  (is (= :throws (outcome #(ev "(odd? \\a)"))) "Clojure throws java.lang.IllegalArgumentException")
-  (is (= :throws (outcome #(ev "sym"))) "Clojure throws clojure.lang.Compiler$CompilerException"))
+  (is (threw? (ev "(odd? \\a)")) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "sym")) "Clojure throws clojure.lang.Compiler$CompilerException"))
 
 (deftest g0028
   (is (= (quote -9223372036854775807) (ev "(+ (inc (count (partition 1 []))) -9223372036854775808)")))
@@ -369,18 +371,18 @@
   (is (= (quote 0) (ev "(let [x (inc (count (sort-by str (keys {:k/v \"x\", :a [1]}))))] (+ x -3))")))
   (is (= (quote 0) (ev "(quot 3 7)")))
   (is (= (quote {:a 8, :b 3}) (ev "(zipmap [:a :b] (conj (concat (concat [] [3 1 2]) []) (inc 7)))")))
-  (is (= :throws (outcome #(ev "(some even? (partition 2 (conj (filter pos? [1 1 1]) 255)))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(some even? (partition 2 (conj (filter pos? [1 1 1]) 255)))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote false) (ev "(nil? (into #{} (interleave (map (fn [x] (* x 2)) [0 -1 7 7]) [1 1 1])))")))
   (is (= (quote "") (ev "(clojure.string/upper-case \"\")")))
   (is (= (quote [2 3 4]) (ev "(mapv inc [1 2 3])")))
   (is (= (quote {}) (ev "(dissoc (assoc {} :x (min 256 (dec 127))) :x)")))
-  (is (= :throws (outcome #(ev "(str nil (pr-str sym))"))) "Clojure throws clojure.lang.Compiler$CompilerException"))
+  (is (threw? (ev "(str nil (pr-str sym))")) "Clojure throws clojure.lang.Compiler$CompilerException"))
 
 (deftest g0030
   (is (= (quote false) (ev "((fn [x] (and (number? x) (> x 2))) :b)")))
   (is (= (quote 0.1) (ev "0.1")))
   (is (= (quote 1000) (ev "1000")))
-  (is (= :throws (outcome #(ev "(if (even? :k/v) (str :x (filter neg? (map inc [1 1 1]))) (into #{} (concat (into (list) [1 2 3]) (distinct (list 1 2)))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(if (even? :k/v) (str :x (filter neg? (map inc [1 1 1]))) (into #{} (concat (into (list) [1 2 3]) (distinct (list 1 2)))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote 256) (ev "(reduce + 0 (conj (into (list) (sort-by str (keys {}))) 256))")))
   (is (= (quote \a) (ev "\\a")))
   (is (= (quote -256) (ev "(- -128 128)")))
@@ -389,7 +391,7 @@
   (is (= (quote true) (ev "(nil? (get (select-keys (select-keys {} [:a]) [:a]) :a))"))))
 
 (deftest g0031
-  (is (= :throws (outcome #(ev "(get (zipmap [:a :b :c] (map inc (partition-all 2 [1 2 3]))) :c)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(get (zipmap [:a :b :c] (map inc (partition-all 2 [1 2 3]))) :c)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote :c) (ev ":c")))
   (is (= (quote false) (ev "(keyword? -3)")))
   (is (= (quote -9223372036854775554) (ev "(+ (inc -9223372036854775808) (- (nth (vector (mod 1000 1) (first (vector 256))) 1) (count (map (fn [x] (* x 2)) [1 2 3]))))")))
@@ -398,7 +400,7 @@
   (is (= (quote \z) (ev "\\z")))
   (is (= (quote 2295) (ev "(let [x 255] (* x (nth (vector (dec 10) (dec 1)) 0)))")))
   (is (= (quote true) (ev "(odd? (* -1 255))")))
-  (is (= :throws (outcome #(ev "(neg? (clojure.string/replace (subs \"abcdef\" 1) \" \" \"\"))"))) "Clojure throws java.lang.ClassCastException"))
+  (is (threw? (ev "(neg? (clojure.string/replace (subs \"abcdef\" 1) \" \" \"\"))")) "Clojure throws java.lang.ClassCastException"))
 
 (deftest g0032
   (is (= (quote \z) (ev "\\z")))
@@ -415,7 +417,7 @@
 (deftest g0033
   (is (= (quote {:a 1, :c 1}) (ev "(dissoc (zipmap [:a :b :c] [1 1 1]) :b)")))
   (is (= (quote nil) (ev "nil")))
-  (is (= :throws (outcome #(ev "(if (keyword? :a) (even? true) (get (merge (zipmap [:a :b :c] []) {:a 1, :b 2}) :b))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(if (keyword? :a) (even? true) (get (merge (zipmap [:a :b :c] []) {:a 1, :b 2}) :b))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote 1) (ev "(count \"a\")")))
   (is (= (quote 4) (ev "(let [x (compare (count (into [] [])) (rem -1 2))] (+ x 3))")))
   (is (= (quote true) (ev "true")))
@@ -426,14 +428,14 @@
 
 (deftest g0034
   (is (= (quote {:a 1}) (ev "(if (vector? [1 2 3]) (dissoc {:a 1} :c) (get {:a 1} :c))")))
-  (is (= :throws (outcome #(ev "(let [x -9223372036854775808] (* x (inc (inc (count \"a\")))))"))) "Clojure throws java.lang.ArithmeticException")
+  (is (threw? (ev "(let [x -9223372036854775808] (* x (inc (inc (count \"a\")))))")) "Clojure throws java.lang.ArithmeticException")
   (is (= (quote 8) (ev "(if (keyword? (name :k/v)) (let [x (first (vector (* -9223372036854775808 -3)))] (max x 256)) (inc 7))")))
   (is (= (quote -1) (ev "(compare (count (clojure.string/join \",\" (take 2 (list 1 2)))) 127)")))
   (is (= (quote {:a 1, :c 1000}) (ev "(assoc (merge {} (zipmap [:a] (into [] (list 1 2)))) :c 1000)")))
   (is (= (quote :x) (ev ":x")))
   (is (= (quote "\"-10\"") (ev "(pr-str (str -1 (reduce + 0 (sort-by str (keys {})))))")))
   (is (= (quote :b) (ev ":b")))
-  (is (= :throws (outcome #(ev "(some even? (mapv str (mapv (fn [x] (* x 2)) (sort-by identity [0 -1 7 7]))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(some even? (mapv str (mapv (fn [x] (* x 2)) (sort-by identity [0 -1 7 7]))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote [0 1 2 3 4]) (ev "[0 1 2 3 4]"))))
 
 (deftest g0035
@@ -442,7 +444,7 @@
   (is (= (quote ":b") (ev "(pr-str :b)")))
   (is (= (quote (2 3 3 2 -1 2)) (ev "(interleave [2 3 (compare 128 (+ 256 127))] (conj (map (fn [x] (* x 2)) (sort-by - [1 1 1])) (max 3 (min 2 -3))))")))
   (is (= (quote 6) (ev "(count (concat [0 1 2 3 4] (take 1 (sort-by - [3 1 2]))))")))
-  (is (= :throws (outcome #(ev "(neg? [])"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(neg? [])")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote :c) (ev ":c")))
   (is (= (quote "LLO") (ev "(clojure.string/upper-case (subs \"hello\" 2))")))
   (is (= (quote true) (ev "(some pos? [1 1 1])")))
@@ -487,12 +489,12 @@
 (deftest g0039
   (is (= (quote true) (ev "(string? (pr-str [1 2 3]))")))
   (is (= (quote 771) (ev "(+ 10 (dec (* (reduce + 0 [3 1 2]) 127)))")))
-  (is (= :throws (outcome #(ev "(if (even? :k/v) (zero? (into #{} (remove pos? [0 -1 7 7]))) (nil? (if (zero? (into #{} [1 1 1])) (if (coll? :a) (into #{} [0 1 2 3 4]) :x) {})))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(if (even? :k/v) (zero? (into #{} (remove pos? [0 -1 7 7]))) (nil? (if (zero? (into #{} [1 1 1])) (if (coll? :a) (into #{} [0 1 2 3 4]) :x) {})))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote 1) (ev "(compare (mod (nth (vector (min 1 127) (compare 7 128)) 1) 7) -3)")))
   (is (= (quote 3) (ev "(nth (vector (rem (compare 10 -9223372036854775808) 2) (count [1 2 3])) 1)")))
   (is (= (quote -1) (ev "-1")))
-  (is (= :throws (outcome #(ev "(some pos? (interleave (sort-by str (keys (assoc {:a 1} :a -3))) [1 1 1]))"))) "Clojure throws java.lang.ClassCastException")
-  (is (= :throws (outcome #(ev "(if (neg? true) (clojure.string/join \"\" (remove even? [1 1 1])) nil)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(some pos? (interleave (sort-by str (keys (assoc {:a 1} :a -3))) [1 1 1]))")) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (neg? true) (clojure.string/join \"\" (remove even? [1 1 1])) nil)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote :b) (ev ":b")))
   (is (= (quote {:a 1, :b 0}) (ev "(zipmap [:a :b] (interleave [1 1 1] [0 1 2 3 4]))"))))
 
@@ -502,7 +504,7 @@
   (is (= (quote -128) (ev "-128")))
   (is (= (quote \z) (ev "\\z")))
   (is (= (quote false) (ev "(vector? (let [x (* (rem 0 3) -128)] (max x -3)))")))
-  (is (= :throws (outcome #(ev "(map dec (sort-by str (keys {:a 1})))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(map dec (sort-by str (keys {:a 1})))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote :b) (ev ":b")))
   (is (= (quote {}) (ev "{}")))
   (is (= (quote :b) (ev ":b")))
@@ -522,13 +524,13 @@
 
 (deftest g0042
   (is (= (quote " t ") (ev "\" t \"")))
-  (is (= :throws (outcome #(ev "(if (neg? (number? -128)) (neg? (some odd? (sort-by str (keys {})))) (min (dec (first (vector 1000))) (nth (vector (count \"\") (max 7 -3)) 1)))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (neg? (number? -128)) (neg? (some odd? (sort-by str (keys {})))) (min (dec (first (vector 1000))) (nth (vector (count \"\") (max 7 -3)) 1)))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote true) (ev "true")))
   (is (= (quote "x") (ev "(get (merge (merge {:a 1, :b 2} {:k/v \"x\", :a [1]}) {:k/v \"x\", :a [1]}) :k/v)")))
   (is (= (quote true) (ev "(some even? (sort-by identity (interleave [3 1 2] (vec [0 1 2 3 4]))))")))
   (is (= (quote [[0 0] [1 1] [1 1] [2 2] [2 2] [3 3]]) (ev "(mapv (fn [x] [x x]) (interleave [0 1 2 3 4] [1 2 3]))")))
   (is (= (quote "Ab-C") (ev "\"Ab-C\"")))
-  (is (= :throws (outcome #(ev "(dissoc (group-by odd? (sort-by str (keys {:a 1, :b 2}))) :x)"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(dissoc (group-by odd? (sort-by str (keys {:a 1, :b 2}))) :x)")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote :x) (ev ":x")))
   (is (= (quote 16) (ev "(let [x (count \"a b\")] (+ x (reduce + 0 [0 -1 7 7])))"))))
 
@@ -547,7 +549,7 @@
 (deftest g0044
   (is (= (quote #{(-128 1 2)}) (ev "(into #{} (partition-all 3 (conj (drop 0 (list 1 2)) -128)))")))
   (is (= (quote [1]) (ev "(get {:k/v \"x\", :a [1]} :a)")))
-  (is (= :throws (outcome #(ev "(if (pos? \"\") (into #{} (mapv (fn [x] (* x 2)) [256 1])) false)"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (pos? \"\") (into #{} (mapv (fn [x] (* x 2)) [256 1])) false)")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote #{1 4 256 3 2}) (ev "(into #{} (filter pos? (concat (conj [0 1 2 3 4] 256) (remove even? (list 1 2)))))")))
   (is (= (quote {:a 1}) (ev "{:a 1}")))
   (is (= (quote false) (ev "(nil? (zipmap [:a :b :c] (remove odd? (mapv identity [0 -1 7 7]))))")))
@@ -562,17 +564,17 @@
   (is (= (quote 255) (ev "(max -128 255)")))
   (is (= (quote -2.25) (ev "-2.25")))
   (is (= (quote \z) (ev "\\z")))
-  (is (= :throws (outcome #(ev "(if (some? (count (str (first (vector 127)) \"Ab-C\"))) sym -0.0)"))) "Clojure throws clojure.lang.Compiler$CompilerException")
+  (is (threw? (ev "(if (some? (count (str (first (vector 127)) \"Ab-C\"))) sym -0.0)")) "Clojure throws clojure.lang.Compiler$CompilerException")
   (is (= (quote {:k/v "x", :a [1]}) (ev "(dissoc {:k/v \"x\", :a [1]} :b)")))
   (is (= (quote 1) (ev "(get (assoc (select-keys (merge {} {:a 1, :b 2}) [:a]) :c 7) :a)")))
   (is (= (quote (:a)) (ev "(sort-by str (keys (select-keys (dissoc (merge {} {:k/v \"x\", :a [1]}) :c) [:a])))")))
   (is (= (quote true) (ev "true"))))
 
 (deftest g0046
-  (is (= :throws (outcome #(ev "(zipmap [:a] (map inc (sort-by str (keys {:k/v \"x\", :a [1]}))))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(zipmap [:a] (map inc (sort-by str (keys {:k/v \"x\", :a [1]}))))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote ()) (ev "(sort-by str (keys (select-keys (select-keys (frequencies [0 1 2 3 4]) [:a]) [])))")))
   (is (= (quote 1) (ev "(let [x (count (rest (take 2 [0 1 2 3 4])))] (max x -3))")))
-  (is (= :throws (outcome #(ev "(reduce + 0 (interleave (interleave (partition-all 2 [0 -1 7 7]) (conj [3 1 2] 0)) (sort-by - (sort-by identity [0 -1 7 7]))))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(reduce + 0 (interleave (interleave (partition-all 2 [0 -1 7 7]) (conj [3 1 2] 0)) (sort-by - (sort-by identity [0 -1 7 7]))))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote {:a 1}) (ev "{:a 1}")))
   (is (= (quote nil) (ev "(get (dissoc (assoc (select-keys {:k/v \"x\", :a [1]} [:a]) :k/v (dec -128)) :a) :c)")))
   (is (= (quote {:k/v "x", :a [1]}) (ev "{:k/v \"x\", :a [1]}")))
@@ -583,7 +585,7 @@
 (deftest g0047
   (is (= (quote false) (ev "false")))
   (is (= (quote false) (ev "(zero? (nth (vector (+ (count \" t \") (nth (vector 128 1) 1)) (count (list 1 2))) 1))")))
-  (is (= :throws (outcome #(ev "(even? (some pos? (concat (drop 2 [3 1 2]) (sort-by str (keys {:k/v \"x\", :a [1]})))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(even? (some pos? (concat (drop 2 [3 1 2]) (sort-by str (keys {:k/v \"x\", :a [1]})))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote 3) (ev "3")))
   (is (= (quote nil) (ev "(get (zipmap [:a :b :c] (filter odd? (list 1 2))) :c)")))
   (is (= (quote true) (ev "(some even? [0 1 2 3 4])")))
@@ -596,12 +598,12 @@
   (is (= (quote -1) (ev "(first (vector (compare -9223372036854775808 (count (remove even? [3 1 2])))))")))
   (is (= (quote \z) (ev "\\z")))
   (is (= (quote 0) (ev "(max (first (vector (rem (max 3 1000) -2))) (rem 10 1))")))
-  (is (= :throws (outcome #(ev "(+ (* (dec -9223372036854775808) (quot 1000 7)) (inc (nth (vector (compare 10 1) (count [1 1 1])) 1)))"))) "Clojure throws java.lang.ArithmeticException")
-  (is (= :throws (outcome #(ev "(some even? (sort-by - (sort-by str (keys (zipmap [:a] [1 1 1])))))"))) "Clojure throws java.lang.IllegalArgumentException")
+  (is (threw? (ev "(+ (* (dec -9223372036854775808) (quot 1000 7)) (inc (nth (vector (compare 10 1) (count [1 1 1])) 1)))")) "Clojure throws java.lang.ArithmeticException")
+  (is (threw? (ev "(some even? (sort-by - (sort-by str (keys (zipmap [:a] [1 1 1])))))")) "Clojure throws java.lang.IllegalArgumentException")
   (is (= (quote \z) (ev "\\z")))
-  (is (= :throws (outcome #(ev "(if (some? (frequencies (sort-by str (keys (merge {:a 1} {}))))) (let [x (first (vector (min -9223372036854775808 2)))] (* x 256)) (even? (let [x 256] (max x (nth (vector 1 2) 0)))))"))) "Clojure throws java.lang.ArithmeticException")
+  (is (threw? (ev "(if (some? (frequencies (sort-by str (keys (merge {:a 1} {}))))) (let [x (first (vector (min -9223372036854775808 2)))] (* x 256)) (even? (let [x 256] (max x (nth (vector 1 2) 0)))))")) "Clojure throws java.lang.ArithmeticException")
   (is (= (quote [-1]) (ev "[(quot (* 2 -1) 2)]")))
-  (is (= :throws (outcome #(ev "(if (zero? (if (coll? :a) (into #{} (conj [0 1 2 3 4] -128)) (into #{} []))) false (sort (take 3 [-9223372036854775808])))"))) "Clojure throws java.lang.ClassCastException")
+  (is (threw? (ev "(if (zero? (if (coll? :a) (into #{} (conj [0 1 2 3 4] -128)) (into #{} []))) false (sort (take 3 [-9223372036854775808])))")) "Clojure throws java.lang.ClassCastException")
   (is (= (quote -1) (ev "-1"))))
 
 (deftest g0049

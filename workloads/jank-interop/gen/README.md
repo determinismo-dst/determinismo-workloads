@@ -14,8 +14,13 @@ clojure -M gen.clj <seed> <forms> tests     # tests/jank_gen/gen_<seed>_test.jan
 - Kept: forms whose Clojure result is deterministic, finite and reads back equal to itself, or
   that throw (the jank test then asks for any throw its handlers can see: an object, a native
   exception or a `jank::error_ref`).
-- Each form is read and evaluated at run time (`ev`), so a form jank refuses fails only its own
-  assertion; ten forms a test, each test in its own jank process (examples' ci-jank runner).
+- Each form is read and evaluated at run time by `ev`, which returns `[:jank-gen/threw message]`
+  for any throw (`is` catches only objects, and an uncaught `jank::error_ref` would end the test
+  before its other forms), so every form gets its own verdict; ten forms a test, each test in its
+  own jank process (examples' ci-jank runner).
+- No form depends on a set's or map's element order, which Clojure leaves unspecified: keys are
+  sorted by `str`, sets appear only as results or a predicate's argument, and `str`/`pr-str`
+  print ordered values only.
 - The same seed gives the same file.
 
 Runs go through determinismo-ci (examples/ci-jank, `ci-gen-<seed>.json`), as the Lean tests do.

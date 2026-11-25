@@ -21,6 +21,15 @@ departures from what they document; each prediction then checked on the real sys
 - [elle/lean](workloads/elle/README.md): Elle, Jepsen's consistency checker that determinismo's
   checks use (rounds 1-2), each finding reproduced on Elle itself.
 
+Each replica cites the upstream lines it copies at the commit its round read. When upstream moves
+on, [workloads/lean-drift.py](workloads/lean-drift.py) maps every citation through the diff and
+lists those whose lines changed, with the commits that changed them: the starting list of the
+next round's catch-up. jank's replica against main 94d32623 (2026-11-25): 59 of 3,416 citations
+changed (19 files), the rest only moved; Elle's main is still the replica's commit.
+
+    workloads/lean-drift.py --replica workloads/jank-interop/lean --repo <jank clone> \
+      --base f3d82d654 --base Jank/R4/=7135b77 --new <commit> --changed-only
+
 ## Build
 
 With Zig 0.17.0, the platform a pinned dependency (`build.zig.zon`):

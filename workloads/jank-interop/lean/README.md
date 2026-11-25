@@ -37,6 +37,9 @@ jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/m
 
 ## Building and running
 
+With [elan](https://github.com/leanprover/elan) installed (it takes the Lean version from
+`lean-toolchain`; Lake fetches determinismo's Lean library at the commit `lakefile.toml` pins):
+
 ```sh
 lake build
 lake exe jank-model          # round 1's searches
@@ -44,10 +47,13 @@ lake exe jank-reader         # round 2's drivers: jank-<component>
 lake exe jank3-boost         # round 3's: jank3-<area>
 ```
 
-A few drivers read the pinned sources: jank main 7135b7708 in `upstream-main/`, and its
-submodules at the commits jank pins in `deps/` (immer 282629d0, boost-multiprecision 2b3ab082,
-bdwgc 327ef1f8, CppInterOp 28b0830d, folly e54ca53d; libstdc++ 15.3.0's regex headers; the
-LLVM 23.1.0 files CppInterOp reaches). They are not in this repository.
+`./fetch-sources.sh` puts the sources the replica translates next to it, at the commits it was
+written against (git-ignored): jank in `upstream/` (f3d82d654) and `upstream-main/` (7135b7708),
+and in `deps/` the libraries jank pins (immer 282629d0, boost-multiprecision 2b3ab082, bdwgc
+327ef1f8, CppInterOp 28b0830d, folly e54ca53d) and libstdc++ 15.3.0's regex files. Only
+`jank3-boost`'s header check reads one of them at run time; the others are for following the
+reports' line numbers. The LLVM 23.1.0 files CppInterOp reaches are read only (llvm-project at
+llvmorg-23.1.0).
 
 One test on jank, in its own process:
 

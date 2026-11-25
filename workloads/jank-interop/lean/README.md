@@ -71,8 +71,11 @@ on the real jank.
     timelines. 16 confirmed their prediction (U5, U6, U12, U17, U21, U22, U48, U59, U64, U72,
     U73, U74, U74b, U79, U80, U81); U82 failed on another bug first (reading any `#inst` needs
     the `en_US.UTF-8` locale: inst.cpp 41), its own prediction untested; U88-U90 couldn't load
-    `jank.shell` in the test image ("Unable to compile C++ source", Boost.Process's headers
-    present), still untested; round 3's four errors are the ones predicted.
+    `jank.shell` in the test image ("Unable to compile C++ source": the coverage image lacked the
+    Boost headers jank's package depends on); round 3's four errors are the ones predicted.
+  - U88-U90 rerun with Boost in the image, each failing in all 3 of its timelines as predicted:
+    U88 `(sh "echo" "a\" b")` printed `a\ b"`; U89 still running after 120 s; U90 threw
+    "persistent_string expected, small_integer provided". U82's own prediction is still untested.
   - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt),
     the rerun's [validation/round-4b-evidence.txt](validation/round-4b-evidence.txt).
 

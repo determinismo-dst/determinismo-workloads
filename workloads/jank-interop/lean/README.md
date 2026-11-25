@@ -87,6 +87,14 @@ on the real jank.
   - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt),
     the rerun's [validation/round-4b-evidence.txt](validation/round-4b-evidence.txt).
 
+- **Round 5**: 49 tests run on jank main 7135b7708 (the coverage build; 94d32623's compiler and
+  runtime), each in its own process with a 120 s limit, directly in podman (not through
+  determinismo-ci): all 40 predictions with a test behave as predicted. 47 tests fail with the
+  value or error predicted, v12 aborts the process (`std::terminate`, V12), and the control v19b
+  passes. V1, V2, V4-V6, V20, V22 and V23 have no test here (linking, AOT and C setups). Homebrew's
+  jank 0.1 package (macOS) gave the same failures for V3-V37; it predates main's `#inst` reader.
+  Evidence: [validation/round-5-evidence.txt](validation/round-5-evidence.txt).
+
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
 

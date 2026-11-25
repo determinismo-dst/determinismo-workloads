@@ -1,0 +1,108 @@
+Round 5's tests on jank main 7135b7708 (coverage build, byte-identical compiler and runtime to
+94d32623), run directly on 2026-11-25 (podman on srv4, Debian 13, en_US.UTF-8 generated,
+LANG=C.UTF-8, each test in its own process, 120 s, ci-jank's JUnit runner). A test asserts
+Clojure's result: FAIL or ERROR is the deviation predicted.
+
+jank-lean.deviations-r5-test/v03-loading-a-file-that-is-not-a-library-is-an-error: FAIL (exit 1)
+     expected: (thrown? (load "/tmp/jank-lean-va4-not-a-library.so")) actual: nil
+jank-lean.deviations-r5-test/v07-a-read-error-reaches-an-object-catch: FAIL (exit 1)
+     expected: (= :object (vb-kind (fn* [] (read-string (identity "("))))) actual: (not (= :object :error))
+jank-lean.deviations-r5-test/v07b-an-analysis-error-from-eval-reaches-an-object-catch: FAIL (exit 1)
+     expected: (= :object (vb-kind (fn* [] (eval (symbol "vb1b-no-such-name"))))) actual: (not (= :object :error))
+jank-lean.deviations-r5-test/v07c-a-missing-namespace-reaches-an-object-catch: FAIL (exit 1)
+     expected: (= :object (vb-kind (fn* [] (require (symbol "jank-lean.vb1c-no-such-namespace"))))) actual: (not (= :object :error))
+jank-lean.deviations-r5-test/v08-a-failed-require-removes-the-namespace-it-created: FAIL (exit 1)
+     expected: (nil? (find-ns (quote jank-lean.r5-errors-fixture-a))) actual: (not (nil? jank-lean.r5-errors-fixture-a))
+jank-lean.deviations-r5-test/v09-an-ex-info-thrown-while-loading-keeps-its-data: FAIL (exit 1)
+     expected: (= {:vb3 1} (when (= :object k) (vb-data-with e :vb3))) actual: (not (= {:vb3 1} nil))
+jank-lean.deviations-r5-test/v09b-an-ex-info-thrown-by-a-macro-keeps-its-data: FAIL (exit 1)
+     expected: (= {:vb3b 1} (when (= :object k) (vb-data-with e :vb3b))) actual: (not (= {:vb3b 1} nil))
+jank-lean.deviations-r5-test/v10-a-failed-delay-throws-the-same-kind-each-deref: FAIL (exit 1)
+     expected: (= (vb-kind (fn* [] (deref d))) (vb-kind (fn* [] (deref d)))) actual: (not (= :native :object))
+jank-lean.deviations-r5-test/v11-a-delay-whose-body-fails-to-read-runs-once: FAIL (exit 1)
+     expected: (= 1 (deref n)) actual: (not (= 1 2))
+jank-lean.deviations-r5-test/v12-a-future-whose-body-fails-to-read-can-be-dereferenced: ERROR (exit 134)
+    terminate called after throwing an instance of 'jtl::ref<jank::error::base>' Aborted
+jank-lean.deviations-r5-test/v13-a-failed-futures-deref-throws-an-exception-not-a-string: FAIL (exit 1)
+     expected: (not (string? e)) actual: (not (not true))
+jank-lean.deviations-r5-test/v14-a-def-whose-value-throws-sets-no-metadata: FAIL (exit 1)
+     expected: (nil? (:vb8 (meta (find-var (quote jank-lean.vb8-scratch/vb8-x))))) actual: (not (nil? 1))
+jank-lean.deviations-r5-test/v15-ex-info-takes-a-nil-message: FAIL (exit 1)
+    uncaught C++ exception: An object of type `persistent_string` was expected here, but a `nil` was provided instead.
+jank-lean.deviations-r5-test/v16-ex-info-with-nil-data-has-empty-data: FAIL (exit 1)
+     expected: (= {} (ex-data (ex-info "vb10" (identity nil)))) actual: (not (= {} nil))
+jank-lean.deviations-r5-test/v17-read-string-of-an-empty-text-throws: FAIL (exit 1)
+     expected: (= :object (vb-kind (fn* [] (read-string (identity ""))))) actual: (not (= :object :returned))
+jank-lean.deviations-r5-test/v17b-read-string-of-a-comment-throws: FAIL (exit 1)
+     expected: (= :object (vb-kind (fn* [] (read-string (identity "; only a comment"))))) actual: (not (= :object :returned))
+jank-lean.deviations-r5-test/v17c-read-string-with-options-but-no-eof-throws: FAIL (exit 1)
+     expected: (= :object (vb-kind (fn* [] (read-string {} (identity " "))))) actual: (not (= :object :returned))
+jank-lean.deviations-r5-test/v18-ex-data-and-cause-of-a-compile-error-in-star-e: FAIL (exit 1)
+     expected: (= "true" (vb-nrepl-value "(some? (ex-data *e))")) actual: (not (= "true" "false"))
+     expected: (= "true" (vb-nrepl-value "(some? (ex-cause *e))")) actual: (not (= "true" "false"))
+jank-lean.deviations-r5-test/v19-c-api-call2-lets-the-fns-exception-reach-the-caller: FAIL (exit 1)
+     expected: (thrown? (call2 va-boom2 1 2)) actual: nil
+jank-lean.deviations-r5-test/v19b-control-c-api-call1-lets-the-fns-exception-reach-the-caller: pass (exit 0)
+jank-lean.deviations-r5-test/v21-c-api-symbol-with-a-nil-namespace-is-unqualified: FAIL (exit 1)
+     expected: (nil? (namespace s)) actual: (not (nil? "nil"))
+     expected: (= (quote a) s) actual: (not (= a nil/a))
+jank-lean.deviations-r5-test/v21b-c-api-keyword-with-a-nil-namespace-is-unqualified: FAIL (exit 1)
+     expected: (= :a (kw nil "a")) actual: (not (= :a :nil/a))
+jank-lean.deviations-r5-test/v24-jank-math-loads: FAIL (exit 1)
+    uncaught jank error: The symbol `native/raw` could not be resolved.
+jank-lean.deviations-r5-test/v25-cpp-assigning-a-temporary-moves-it: FAIL (exit 1)
+    uncaught jank error: No matching overload of the `=` function was found for this call.
+jank-lean.deviations-r5-test/v26-cpp-a-forwarding-operator-template-sees-a-temporary-as-an-rvalue: FAIL (exit 1)
+     expected: (= 2 ((ev "(fn [] (cpp/+ cpp/vf2.gv (cpp/vf2.W.)))"))) actual: (not (= 2 1))
+jank-lean.deviations-r5-test/v27-cpp-a-member-operator-takes-a-literal-by-rvalue-reference: FAIL (exit 1)
+    uncaught jank error: Unable to compile C++ source.
+jank-lean.deviations-r5-test/v28-cpp-a-member-operator-template-forwards-a-literal-as-an-rvalue: FAIL (exit 1)
+     expected: (= 2 ((ev "(fn [] (cpp// cpp/vf4.g 1))"))) actual: (not (= 2 1))
+jank-lean.deviations-r5-test/v29-cpp-a-named-local-is-an-lvalue-to-overload-resolution: FAIL (exit 1)
+     expected: (= 1 ((ev "(fn [] (let [x (cpp/int. 1)] (cpp/- cpp/vf5.gv x)))"))) actual: (not (= 1 2))
+jank-lean.deviations-r5-test/v29b-cpp-a-named-local-binds-a-non-const-reference: FAIL (exit 1)
+    uncaught jank error: No matching overload of the `vf5b_inc` function was found for this call.
+jank-lean.deviations-r5-test/v30-cpp-built-in-assignment-needs-an-lvalue: FAIL (exit 1)
+     expected: (not= :returned (vb-kind (fn* [] ((ev "(fn [] (cpp/= 1 2))"))))) actual: (not (not= :returned :returned))
+     expected: (not= :returned (vb-kind (fn* [] ((ev "(fn [] (cpp/+= 1 2))"))))) actual: (not (not= :returned :returned))
+jank-lean.deviations-r5-test/v31-cpp-argument-dependent-lookup-finds-a-using-declaration: FAIL (exit 1)
+    uncaught jank error: The operator `+` is not supported for the type `vf7_lib::P`.
+jank-lean.deviations-r5-test/v32-cpp-a-using-declared-base-call-operator: FAIL (exit 1)
+    uncaught jank error: This call is ambiguous between 2 different overloads.
+jank-lean.deviations-r5-test/v33-cpp-calling-an-object-through-its-conversion-to-a-function-pointer: FAIL (exit 1)
+    uncaught jank error: The operator `()` is not supported for the type `vf9_sf`.
+jank-lean.deviations-r5-test/v34-cpp-aget-through-a-conversion-to-a-pointer: FAIL (exit 1)
+    uncaught jank error: The operator `aget` is not supported for the type `vf10_bf`.
+jank-lean.deviations-r5-test/v35-word-boundary-and-a-combining-mark: FAIL (exit 1)
+     expected: (nil? (rfind "e\\b" "é")) actual: (not (nil? "e"))
+     expected: (= ["x"] (vec (rseq* "\\b\\w+\\b" "café x"))) actual: (not (= ["x"] ["cafe" "x"]))
+jank-lean.deviations-r5-test/v36-unicode-line-terminators: FAIL (exit 1)
+     expected: (nil? (re-matches (re-pattern ".*") " ")) actual: (not (nil? " "))
+     expected: (= "a" (rfind "a$" "a ")) actual: (not (= "a" nil))
+jank-lean.deviations-r5-test/v37-nrepl-interrupt-of-an-idle-session: FAIL (exit 1)
+     expected: (= #{"session-idle" "done"} (statuses r)) actual: (not (= #{"session-idle" "done"} #{"error" "unknown-op" "done"}))
+jank-lean.deviations-r5-test/v37b-nrepl-interrupt-without-a-session: FAIL (exit 1)
+jank-lean.deviations-r5-test/v38-inst-reads-a-z-offset: FAIL (exit 1)
+    uncaught jank error: Unrecognized date/time syntax: 2020-01-01T00:00:00Z
+jank-lean.deviations-r5-test/v39-inst-reads-a-leap-second: FAIL (exit 1)
+    uncaught jank error: Unrecognized date/time syntax: 2016-12-31T23:59:60
+jank-lean.deviations-r5-test/v40-inst-fraction-of-more-than-nine-digits: FAIL (exit 1)
+     expected: (= 1577836800123 (ms-of (identity "#inst \"2020-01-01T00:00:00.12345678912\""))) actual: (not (= 1577836800123 1577793600123))
+    uncaught jank error: Unrecognized date/time syntax: 2020-01-01T00:00:00.1234567891
+jank-lean.deviations-r5-test/v41-inst-before-1970-keeps-its-millisecond: FAIL (exit 1)
+     expected: (= -1 (ms-of (identity "#inst \"1969-12-31T23:59:59.9995\""))) actual: (not (= -1 0))
+jank-lean.deviations-r5-test/v42-inst-equality-is-to-the-millisecond: FAIL (exit 1)
+     expected: (= x (read-string (pr-str x))) actual: (not (= #inst "2020-01-01T00:00:00.000-00:00" #inst "2020-01-01T00:00:00.000-00:00"))
+jank-lean.deviations-r5-test/v43-insts-compare: FAIL (exit 1)
+    uncaught jank error: Objects of type 'inst' do not support the 'compare' behavior.
+jank-lean.deviations-r5-test/v44-default-data-reader-fn-leaves-inst-and-uuid: FAIL (exit 1)
+     expected: (inst? (rd (identity "#inst \"2020-01-01\""))) actual: (not (inst? #inst 2020-01-01))
+     expected: (uuid? (rd (identity "#uuid \"00000000-0000-0000-0000-000000000000\""))) actual: (not (uuid? #uuid 00000000-0000-0000-0000-000000000000))
+jank-lean.deviations-r5-test/v45-inst-reads-an-offset-after-a-date: FAIL (exit 1)
+    uncaught jank error: Unrecognized date/time syntax: 2020-01-01-05:00
+jank-lean.deviations-r5-test/v46-print-of-an-inst-keeps-its-tag: FAIL (exit 1)
+jank-lean.deviations-r5-test/v47-clojure-instant-exists: FAIL (exit 1)
+    uncaught jank error: The module `clojure.instant` could not be found.
+jank-lean.deviations-r5-test/v48-a-set-finds-its-own-string-seq: FAIL (exit 1)
+     expected: (contains? (hash-set x) x) actual: (not (contains? #{(\é)} (\é)))
+     expected: (= 1 (count (hash-set x x))) actual: (not (= 1 2))

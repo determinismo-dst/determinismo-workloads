@@ -1,0 +1,53 @@
+hang            deviations-r3-hangs-test::s62-a-validator-calling-set-validator          jank ended with no report (exit 124: still running after 120 s)
+hang            deviations-r3-hangs-test::s63-alter-var-root-re-entering-its-var         jank ended with no report (exit 124: still running after 120 s)
+hang            deviations-r3-hangs-test::s64-a-delay-asking-whether-it-is-realized      jank ended with no report (exit 124: still running after 120 s)
+hang            deviations-r3-hangs-test::s65-future-cancel-while-another-thread-derefs  jank ended with no report (exit 124: still running after 120 s)
+hang            deviations-r3-hangs-test::s67-lazy-var-meta-reading-the-vars-meta        jank ended with no report (exit 124: still running after 120 s)
+uncaught-error  deviations-r3-test::s01-var-quote-of-a-non-symbol                        uncaught jank error
+wrong-value     deviations-r3-test::s03-non-terminating-quotient-throws                   expected: (thrown? (/ 1.0M 3)) actual: nil | expected: (thrown? (/ 1.0M 3)) actual: nil
+wrong-value     deviations-r3-test::s04-bigdecimals-keep-every-digit                      expected: (not= 1.0M (- 1.0M 1e-130.0M)) actual: (not (not= 1.0M 1.0M)) | expected: (not= 1.0M (- 1.0M 1e-130.0M)) actual: (not (not= 1.0M 1.0M))
+wrong-value     deviations-r3-test::s05-small-bigdecimals-print-plainly                   expected: (= "0.00001" (str 1e-05.0M)) actual: (not (= "0.00001" "1e-05.0")) | expected: (= "0.00001" (str 1e-05.0M)) actual: (not (= "0.00001" "1e-05.0"))
+wrong-value     deviations-r3-test::s06-bigdecimal-and-double-give-a-double               expected: (double? (+ 1.0M 0.5)) actual: (not (double? 1.5M)) | expected: (double? (+ 1.0M 0.5)) actual: (not (double? 1.5M))
+wrong-value     deviations-r3-test::s07-rem-of-a-big-bigdecimal                           expected: (= 1.0M (rem 1e+130.0M 3)) actual: (not (= 1.0M 99999997.0M)) | expected: (= 1.0M (rem 1e+130.0M 3)) actual: (not (= 1.0M 99999997.0M))
+wrong-value     deviations-r3-test::s08-rem-of-a-bigdecimal-and-a-ratio                   expected: (= 0.25M (rem 1.75M 1/2)) actual: (not (= 0.25M 0N)) | expected: (= 0.25M (rem 1.75M 1/2)) actual: (not (= 0.25M 0N))
+wrong-value     deviations-r3-test::s10-equal-bigdecimals-hash-alike                      expected: (or (not= a b) (= (hash a) (hash b))) actual: false | expected: (or (not= a b) (= (hash a) (hash b))) actual: false
+wrong-value     deviations-r3-test::s11-double-of-a-tiny-bigdecimal                       expected: (= 1e-310 (double 1e-310.0M)) actual: (not (= 1e-310 0.0)) | expected: (= 1e-310 (double 1e-310.0M)) actual: (not (= 1e-310 0.0))
+wrong-value     deviations-r3-test::s12-long-of-a-huge-bigdecimal-throws                  expected: (thrown? (long 1e+130.0M)) actual: nil | expected: (thrown? (long 1e+130.0M)) actual: nil
+wrong-value     deviations-r3-test::s14-bigdec-of-text-follows-javas-grammar              expected: (thrown? (bigdec "inf")) actual: nil | expected: (thrown? (bigdec "inf")) actual: nil
+wrong-value     deviations-r3-test::s15-bigint-of-text-is-decimal                         expected: (= 10N (bigint "010")) actual: (not (= 10N 8N)) | expected: (= 10N (bigint "010")) actual: (not (= 10N 8N))
+wrong-value     deviations-r3-test::s16-ratio-parts-are-decimal                           expected: (= 10/3 (read-string "0010/3")) actual: (not (= 10/3 8/3)) | expected: (= 10/3 (read-string "0010/3")) actual: (not (= 10/3 8/3))
+wrong-value     deviations-r3-test::s17-bigdecimal-exponent-overflow-throws               expected: (thrown? (read-string "1e4294967296M")) actual: nil | expected: (thrown? (read-string "1e4294967296M")) actual: nil
+other           deviations-r3-test::s18-bigint-of-a-big-ratio                            uncaught C++ exception: The value `33333333333333333333` is out of range for `i64` conversion.
+wrong-value     deviations-r3-test::s19-bigint-division-is-a-ratio                        expected: (= 7/2 (/ 7N 2)) actual: (not (= 7/2 3N)) | expected: (= 7/2 (/ 7N 2)) actual: (not (= 7/2 3N))
+wrong-value     deviations-r3-test::s20-ratio-arithmetic-with-a-bigint-stays-big          expected: (= "0N" (pr-str (* 0N 1/2))) actual: (not (= "0N" "0")) | expected: (= "0N" (pr-str (* 0N 1/2))) actual: (not (= "0N" "0"))
+wrong-value     deviations-r3-test::s21-double-of-a-ratio                                 expected: (= -2.333333333333333 (double -7/3)) actual: (not (= -2.333333333333333 -2.3333333333333335)) | expected: (= -2.333333333333333 (double -7/3)) actual: (not (= 
+wrong-value     deviations-r3-test::s22-quantifier-after-a-non-ascii-character            expected: (= "" (re-matches (re-pattern "é*") "")) actual: (not (= "" nil)) | expected: (= "" (re-matches (re-pattern "é*") "")) actual: (not (= "" nil))
+wrong-value     deviations-r3-test::s23-u-escape-above-0xff                               expected: (nil? (re-find (re-pattern "\\u0141") "A")) actual: (not (nil? "A")) | expected: (nil? (re-find (re-pattern "\\u0141") "A")) actual: (not (nil? "A"))
+other           deviations-r3-test::s24-range-to-a-non-ascii-character                   uncaught C++ exception: Invalid range in bracket expression.
+wrong-value     deviations-r3-test::s25-possessive-quantifier                             expected: (nil? (re-find (re-pattern "a++a") "aaa")) actual: (not (nil? "aaa")) | expected: (nil? (re-find (re-pattern "a++a") "aaa")) actual: (not (nil? "aaa"))
+wrong-value     deviations-r3-test::s26-repeat-of-a-repeat                                expected: (= "aa" (re-find (re-pattern "a{2}{3}") "aaaaaa")) actual: (not (= "aa" "aaaaaa")) | expected: (= "aa" (re-find (re-pattern "a{2}{3}") "aaaaaa")) actual: (not 
+other           deviations-r3-test::s27-quantified-assertion                             uncaught C++ exception: Mismatched '(' and ')' in regular expression
+other           deviations-r3-test::s28-backreference-inside-its-group                   uncaught C++ exception: Back-reference referred to an opened sub-expression.
+wrong-value     deviations-r3-test::s29-posix-bracket-is-not-a-class                      expected: (nil? (re-find (re-pattern "[[:alpha:]]") "x")) actual: (not (nil? "x")) | expected: (nil? (re-find (re-pattern "[[:alpha:]]") "x")) actual: (not (nil? "x"))
+wrong-value     deviations-r3-test::s30-closing-bracket-first-in-a-class                  expected: (= "a" (re-find (re-pattern "[]a]") "a")) actual: (not (= "a" nil)) | expected: (= "a" (re-find (re-pattern "[]a]") "a")) actual: (not (= "a" nil))
+wrong-value     deviations-r3-test::s31-java-control-escape                               expected: (= "\n" (re-find (re-pattern "\\cJ") "\n")) actual: (not (= "\n" nil)) | expected: (= "\n" (re-find (re-pattern "\\cJ") "\n")) actual: (not (= "\n" nil))
+other           deviations-r3-test::s32-class-escape-before-a-dash                       uncaught C++ exception: Invalid start of '[x-x]' range in regular expression
+wrong-value     deviations-r3-test::s33-lookahead-sees-the-left-character                 expected: (nil? (re-find (re-pattern "a(?=\\b)") "ab")) actual: (not (nil? "a")) | expected: (nil? (re-find (re-pattern "a(?=\\b)") "ab")) actual: (not (nil? "a"))
+segfault        deviations-r3-test::s34-a-long-input                                     jank ended with no report (exit 139) | timeout: the monitored command dumped core Segmentation fault
+other           deviations-r3-test::s35-a-large-counted-repeat                           uncaught C++ exception: Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger.
+uncaught-error  deviations-r3-test::s36-literal-local-in-a-call-never-made               uncaught jank error
+uncaught-error  deviations-r3-test::s37-case-analyzes-its-clauses-first                  uncaught jank error
+wrong-value     deviations-r3-test::s38-macro-expansion-headed-by-a-local                 expected: (= "// hi" (let [comment (fn [x] (str "// " x))] (-> "hi" comment))) actual: (not (= "// hi" nil)) | expected: (= "// hi" (let [comment (fn [x] (str "// " x))]
+wrong-value     deviations-r3-test::s40-int-of-a-long-past-int32-throws                   expected: (thrown? (int 2147483648)) actual: nil | expected: (thrown? (int 2147483648)) actual: nil
+wrong-value     deviations-r3-test::s41-runtime-duplicate-map-keys-throw                  expected: (thrown? (let [a 1 b 1] {a :x, b :y})) actual: nil | expected: (thrown? (let [a 1 b 1] {a :x, b :y})) actual: nil
+uncaught-error  deviations-r3-test::s42-eleven-parameters                                uncaught jank error
+uncaught-error  deviations-r3-test::s49-cpp-explicit-template-arguments                  uncaught jank error
+uncaught-error  deviations-r3-test::s50-cpp-function-pointer-with-a-reference-parameter  uncaught jank error
+uncaught-error  deviations-r3-test::s53-cpp-built-in-operator-on-a-converting-class      uncaught jank error
+uncaught-error  deviations-r3-test::s57-cpp-if-keeps-a-reference-branchs-value           uncaught jank error
+wrong-value     deviations-r3-test::s59-an-equal-key-keeps-the-stored-key                 expected: (list? (first (keys (assoc (hash-map (quote (1)) :a) [1] :b)))) actual: (not (list? [1])) | expected: (list? (first (keys (assoc (hash-map (quote (1)) :a) [1] 
+wrong-value     deviations-r3-test::s60-array-map-transient-after-persistent              expected: (thrown? (let [t (transient {:a 1})] (persistent! t) (get t :a :nf))) actual: nil | expected: (thrown? (let [t (transient {:a 1})] (persistent! t) (get t :a :n
+other           deviations-r3-test::s61-conj-of-an-empty-list-onto-a-map                 uncaught C++ exception: invalid map entry: 'persistent_list'
+wrong-value     deviations-r3-test::s70-an-unbound-root-survives-its-var                  expected: (= "Unbound: #'jank-lean.deviations-r3-test/s70-x" (str s70-u)) actual: (not (= "Unbound: #'jank-lean.deviations-r3-test/s70-x" "unbound@0x7f062d022660 for var
+other           deviations-r3-test::s71-a-top-level-do-sees-its-own-macros               uncaught C++ exception: Invalid call to `#object [clojure.core/s71-m jit_function 0x7f607d4156e0]` with `0` args provided.
+wrong-value     deviations-r3-test::s73-pr-str-of-a-namespace                             expected: (string/starts-with? (pr-str *ns*) "#object[") actual: (not (string/starts-with? "clojure.core" "#object[")) | expected: (string/starts-with? (pr-str *ns*) "#o

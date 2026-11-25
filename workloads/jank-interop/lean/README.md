@@ -27,10 +27,19 @@ on the real jank.
   - 8 refuted: D3, D11, D14, D16b, D20, R45, R123, and one control. D11, D14 and D20 were fixed
     after jank 0.1, as round 2 predicted.
   - 3 failed in another way than predicted: D15, D23, R89. 1 unclear: R54.
-  - 4 left unrun (their time went to tests that hung).
+  - 4 left without a result: b01, b11, b24, b29. Their failure reports hold invalid UTF-8 or a
+    NUL, which the test runner's `grep` read as a binary file and dropped (fixed since).
   - Each test's evidence: [validation/round-1-2-evidence.txt](validation/round-1-2-evidence.txt).
-- **Round 3**: 57 tests, each passing on Clojure 1.11.1 except the 4 C++ interop ones; not yet
-  run on jank.
+- **Round 3**: 57 tests run on jank main 7135b7708 (UTF-8 locale, each test in its own process
+  with a 120 s limit), each passing on Clojure 1.11.1 except the C++ interop ones.
+  - 50 confirmed (6 of them from an error whose text the report doesn't carry: S1, S36, S37,
+    S42, S50, S53). Among them a crash (S34: a long input to a regex segfaults) and the five
+    predicted hangs (S62, S63, S64, S65, S67).
+  - 4 refuted: S2, S9, S44, S69 (jank gave Clojure's result).
+  - 3 failed in another way than predicted: S49 and S57 (an error where a wrong value was
+    predicted), S70 (jank prints an unbound root its own way; no freed memory seen).
+  - b01, b11, b24, b29 again without a result, for the same reason: to rerun.
+  - Each test's evidence: [validation/round-3-evidence.txt](validation/round-3-evidence.txt).
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).

@@ -64,6 +64,25 @@ regression test in `tests/`:
   partial write to an uncached page reads it through the corrupting table first).
 - 28 properties, 19 theorems; the searches in `runs3/`.
 
+## Round 4
+
+[REPORT-4.md](REPORT-4.md), at 3939448: a resumed tree, holders, durability points, disk faults
+over the page cache with Linux's writeback-error reporting, determinismo-ci's per-shard reports
+and the coverage gate on CI jobs, targeted runs, clocks with restarts. CE32-CE39, each with a
+regression test in `tests/`:
+- CE32-CE34: a resumed tree renumbers its timelines (returns rebuilt from recorded timelines
+  alone; a last generation planned ready returns first; a filler taken between plans cuts a whole
+  record), so recorded timelines are judged under another plan and unrun ones start elsewhere
+  than their paths say.
+- CE35: a sync_stall and a durable_crash on one node share the guest module's one arm.
+- CE36: under lost_writes, a page evicted under memory pressure reads back stale before any
+  crash.
+- CE37: determinismo-ci counts missing JUnit reports over the run, not per shard.
+- CE38: the coverage gate turns a passing CI job with an uncovered runner (docs/CI.md's Jest
+  example) into "error", depending on the host.
+- CE39: a targeted run reports a hunk NEVER RAN when only its last, unjudged timelines ran it.
+- 20 properties, 16 theorems; the searches in `runs4/`.
+
 ## Building and running
 
     lake update && lake build
@@ -71,6 +90,7 @@ regression test in `tests/`:
     .lake/build/bin/replica faults|verdicts|tape <exhaust> [<seeds>]
     .lake/build/bin/replica2 clock|junit|persist <exhaust> [<seeds>]
     .lake/build/bin/replica3 tree|treecensus|jobs|ci|serve|disk|skew|ce2 ...
+    .lake/build/bin/replica4 resume|resumecensus|durable|ci|steer|clock|holders ...
 
 `lakefile.toml` takes determinismo's Lean library (`sdk/lean`) from the platform's 3939448.
 

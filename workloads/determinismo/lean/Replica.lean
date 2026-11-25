@@ -20,3 +20,10 @@ import Replica.Disk
 import Replica.Skew
 import Replica.Ce2Drawn
 import Replica.Theorems3
+import Replica.Resume4
+import Replica.Durable
+import Replica.Ci4
+import Replica.Steer4
+import Replica.Clock4
+import Replica.Holders4
+import Replica.Theorems4

@@ -1,0 +1,151 @@
+== ci property: tests_judge counts every timeline that stated no test (and calls the job error)
+   source: ci.zig:436-438 (tests_judge: "\"error\" when a timeline stated no test (the run command died before its report)"); ci.zig:477 ("<k> timelines without their JUnit report")
+search exhaust [tests_judge counts every timeline that stated no test (and calls the job error) / three tests, two shards of 2 timelines, junit]: FOUND after 4 timelines (11 ms): tests_judge counts every timeline that stated no test (and calls the job error): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: 1 timelines stated no test; tests_judge says 0 timelines without their JUnit report (the job error, exit 1) (shrunk to 4 decisions from 4)
+--- counterexample [tests_judge counts every timeline that stated no test (and calls the job error) / three tests, two shards of 2 timelines, junit]: tests_judge counts every timeline that stated no test (and calls the job error)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: 1 timelines stated no test; tests_judge says 0 timelines without their JUnit report (the job error, exit 1)
+values: [0, 0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs
+    shard 1: pass failing in 0 of 2 timelines
+    shard 2: error failing in 0 of 2 timelines
+    pass test passes: t1
+    pass test passes: t3
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [tests_judge counts every timeline that stated no test (and calls the job error) / two tests, two shards of 3 timelines, junit]: FOUND after 4 timelines (9 ms): tests_judge counts every timeline that stated no test (and calls the job error): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.passes, timeline 4 (shard 1): Replica.Ci.Outcome.passes, timeline 5 (shard 2): Replica.Ci.Outcome.hangs: 1 timelines stated no test; tests_judge says 0 timelines without their JUnit report (the job error, exit 1) (shrunk to 6 decisions from 6)
+--- counterexample [tests_judge counts every timeline that stated no test (and calls the job error) / two tests, two shards of 3 timelines, junit]: tests_judge counts every timeline that stated no test (and calls the job error)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.passes, timeline 4 (shard 1): Replica.Ci.Outcome.passes, timeline 5 (shard 2): Replica.Ci.Outcome.hangs: 1 timelines stated no test; tests_judge says 0 timelines without their JUnit report (the job error, exit 1)
+values: [0, 0, 0, 0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.passes, timeline 4 (shard 1): Replica.Ci.Outcome.passes, timeline 5 (shard 2): Replica.Ci.Outcome.hangs
+    shard 1: pass failing in 0 of 3 timelines
+    shard 2: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [tests_judge counts every timeline that stated no test (and calls the job error) / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (11 ms)
+== ci property: a shard's failures give the job the same exit whatever a passing shard beside it reports
+   source: docs/CI.md ("Each timeline runs its shard's tests ... A shard failing in every timeline fails, in some is flaky"; "Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky")
+search exhaust [a shard's failures give the job the same exit whatever a passing shard beside it reports / three tests, two shards of 2 timelines, junit]: FOUND after 5 timelines (9 ms): a shard's failures give the job the same exit whatever a passing shard beside it reports: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.dies: with shard 1 passing beside it the job is flaky (exit 2); its other shards' timelines alone report 1 timelines without their report: error (exit 1) (shrunk to 4 decisions from 4)
+--- counterexample [a shard's failures give the job the same exit whatever a passing shard beside it reports / three tests, two shards of 2 timelines, junit]: a shard's failures give the job the same exit whatever a passing shard beside it reports
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.dies: with shard 1 passing beside it the job is flaky (exit 2); its other shards' timelines alone report 1 timelines without their report: error (exit 1)
+values: [0, 0, 0, 3]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":3}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.dies
+    shard 1: pass failing in 0 of 2 timelines
+    shard 2: flaky failing in 1 of 2 timelines
+    pass test passes: t1
+    pass test passes: t3
+    pass test passes: t2
+  determinismo-ci: flaky (exit 2); the docs: flaky
+---
+search exhaust [a shard's failures give the job the same exit whatever a passing shard beside it reports / two tests, two shards of 3 timelines, junit]: FOUND after 5 timelines (10 ms): a shard's failures give the job the same exit whatever a passing shard beside it reports: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.passes, timeline 4 (shard 1): Replica.Ci.Outcome.passes, timeline 5 (shard 2): Replica.Ci.Outcome.dies: with shard 1 passing beside it the job is flaky (exit 2); its other shards' timelines alone report 1 timelines without their report: error (exit 1) (shrunk to 6 decisions from 6)
+--- counterexample [a shard's failures give the job the same exit whatever a passing shard beside it reports / two tests, two shards of 3 timelines, junit]: a shard's failures give the job the same exit whatever a passing shard beside it reports
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.passes, timeline 4 (shard 1): Replica.Ci.Outcome.passes, timeline 5 (shard 2): Replica.Ci.Outcome.dies: with shard 1 passing beside it the job is flaky (exit 2); its other shards' timelines alone report 1 timelines without their report: error (exit 1)
+values: [0, 0, 0, 0, 0, 3]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":3}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.passes, timeline 4 (shard 1): Replica.Ci.Outcome.passes, timeline 5 (shard 2): Replica.Ci.Outcome.dies
+    shard 1: pass failing in 0 of 3 timelines
+    shard 2: flaky failing in 1 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: flaky (exit 2); the docs: flaky
+---
+search exhaust [a shard's failures give the job the same exit whatever a passing shard beside it reports / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (11 ms)
+== ci property: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+   source: docs/CI.md (Coverage: "An older Python or JVM runs uncovered and says so on standard error"; Running it: "Exit status 0 when every shard passes"; the config example's `"run": "cd /app && npx jest --ci --shard={shard}/{shards}"`)
+search exhaust [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: FOUND after 33 timelines (10 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): pytest on Python 3.11: every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 5 decisions from 5)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: pytest on Python 3.11: every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1
+values: [1, 0, 0, 0, 0]
+tape:
+{"name":"world.runner","options":7,"value":1}
+{"name":"watcher.ingest","options":6,"value":0}
+{"name":"watcher.ingest","options":5,"value":0}
+{"name":"watcher.ingest","options":4,"value":0}
+{"name":"watcher.ingest","options":3,"value":0}
+story:
+  2 shards of 3 timelines, pytest on Python 3.11 (coverage events: false)
+  the watcher ingests the ended timelines in batches [1, 1, 1, 1]
+  after 4 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 4 timelines")
+  shards' timelines stating their property: [2, 2]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search explore [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: FOUND at timeline 8 of seeds 0..99999 (1 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [4]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 2 decisions from 2)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [4]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1
+values: [5, 3]
+tape:
+{"name":"world.runner","options":7,"value":5}
+{"name":"watcher.ingest","options":6,"value":3}
+story:
+  2 shards of 3 timelines, Jest (docs/CI.md's own example config) (coverage events: false)
+  the watcher ingests the ended timelines in batches [4]
+  after 4 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 4 timelines")
+  shards' timelines stating their property: [2, 2]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search exhaust [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: FOUND after 1 timelines (9 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [1, 1, 1, 1, 0, 0, 0, 0] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 4 decisions from 4)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [1, 1, 1, 1, 0, 0, 0, 0] of 3 timelines: determinismo-ci says error, exit 1
+values: [0, 0, 0, 0]
+tape:
+{"name":"watcher.ingest","options":24,"value":0}
+{"name":"watcher.ingest","options":23,"value":0}
+{"name":"watcher.ingest","options":22,"value":0}
+{"name":"watcher.ingest","options":21,"value":0}
+story:
+  8 shards of 3 timelines, Jest (docs/CI.md's own example config) (coverage events: false)
+  the watcher ingests the ended timelines in batches [1, 1, 1, 1]
+  after 4 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 4 timelines")
+  shards' timelines stating their property: [1, 1, 1, 1, 0, 0, 0, 0]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search explore [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: FOUND at timeline 1 of seeds 0..99999 (1 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [6]; serve stopped the run after 6 ended timelines with no coverage; shards stated [1, 1, 1, 1, 1, 1, 0, 0] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 1 decisions from 1)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [6]; serve stopped the run after 6 ended timelines with no coverage; shards stated [1, 1, 1, 1, 1, 1, 0, 0] of 3 timelines: determinismo-ci says error, exit 1
+values: [5]
+tape:
+{"name":"watcher.ingest","options":24,"value":5}
+story:
+  8 shards of 3 timelines, Jest (docs/CI.md's own example config) (coverage events: false)
+  the watcher ingests the ended timelines in batches [6]
+  after 6 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 6 timelines")
+  shards' timelines stating their property: [1, 1, 1, 1, 1, 1, 0, 0]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search exhaust [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / examples/ci-demo's shape: 3 shards of 12 timelines, Python 3.12]: stopped at 1000000 timelines, none broke it (4358 ms)
+search explore [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / examples/ci-demo's shape: 3 shards of 12 timelines, Python 3.12]: 100000 timelines (seeds 0..99999), none broke it (296 ms)
+== ci property: a shard's line counts the tests its runner ran (the {shard} mode)
+   source: docs/CI.md ("the job's log shows each shard's verdict"); ci.zig:288-291 ("shard k: <verdict> <n> tests")
+search exhaust [shard line counts / 1 to 12 tests, every shard count, a runner splitting in blocks]: 125 shard lines differ; the first: 4 tests, 3 shards, shard 2: the line says 1 tests, a runner splitting in blocks ran 2
+== ci property: the coverage gate stops only runs without their language's instrumentation (the JVM agent and Python)
+   source: docs/SDKS.md:101-105; serve.zig:731-733 ("its system runs without its language's instrumentation")
+a JVM node started in the setup (agent on, JDK 24) ran lines [1, 2, 3] there; each timeline runs [1, 2, 3] again: reports [] (none): stopped as uninstrumented after 4 timelines (CE30's case, the JVM's `queued` set in the setup's snapshot)
+a Python node started in the setup (coverage_start): the same: reports []; a CI run command's new process reports [1, 2]

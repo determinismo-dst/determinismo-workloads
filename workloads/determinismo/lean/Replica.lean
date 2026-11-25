@@ -11,3 +11,12 @@ import Replica.Clock
 import Replica.Junit
 import Replica.Persist
 import Replica.Theorems2
+import Replica.Tree
+import Replica.TreeRun
+import Replica.TreeProps
+import Replica.Ci
+import Replica.Serve3
+import Replica.Disk
+import Replica.Skew
+import Replica.Ce2Drawn
+import Replica.Theorems3

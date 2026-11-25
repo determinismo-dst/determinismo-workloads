@@ -1,0 +1,52 @@
+== clock property: drawn skews keep every node within its maximum of every other and of what the clocks remember
+   source: faults.zig:1700-1709 (skew_clamped: "a system's maximum clock offset holds between any two nodes ... And within it of the highest any clock has read (clock_high_ns): a hybrid logical clock keeps the latest time it saw"); docs/ANTITHESIS.md, Per-node clock skew ("clock_skew_ms_max, 10 s, below a system's documented maximum offset")
+search exhaust [drawn skews keep every node within its maximum of every other and of what the clocks remember / 3 nodes, skews only, 6 steps]: stopped at 1000000 timelines, none broke it (4394 ms)
+search explore [drawn skews keep every node within its maximum of every other and of what the clocks remember / 3 nodes, skews only, 6 steps]: 100000 timelines (seeds 0..99999), none broke it (458 ms)
+search exhaust [drawn skews keep every node within its maximum of every other and of what the clocks remember / 2 nodes, skews only, 8 steps]: stopped at 1000000 timelines, none broke it (4315 ms)
+search explore [drawn skews keep every node within its maximum of every other and of what the clocks remember / 2 nodes, skews only, 8 steps]: 100000 timelines (seeds 0..99999), none broke it (496 ms)
+search exhaust [drawn skews keep every node within its maximum of every other and of what the clocks remember / 2 nodes, skews and clock skips (no larger than the maximum), 6 steps]: FOUND after 257 timelines (8 ms): drawn skews keep every node within its maximum of every other and of what the clocks remember: at 3: n1 reads -1, 5 below the highest any clock read (4), the maximum 4 (the skips alone: 3) (shrunk to 15 decisions from 21)
+--- counterexample [drawn skews keep every node within its maximum of every other and of what the clocks remember / 2 nodes, skews and clock skips (no larger than the maximum), 6 steps]: drawn skews keep every node within its maximum of every other and of what the clocks remember
+detail: at 3: n1 reads -1, 5 below the highest any clock read (4), the maximum 4 (the skips alone: 3)
+values: [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 4, 3, 1, 0]
+tape:
+{"name":"composer.clock_start","options":3,"value":0}
+{"name":"world.event","options":5,"value":0}
+{"name":"fault.node","options":2,"value":0}
+{"name":"fault.clock.skew_ns","options":4,"value":0}
+{"name":"fault.clock.forward","options":2,"value":0}
+{"name":"fault.clock.strobe","options":4,"value":0}
+{"name":"world.event","options":5,"value":0}
+{"name":"fault.node","options":2,"value":1}
+{"name":"fault.clock.skew_ns","options":4,"value":0}
+{"name":"fault.clock.forward","options":2,"value":1}
+{"name":"fault.clock.strobe","options":4,"value":0}
+{"name":"world.event","options":5,"value":4}
+{"name":"fault.clock.skip_ns","options":4,"value":3}
+{"name":"fault.clock.forward","options":2,"value":1}
+{"name":"fault.clock.permanent","options":4,"value":0}
+story:
+  1: n0 skewed 1 (strobing)
+  2: n1 skewed -1 (strobing)
+  3: a clock skip of -4 (permanent)
+---
+search explore [drawn skews keep every node within its maximum of every other and of what the clocks remember / 2 nodes, skews and clock skips (no larger than the maximum), 6 steps]: FOUND at timeline 13 of seeds 0..99999 (1 ms): drawn skews keep every node within its maximum of every other and of what the clocks remember: at 3: n1 reads 1, 6 below the highest any clock read (7), the maximum 4 (the skips alone: 2) (shrunk to 12 decisions from 18)
+--- counterexample [drawn skews keep every node within its maximum of every other and of what the clocks remember / 2 nodes, skews and clock skips (no larger than the maximum), 6 steps]: drawn skews keep every node within its maximum of every other and of what the clocks remember
+detail: at 3: n1 reads 1, 6 below the highest any clock read (7), the maximum 4 (the skips alone: 2)
+values: [0, 0, 0, 3, 0, 0, 0, 0, 4, 2, 1, 0]
+tape:
+{"name":"composer.clock_start","options":3,"value":0}
+{"name":"world.event","options":5,"value":0}
+{"name":"fault.node","options":2,"value":0}
+{"name":"fault.clock.skew_ns","options":4,"value":3}
+{"name":"fault.clock.forward","options":2,"value":0}
+{"name":"fault.clock.strobe","options":4,"value":0}
+{"name":"world.event","options":5,"value":0}
+{"name":"fault.node","options":2,"value":0}
+{"name":"world.event","options":5,"value":4}
+{"name":"fault.clock.skip_ns","options":4,"value":2}
+{"name":"fault.clock.forward","options":2,"value":1}
+{"name":"fault.clock.permanent","options":4,"value":0}
+story:
+  1: n0 skewed 4 (strobing)
+  3: a clock skip of -3 (permanent)
+---

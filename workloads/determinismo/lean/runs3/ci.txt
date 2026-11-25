@@ -1,0 +1,319 @@
+== ci property: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+   source: docs/CI.md (Verdicts per test: "failing in every timeline, fail; in some, flaky, with how often; in none, pass"; config `run`: "exit status 0 when they pass"; Running it: "Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky")
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, junit]: FOUND after 6 timelines (8 ms): the job's verdict is the documented one (a timeline that never exits 0 is not passing): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 2) (shrunk to 3 decisions from 3)
+--- counterexample [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, junit]: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 2)
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, no junit]: FOUND after 6 timelines (7 ms): the job's verdict is the documented one (a timeline that never exits 0 is not passing): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 2) (shrunk to 3 decisions from 3)
+--- counterexample [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, no junit]: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 2)
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, junit, --flaky-passes]: FOUND after 6 timelines (7 ms): the job's verdict is the documented one (a timeline that never exits 0 is not passing): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 0) (shrunk to 3 decisions from 3)
+--- counterexample [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, junit, --flaky-passes]: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 0)
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / three tests, two shards of 2 timelines, junit]: FOUND after 4 timelines (6 ms): the job's verdict is the documented one (a timeline that never exits 0 is not passing): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "pass", 0, 2), (2, "error", 0, 1)]), the docs flaky (exit 2) (shrunk to 4 decisions from 4)
+--- counterexample [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / three tests, two shards of 2 timelines, junit]: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: determinismo-ci says error (exit 1; shards [(1, "pass", 0, 2), (2, "error", 0, 1)]), the docs flaky (exit 2)
+values: [0, 0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs
+    shard 1: pass failing in 0 of 2 timelines
+    shard 2: error failing in 0 of 2 timelines
+    pass test passes: t1
+    pass test passes: t3
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / one test, one shard of 3 timelines, no junit, a session opened]: FOUND after 4 timelines (7 ms): the job's verdict is the documented one (a timeline that never exits 0 is not passing): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 2) (shrunk to 4 decisions from 6)
+--- counterexample [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / one test, one shard of 3 timelines, no junit, a session opened]: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes: determinismo-ci says error (exit 1; shards [(1, "error", 0, 2)]), the docs flaky (exit 2)
+values: [0, 2, 0, 0]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":0}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes
+    shard 1: error failing in 0 of 3 timelines
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: FOUND after 4 timelines (7 ms): the job's verdict is the documented one (a timeline that never exits 0 is not passing): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false: determinismo-ci says flaky (exit 0; shards [(1, "flaky", 1, 3)]), the docs pass (exit 0) (shrunk to 5 decisions from 5)
+--- counterexample [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false: determinismo-ci says flaky (exit 0; shards [(1, "flaky", 1, 3)]), the docs pass (exit 0)
+values: [0, 0, 1, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":1}
+{"name":"world.session_parent","options":2,"value":0}
+{"name":"world.session_end","options":3,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false
+    shard 1: flaky failing in 1 of 2 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: flaky (exit 0); the docs: pass
+---
+== ci property: a shard's line counts every timeline that did not pass
+   source: docs/CI.md ("the job's log shows each shard's verdict"); ci.zig:294-296 (`shard k: <verdict> n tests, failing in f of T timelines`)
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, junit]: FOUND after 6 timelines (7 ms): a shard's line counts every timeline that did not pass: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass (shrunk to 3 decisions from 3)
+--- counterexample [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, junit]: a shard's line counts every timeline that did not pass
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, no junit]: FOUND after 6 timelines (7 ms): a shard's line counts every timeline that did not pass: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass (shrunk to 3 decisions from 3)
+--- counterexample [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, no junit]: a shard's line counts every timeline that did not pass
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, junit, --flaky-passes]: FOUND after 6 timelines (6 ms): a shard's line counts every timeline that did not pass: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass (shrunk to 3 decisions from 3)
+--- counterexample [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, junit, --flaky-passes]: a shard's line counts every timeline that did not pass
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [a shard's line counts every timeline that did not pass / three tests, two shards of 2 timelines, junit]: FOUND after 4 timelines (7 ms): a shard's line counts every timeline that did not pass: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: shard 2: "error, failing in 0 of 2 timelines"; 1 did not pass (shrunk to 4 decisions from 4)
+--- counterexample [a shard's line counts every timeline that did not pass / three tests, two shards of 2 timelines, junit]: a shard's line counts every timeline that did not pass
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: shard 2: "error, failing in 0 of 2 timelines"; 1 did not pass
+values: [0, 0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs
+    shard 1: pass failing in 0 of 2 timelines
+    shard 2: error failing in 0 of 2 timelines
+    pass test passes: t1
+    pass test passes: t3
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [a shard's line counts every timeline that did not pass / one test, one shard of 3 timelines, no junit, a session opened]: FOUND after 4 timelines (7 ms): a shard's line counts every timeline that did not pass: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass (shrunk to 4 decisions from 6)
+--- counterexample [a shard's line counts every timeline that did not pass / one test, one shard of 3 timelines, no junit, a session opened]: a shard's line counts every timeline that did not pass
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes: shard 1: "error, failing in 0 of 3 timelines"; 1 did not pass
+values: [0, 2, 0, 0]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":0}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes
+    shard 1: error failing in 0 of 3 timelines
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: FOUND after 4 timelines (7 ms): a shard's line counts every timeline that did not pass: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false: shard 1: "flaky, failing in 1 of 2 timelines"; 0 did not pass (shrunk to 5 decisions from 5)
+--- counterexample [a shard's line counts every timeline that did not pass / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: a shard's line counts every timeline that did not pass
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false: shard 1: "flaky, failing in 1 of 2 timelines"; 0 did not pass
+values: [0, 0, 1, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":1}
+{"name":"world.session_parent","options":2,"value":0}
+{"name":"world.session_end","options":3,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false
+    shard 1: flaky failing in 1 of 2 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: flaky (exit 0); the docs: pass
+---
+== ci property: the exit status is the documented one
+   source: docs/CI.md, Running it ("Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky (`--flaky-passes` counts flaky as passing)")
+search exhaust [the exit status is the documented one / two tests, one shard of 3 timelines, junit]: FOUND after 6 timelines (7 ms): the exit status is the documented one: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 2 (shrunk to 3 decisions from 3)
+--- counterexample [the exit status is the documented one / two tests, one shard of 3 timelines, junit]: the exit status is the documented one
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 2
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the exit status is the documented one / two tests, one shard of 3 timelines, no junit]: FOUND after 6 timelines (7 ms): the exit status is the documented one: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 2 (shrunk to 3 decisions from 3)
+--- counterexample [the exit status is the documented one / two tests, one shard of 3 timelines, no junit]: the exit status is the documented one
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 2
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the exit status is the documented one / two tests, one shard of 3 timelines, junit, --flaky-passes]: FOUND after 6 timelines (6 ms): the exit status is the documented one: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 0 (shrunk to 3 decisions from 3)
+--- counterexample [the exit status is the documented one / two tests, one shard of 3 timelines, junit, --flaky-passes]: the exit status is the documented one
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 0
+values: [0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 3 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the exit status is the documented one / three tests, two shards of 2 timelines, junit]: FOUND after 4 timelines (6 ms): the exit status is the documented one: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 2 (shrunk to 4 decisions from 4)
+--- counterexample [the exit status is the documented one / three tests, two shards of 2 timelines, junit]: the exit status is the documented one
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 2
+values: [0, 0, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 2): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes, timeline 3 (shard 2): Replica.Ci.Outcome.hangs
+    shard 1: pass failing in 0 of 2 timelines
+    shard 2: error failing in 0 of 2 timelines
+    pass test passes: t1
+    pass test passes: t3
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the exit status is the documented one / one test, one shard of 3 timelines, no junit, a session opened]: FOUND after 4 timelines (7 ms): the exit status is the documented one: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes: exit 1 (error), the docs 2 (shrunk to 4 decisions from 6)
+--- counterexample [the exit status is the documented one / one test, one shard of 3 timelines, no junit, a session opened]: the exit status is the documented one
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes: exit 1 (error), the docs 2
+values: [0, 2, 0, 0]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":0}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs, timeline 2 (shard 1): Replica.Ci.Outcome.passes
+    shard 1: error failing in 0 of 3 timelines
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+search exhaust [the exit status is the documented one / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: FOUND after 36 timelines (7 ms): the exit status is the documented one: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 0 (shrunk to 3 decisions from 3)
+--- counterexample [the exit status is the documented one / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: the exit status is the documented one
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs: exit 1 (error), the docs 0
+values: [0, 2, 0]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":2}
+{"name":"world.session","options":2,"value":0}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.hangs
+    shard 1: error failing in 0 of 2 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: error (exit 1); the docs: flaky
+---
+== ci property: a shard's verdict is its timelines' (a person's session is not the run's)
+   source: docs/CI.md ("A job is one run: shards times timelines ... failing in every timeline, fail; in some, flaky"); store.zig:676-679 ("What the run explored: its timelines but those that extend one (a person's sessions ...). What a run found is judged over these")
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 3 timelines, no junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 3 timelines, junit, --flaky-passes]: complete, 343 timelines, none broke it (7 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (10 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / one test, one shard of 3 timelines, no junit, a session opened]: FOUND after 4 timelines (7 ms): a shard's verdict is its timelines' (a person's session is not the run's): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 3) on shard 1: shard property some false: with the session flaky (exit 2, shards [(1, "flaky", 1, 4)]); its timelines alone pass (exit 0) (shrunk to 6 decisions from 6)
+--- counterexample [a shard's verdict is its timelines' (a person's session is not the run's) / one test, one shard of 3 timelines, no junit, a session opened]: a shard's verdict is its timelines' (a person's session is not the run's)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 3) on shard 1: shard property some false: with the session flaky (exit 2, shards [(1, "flaky", 1, 4)]); its timelines alone pass (exit 0)
+values: [0, 0, 0, 1, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":1}
+{"name":"world.session_parent","options":3,"value":0}
+{"name":"world.session_end","options":3,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes, timeline 2 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 3) on shard 1: shard property some false
+    shard 1: flaky failing in 1 of 3 timelines
+  determinismo-ci: flaky (exit 2); the docs: pass
+---
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: FOUND after 4 timelines (7 ms): a shard's verdict is its timelines' (a person's session is not the run's): timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false: with the session flaky (exit 0, shards [(1, "flaky", 1, 3)]); its timelines alone pass (exit 0) (shrunk to 5 decisions from 5)
+--- counterexample [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: a shard's verdict is its timelines' (a person's session is not the run's)
+detail: timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false: with the session flaky (exit 0, shards [(1, "flaky", 1, 3)]); its timelines alone pass (exit 0)
+values: [0, 0, 1, 0, 2]
+tape:
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.outcome","options":4,"value":0}
+{"name":"world.session","options":2,"value":1}
+{"name":"world.session_parent","options":2,"value":0}
+{"name":"world.session_end","options":3,"value":2}
+story:
+  timeline 0 (shard 1): Replica.Ci.Outcome.passes, timeline 1 (shard 1): Replica.Ci.Outcome.passes; a session (timeline 2) on shard 1: shard property some false
+    shard 1: flaky failing in 1 of 2 timelines
+    pass test passes: t1
+    pass test passes: t2
+  determinismo-ci: flaky (exit 0); the docs: pass
+---

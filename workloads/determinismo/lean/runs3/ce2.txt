@@ -1,0 +1,125 @@
+== composer property: a command that ended on its own is judged by its exit (only the composer's kills are not) (CE2's remainder, drawn worlds made for it)
+   source: docs/ANTITHESIS.md (Default: commands finish with zero exit code; Test templates: "killed commands are no failing exits")
+search explore [a command that ended on its own is judged by its exit (only the composer's kills are not) / CE2's drawn worlds, the Zig's constants]: FOUND at timeline 138 of seeds 0..19999 (11 ms): a command that ended on its own is judged by its exit (only the composer's kills are not): d1#4 [0,3000] ended by signal 9 reported as killed: its exit never judged (shrunk to 55 decisions from 62)
+--- counterexample [a command that ended on its own is judged by its exit (only the composer's kills are not) / CE2's drawn worlds, the Zig's constants]: a command that ended on its own is judged by its exit (only the composer's kills are not)
+detail: d1#4 [0,3000] ended by signal 9 reported as killed: its exit never judged
+values: [2, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 7, 0, 0, 2, 3, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"gen.drivers","options":3,"value":2}
+{"name":"gen.kind","options":3,"value":0}
+{"name":"gen.workload","options":2,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.kind","options":3,"value":0}
+{"name":"gen.workload","options":2,"value":0}
+{"name":"gen.runs","options":4,"value":3}
+{"name":"gen.exits","options":4,"value":1}
+{"name":"gen.kind","options":3,"value":0}
+{"name":"gen.workload","options":2,"value":0}
+{"name":"gen.runs","options":4,"value":0}
+{"name":"gen.exits","options":4,"value":0}
+{"name":"gen.endings","options":3,"value":0}
+{"name":"gen.min_drive","options":4,"value":0}
+{"name":"gen.parallel_max","options":3,"value":0}
+{"name":"gen.timeline","options":3,"value":0}
+{"name":"gen.no_swarm","options":2,"value":1}
+{"name":"composer.clock_start","options":12,"value":0}
+{"name":"random_below","options":1000,"value":0}
+{"name":"composer.drivers_cpu","options":3,"value":0}
+{"name":"composer.swarm_p","options":7,"value":0}
+{"name":"composer.swarm d0","options":8,"value":7}
+{"name":"composer.swarm d1","options":8,"value":0}
+{"name":"composer.swarm d2","options":8,"value":0}
+{"name":"composer.starts_log2","options":5,"value":2}
+{"name":"composer.starts","options":8,"value":3}
+{"name":"composer.parallelism_log2","options":6,"value":0}
+{"name":"composer.load","options":3,"value":0}
+{"name":"composer.load_ms","options":110001,"value":0}
+{"name":"composer.parallelism_log2","options":6,"value":3}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"composer.command","options":2,"value":0}
+{"name":"random_below","options":20,"value":0}
+{"name":"world.run_ms eventually","options":2,"value":0}
+{"name":"world.exit eventually","options":2,"value":0}
+story:
+  scenario: [("d0", "parallel_driver", true, [5, 50], "[Replica.Composer.Exit.code 0, Replica.Composer.Exit.signal 9]"),
+ ("d1", "parallel_driver", true, [3000], "[Replica.Composer.Exit.signal 9]"),
+ ("d2", "parallel_driver", true, [5, 50], "[Replica.Composer.Exit.code 0, Replica.Composer.Exit.signal 9]"),
+ ("eventually", "eventually", false, [1, 100], "[]")] minDrive=(some 0) parallelMax=none swarmOff=false timelineMs=none
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: clock_start 1000 3600000
+  0 ms: command_left_out d0 kept_eighths=1
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: composer_load 0 8 10000
+  0 ms: command_start d1 start
+  0 ms: assert reachable "test command started: d1" true
+  0 ms: command_start d1 start
+  0 ms: command_start d1 start
+  0 ms: command_start d1 start
+  0 ms: command_start d1 start
+  0 ms: command_start d1 start
+  0 ms: command_start d1 start
+  0 ms: command_start d1 start
+  3000 ms: reaped d1#1: status 137
+  3000 ms: assert always "test commands exit successfully" false
+  3000 ms: command_start d1 start
+  3000 ms: reaped d1#2: status 137
+  3000 ms: assert always "test commands exit successfully" false
+  3000 ms: command_start d1 start
+  3000 ms: reaped d1#3: status 137
+  3000 ms: assert always "test commands exit successfully" false
+  3000 ms: command_start d1 start
+  3000 ms: reaped d1#4: reported killed
+  3000 ms: reaped d1#5: reported killed
+  3000 ms: reaped d1#6: reported killed
+  3000 ms: reaped d1#7: reported killed
+  3000 ms: reaped d1#8: reported killed
+  3000 ms: reaped d1#9: reported killed
+  3000 ms: reaped d1#10: reported killed
+  3000 ms: reaped d1#11: reported killed
+  3000 ms: faults stop
+  3000 ms: faults_phase stop
+  3000 ms: command_start eventually complete
+  3000 ms: assert reachable "test command started: eventually" true
+  3050 ms: assert reachable "test command completed: eventually" true
+  3050 ms: reaped eventually#12: status 0
+  3050 ms: assert always "test commands exit successfully" true
+  3050 ms: assert always "an ending command finishes within its window" true
+  3050 ms: composer_done 12
+  truth: d1#1 [0,3000] ended by signal 9
+  truth: d1#2 [0,3000] ended by signal 9
+  truth: d1#3 [0,3000] ended by signal 9
+  truth: d1#4 [0,3000] ended by signal 9
+  truth: d1#5 [0,3000] ended by signal 9
+  truth: d1#6 [0,3000] ended by signal 9
+  truth: d1#7 [0,3000] ended by signal 9
+  truth: d1#8 [0,3000] ended by signal 9
+  truth: d1#9 [3000,3000] killed by the composer
+  truth: d1#10 [3000,3000] killed by the composer
+  truth: d1#11 [3000,3000] killed by the composer
+  truth: eventually#12 [3000,3001] exited 0
+  end: none
+---
+census [CE2 drawn, seeds 0..19999]: 20000 finished timelines, 14603 with a driver's own SIGKILL, 315 broke "a command that ended on its own is judged by its exit (only the composer's kills are not)"; with min_drive 0: 9928 timelines, 315 broke it

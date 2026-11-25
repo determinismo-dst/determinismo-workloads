@@ -1,0 +1,217 @@
+== disk property: with disk_lost_writes off, a disk fault never stores a byte the system did not write
+   source: sdk/zig/schema.zig:515-519 (disk_lost_writes: "Its other failures leave what is stored intact, so durability stays judgeable under them"); guest/runtime/nodes.zig:1936-1937 (corrupt_reads: "Reads return one byte of each request changed (bit rot); what is stored is intact")
+search exhaust [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off: corrupt_reads, 1 page of 2 bytes, 4 steps]: FOUND after 82969 timelines (228 ms): with disk_lost_writes off, a disk fault never stores a byte the system did not write: page 0 stores [1, 0]: byte 0 = 1, a value the system never wrote there (it wrote [0]) (shrunk to 10 decisions from 10)
+--- counterexample [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off: corrupt_reads, 1 page of 2 bytes, 4 steps]: with disk_lost_writes off, a disk fault never stores a byte the system did not write
+detail: page 0 stores [1, 0]: byte 0 = 1, a value the system never wrote there (it wrote [0])
+values: [0, 1, 0, 0, 0, 2, 1, 0, 0, 0]
+tape:
+{"name":"fault.disk.corrupt_byte","options":2,"value":0}
+{"name":"fault.disk.corrupt_value","options":4,"value":1}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":2}
+{"name":"world.byte","options":2,"value":1}
+{"name":"world.value","options":4,"value":0}
+{"name":"world.exited_at_heal","options":2,"value":0}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: corrupt_reads (byte 1 reads 1)
+  write page 0 byte 1 = 0: ok
+  heal: the node runs on
+  stored: [[1, 0]]; the system wrote: [[0, 0]]
+---
+search exhaust [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off: write_errors, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1713 ms)
+search exhaust [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off: errors, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1347 ms)
+search exhaust [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes on: lost_writes, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1644 ms)
+search exhaust [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: stopped at 1000000 timelines, none broke it (2786 ms)
+search explore [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: FOUND at timeline 6 of seeds 0..99999 (1 ms): with disk_lost_writes off, a disk fault never stores a byte the system did not write: page 0 stores [1, 1, 0]: byte 0 = 1, a value the system never wrote there (it wrote [0]) (shrunk to 13 decisions from 18)
+--- counterexample [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: with disk_lost_writes off, a disk fault never stores a byte the system did not write
+detail: page 0 stores [1, 1, 0]: byte 0 = 1, a value the system never wrote there (it wrote [0])
+values: [2, 0, 1, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.disk.failure","options":4,"value":2}
+{"name":"fault.disk.corrupt_byte","options":3,"value":0}
+{"name":"fault.disk.corrupt_value","options":4,"value":1}
+{"name":"world.step","options":5,"value":2}
+{"name":"world.page","options":2,"value":0}
+{"name":"world.byte","options":3,"value":2}
+{"name":"world.value","options":4,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.exited_at_heal","options":2,"value":0}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: corrupt_reads (byte 1 reads 1)
+  write page 0 byte 2 = 0: ok
+  heal: the node runs on
+  stored: [[1, 1, 0], [1, 2, 3]]; the system wrote: [[0, 1, 0], [1, 2, 3]]
+---
+search exhaust [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: stopped at 1000000 timelines, none broke it (2549 ms)
+search explore [with disk_lost_writes off, a disk fault never stores a byte the system did not write / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: 100000 timelines (seeds 0..99999), none broke it (490 ms)
+== disk property: after a disk fault heals, reads return what is stored
+   source: docs/ANTITHESIS.md, Disk I/O faults ("`disk`: the node's disk through device-mapper, its table swapped for a while"); sdk/zig/schema.zig:506 ("Make its disk fail for a while"); nodes.zig:1936-1937
+search exhaust [after a disk fault heals, reads return what is stored / disk_lost_writes off: corrupt_reads, 1 page of 2 bytes, 4 steps]: FOUND after 27029 timelines (77 ms): after a disk fault heals, reads return what is stored: after the heal page 0 reads [0, 0]: the disk stores [0, 1], the system wrote [0, 1] (shrunk to 8 decisions from 10)
+--- counterexample [after a disk fault heals, reads return what is stored / disk_lost_writes off: corrupt_reads, 1 page of 2 bytes, 4 steps]: after a disk fault heals, reads return what is stored
+detail: after the heal page 0 reads [0, 0]: the disk stores [0, 1], the system wrote [0, 1]
+values: [1, 0, 1, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.disk.corrupt_byte","options":2,"value":1}
+{"name":"fault.disk.corrupt_value","options":4,"value":0}
+{"name":"world.step","options":5,"value":1}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.exited_at_heal","options":2,"value":0}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: corrupt_reads (byte 2 reads 0)
+  read page 0: some [0, 0]
+  heal: the node runs on
+  stored: [[0, 1]]; the system wrote: [[0, 1]]
+---
+search exhaust [after a disk fault heals, reads return what is stored / disk_lost_writes off: write_errors, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1580 ms)
+search exhaust [after a disk fault heals, reads return what is stored / disk_lost_writes off: errors, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1295 ms)
+search exhaust [after a disk fault heals, reads return what is stored / disk_lost_writes on: lost_writes, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1602 ms)
+search exhaust [after a disk fault heals, reads return what is stored / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: stopped at 1000000 timelines, none broke it (2565 ms)
+search explore [after a disk fault heals, reads return what is stored / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: FOUND at timeline 48 of seeds 0..99999 (1 ms): after a disk fault heals, reads return what is stored: after the heal page 1 reads [0, 2, 3]: the disk stores [1, 2, 3], the system wrote [1, 2, 3] (shrunk to 11 decisions from 14)
+--- counterexample [after a disk fault heals, reads return what is stored / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: after a disk fault heals, reads return what is stored
+detail: after the heal page 1 reads [0, 2, 3]: the disk stores [1, 2, 3], the system wrote [1, 2, 3]
+values: [2, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.disk.failure","options":4,"value":2}
+{"name":"fault.disk.corrupt_byte","options":3,"value":0}
+{"name":"fault.disk.corrupt_value","options":4,"value":0}
+{"name":"world.step","options":5,"value":1}
+{"name":"world.page","options":2,"value":1}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.exited_at_heal","options":2,"value":0}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: corrupt_reads (byte 1 reads 0)
+  read page 1: some [0, 2, 3]
+  heal: the node runs on
+  stored: [[0, 1, 2], [1, 2, 3]]; the system wrote: [[0, 1, 2], [1, 2, 3]]
+---
+search exhaust [after a disk fault heals, reads return what is stored / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: stopped at 1000000 timelines, none broke it (2559 ms)
+search explore [after a disk fault heals, reads return what is stored / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: FOUND at timeline 91 of seeds 0..99999 (1 ms): after a disk fault heals, reads return what is stored: after the heal page 0 reads [2, 1, 2]: the disk stores [0, 1, 2], the system wrote [0, 1, 2] (shrunk to 11 decisions from 12)
+--- counterexample [after a disk fault heals, reads return what is stored / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: after a disk fault heals, reads return what is stored
+detail: after the heal page 0 reads [2, 1, 2]: the disk stores [0, 1, 2], the system wrote [0, 1, 2]
+values: [3, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0]
+tape:
+{"name":"fault.disk.failure","options":5,"value":3}
+{"name":"fault.disk.corrupt_byte","options":3,"value":0}
+{"name":"fault.disk.corrupt_value","options":4,"value":2}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":1}
+{"name":"world.page","options":2,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.exited_at_heal","options":2,"value":0}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: corrupt_reads (byte 1 reads 2)
+  read page 0: some [2, 1, 2]
+  heal: the node runs on
+  stored: [[0, 1, 2], [1, 2, 3]]; the system wrote: [[0, 1, 2], [1, 2, 3]]
+---
+== disk property: lost writes are gone at the next crash, not before
+   source: docs/ANTITHESIS.md, Disk I/O faults ("writes acknowledged and never stored (gone at the next crash, synced or not)"); nodes.zig:1931-1933
+search exhaust [lost writes are gone at the next crash, not before / disk_lost_writes off: corrupt_reads, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1626 ms)
+search exhaust [lost writes are gone at the next crash, not before / disk_lost_writes off: write_errors, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1586 ms)
+search exhaust [lost writes are gone at the next crash, not before / disk_lost_writes off: errors, 1 page of 2 bytes, 4 steps]: complete, 663552 timelines, none broke it (1310 ms)
+search exhaust [lost writes are gone at the next crash, not before / disk_lost_writes on: lost_writes, 1 page of 2 bytes, 4 steps]: FOUND after 187 timelines (8 ms): lost writes are gone at the next crash, not before: no crash yet: page 0 reads [0, 1], the system wrote [1, 1] (and synced it) (shrunk to 10 decisions from 10)
+--- counterexample [lost writes are gone at the next crash, not before / disk_lost_writes on: lost_writes, 1 page of 2 bytes, 4 steps]: lost writes are gone at the next crash, not before
+detail: no crash yet: page 0 reads [0, 1], the system wrote [1, 1] (and synced it)
+values: [0, 0, 0, 0, 2, 0, 1, 3, 1, 0]
+tape:
+{"name":"fault.disk.corrupt_byte","options":2,"value":0}
+{"name":"fault.disk.corrupt_value","options":4,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":2}
+{"name":"world.byte","options":2,"value":0}
+{"name":"world.value","options":4,"value":1}
+{"name":"world.step","options":5,"value":3}
+{"name":"world.exited_at_heal","options":2,"value":1}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: lost_writes
+  write page 0 byte 0 = 1: ok
+  fsync: 0
+  heal: the node had exited: killed, its layer unmounted, mounted afresh at its start
+  stored: [[0, 1]]; the system wrote: [[1, 1]]
+---
+search exhaust [lost writes are gone at the next crash, not before / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: stopped at 1000000 timelines, none broke it (2584 ms)
+search explore [lost writes are gone at the next crash, not before / disk_lost_writes off (its failures drawn), 2 pages of 3 bytes, 5 steps]: 100000 timelines (seeds 0..99999), none broke it (490 ms)
+search exhaust [lost writes are gone at the next crash, not before / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: stopped at 1000000 timelines, none broke it (2598 ms)
+search explore [lost writes are gone at the next crash, not before / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: FOUND at timeline 50 of seeds 0..99999 (1 ms): lost writes are gone at the next crash, not before: no crash yet: page 0 reads [0, 1, 2], the system wrote [2, 1, 2] (and synced it) (shrunk to 13 decisions from 15)
+--- counterexample [lost writes are gone at the next crash, not before / disk_lost_writes on (its failures drawn), 2 pages of 3 bytes, 5 steps]: lost writes are gone at the next crash, not before
+detail: no crash yet: page 0 reads [0, 1, 2], the system wrote [2, 1, 2] (and synced it)
+values: [2, 0, 0, 2, 0, 0, 2, 0, 3, 0, 0, 1, 0]
+tape:
+{"name":"fault.disk.failure","options":5,"value":2}
+{"name":"fault.disk.corrupt_byte","options":3,"value":0}
+{"name":"fault.disk.corrupt_value","options":4,"value":0}
+{"name":"world.step","options":5,"value":2}
+{"name":"world.page","options":2,"value":0}
+{"name":"world.byte","options":3,"value":0}
+{"name":"world.value","options":4,"value":2}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":3}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.step","options":5,"value":0}
+{"name":"world.exited_at_heal","options":2,"value":1}
+{"name":"world.crash_after","options":2,"value":0}
+story:
+  disk fault: lost_writes
+  write page 0 byte 0 = 2: ok
+  fsync: 0
+  heal: the node had exited: killed, its layer unmounted, mounted afresh at its start
+  stored: [[0, 1, 2], [1, 2, 3]]; the system wrote: [[2, 1, 2], [1, 2, 3]]
+---
+== disk property: with writeback_s, a crash loses only the last window's unsynced writes
+   source: docs/ANTITHESIS.md, Disk faults ("a node's `writeback_s`, its disk synced that often as a host's flusher would, so a crash loses only the last window's unsynced writes")
+search exhaust [with writeback_s, a crash loses only the last window's unsynced writes / a window of 5 s, a loss at 30 s]: FOUND after 21 timelines (7 ms): with writeback_s, a crash loses only the last window's unsynced writes: a power loss at 30 s loses 15 s of writes, a window of 5 s (shrunk to 7 decisions from 7)
+--- counterexample [with writeback_s, a crash loses only the last window's unsynced writes / a window of 5 s, a loss at 30 s]: with writeback_s, a crash loses only the last window's unsynced writes
+detail: a power loss at 30 s loses 15 s of writes, a window of 5 s
+values: [0, 0, 0, 0, 1, 1, 0]
+tape:
+{"name":"writeback.on","options":2,"value":0}
+{"name":"writeback.switch","options":4,"value":0}
+{"name":"writeback.switch","options":4,"value":0}
+{"name":"writeback.switch","options":4,"value":0}
+{"name":"writeback.switch","options":4,"value":1}
+{"name":"writeback.switch","options":4,"value":1}
+{"name":"writeback.switch","options":4,"value":0}
+story:
+  flusher on at the part
+  5 s: synced
+  5 s: flusher off
+  10 s: flusher on
+  15 s: synced
+  15 s: flusher off
+  30 s: flusher on
+---
+search exhaust [with writeback_s, a crash loses only the last window's unsynced writes / a window of 30 s, a loss at 120 s]: FOUND after 21 timelines (7 ms): with writeback_s, a crash loses only the last window's unsynced writes: a power loss at 120 s loses 90 s of writes, a window of 30 s (shrunk to 5 decisions from 5)
+--- counterexample [with writeback_s, a crash loses only the last window's unsynced writes / a window of 30 s, a loss at 120 s]: with writeback_s, a crash loses only the last window's unsynced writes
+detail: a power loss at 120 s loses 90 s of writes, a window of 30 s
+values: [0, 0, 1, 1, 0]
+tape:
+{"name":"writeback.on","options":2,"value":0}
+{"name":"writeback.switch","options":4,"value":0}
+{"name":"writeback.switch","options":4,"value":1}
+{"name":"writeback.switch","options":4,"value":1}
+{"name":"writeback.switch","options":4,"value":0}
+story:
+  flusher on at the part
+  30 s: synced
+  30 s: flusher off
+  120 s: flusher on
+---

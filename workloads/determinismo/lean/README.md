@@ -45,12 +45,32 @@ searches in `runs/`. On the platform:
     other's JUnit report, so only the last batch is judged.
 - 38 properties, 35 theorems (three for every input); the searches in `runs2/`.
 
+## Round 3
+
+[REPORT-3.md](REPORT-3.md), at 3939448: the explorer's tree (frontier, archive, returns,
+generations, strategies' answers), determinismo-ci end to end, serve's resume, coverage gate
+and sessions, disk faults over a model of Linux's page cache, clock skews. CE23-CE31, each with a
+regression test in `tests/`:
+- CE23: a timeline a strategy seeded is returned to with the tree's planned seed, so its children
+  replay another parent.
+- CE24: the same seed grows another tree with another number of workers.
+- CE25: the archive returns to repeats. CE26: a generation returns twice to one moment.
+- CE27: determinismo-ci reports a hung timeline as the job's "error", "failing in 0 of 3".
+- CE28: a session opened on a CI job's run changes its shard verdicts.
+- CE29: a resumed run's state ignores the timelines recorded before its stop.
+- CE30: the coverage gate stops instrumented runs whose first timelines only repeat their setup's
+  code.
+- CE31: `corrupt_reads`, documented as keeping what is stored intact, stores a corrupted byte (a
+  partial write to an uncached page reads it through the corrupting table first).
+- 28 properties, 19 theorems; the searches in `runs3/`.
+
 ## Building and running
 
     lake update && lake build
     .lake/build/bin/replica composer <exhaust> <seeds> <drawn-seeds> [<property>]
     .lake/build/bin/replica faults|verdicts|tape <exhaust> [<seeds>]
     .lake/build/bin/replica2 clock|junit|persist <exhaust> [<seeds>]
+    .lake/build/bin/replica3 tree|treecensus|jobs|ci|serve|disk|skew|ce2 ...
 
 `lakefile.toml` takes determinismo's Lean library (`sdk/lean`) from the platform's 3939448.
 

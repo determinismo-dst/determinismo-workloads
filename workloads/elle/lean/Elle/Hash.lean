@@ -57,23 +57,29 @@ def bifurcanKeyHash (indexHash : UInt32) : UInt32 :=
 
 def chunk (h : UInt32) (shift : Nat) : Nat := ((h >>> (u32 shift)) &&& 31).toNat
 
-/-- CHAMP order (MapNodes iterator): a node's entries by bit, then its subnodes by bit. -/
-partial def champOrder {α : Type} (items : List (α × UInt32)) (shift : Nat := 0) : List α :=
-  if shift ≥ 32 then items.map (·.1) else
+/-- CHAMP order (MapNodes iterator): a node's entries by bit, then its subnodes by bit.
+(Round 4: total, by the shift, so proofs see through it; the same equations.) -/
+def champOrder {α : Type} (items : List (α × UInt32)) (shift : Nat := 0) : List α :=
+  if hs : shift ≥ 32 then items.map (·.1) else
   let cs := (List.range 32).map fun c => (c, items.filter fun (_, h) => chunk h shift == c)
   let entries := cs.filterMap fun (_, g) => match g with | [x] => some x.1 | _ => none
   let nodes := cs.flatMap fun (_, g) => if g.length ≥ 2 then champOrder g (shift + 5) else []
   entries ++ nodes
+termination_by 32 - shift
+decreasing_by omega
 
-/-- HAMT order (Clojure's BitmapIndexedNode): entries and subnodes interleaved by bit. -/
-partial def hamtOrder {α : Type} (items : List (α × UInt32)) (shift : Nat := 0) : List α :=
-  if shift ≥ 32 then items.map (·.1) else
+/-- HAMT order (Clojure's BitmapIndexedNode): entries and subnodes interleaved by bit.
+(Round 4: total, by the shift, so proofs see through it; the same equations.) -/
+def hamtOrder {α : Type} (items : List (α × UInt32)) (shift : Nat := 0) : List α :=
+  if hs : shift ≥ 32 then items.map (·.1) else
   (List.range 32).flatMap fun c =>
     let g := items.filter fun (_, h) => chunk h shift == c
     match g with
     | [] => []
     | [x] => [x.1]
     | _ => hamtOrder g (shift + 5)
+termination_by 32 - shift
+decreasing_by omega
 
 /-- The order Bifurcan iterates a set of ops (by index) in. -/
 def opsOrder (ops : List Nat) : List Nat :=

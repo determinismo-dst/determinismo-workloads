@@ -1,0 +1,57 @@
+# validate-la la exhaust=1 txns=3 mops=2 keys=1 threads=2 read=any maxread=2 secs=1700 out=results/r4/V4g-la-exhaust shrink=200
+13224488 histories (complete)
+
+- validate:clean-interpretations: 1203318
+- validate:interpretations: 2441362
+- validate:dirty-interpretations: 1606320
+
+## validate:clean-interpretations
+1
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+
+## validate:interpretations
+
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+
+## validate:dirty-interpretations
+
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":5,"value":1}
+

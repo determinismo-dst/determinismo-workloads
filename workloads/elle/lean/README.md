@@ -20,6 +20,16 @@ its documentation and the papers it implements, and searched with determinismo's
   Elle service as it was (`service/`, from `fetch-sources.sh`); complete fixes for D3, D10 and D13.
   9 more disagreements, D14–D22, four of them in the service (D16–D19).
   [REPORT-2.md](REPORT-2.md).
+- **Round 3**: the deployed service checked (no new false positive in 240,000 histories, every
+  target caught; D23, a regression of the deployed D3 fix), and a checked fix for every open
+  disagreement, each said safe to deploy or not. [REPORT-3.md](REPORT-3.md).
+- **Round 4**, proofs: for every history, of any size, list-append's ww, wr and rw edges (and D1's
+  unread step) hold in every clean interpretation, and with them the paper's Theorem 1 for the
+  service as deployed next (`la_cycle_clean`); under D4 with D5, every G0 cycle holds in every
+  interpretation, dirty ones included, so read uncommitted gets no false positive; D23's edge,
+  D7 and D8 (no interpretation). D12's refinement (`fixD12b`) checked safe and proved to rename
+  with the values. No new disagreement. Left: the cycle search's completeness, rw-register's and
+  closed predicate's proofs, no-exception. [REPORT-4.md](REPORT-4.md).
 
 ## What the real Elle said
 
@@ -44,8 +54,10 @@ search compares that with a run where some are on. The switches stand for three 
   Elle's jar, running in every determinismo check): `fixD3`, `fixD13`, `cpFixed` (D9, D10, D11)
   and `perKeyFixed` (D19), together `Service.check (deployed := true)`.
 - **Proposed, deployed nowhere:** round 3's `fixD1`, `fixD2`, `fixD4`, `fixD5`, `fixD6`, `fixD7`,
-  `fixD8`, `fixD12`, `fixD20`, `fixD21`, `fixD22`. Each is checked here and as a patch of the
-  deployed namespaces (REPORT-3.md says which are safe); none is in Elle or in our service yet.
+  `fixD8`, `fixD12`, `fixD20`, `fixD21`, `fixD22`, and round 4's `fixD12b` (D12 refined). Each is
+  checked here and as a patch of the deployed namespaces (REPORT-3.md and REPORT-4.md say which
+  are safe); none is in Elle or in our service yet. The safe set (D1, D4 with D5, D6, D7, D8, D20,
+  D21, D22) is in the service's next deploy.
 
 When a proposal is deployed, this section moves it to the second list.
 

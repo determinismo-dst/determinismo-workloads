@@ -57,6 +57,9 @@ structure Opts where
   fixD20 : Bool := false
   fixD21 : Bool := false
   fixD22 : Bool := false
+  /-- Round 4's D12 refinement: among reads of equal length, the version order ranks a read by
+  its count of elements no failed operation appended, then by where it was first read. -/
+  fixD12b : Bool := false
   deriving Repr, Inhabited
 
 /-- An anomaly case. -/

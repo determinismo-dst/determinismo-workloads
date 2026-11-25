@@ -1,0 +1,72 @@
+# validate-la la seeds=40000 txns=5 mops=3 keys=2 threads=3 read=cuts secs=1700 out=results/r4/V4g-la-cuts shrink=200
+40000 histories
+
+- validate:clean-interpretations: 36628
+- validate:interpretations: 37088
+- validate:dirty-interpretations: 3340
+
+## validate:clean-interpretations
+1
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+
+## validate:interpretations
+
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+
+## validate:dirty-interpretations
+
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 3, :type :fail, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 0 [1]]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":2}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":3,"value":0}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":4,"value":1}
+{"name":"read.dirty","options":2,"value":0}
+

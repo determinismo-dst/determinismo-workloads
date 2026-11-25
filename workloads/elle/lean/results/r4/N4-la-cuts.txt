@@ -1,0 +1,405 @@
+# next-la la seeds=40000 first=300000 txns=5 mops=3 keys=2 threads=3 read=cuts secs=1700 out=results/r4/N4-la-cuts
+40000 histories
+
+- fix:caught-no-interpretation: 21
+- fix:caught: 167
+- fix:drops-false-positive: 41
+- fix:misses:strong-session-snapshot-isolation: 1
+- fix:misses:strong-session-read-uncommitted: 1
+- fix:misses:strong-read-uncommitted: 1
+
+## fix:caught-no-interpretation
+strong-session-read-uncommitted: was true, now invalid; no interpretation exists
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 1 nil] [:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 [2 3 1]] [:r 1 [2 3 1]]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 1 1]]}
+ {:process 1, :type :info, :f :txn, :value [[:r 0 nil] [:append 1 1]]}
+ {:process 4, :type :invoke, :f :txn, :value [[:append 1 2] [:r 1 nil]]}
+ {:process 4, :type :ok, :f :txn, :value [[:append 1 2] [:r 1 [3 2]]]}
+ {:process 4, :type :invoke, :f :txn, :value [[:append 1 3]]}
+ {:process 4, :type :ok, :f :txn, :value [[:append 1 3]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":4}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"exec.order","options":5,"value":2}
+{"name":"exec.order","options":4,"value":0}
+{"name":"exec.order","options":3,"value":1}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":6,"value":3}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":4}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.repeat","options":4,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+
+## fix:caught
+consistent-view: was true, now invalid; every interpretation violates consistent-view
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 1 1] [:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 1 1] [:r 0 []] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 []] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":3,"value":0}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":4,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":4,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":4,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+
+## fix:drops-false-positive
+strong-read-uncommitted: was invalid, now true; an interpretation satisfies strong-read-uncommitted
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 1 nil] [:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 []] [:r 1 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 1 1] [:r 1 nil] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 1 1] [:r 1 [2 1]] [:r 0 [1 2]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 3] [:append 1 2]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil] [:append 0 3] [:append 1 2]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 []] [:r 0 []]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 1] [:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":4}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"exec.order","options":5,"value":1}
+{"name":"exec.order","options":4,"value":3}
+{"name":"exec.order","options":3,"value":0}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.repeat","options":4,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.repeat","options":4,"value":0}
+{"name":"read.cut","options":6,"value":2}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":1}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+
+## fix:misses:strong-session-snapshot-isolation
+strong-session-snapshot-isolation: valid; every interpretation violates strong-session-snapshot-isolation
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 1 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]] [:append 1 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 1 nil] [:append 0 1] [:r 0 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 1 []] [:append 0 1] [:r 0 [1]]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:append 0 2] [:r 1 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:append 0 2] [:r 1 []]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 1 nil] [:append 1 2]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 1 []] [:append 1 2]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":4}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"exec.order","options":5,"value":2}
+{"name":"exec.order","options":4,"value":0}
+{"name":"exec.order","options":3,"value":0}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":6,"value":2}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+
+## fix:misses:strong-session-read-uncommitted
+strong-session-read-uncommitted: valid; every interpretation violates strong-session-read-uncommitted
+
+history:
+[{:process 1, :type :invoke, :f :txn, :value [[:r 1 nil] [:r 0 nil] [:append 1 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 1 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 1 [3]] [:r 0 []] [:append 1 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:r 1 [2]]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 1 3] [:append 0 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 1 3] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :fail, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:append 1 2]]}
+ {:process 0, :type :fail, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:append 1 2]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":4}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":5,"value":3}
+{"name":"exec.order","options":4,"value":0}
+{"name":"exec.order","options":3,"value":2}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":2}
+{"name":"read.dirty","options":2,"value":1}
+{"name":"read.cut","options":6,"value":3}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":1}
+
+## fix:misses:strong-read-uncommitted
+strong-read-uncommitted: valid; every interpretation violates strong-read-uncommitted
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:r 1 [2]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :fail, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil] [:r 0 nil] [:append 1 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 [3]] [:r 0 []] [:append 1 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:append 1 2]]}
+ {:process 0, :type :fail, :f :txn, :value [[:r 0 nil] [:r 0 nil] [:append 1 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 1 3] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 1 3] [:append 0 1]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":4}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":5,"value":3}
+{"name":"exec.order","options":4,"value":0}
+{"name":"exec.order","options":3,"value":2}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":2}
+{"name":"read.dirty","options":2,"value":1}
+{"name":"read.cut","options":6,"value":3}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+

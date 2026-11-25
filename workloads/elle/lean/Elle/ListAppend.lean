@@ -118,11 +118,18 @@ def valuesFromSingleAppends (h : List Op) : List (Nat × List (List Int)) :=
     else amPut acc mo.k (match mo.v with | .int e => some e | _ => none)) acc) []
   m.filterMap fun (k, v) => v.map fun e => (k, [[e]])
 
+/-- Round 4's D12 refinement: the (key, element) pairs failed operations appended. -/
+def failedAppends (h : List Op) : List (Nat × Int) :=
+  (h.filter Op.isFail).flatMap fun o => o.value.filterMap fun m =>
+    match m.f, m.v with | .append, .int e => some (m.k, e) | _, _ => none
+
 /-- `sorted-values` (list_append.clj:271): per key, distinct non-empty read values by length.
 Ties keep the order of Clojure's hash set of values (replicated), reversed when `flip`. With D12's
 fix (`byFirst`), ties are ordered by where each value was first read (the list is built in
-history order). -/
-def sortedValues (h : List Op) (flip : Bool := false) (byFirst : Bool := false) : List (Nat × List (List Int)) :=
+history order). With round 4's refinement (`failed := some fs`), ties of length are ordered by
+the count of elements no failed operation appended (`fs`), then by where each was first read. -/
+def sortedValues (h : List Op) (flip : Bool := false) (byFirst : Bool := false)
+    (failed : Option (List (Nat × Int)) := none) : List (Nat × List (List Int)) :=
   let fromReads := h.foldl (fun (acc : List (Nat × List (List Int))) o => o.value.foldl (fun acc m =>
     match m.f, m.v with
     | .r, .list v => if v.isEmpty then acc else amUpdate acc m.k [] fun vs => if vs.contains v then vs else vs ++ [v]
@@ -130,6 +137,12 @@ def sortedValues (h : List Op) (flip : Bool := false) (byFirst : Bool := false) 
   let single := valuesFromSingleAppends h
   let merged := single.foldl (fun acc (k, v) => if (acc.lookup k).isSome then acc else acc ++ [(k, v)]) fromReads
   merged.map fun (k, vs) =>
+    match failed with
+    | some fs =>
+      -- round 4's D12 refinement: first-read order, ranked by length, then non-failed elements
+      let nf (v : List Int) : Nat := (v.filter fun e => !fs.contains (k, e)).length
+      (k, vs.mergeSort fun a b => decide (a.length < b.length) || (a.length == b.length && decide (nf a ≤ nf b)))
+    | none =>
     -- the read values' set, in Clojure's hash-set order (`datafy` of a Bifurcan set)
     let vs := if byFirst then vs else Hash.vectorsOrder vs
     let vs := if flip then vs.reverse else vs
@@ -206,6 +219,8 @@ structure Fx where
   d5 : Bool := false
   d8 : Bool := false
   d12 : Bool := false
+  /-- Round 4's D12 refinement. -/
+  d12b : Bool := false
   d20 : Bool := false
   /-- The models prohibit G1a (D5's fix indexes `:info` appends only then). -/
   g1a : Bool := true
@@ -294,7 +309,8 @@ def preprocess (h : History) (flip : Bool) (fx : Fx := {}) : Except String Pre :
     match m.f, m.v with
     | .r, .list l => { m with v := .list (l.filter fun e => !infoElems.contains (m.k, e)) }
     | _, _ => m }
-  let sv := sortedValues psV flip fx.d12
+  let sv := if fx.d12b then sortedValues psV flip true (some (failedAppends h.toList))
+    else sortedValues psV flip fx.d12
   let writers := if unInfo then oks h.toList else ps
   return { hist := h, possible := ps, ai := appendIndex sv, wi := writeIndex writers, ri := readIndex ps,
            stepOver := fx.d4 }
@@ -387,10 +403,12 @@ def analyze (h : History) (extra : Extra) (o : Order := {}) (flip : Bool := fals
   let okOps := oks hl
   let internal := okOps.filter opIntCase
   let future := okOps.filter opFutureReadCase
-  let dirty := dirtyUpdateCases (appendIndex (sortedValues hl flip fx.d12)) h fx.d8
+  let sortedV (ops : List Op) := if fx.d12b then sortedValues ops flip true (some (failedAppends hl))
+    else sortedValues ops flip fx.d12
+  let dirty := dirtyUpdateCases (appendIndex (sortedV hl)) h fx.d8
   let hp := possible hl
   let dups := duplicates hp
-  let incmp := incompatibleOrders (sortedValues hp flip fx.d12)
+  let incmp := incompatibleOrders (sortedV hp)
   let lost := lostUpdateCases isAppend hp
   let p ← preprocess h flip fx
   let an := combine ([graph p] ++ extraAnalysesOf extra h)
@@ -424,7 +442,7 @@ def analysis (h : History) (extra : Extra) (flip : Bool := false) (fx : Fx := {}
 /-- Round 3's fixes the options switch on. -/
 def fxOf (opts : Opts) : Fx :=
   { d1 := opts.fixD1, d4 := opts.fixD4 || opts.fixD5, d5 := opts.fixD5, d8 := opts.fixD8,
-    d12 := opts.fixD12, d20 := opts.fixD20,
+    d12 := opts.fixD12, d12b := opts.fixD12b, d20 := opts.fixD20,
     g1a := (prohibitedAnomalyTypes opts).contains "G1a" }
 
 /-- `elle.list-append/check` (list_append.clj:920). -/

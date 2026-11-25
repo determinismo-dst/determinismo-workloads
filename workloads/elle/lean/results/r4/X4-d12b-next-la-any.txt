@@ -1,0 +1,102 @@
+# fix4-d12b-la la fix=d12b base=next seeds=40000 txns=4 mops=2 keys=2 threads=3 read=any maxread=3 secs=1700 out=results/r4/X4-d12b-next-la-any
+40000 histories
+
+- fix:caught-no-interpretation: 229
+- fix:misses:snapshot-isolation: 1
+
+## fix:caught-no-interpretation
+strong-session-read-uncommitted: was true, now invalid; no interpretation exists
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1 2 3]] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 1 3]] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 3]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":4,"value":3}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":16,"value":10}
+{"name":"read.value","options":16,"value":12}
+{"name":"read.value","options":16,"value":0}
+
+## fix:misses:snapshot-isolation
+snapshot-isolation: valid; every interpretation violates snapshot-isolation
+
+history:
+[{:process 1, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 1 1] [:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 1 1] [:r 0 []]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 1 2] [:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 1 2] [:r 0 []]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 1 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 [1]] [:r 1 []]]}]
+
+tape:
+{"name":"txn.count","options":4,"value":3}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"read.value","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+{"name":"read.value","options":5,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":1}
+

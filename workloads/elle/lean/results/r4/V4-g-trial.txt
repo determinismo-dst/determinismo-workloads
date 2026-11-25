@@ -1,0 +1,82 @@
+# validate-la la seeds=4000 txns=4 mops=2 keys=2 threads=3 read=any maxread=3 secs=800 out=results/r4/V4-g-trial shrink=100
+4000 histories
+
+- validate:clean-interpretations: 3141
+- validate:interpretations: 3289
+- validate:dirty-interpretations: 275
+
+## validate:clean-interpretations
+1
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":4,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+
+## validate:interpretations
+
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":4,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+
+## validate:dirty-interpretations
+
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:r 0 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 1 1] [:append 1 2]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 1 1] [:append 1 2]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 1 [1]]]}]
+
+tape:
+{"name":"txn.count","options":4,"value":3}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"read.value","options":5,"value":1}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+

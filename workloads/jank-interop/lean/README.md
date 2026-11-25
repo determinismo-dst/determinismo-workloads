@@ -96,7 +96,7 @@ on the real jank.
   Evidence: [validation/round-5-evidence.txt](validation/round-5-evidence.txt).
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
-jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
+jankifier's [specs/repros.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/repros.md#found-by-a-lean-replica-of-jank).
 
 ## Building and running
 

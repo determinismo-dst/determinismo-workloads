@@ -1,4 +1,4 @@
-# flecs findings not reported upstream
+# flecs repros
 
 From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in three
 rounds (REPORT.md, REPORT-2.md, REPORT-3.md: each finding's minimal program, story, tape, code path

@@ -36,7 +36,7 @@ its documentation and the papers it implements, and searched with determinismo's
 Every disagreement was reproduced by running Elle on its minimal history
 (`results/*.cases.edn`, Elle's answers in `results/*.elle.edn`). Within Elle's documented scope
 (no failed or indeterminate transactions, every append read) none turned up, over about 325,000
-histories. The findings, each with what it changes: [UNREPORTED.md](UNREPORTED.md). The service
+histories. The findings, each with what it changes: [REPROS.md](REPROS.md). The service
 ([checkers/elle](https://github.com/determinismo-dst/determinismo/tree/next/checkers/elle)) runs Elle with the fixes for D3, D9, D10 (and D11) and D13, and its own for D16, D17
 and D19; each has a test in its `test/`. D18: its strict-serializable-per-key keeps the stricter reading, described as such.
 

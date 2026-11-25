@@ -1,4 +1,4 @@
-# Elle findings not reported upstream
+# Elle repros
 
 From the Lean replica of Elle (jepsen-io/elle main 4e359e5, one commit after v0.2.8; rounds 1 and
 2, blind; REPORT.md and REPORT-2.md have each history, verdict and code path). Every one was

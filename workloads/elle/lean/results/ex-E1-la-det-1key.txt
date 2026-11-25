@@ -1,0 +1,43 @@
+# exhaust la read=any txns=3 mops=2 keys=1 threads=2 maxread=2 interleave=0 fail=0 info=0 pairs=0 skip=explanation:direct runs=50000000 secs=1750 out=results/ex-E1-la-det-1key
+337264 timelines (complete), 337264 histories checked
+
+## classification:G-single-item-process
+Elle reports G-single-item-process; an interpretation (clean) without [G-single-process]: [G0-process, G1c-process, G-nonadjacent-process, G0-realtime, G1c-realtime, G-nonadjacent-realtime], order [(0, [3, 1])]
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":5,"value":0}
+
+## classification:G-single-item-realtime
+Elle reports G-single-item-realtime; an interpretation (clean) without [G-single-realtime]: [G0-realtime, G1c-realtime, G-nonadjacent-realtime], order [(0, [3, 1])]
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":5,"value":0}
+

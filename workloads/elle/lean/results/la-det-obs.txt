@@ -1,0 +1,83 @@
+# explore la read=cuts txns=5 mops=3 keys=2 threads=3 seeds=5000 first=20000 info=0 fail=0 observed=1 skip=explanation:direct out=results/la-det-obs
+5000 timelines
+
+## monotone
+[strong-read-uncommitted]: true, [strong-session-read-committed]: false, [strong-read-uncommitted strong-session-read-committed]: true
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:r 0 nil] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:r 0 [1]] [:r 0 [1]]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 1 nil] [:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []] [:r 1 []] [:r 0 []]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []] [:r 0 []]]}]
+
+tape:
+{"name":"txn.count","options":5,"value":4}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.thread","options":3,"value":1}
+{"name":"txn.mops","options":3,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":3,"value":2}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":5,"value":4}
+{"name":"exec.order","options":4,"value":0}
+{"name":"exec.order","options":3,"value":0}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.repeat","options":4,"value":0}
+{"name":"read.cut","options":6,"value":1}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.repeat","options":4,"value":0}
+{"name":"read.cut","options":6,"value":0}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"read.repeat","options":4,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"order.rank","options":10,"value":0}
+{"name":"order.rank","options":9,"value":0}
+{"name":"order.rank","options":8,"value":0}
+{"name":"order.rank","options":7,"value":0}
+{"name":"order.rank","options":6,"value":0}
+{"name":"order.rank","options":5,"value":0}
+{"name":"order.rank","options":4,"value":0}
+{"name":"order.rank","options":3,"value":0}
+{"name":"order.rank","options":2,"value":0}
+

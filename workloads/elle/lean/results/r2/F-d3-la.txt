@@ -1,0 +1,107 @@
+# exhaust2 la fixd3=1 txns=3 mops=2 keys=1 threads=2 read=any maxread=2 runs=1000000000 secs=1750 models=strong-session-read-uncommitted,strong-session-read-committed,strong-session-snapshot-isolation,strong-session-serializable,strong-read-uncommitted,strong-read-committed,strict-serializable,serializable,read-committed,read-uncommitted out=results/r2/F-d3-la
+476000 timelines, 476000 histories
+
+## fix:regression
+strong-read-uncommitted: Elle as written invalid, fixed true; specification satisfiable
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":5,"value":2}
+
+## soundness:strong-session-read-uncommitted
+Elle: strong-session-read-uncommitted invalid; an interpretation satisfies strong-session-read-uncommitted and the options' assumption
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:r 0 [2 1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":6}
+
+## soundness:read-uncommitted
+Elle: read-uncommitted invalid; an interpretation satisfies read-uncommitted and the options' assumption
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 2] [:r 0 [3 2]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3] [:append 0 4]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 3] [:append 0 4]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":17,"value":12}
+
+## completeness:strong-read-uncommitted
+Elle: strong-read-uncommitted valid; specification: violated in every interpretation
+
+history:
+[{:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 [1 3]] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3]]}
+ {:process 0, :type :fail, :f :txn, :value [[:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":5}
+{"name":"event.next","options":2,"value":1}
+{"name":"event.next","options":2,"value":1}
+

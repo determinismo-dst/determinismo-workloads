@@ -1,0 +1,19 @@
+[{:id 0 :workload :rw-register :opts {:consistency-models [:strong-read-uncommitted] :sequential-keys? true}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:w 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 nil] [:w 0 2]]}]}
+{:id 1 :workload :rw-register :opts {:consistency-models [:strong-session-read-committed] :sequential-keys? true}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil] [:w 1 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 nil] [:w 1 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 1] [:w 1 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:w 0 1] [:w 1 2]]}]}
+{:id 2 :workload :rw-register :opts {:consistency-models [:strict-serializable] :sequential-keys? true}
+ :history [{:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:w 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 1] [:w 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}]}]

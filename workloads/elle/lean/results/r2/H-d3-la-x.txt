@@ -1,0 +1,42 @@
+# explore2 la fixd3=1 seeds=60000 txns=4 mops=2 keys=2 threads=3 read=cuts secs=850 models=strong-session-read-uncommitted,strong-session-read-committed,strong-session-snapshot-isolation,strong-session-serializable,strong-read-uncommitted,strong-read-committed,strict-serializable,serializable,read-committed,read-uncommitted skip=soundness,completeness,completeness-assumed out=results/r2/H-d3-la-x
+60000 timelines, 60000 histories
+
+## fix:drops-false-positive
+strong-read-uncommitted: Elle as written invalid, fixed true; an interpretation satisfies it
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:r 0 [3 1]]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 2]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 3]]}
+ {:process 2, :type :info, :f :txn, :value [[:r 0 nil] [:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":4,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":2}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":3,"value":2}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":4,"value":2}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+{"name":"event.next","options":2,"value":0}
+

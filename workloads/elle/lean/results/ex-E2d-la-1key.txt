@@ -1,0 +1,227 @@
+# exhaust la read=any txns=3 mops=2 keys=1 threads=2 maxread=2 interleave=0 fail=1 info=1 prefix=2.0.1 pairs=0 skip=explanation:direct runs=50000000 secs=1750 out=results/ex-E2d-la-1key
+399792 timelines (complete), 399792 histories checked
+
+## completeness:strong-session-read-committed
+Elle: strong-session-read-committed valid; specification: violated in every interpretation
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":2,"value":0}
+{"name":"read.value","options":2,"value":1}
+
+## classification:G-single-item-process
+Elle reports G-single-item-process; an interpretation (clean) without [G-single-process]: [G0-process, G1c-process, G-nonadjacent-process, G0-realtime, G1c-realtime, G-nonadjacent-realtime], order [(0, [5, 3])]
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":5,"value":0}
+{"name":"read.value","options":5,"value":0}
+
+## classification:G1a
+Elle reports G1a; an interpretation without [G1a]: [G1c-process, G-nonadjacent-process, G1c-realtime, G-nonadjacent-realtime, dirty-update], order [(0, [3])]
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :fail, :f :txn, :value [[:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":5,"value":4}
+
+## soundness:strong-read-uncommitted
+Elle: strong-read-uncommitted invalid; specification: satisfiable
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":2}
+
+## soundness:read-uncommitted
+Elle: read-uncommitted invalid; specification: satisfiable
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":6}
+
+## classification:G-single-item-realtime
+Elle reports G-single-item-realtime; an interpretation (clean) without [G-single-realtime]: [G0-realtime, G1c-realtime, G-nonadjacent-realtime], order [(0, [5, 1, 3])]
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 3]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 3]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":0}
+
+## completeness:strong-read-uncommitted
+Elle: strong-read-uncommitted valid; specification: violated in every interpretation
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1 3]] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3]]}
+ {:process 0, :type :fail, :f :txn, :value [[:append 0 3]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 1]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":5}
+
+## completeness:strong-session-read-uncommitted
+Elle: strong-session-read-uncommitted valid; specification: violated in every interpretation
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 3]]}
+ {:process 0, :type :fail, :f :txn, :value [[:append 0 3]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 [2 3]] [:append 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 2]]}]
+
+tape:
+{"name":"txn.count","options":3,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":2,"value":1}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"txn.status","options":3,"value":1}
+{"name":"txn.thread","options":2,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"read.value","options":10,"value":7}
+

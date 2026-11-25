@@ -1,0 +1,12 @@
+[{:id 0 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 2]]}]}
+{:id 1 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]] [:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil] [:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 [1]] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 3] [:append 1 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 3] [:append 1 1]]}]}]

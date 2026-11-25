@@ -1,0 +1,42 @@
+# explore2 rr fixd13=1 fixd3=1 order=1 seeds=60000 txns=4 mops=2 keys=2 threads=3 read=cuts secs=1700 singlereads=1 out=results/r2/G-d13-order-x
+60000 timelines, 60000 histories
+
+## completeness-assumed:read-committed
+Elle: read-committed valid; every interpretation where the options' assumption holds violates read-committed (some do hold it)
+
+history:
+[{:process 0, :type :invoke, :f :txn, :value [[:w 1 1] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:w 1 1] [:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:w 0 2]]}
+ {:process 3, :type :ok, :f :txn, :value [[:w 0 2]]}]
+transaction order: [(1, 0), (5, 2)]
+
+tape:
+{"name":"txn.count","options":4,"value":2}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":1}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":1}
+{"name":"mop.f","options":2,"value":0}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":2}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"txn.status","options":3,"value":0}
+{"name":"txn.thread","options":3,"value":0}
+{"name":"txn.mops","options":2,"value":0}
+{"name":"mop.f","options":2,"value":1}
+{"name":"mop.key","options":2,"value":0}
+{"name":"exec.order","options":3,"value":1}
+{"name":"exec.order","options":2,"value":0}
+{"name":"read.cut","options":4,"value":1}
+{"name":"read.dirty","options":2,"value":0}
+{"name":"order.perm","options":3,"value":0}
+{"name":"order.perm","options":2,"value":0}
+{"name":"order.info","options":2,"value":1}
+

@@ -1,0 +1,63 @@
+[{:id 0 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 2, :type :fail, :f :txn, :value [[:append 0 1] [:append 0 2]]}]}
+{:id 1 :workload :list-append :opts {:consistency-models [:strong-session-read-committed]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :info, :f :txn, :value [[:append 0 1]]}]}
+{:id 2 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 2]]}]}
+{:id 3 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []] [:append 0 2]]}]}
+{:id 4 :workload :list-append :opts {:consistency-models [:strong-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [2]] [:append 0 1]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 2, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]}
+{:id 5 :workload :list-append :opts {:consistency-models [:strict-serializable]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1] [:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 1] [:r 0 [2 1]]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 2, :type :fail, :f :txn, :value [[:append 0 2]]}]}
+{:id 6 :workload :list-append :opts {:consistency-models [:read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :info, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 1] [:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 1] [:r 0 [2 1]]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 2, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]}
+{:id 7 :workload :list-append :opts {:consistency-models [:strong-session-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [3]] [:append 0 2]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 3]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [1]] [:append 0 3]]}]}
+{:id 8 :workload :list-append :opts {:consistency-models [:strong-read-uncommitted]}
+ :history [{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 2]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [3]] [:append 0 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 0 3]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 [1]] [:append 0 3]]}]}]

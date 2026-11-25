@@ -11,6 +11,16 @@ properties), with what it found in its README.
 | [flecs](workloads/flecs/README.md) | Flecs v4.2.0, an in-memory entity component system, under a stress harness checked against a model | `stress` |
 | [jank-interop](workloads/jank-interop/README.md) | jank's compiler and C++ interop (jank with coverage), Hegel generating the cases; the test program in jank | `interop`, `language`, `programs`, `collections`, `semantics`, `mixed` |
 
+## Lean replicas
+
+Systems written again in Lean 4 from their own sources, function by function, and searched for
+departures from what they document; each prediction then checked on the real system.
+
+- [jank-interop/lean](workloads/jank-interop/lean/README.md): jank's runtime, compiler and the
+  libraries it builds on (rounds 1-4), with tests run on jank.
+- [elle/lean](workloads/elle/README.md): Elle, Jepsen's consistency checker that determinismo's
+  checks use (rounds 1-2), each finding reproduced on Elle itself.
+
 ## Build
 
 With Zig 0.17.0, the platform a pinned dependency (`build.zig.zon`):

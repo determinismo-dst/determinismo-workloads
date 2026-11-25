@@ -1,0 +1,186 @@
+## unobserved-appends-g-single: G-single in every interpretation; Elle reports G2-item, SI and consistent-view valid
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:append 1 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 1 nil] [:append 1 2] [:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []] [:append 1 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 1 []] [:append 1 2] [:append 0 1]]}]
+  interpretations: 2, clean: 2
+  [snapshot-isolation]: replica true []; specification [snapshot-isolation: violated in every interpretation]
+    real Elle (id 0): valid? true, anomaly-types []
+  [consistent-view]: replica true []; specification [consistent-view: violated in every interpretation]
+    real Elle (id 1): valid? true, anomaly-types []
+  [repeatable-read]: replica false [G2-item]; specification [repeatable-read: violated in every interpretation]
+    real Elle (id 2): valid? false, anomaly-types ["G2-item"]
+## process-order-skips-info: G0-process in every interpretation (the info txn committed: its write was read)
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}]
+  interpretations: 2, clean: 1
+  [strong-session-read-uncommitted]: replica true []; specification [strong-session-read-uncommitted: satisfiable]
+    real Elle (id 3): valid? true, anomaly-types []
+  [strong-session-serializable]: replica true []; specification [strong-session-serializable: violated in every interpretation]
+    real Elle (id 4): valid? true, anomaly-types []
+  [strong-read-uncommitted]: replica false [G0-realtime]; specification [strong-read-uncommitted: satisfiable]
+    real Elle (id 5): valid? false, anomaly-types ["G0-realtime"]
+## realtime-replaces-process: G-single-process; with a realtime model beside it Elle drops process edges
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 []]]}]
+  interpretations: 1, clean: 1
+  [strong-session-snapshot-isolation]: replica false [G-single-item-process]; specification [strong-session-snapshot-isolation: violated in every interpretation]
+    real Elle (id 6): valid? false, anomaly-types ["G-single-item-process"]
+  [strong-session-snapshot-isolation, strong-read-uncommitted]: replica true []; specification [strong-session-snapshot-isolation: violated in every interpretation, strong-read-uncommitted: satisfiable]
+    real Elle (id 7): valid? true, anomaly-types []
+  [strong-session-serializable]: replica false [G-single-item-process]; specification [strong-session-serializable: violated in every interpretation]
+    real Elle (id 8): valid? false, anomaly-types ["G-single-item-process"]
+  [strong-session-serializable, strong-read-uncommitted]: replica true []; specification [strong-session-serializable: violated in every interpretation, strong-read-uncommitted: satisfiable]
+    real Elle (id 9): valid? true, anomaly-types []
+## failed-append-hides-ww: G0 in every interpretation (with G1a and a dirty update); read-uncommitted allows those
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:append 1 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:append 1 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 1, :type :fail, :f :txn, :value [[:append 0 2]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:append 0 3] [:append 1 1]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 0 3] [:append 1 1]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 0 [1 2 3]]]}
+ {:process 4, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+ {:process 4, :type :ok, :f :txn, :value [[:r 1 [1 2]]]}]
+  interpretations: 1, clean: 0
+  [read-uncommitted]: replica true []; specification [read-uncommitted: violated in every interpretation]
+    real Elle (id 10): valid? true, anomaly-types []
+## info-write-may-have-aborted: an interpretation (T aborted) has only G1a and a dirty update, which read-uncommitted allows
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:append 1 2]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1] [:append 1 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 2] [:append 1 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 2] [:append 1 1]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [1 2]]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 1 [1 2]]]}]
+  interpretations: 2, clean: 1
+  [read-uncommitted]: replica false [G0]; specification [read-uncommitted: satisfiable]
+    real Elle (id 11): valid? false, anomaly-types ["G0"]
+  [read-committed]: replica false [G0]; specification [read-committed: violated in every interpretation]
+    real Elle (id 12): valid? false, anomaly-types ["G0"]
+## register-fuzzy-read: G-single in every interpretation; Elle reports only :internal
+[{:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:w 0 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:w 0 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:w 0 2]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 1] [:r 0 2]]}]
+  interpretations: 2, clean: 2
+  [repeatable-read]: replica true []; specification [repeatable-read: violated in every interpretation]
+    real Elle (id 13): valid? true, anomaly-types []
+  [consistent-view]: replica true []; specification [consistent-view: violated in every interpretation]
+    real Elle (id 14): valid? true, anomaly-types []
+  [snapshot-isolation]: replica false [internal]; specification [snapshot-isolation: violated in every interpretation]
+    real Elle (id 15): valid? false, anomaly-types ["internal"]
+## register-second-read-g1c: G1c in every interpretation; Elle infers wr only from each transaction's first read of a key
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:w 1 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 1 nil] [:r 1 nil] [:w 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 2] [:w 1 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 1 nil] [:r 1 1] [:w 0 2]]}]
+  interpretations: 1, clean: 1
+  [read-committed]: replica true []; specification [read-committed: violated in every interpretation]
+    real Elle (id 16): valid? true, anomaly-types []
+  [serializable]: replica false [internal]; specification [serializable: violated in every interpretation]
+    real Elle (id 17): valid? false, anomaly-types ["internal"]
+## register-future-read: no Adya history: a read of a version its own later write installs
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:w 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1] [:w 0 1]]}]
+  interpretations: 0, clean: 0
+  [strict-serializable]: replica true []; specification [strict-serializable: no interpretation]
+    real Elle (id 18): valid? true, anomaly-types []
+  [serializable]: replica true []; specification [serializable: no interpretation]
+    real Elle (id 19): valid? true, anomaly-types []
+## value-hash-order-a: the same history with x's elements 1 and 2 swapped is value-hash-order-b
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:append 1 4]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:append 1 4]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 2] [:append 1 3]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 2] [:append 1 3]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 0 [2]]]}
+ {:process 4, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+ {:process 4, :type :ok, :f :txn, :value [[:r 1 [3 4]]]}]
+  interpretations: 0, clean: 0
+  [read-uncommitted]: replica false [G0]; specification [read-uncommitted: no interpretation]
+    real Elle (id 20): valid? false, anomaly-types ["G0"]
+## value-hash-order-b: value-hash-order-a with x's elements renamed
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 1 4]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 2] [:append 1 4]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 1] [:append 1 3]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 1] [:append 1 3]]}
+ {:process 2, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:r 0 [2]]]}
+ {:process 3, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 3, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 4, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+ {:process 4, :type :ok, :f :txn, :value [[:r 1 [3 4]]]}]
+  interpretations: 0, clean: 0
+  [read-uncommitted]: replica true []; specification [read-uncommitted: no interpretation]
+    real Elle (id 21): valid? true, anomaly-types []
+## register-initial-state-g-single: G-single in every interpretation; Elle reports G2-item
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:w 1 1]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 1 nil] [:w 1 2] [:w 0 1]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 nil] [:w 1 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 1 nil] [:w 1 2] [:w 0 1]]}]
+  interpretations: 2, clean: 2
+  [snapshot-isolation]: replica true []; specification [snapshot-isolation: violated in every interpretation]
+    real Elle (id 22): valid? true, anomaly-types []
+  [consistent-view]: replica true []; specification [consistent-view: violated in every interpretation]
+    real Elle (id 23): valid? true, anomaly-types []
+## search-type-recorded-as-other: a G1c-realtime cycle exists (T9 -wr-> T1 -rt-> T8 -ww-> T9); Elle names only strong-PL-2-cycle-exists
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 1 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:r 0 nil] [:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [2]] [:r 1 []]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 2]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}]
+  interpretations: 1, clean: 1
+  [strong-read-committed]: replica false [strong-PL-2-cycle-exists]; specification [strong-read-committed: violated in every interpretation]
+    real Elle (id 24): valid? false, anomaly-types ["strong-PL-2-cycle-exists"]
+  [strict-serializable]: replica false [G-single-item-realtime, strong-PL-2-cycle-exists]; specification [strict-serializable: violated in every interpretation]
+    real Elle (id 25): valid? false, anomaly-types ["G-single-item-realtime" "strong-PL-2-cycle-exists"]
+## info-may-have-aborted-2txn: read uncommitted is satisfiable; Elle reports G0
+[{:process 0, :type :invoke, :f :txn, :value [[:append 0 1] [:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 0 1] [:r 0 [2 1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 2] [:append 0 3]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 2] [:append 0 3]]}]
+  interpretations: 1, clean: 0
+  [read-uncommitted]: replica false [G0]; specification [read-uncommitted: satisfiable]
+    real Elle (id 26): valid? false, anomaly-types ["G0"]
+## process-skips-info-2txn: strong session read committed violated in every interpretation
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}]
+  interpretations: 2, clean: 1
+  [strong-session-read-committed]: replica true []; specification [strong-session-read-committed: violated in every interpretation]
+    real Elle (id 27): valid? true, anomaly-types []
+  [strong-read-committed]: replica false [G1c-realtime]; specification [strong-read-committed: violated in every interpretation]
+    real Elle (id 28): valid? false, anomaly-types ["G1c-realtime"]
+## register-info-write-read-early: violated in every interpretation; rw-register indexes only :ok writes (a TODO in its code)
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+ {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]
+  interpretations: 2, clean: 1
+  [strict-serializable]: replica true []; specification [strict-serializable: violated in every interpretation]
+    real Elle (id 29): valid? true, anomaly-types []
+## list-append-garbage-read: a read of an element nobody appended
+[{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:r 0 [7]]]}]
+  interpretations: 0, clean: 0
+  [strict-serializable]: replica throws AssertionError: No transaction wrote k = v (dirty-update-cases); specification [strict-serializable: no interpretation]
+    real Elle (id 30): throws java.lang.AssertionError: Assert failed: No transaction wrote 0 = 7

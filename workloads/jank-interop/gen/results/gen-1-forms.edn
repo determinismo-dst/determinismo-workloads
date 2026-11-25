@@ -1,0 +1,500 @@
+{:form (let [x 7] (max x 255)), :outcome [:value 255]}
+{:form (if (map? -0.0) \z (get (select-keys (frequencies (list 1 2)) [:a :b]) :x)), :outcome [:value nil]}
+{:form (if (seq? (let [x (quot -128 -2)] (+ x 256))) (get (frequencies (keys {:a 1, :b 2})) :c) {}), :outcome [:value {}]}
+{:form (compare 128 0), :outcome [:value 1]}
+{:form (if (vector? (get (assoc (group-by even? [1 1 1]) :c 2) :c)) (get (group-by odd? (interleave (list 1 2) [3 1 2])) :c) false), :outcome [:value false]}
+{:form (frequencies (keys (zipmap [:a :b] (partition 1 [1 2 3])))), :outcome [:value {:a 1, :b 1}]}
+{:form (vector? (some odd? (take 0 (filter even? [])))), :outcome [:value false]}
+{:form (frequencies (remove pos? [(first (vector 256)) 10])), :outcome [:value {}]}
+{:form (every? even? [1 2 3]), :outcome [:value false]}
+{:form (name :b), :outcome [:value "b"]}
+{:form [3 1 2], :outcome [:value [3 1 2]]}
+{:form 1.0E10, :outcome [:value 1.0E10]}
+{:form 3.0, :outcome [:value 3.0]}
+{:form false, :outcome [:value false]}
+{:form (every? even? []), :outcome [:value true]}
+{:form (if (keyword? (every? odd? (filter neg? (take 0 [0 1 2 3 4])))) (get {:a 1, :b 2} :c) 1.5), :outcome [:value 1.5]}
+{:form (nth (vector (count (sort-by identity [])) (min (quot 256 7) (inc (* 9223372036854775807 1)))) 0), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form (merge (merge {:a 1, :b 2} (frequencies (conj [3 1 2] 2))) (frequencies (remove even? (remove even? [0 -1 7 7])))), :outcome [:value {:a 1, :b 2, 3 1, 1 1, 2 2, -1 1, 7 2}]}
+{:form (let [x (min (max (count []) (nth (vector 256 128) 1)) (first (vector (nth (vector 3 256) 1))))] (+ x (min -128 7))), :outcome [:value 0]}
+{:form :a, :outcome [:value :a]}
+{:form (get {:k/v "x", :a [1]} :x), :outcome [:value nil]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (frequencies [(max 127 -128) (compare (- -1 0) 10)]), :outcome [:value {127 1, -1 1}]}
+{:form :b, :outcome [:value :b]}
+{:form (pr-str (some even? (drop 3 (mapv identity [1 2 3])))), :outcome [:value "nil"]}
+{:form (if (vector? (select-keys (merge {:a 1} (assoc {:a 1} :b 0)) [:a :b])) sym (clojure.string/lower-case (clojure.string/replace (clojure.string/join "," [1 2 3]) " " ""))), :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form (merge (group-by even? (partition 1 (list 1 2))) {:a 1, :b 2}), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form [0 1 2 3 4], :outcome [:value [0 1 2 3 4]]}
+{:form (get {} :x), :outcome [:value nil]}
+{:form (max (quot 7 7) 1000), :outcome [:value 1000]}
+{:form (count "é"), :outcome [:value 1]}
+{:form (filter pos? (conj [] 0)), :outcome [:value ()]}
+{:form -9223372036854775808, :outcome [:value -9223372036854775808]}
+{:form (every? odd? (take 1 (conj (partition-all 2 [1 2 3]) (nth (vector 1 9223372036854775807) 1)))), :outcome [:value true]}
+{:form {}, :outcome [:value {}]}
+{:form (even? (some odd? (filter pos? (mapv keyword? [0 1 2 3 4])))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form "x,y,z", :outcome [:value "x,y,z"]}
+{:form "x,y,z", :outcome [:value "x,y,z"]}
+{:form (map? true), :outcome [:value false]}
+{:form :x, :outcome [:value :x]}
+{:form (merge {:a 1, :b 2} {:a 1, :b 2}), :outcome [:value {:a 1, :b 2}]}
+{:form (let [x (reduce + 0 [1 1 1])] (+ x (max (compare 255 -1) (nth (vector (compare 127 0) (reduce + 0 (list 1 2))) 1)))), :outcome [:value 6]}
+{:form \z, :outcome [:value \z]}
+{:form (assoc (select-keys {} [:a :b]) :x 256), :outcome [:value {:x 256}]}
+{:form 1, :outcome [:value 1]}
+{:form (let [x (max (inc (reduce + 0 [1 2 3])) (reduce + 0 (keys {:a 1})))] (+ x (reduce + 0 [3 1 2]))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (clojure.string/join "-" (list 1 2)), :outcome [:value "1-2"]}
+{:form (get (dissoc (select-keys {:k/v "x", :a [1]} []) :c) :x), :outcome [:value nil]}
+{:form (get (group-by pos? (list 1 2)) :a), :outcome [:value nil]}
+{:form (merge (select-keys (frequencies (concat (list 1 2) [])) [:a :b]) (group-by pos? [])), :outcome [:value {}]}
+{:form (odd? {:a 1, :b 2}), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (let [x (reduce + 0 [0 1 2 3 4])] (max x 128)), :outcome [:value 128]}
+{:form (if (nil? (vector? (coll? (every? pos? [])))) (let [x 128] (+ x (quot (count "a b") 1))) (list 1 2)), :outcome [:value (1 2)]}
+{:form (clojure.string/replace "a b" "a" "X"), :outcome [:value "X b"]}
+{:form :a, :outcome [:value :a]}
+{:form [0 1 2 3 4], :outcome [:value [0 1 2 3 4]]}
+{:form true, :outcome [:value true]}
+{:form (dec (reduce + 0 [(reduce + 0 [0 1 2 3 4]) (count "abc") (min 256 0)])), :outcome [:value 12]}
+{:form \z, :outcome [:value \z]}
+{:form \a, :outcome [:value \a]}
+{:form (min 9223372036854775807 (dec (first (vector (+ 255 7))))), :outcome [:value 261]}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (group-by even? (remove odd? (filter pos? [3 1 2])))) (merge (assoc (select-keys {:k/v "x", :a [1]} [:a]) :a -1) (zipmap [:a] (list 1 2))) (some odd? [0 -1 7 7])), :outcome [:value true]}
+{:form (every? even? (butlast (partition 1 (concat [1 2 3] [])))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form \z, :outcome [:value \z]}
+{:form (if (map? (some even? [3 1 2])) 0.1 (some odd? (map inc (into #{} [1 2 3])))), :outcome [:value true]}
+{:form (if (seq? :c) (get {:a 1} :b) ((fn [x] (and (number? x) (> x 2))) (let [x (max 255 9223372036854775807)] (+ x (min 1000 9223372036854775807))))), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form (let [x (min (count "") (compare 1000 (min 255 255)))] (* x (reduce + 0 []))), :outcome [:value 0]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form -3, :outcome [:value -3]}
+{:form (seq? "abc"), :outcome [:value false]}
+{:form (get {:a 1} :x), :outcome [:value nil]}
+{:form (if ((fn [x] (and (number? x) (> x 2))) 127) (let [x (max 7 (reduce + 0 (list 1 2)))] (max x 0)) \a), :outcome [:value 7]}
+{:form (let [x 1] (max x (quot (nth (vector (first (vector -3)) (compare 127 0)) 0) 1))), :outcome [:value 1]}
+{:form (let [x (count (pr-str (let [x 1000] (max x 1000))))] (+ x (dec (quot 9223372036854775807 3)))), :outcome [:value 3074457345618258605]}
+{:form sym, :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form "é", :outcome [:value "é"]}
+{:form (get (select-keys (frequencies (remove even? [1 1 1])) [:a]) :c), :outcome [:value nil]}
+{:form ((fn [x] (and (number? x) (> x 2))) (let [x 128] (+ x (inc (max 3 1))))), :outcome [:value true]}
+{:form -9223372036854775808, :outcome [:value -9223372036854775808]}
+{:form (if (number? 1000) (pos? (even? (get {} :a))) "a"), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (some odd? [256]), :outcome [:value nil]}
+{:form (concat (vec (concat (keys {:a 1, :b 2}) (map dec [0 1 2 3 4]))) (butlast (into [] (into #{} [0 -1 7 7])))), :outcome [:value (:a :b -1 0 1 2 3 0 7)]}
+{:form (if ((fn [x] (and (number? x) (> x 2))) \z) \z :a), :outcome [:value :a]}
+{:form (dissoc {:a 1, :b 2} :x), :outcome [:value {:a 1, :b 2}]}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (select-keys (frequencies (mapv (fn [x] (if (odd? x) :odd :even)) [1 2 3])) [:a])) (dec 1000) \a), :outcome [:value \a]}
+{:form (first (vector (first (vector (dec (min 1 128)))))), :outcome [:value 0]}
+{:form (dissoc {:a 1} :a), :outcome [:value {}]}
+{:form (let [x (max -3 (dec 1000))] (max x 9223372036854775807)), :outcome [:value 9223372036854775807]}
+{:form (select-keys {:k/v "x", :a [1]} [:a]), :outcome [:value {:a [1]}]}
+{:form (if (seq? (get (select-keys (zipmap [:a] [3 1 2]) []) :b)) 127 (zero? (clojure.string/join "," (conj (list 1 2) 1000)))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (neg? (get (group-by pos? (mapv (fn [x] [x x]) [3 1 2])) :c)), :outcome [:throws "java.lang.ClassCastException"]}
+{:form [], :outcome [:value []]}
+{:form [0 1 2 3 4], :outcome [:value [0 1 2 3 4]]}
+{:form (dissoc {:k/v "x", :a [1]} :c), :outcome [:value {:k/v "x", :a [1]}]}
+{:form nil, :outcome [:value nil]}
+{:form :a, :outcome [:value :a]}
+{:form 1.0E-5, :outcome [:value 1.0E-5]}
+{:form (number? (min (min 3 (max 9223372036854775807 -9223372036854775808)) (- 255 -128))), :outcome [:value true]}
+{:form (let [x -3] (max x (count (into #{} (interleave [1 2 3] (list 1 2)))))), :outcome [:value 2]}
+{:form (even? (* 255 (count [0 1 2 3 4]))), :outcome [:value false]}
+{:form (zero? (into (list) (concat (list 1 2) (keys {:k/v "x", :a [1]})))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form 1000, :outcome [:value 1000]}
+{:form :x, :outcome [:value :x]}
+{:form 1.5, :outcome [:value 1.5]}
+{:form (get (select-keys (zipmap [:a :b] [3 1 2]) [:a :b]) :b), :outcome [:value 1]}
+{:form [1 1 1], :outcome [:value [1 1 1]]}
+{:form (let [x (first (vector (* (mod -128 7) (nth (vector 0 9223372036854775807) 1))))] (max x (max -3 (count "a b")))), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form (zipmap [:a :b] [0 1 2 3 4]), :outcome [:value {:a 0, :b 1}]}
+{:form (let [x (nth (vector (first (vector (count "a"))) (compare (rem 255 -2) 9223372036854775807)) 1)] (max x (count [0 1 2 3 4]))), :outcome [:value 5]}
+{:form (let [x (mod 255 2)] (max x (first (vector (compare (* 255 0) (nth (vector 128 -1) 1)))))), :outcome [:value 1]}
+{:form (reduce + 0 [1 2 3]), :outcome [:value 6]}
+{:form (set? (nth (vector 1000 255) 1)), :outcome [:value false]}
+{:form (min (nth (vector (count "Ab-C") (count " t ")) 1) (count (clojure.string/trim (str (get {} :c) (map? "Ab-C"))))), :outcome [:value 3]}
+{:form (group-by odd? (concat (into #{} (take 1 [3 1 2])) (list 1 2))), :outcome [:value {true [3 1], false [2]}]}
+{:form (get {:k/v "x", :a [1]} :x), :outcome [:value nil]}
+{:form (if (coll? -9223372036854775808) (merge (dissoc (dissoc {} :k/v) :b) (select-keys (assoc {:a 1, :b 2} :k/v 2) [:a])) (get {} :b)), :outcome [:value nil]}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (every? pos? [1 2 3])) true (nil? :b)), :outcome [:value false]}
+{:form (every? odd? []), :outcome [:value true]}
+{:form (every? odd? (partition 1 (drop 2 (conj (list 1 2) 0)))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form -1, :outcome [:value -1]}
+{:form {:a 1}, :outcome [:value {:a 1}]}
+{:form 1.0E-5, :outcome [:value 1.0E-5]}
+{:form (let [x (first (vector 2))] (+ x (nth (vector 3 -1) 0))), :outcome [:value 5]}
+{:form (if (map? [0 -1 7 7]) (get {:a 1} :k/v) (zipmap [:a :b :c] (mapv str (interleave [0 -1 7 7] [0 1 2 3 4])))), :outcome [:value {:a "0", :b "0", :c "-1"}]}
+{:form (- 9223372036854775807 (reduce + 0 (map inc (conj (list 1 2) 128)))), :outcome [:value 9223372036854775673]}
+{:form (get (assoc (select-keys {:a 1} [:a :b]) :c 1) :x), :outcome [:value nil]}
+{:form :x, :outcome [:value :x]}
+{:form [0 -1 7 7], :outcome [:value [0 -1 7 7]]}
+{:form (group-by odd? (interleave [0 1 2 3 4] (into [] [1 1 1]))), :outcome [:value {false [0 2], true [1 1 1 1]}]}
+{:form 1000, :outcome [:value 1000]}
+{:form (some pos? [3 1 2]), :outcome [:value true]}
+{:form (if (pos? {:k/v "x", :a [1]}) (max 9223372036854775807 (count (filter even? [3 1 2]))) (nil? (pos? (filter even? [0 1 2 3 4])))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (select-keys {} []), :outcome [:value {}]}
+{:form (count "a b"), :outcome [:value 3]}
+{:form (compare (* 255 (* (count "a") 1)) (nth (vector (dec 1000) 7) 1)), :outcome [:value 1]}
+{:form (select-keys (dissoc (assoc (frequencies [0 -1 7 7]) :b 10) :b) [:a]), :outcome [:value {}]}
+{:form (get {:k/v "x", :a [1]} :a), :outcome [:value [1]]}
+{:form 3.0, :outcome [:value 3.0]}
+{:form (select-keys (merge (group-by odd? (remove odd? [1 1 1])) (group-by even? (sort [1 2 3]))) [:a :b]), :outcome [:value {}]}
+{:form (drop 1 (keys (assoc (zipmap [:a] [0 -1 7 7]) :b (* 9223372036854775807 -9223372036854775808)))), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form (zipmap [:a :b :c] [1 2 3]), :outcome [:value {:a 1, :b 2, :c 3}]}
+{:form (keyword? :x), :outcome [:value true]}
+{:form \z, :outcome [:value \z]}
+{:form (let [x (min 255 (inc -128))] (max x (compare (reduce + 0 [0 1 2 3 4]) (- 9223372036854775807 (count "Ab-C"))))), :outcome [:value -1]}
+{:form (name :c), :outcome [:value "c"]}
+{:form (quot 7 7), :outcome [:value 1]}
+{:form {:a 1}, :outcome [:value {:a 1}]}
+{:form (dissoc (zipmap [:a] [0 1 2 3 4]) :a), :outcome [:value {}]}
+{:form 0.1, :outcome [:value 0.1]}
+{:form (merge (zipmap [:a :b] (partition 1 (vec [1 1 1]))) {:a 1}), :outcome [:value {:a 1, :b (1)}]}
+{:form (inc (first (vector (- (mod -3 3) 127)))), :outcome [:value -126]}
+{:form true, :outcome [:value true]}
+{:form (count (clojure.string/reverse "a")), :outcome [:value 1]}
+{:form (clojure.string/join "-" (conj (drop 1 (filter even? [0 -1 7 7])) (nth (vector (dec 3) -3) 1))), :outcome [:value "-3"]}
+{:form :x, :outcome [:value :x]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (partition-all 1 (sort (map (fn [x] (* x 2)) (interleave [] [1 2 3])))), :outcome [:value ()]}
+{:form 3.0, :outcome [:value 3.0]}
+{:form false, :outcome [:value false]}
+{:form (some odd? (seq (into [] (map dec [3 1 2])))), :outcome [:value true]}
+{:form ((fn [x] (and (number? x) (> x 2))) (assoc (assoc {:k/v "x", :a [1]} :k/v (nth (vector 255 256) 0)) :c (count "a"))), :outcome [:value false]}
+{:form (take 2 (remove pos? (partition 1 (filter zero? [1 1 1])))), :outcome [:value ()]}
+{:form :x, :outcome [:value :x]}
+{:form (every? odd? [0 1 2 3 4]), :outcome [:value false]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (get (assoc (group-by odd? (into (list) [0 1 2 3 4])) :a (nth (vector 2 (count (list 1 2))) 1)) :b), :outcome [:value nil]}
+{:form (let [x (reduce + 0 [0 1 2 3 4])] (max x (reduce + 0 (keys {:a 1})))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form :x, :outcome [:value :x]}
+{:form (clojure.string/join "-" (conj (into #{} (mapv inc [])) 9223372036854775807)), :outcome [:value "9223372036854775807"]}
+{:form (name :a), :outcome [:value "a"]}
+{:form (if (even? (coll? :a)) "a" (let [x (count (interleave [0 1 2 3 4] [1 2 3]))] (* x (compare 256 -1)))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (some pos? (list 1 2)), :outcome [:value true]}
+{:form 0.0, :outcome [:value 0.0]}
+{:form \z, :outcome [:value \z]}
+{:form (vector? sym), :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form -0.0, :outcome [:value -0.0]}
+{:form (if (pos? {:a 1}) (map? (if (set? [1 1 1]) :b (let [x 128] (max x 9223372036854775807)))) (let [x -3] (+ x 3))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (interleave (interleave (vec (interleave [] [0 1 2 3 4])) (sort-by - [])) (partition-all 3 (into #{} [1 1 1]))), :outcome [:value ()]}
+{:form (some pos? (interleave (conj (butlast [0 1 2 3 4]) (nth (vector 127 -1) 0)) [1 2 3])), :outcome [:value true]}
+{:form (every? odd? [1 1 1]), :outcome [:value true]}
+{:form 0.1, :outcome [:value 0.1]}
+{:form (let [x (min (compare (first (vector 2)) 1) (compare (dec -128) (nth (vector 9223372036854775807 -1) 1)))] (* x (reduce + 0 (mapv (fn [x] [x x]) (into (list) [1 2 3]))))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form {:a 1, :b 2}, :outcome [:value {:a 1, :b 2}]}
+{:form {}, :outcome [:value {}]}
+{:form (get {:a 1, :b 2} :a), :outcome [:value 1]}
+{:form (clojure.string/join "" (into (list) (interleave [1 1 1] (partition-all 2 [1 1 1])))), :outcome [:value "clojure.lang.LazySeq@201clojure.lang.LazySeq@3e11"]}
+{:form \a, :outcome [:value \a]}
+{:form (clojure.string/join "" (interleave (mapv inc (sort-by - [1 2 3])) [0 -1 7 7])), :outcome [:value "403-127"]}
+{:form (name :b), :outcome [:value "b"]}
+{:form :c, :outcome [:value :c]}
+{:form (frequencies (conj (take 3 [1 1 1]) (min (first (vector 3)) (count [0 -1 7 7])))), :outcome [:value {3 1, 1 3}]}
+{:form sym, :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form -2.25, :outcome [:value -2.25]}
+{:form (assoc (group-by pos? (sort-by identity (into (list) [3 1 2]))) :b 0), :outcome [:value {true [1 2 3], :b 0}]}
+{:form (clojure.string/upper-case (subs "é-è" 0)), :outcome [:value "É-È"]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form nil, :outcome [:value nil]}
+{:form (some even? (take 0 (remove pos? (partition-all 3 [0 1 2 3 4])))), :outcome [:value nil]}
+{:form (drop 3 (rest [0 1 2 3 4])), :outcome [:value (4)]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (number? (map? (let [x 255] (max x (count "abc"))))), :outcome [:value false]}
+{:form {:a 1}, :outcome [:value {:a 1}]}
+{:form (get (select-keys (group-by odd? [0 -1 7 7]) [:a :b]) :k/v), :outcome [:value nil]}
+{:form \a, :outcome [:value \a]}
+{:form (if (odd? (vector? (get {:a 1, :b 2} :a))) nil (reduce + 0 (keys (frequencies [1 1 1])))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form [(nth (vector (reduce + 0 [0 -1 7 7]) -3) 1) 7], :outcome [:value [-3 7]]}
+{:form (get {} :c), :outcome [:value nil]}
+{:form (get {:a 1, :b 2} :a), :outcome [:value 1]}
+{:form \z, :outcome [:value \z]}
+{:form (filter neg? (rest [0 1 2 3 4])), :outcome [:value ()]}
+{:form (let [x (* 127 (dec (min 0 1)))] (max x -1)), :outcome [:value -1]}
+{:form (let [x (inc (* (first (vector -1)) (nth (vector 1000 -1) 1)))] (max x (compare 9223372036854775807 (count (map inc [1 1 1]))))), :outcome [:value 2]}
+{:form (seq? (interleave [3 1 2] (mapv (fn [x] [x x]) (mapv str (list 1 2))))), :outcome [:value true]}
+{:form \z, :outcome [:value \z]}
+{:form (pos? sym), :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form (let [x (count [0 -1 7 7])] (* x (reduce + 0 (remove pos? (filter neg? [3 1 2]))))), :outcome [:value 0]}
+{:form :x, :outcome [:value :x]}
+{:form (nil? 9223372036854775807), :outcome [:value false]}
+{:form nil, :outcome [:value nil]}
+{:form "a b", :outcome [:value "a b"]}
+{:form :b, :outcome [:value :b]}
+{:form (str (count (name :b)) (clojure.string/join "" (remove pos? [0 -1 7 7]))), :outcome [:value "10-1"]}
+{:form (if (number? (count [9223372036854775807])) :a (coll? :k/v)), :outcome [:value :a]}
+{:form (let [x (count (clojure.string/replace "abc" "b" ""))] (max x (max 2 2))), :outcome [:value 2]}
+{:form (inc (count (name :a))), :outcome [:value 2]}
+{:form (some odd? [0 -1 7 7]), :outcome [:value true]}
+{:form [0 1 2 3 4], :outcome [:value [0 1 2 3 4]]}
+{:form (dissoc (merge {} (zipmap [:a :b :c] (interleave [1 2 3] [3 1 2]))) :a), :outcome [:value {:b 3, :c 2}]}
+{:form (assoc {:a 1} :a (first (vector (- 1000 -3)))), :outcome [:value {:a 1003}]}
+{:form (if (number? 127) (partition-all 2 (partition 3 (filter pos? [1 2 3]))) :a), :outcome [:value (((1 2 3)))]}
+{:form (some even? (rest [0 -1 7 7])), :outcome [:value nil]}
+{:form -2.25, :outcome [:value -2.25]}
+{:form (clojure.string/upper-case (name :b)), :outcome [:value "B"]}
+{:form (coll? (map (fn [x] (* x 2)) [3 1 2])), :outcome [:value true]}
+{:form "é", :outcome [:value "é"]}
+{:form (sort-by identity [127 (nth (vector (first (vector 0)) (count "Ab-C")) 1) 128]), :outcome [:value (4 127 128)]}
+{:form (compare -9223372036854775808 (+ (+ (count "a b") (min 128 2)) 128)), :outcome [:value -1]}
+{:form (get (select-keys {:a 1, :b 2} [:a :b]) :b), :outcome [:value 2]}
+{:form (compare (- (reduce + 0 (partition-all 3 [1 2 3])) 1) 255), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (into [] (remove even? (rest (keys {})))), :outcome [:value []]}
+{:form nil, :outcome [:value nil]}
+{:form (if (neg? (- (count (sort-by identity [0 -1 7 7])) -3)) \a (let [x 10] (+ x -3))), :outcome [:value 7]}
+{:form 7, :outcome [:value 7]}
+{:form [1 1 1], :outcome [:value [1 1 1]]}
+{:form (some odd? (filter neg? [0 -1 7 7])), :outcome [:value true]}
+{:form (let [x (reduce + 0 [(dec 255)])] (+ x -3)), :outcome [:value 251]}
+{:form (inc (inc (dec -3))), :outcome [:value -2]}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (let [x 256] (max x -3))) (if (keyword? (if (coll? sym) (if ((fn [x] (and (number? x) (> x 2))) "a") {:a 1} "") (quot 1000 3))) (clojure.string/replace "a" "a" "X") \z) (let [x -9223372036854775808] (max x (* (inc -1) (min -3 128))))), :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form (nth (vector 2 (reduce + 0 (into #{} (sort-by identity [0 -1 7 7])))) 1), :outcome [:value 6]}
+{:form (keys {:a 1, :b 2}), :outcome [:value (:a :b)]}
+{:form :c, :outcome [:value :c]}
+{:form (every? even? [1 1 1]), :outcome [:value false]}
+{:form (coll? :c), :outcome [:value false]}
+{:form "a", :outcome [:value "a"]}
+{:form (zero? (let [x 9223372036854775807] (* x (count (clojure.string/reverse "a b"))))), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form [(min (reduce + 0 [1 2 3]) -1) (count (list 1 2))], :outcome [:value [-1 2]]}
+{:form (let [x (count " t ")] (max x 127)), :outcome [:value 127]}
+{:form (compare 10 (count (partition 1 [1 1 1]))), :outcome [:value 1]}
+{:form \z, :outcome [:value \z]}
+{:form 0, :outcome [:value 0]}
+{:form (some pos? (concat [1 2 3] (filter zero? (map inc [])))), :outcome [:value true]}
+{:form (let [x (max (count (subs "hello" 1)) -9223372036854775808)] (* x (+ (- 9223372036854775807 (min 256 -1)) (compare -9223372036854775808 (count [1 1 1]))))), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form {:a 1, :b 2}, :outcome [:value {:a 1, :b 2}]}
+{:form (zipmap [:a :b :c] [128 1]), :outcome [:value {:a 128, :b 1}]}
+{:form (nth (vector (dec 127) (compare 255 (count (pr-str (list 1 2))))) 0), :outcome [:value 126]}
+{:form 3, :outcome [:value 3]}
+{:form :x, :outcome [:value :x]}
+{:form 1.0E-5, :outcome [:value 1.0E-5]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (reduce + 0 (sort (take 3 (conj [1 2 3] -9223372036854775808)))), :outcome [:value 6]}
+{:form sym, :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form (let [x 256] (+ x (count (str \a (zero? (zero? (if (coll? "") [1 1 1] :b))))))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (dec (quot (count (partition 1 [1 1 1])) 1)), :outcome [:value 2]}
+{:form (if (seq? \a) (let [x 256] (+ x (quot 3 7))) (nil? (every? even? (conj [0 1 2 3 4] 9223372036854775807)))), :outcome [:value false]}
+{:form (clojure.string/replace "" " " "X"), :outcome [:value ""]}
+{:form (str true -0.0), :outcome [:value "true-0.0"]}
+{:form :c, :outcome [:value :c]}
+{:form {:a 1, :b 2}, :outcome [:value {:a 1, :b 2}]}
+{:form (string? (merge {:a 1} (zipmap [:a :b :c] (interleave [1 2 3] [1 1 1])))), :outcome [:value false]}
+{:form (some pos? [1 1 1]), :outcome [:value true]}
+{:form (reduce + 0 [0 1 2 3 4]), :outcome [:value 10]}
+{:form nil, :outcome [:value nil]}
+{:form (select-keys {:a 1} []), :outcome [:value {}]}
+{:form 127, :outcome [:value 127]}
+{:form (let [x (inc (dec (quot -128 2)))] (+ x (compare (nth (vector (nth (vector 128 128) 1) (compare 0 -9223372036854775808)) 0) (compare (compare 2 1) (nth (vector 9223372036854775807 256) 1))))), :outcome [:value -63]}
+{:form (first (vector 127)), :outcome [:value 127]}
+{:form (clojure.string/lower-case (clojure.string/replace "abc" "a" "X")), :outcome [:value "xbc"]}
+{:form (map? (get (merge {:a 1, :b 2} (zipmap [:a] [3 1 2])) :b)), :outcome [:value false]}
+{:form (keyword? (clojure.string/trim "a")), :outcome [:value false]}
+{:form (assoc (assoc (group-by odd? (concat [0 -1 7 7] [0 1 2 3 4])) :b (* 2 (nth (vector -9223372036854775808 7) 1))) :x (compare 10 (dec (- -3 2)))), :outcome [:value {false [0 0 2 4], true [-1 7 7 1 3], :b 14, :x 1}]}
+{:form (get (group-by pos? (concat (remove even? [0 -1 7 7]) (partition 2 [0 -1 7 7]))) :x), :outcome [:throws "java.lang.ClassCastException"]}
+{:form :c, :outcome [:value :c]}
+{:form (let [x (count (list 1 2))] (* x (+ (dec 2) (inc -9223372036854775808)))), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form (neg? \z), :outcome [:throws "java.lang.ClassCastException"]}
+{:form [], :outcome [:value []]}
+{:form {:k/v "x", :a [1]}, :outcome [:value {:k/v "x", :a [1]}]}
+{:form (butlast (rest (map (fn [x] (* x 2)) []))), :outcome [:value nil]}
+{:form "", :outcome [:value ""]}
+{:form 128, :outcome [:value 128]}
+{:form (let [x (rem (quot 1000 2) 3)] (+ x (mod 7 2))), :outcome [:value 3]}
+{:form (assoc {:a 1, :b 2} :a (compare 7 (reduce + 0 (drop 2 [])))), :outcome [:value {:a 1, :b 2}]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (if (seq? (every? even? (partition-all 2 (keys {})))) (get (assoc (frequencies (list 1 2)) :k/v (first (vector 10))) :b) (get (frequencies (sort-by - [0 -1 7 7])) :k/v)), :outcome [:value nil]}
+{:form (partition 1 [1 2 3]), :outcome [:value ((1) (2) (3))]}
+{:form (frequencies [0 -1 7 7]), :outcome [:value {0 1, -1 1, 7 2}]}
+{:form (some odd? [3]), :outcome [:value true]}
+{:form (get (dissoc (dissoc (group-by odd? (list 1 2)) :a) :c) :b), :outcome [:value nil]}
+{:form 127, :outcome [:value 127]}
+{:form (conj (concat (filter pos? [0 -1 7 7]) [0 -1 7 7]) (first (vector (max (reduce + 0 [1 1 1]) -3)))), :outcome [:value (3 7 7 0 -1 7 7)]}
+{:form \z, :outcome [:value \z]}
+{:form true, :outcome [:value true]}
+{:form true, :outcome [:value true]}
+{:form (str (nil? :k/v) (mod (count (clojure.string/replace "x,y,z" "b" "X")) 3)), :outcome [:value "false2"]}
+{:form 255, :outcome [:value 255]}
+{:form \a, :outcome [:value \a]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (clojure.string/upper-case ""), :outcome [:value ""]}
+{:form (clojure.string/upper-case (pr-str " t ")), :outcome [:value "\" T \""]}
+{:form (some pos? (partition 2 (drop 0 (into [] (list 1 2))))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (let [x 1000] (max x (reduce + 0 (vec (mapv dec [0 1 2 3 4]))))), :outcome [:value 1000]}
+{:form (if (some? :c) (if (keyword? 0) "x,y,z" (frequencies (conj [] 255))) (str (sort-by - [1 2 3]) (let [x (count [0 1 2 3 4])] (* x (inc -3))))), :outcome [:value {255 1}]}
+{:form (first (vector 127)), :outcome [:value 127]}
+{:form false, :outcome [:value false]}
+{:form (neg? "a"), :outcome [:throws "java.lang.ClassCastException"]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (let [x 128] (max x (- 7 7))), :outcome [:value 128]}
+{:form -3, :outcome [:value -3]}
+{:form (get {:a 1, :b 2} :c), :outcome [:value nil]}
+{:form (map? (some even? [])), :outcome [:value false]}
+{:form (let [x 1000] (max x (count (clojure.string/join "," (take 2 (list 1 2)))))), :outcome [:value 1000]}
+{:form (some pos? (reverse (interleave [0 -1 7 7] (partition 2 (list 1 2))))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form 0, :outcome [:value 0]}
+{:form 256, :outcome [:value 256]}
+{:form 0.1, :outcome [:value 0.1]}
+{:form (if (map? 1000) 1000 (some pos? (into #{} (mapv identity [1 2 3])))), :outcome [:value true]}
+{:form (get (select-keys (zipmap [:a] (remove even? [1 1 1])) []) :a), :outcome [:value nil]}
+{:form "a b", :outcome [:value "a b"]}
+{:form :a, :outcome [:value :a]}
+{:form (string? (let [x (quot (count [0 -1 7 7]) -2)] (max x (+ (first (vector 127)) (count "a b"))))), :outcome [:value false]}
+{:form :x, :outcome [:value :x]}
+{:form (some odd? [0 -1 7 7]), :outcome [:value true]}
+{:form (get (dissoc {:a 1, :b 2} :c) :x), :outcome [:value nil]}
+{:form (clojure.string/join "-" [3 1 2]), :outcome [:value "3-1-2"]}
+{:form (odd? (clojure.string/replace "Ab-C" "a" "")), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (neg? {:a 1, :b 2}), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (concat [0 -1 7 7] (keys {:k/v "x", :a [1]})), :outcome [:value (0 -1 7 7 :k/v :a)]}
+{:form (take 1 (sort-by - (interleave (list 1 2) (interleave [0 1 2 3 4] [1 1 1])))), :outcome [:value (2)]}
+{:form (frequencies (partition-all 1 (list 1 2))), :outcome [:value {(1) 1, (2) 1}]}
+{:form (get {:a 1, :b 2} :b), :outcome [:value 2]}
+{:form (sort-by identity (distinct [])), :outcome [:value ()]}
+{:form (string? (every? pos? (conj (mapv dec (list 1 2)) (first (vector -128))))), :outcome [:value false]}
+{:form (dec (first (vector (nth (vector (count "") 9223372036854775807) 1)))), :outcome [:value 9223372036854775806]}
+{:form "x,y,z", :outcome [:value "x,y,z"]}
+{:form (compare (reduce + 0 (map dec [3 1 2])) (min (+ (quot -3 7) (+ 10 -1)) (count (name :c)))), :outcome [:value 1]}
+{:form (get (assoc (dissoc (select-keys {} [:a :b]) :k/v) :a 127) :b), :outcome [:value nil]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form "abc", :outcome [:value "abc"]}
+{:form (get (assoc {} :x (nth (vector (max -9223372036854775808 2) (first (vector 7))) 1)) :b), :outcome [:value nil]}
+{:form (let [x (max (first (vector (quot 127 2))) (inc (compare -1 0)))] (max x 127)), :outcome [:value 127]}
+{:form (frequencies (mapv keyword? (filter neg? (remove even? [0 -1 7 7])))), :outcome [:value {false 1}]}
+{:form (let [x -128] (+ x (nth (vector (count (pr-str (if (set? nil) 0 0))) 1000) 1))), :outcome [:value 872]}
+{:form :b, :outcome [:value :b]}
+{:form (if (nil? (+ 3 0)) (seq? (subs "abcdef" 0)) (clojure.string/replace "a" "b" "X")), :outcome [:value "a"]}
+{:form (get (select-keys {:k/v "x", :a [1]} []) :k/v), :outcome [:value nil]}
+{:form (get (assoc (merge {} (assoc {:a 1} :k/v 0)) :a (rem 10 7)) :a), :outcome [:value 3]}
+{:form (if (set? :b) (nth (vector (mod (min 256 127) -2) (reduce + 0 (drop 2 [1 1 1]))) 1) (let [x (count (concat [1 2 3] [1 2 3]))] (+ x (inc (first (vector 1000)))))), :outcome [:value 1007]}
+{:form (clojure.string/join "," (butlast (filter even? []))), :outcome [:value ""]}
+{:form (get (select-keys (merge (assoc {} :b -128) {:a 1, :b 2}) [:a :b]) :k/v), :outcome [:value nil]}
+{:form (clojure.string/join "," [3 1 2]), :outcome [:value "3,1,2"]}
+{:form 128, :outcome [:value 128]}
+{:form sym, :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form (let [x (reduce + 0 (filter even? [3 1 2]))] (+ x (* 127 (count "é")))), :outcome [:value 129]}
+{:form false, :outcome [:value false]}
+{:form (str (some? (if (pos? (string? (every? pos? [3 1 2]))) (compare -1 -3) [0 -1 7 7])) (compare (- (count (list 1 2)) (count "a")) (dec (count [3 1 2])))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (let [x 127] (+ x (quot 3 7))), :outcome [:value 127]}
+{:form (every? pos? [1 1 1]), :outcome [:value true]}
+{:form (if (map? (some even? (mapv identity [0 -1 7 7]))) (every? even? [3 1 2]) "é"), :outcome [:value "é"]}
+{:form (dec (count (clojure.string/join "-" (partition-all 1 (list 1 2))))), :outcome [:value 46]}
+{:form (name :x), :outcome [:value "x"]}
+{:form (partition 2 (mapv (fn [x] [x x]) [1 2 3])), :outcome [:value (([1 1] [2 2]))]}
+{:form (remove even? (interleave (interleave (keys {:k/v "x", :a [1]}) (sort-by - [3 1 2])) [1 1 1])), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form :a, :outcome [:value :a]}
+{:form (dec 1000), :outcome [:value 999]}
+{:form {}, :outcome [:value {}]}
+{:form (group-by odd? (map dec (remove pos? (sort-by - [1 1 1])))), :outcome [:value {}]}
+{:form (set? 0.0), :outcome [:value false]}
+{:form \a, :outcome [:value \a]}
+{:form :c, :outcome [:value :c]}
+{:form :x, :outcome [:value :x]}
+{:form :c, :outcome [:value :c]}
+{:form :b, :outcome [:value :b]}
+{:form (get (dissoc {:k/v "x", :a [1]} :c) :a), :outcome [:value [1]]}
+{:form (if (vector? (coll? (some? (every? even? [3 1 2])))) (odd? \a) :k/v), :outcome [:value :k/v]}
+{:form (get {:a 1} :x), :outcome [:value nil]}
+{:form (every? even? (keys (assoc (assoc {:k/v "x", :a [1]} :b 256) :a (- -1 128)))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (get (merge (zipmap [:a :b :c] (interleave [0 1 2 3 4] [3 1 2])) (merge {} (frequencies [1 2 3]))) :k/v), :outcome [:value nil]}
+{:form 1, :outcome [:value 1]}
+{:form (if (even? (every? pos? (interleave (mapv inc [0 1 2 3 4]) (into (list) [])))) (conj (conj [1 2 3] (compare -3 3)) -3) (even? (neg? (if (even? [3 1 2]) false (get {:a 1, :b 2} :a))))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form :b, :outcome [:value :b]}
+{:form (vector? (zipmap [:a :b] (sort-by identity [1 1 1]))), :outcome [:value false]}
+{:form :c, :outcome [:value :c]}
+{:form (odd? (count "")), :outcome [:value false]}
+{:form (clojure.string/join "-" [(count (mapv dec [1 1 1])) (nth (vector 9223372036854775807 (inc -3)) 0) (inc 0)]), :outcome [:value "3-9223372036854775807-1"]}
+{:form 10, :outcome [:value 10]}
+{:form :x, :outcome [:value :x]}
+{:form (let [x (mod -128 3)] (max x 255)), :outcome [:value 255]}
+{:form :b, :outcome [:value :b]}
+{:form (first (vector (min (count (clojure.string/replace "é" " " "X")) 10))), :outcome [:value 1]}
+{:form (some even? [128 (compare -3 (first (vector -9223372036854775808)))]), :outcome [:value true]}
+{:form nil, :outcome [:value nil]}
+{:form (vector? (get {:a 1, :b 2} :x)), :outcome [:value false]}
+{:form (seq? (clojure.string/join "," (into #{} (filter odd? [0 1 2 3 4])))), :outcome [:value false]}
+{:form (filter odd? [0 1 2 3 4]), :outcome [:value (1 3)]}
+{:form (pos? true), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (let [x (rem 10 3)] (max x 127)), :outcome [:value 127]}
+{:form {:a 1, :b 2}, :outcome [:value {:a 1, :b 2}]}
+{:form (reduce + 0 (map dec [1 2 3])), :outcome [:value 3]}
+{:form (map inc [0 -1 7 7]), :outcome [:value (1 0 8 8)]}
+{:form [(reduce + 0 [0 1 2 3 4])], :outcome [:value [10]]}
+{:form false, :outcome [:value false]}
+{:form (every? odd? []), :outcome [:value true]}
+{:form (subs "é-è" 2), :outcome [:value "è"]}
+{:form (mapv (fn [x] [x x]) [1 2 3]), :outcome [:value [[1 1] [2 2] [3 3]]]}
+{:form (let [x -3] (max x -128)), :outcome [:value -3]}
+{:form (number? (if (number? (partition 2 [0 -1 7 7])) (every? odd? (mapv identity [0 -1 7 7])) \z)), :outcome [:value false]}
+{:form (map? "a"), :outcome [:value false]}
+{:form (get {} :c), :outcome [:value nil]}
+{:form true, :outcome [:value true]}
+{:form (pos? (number? (let [x 7] (+ x (min 2 127))))), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (if (set? (* (quot 9223372036854775807 -2) 3)) (partition-all 1 (conj (conj [3 1 2] -9223372036854775808) (rem 2 1))) false), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form (first (vector 1)), :outcome [:value 1]}
+{:form (name :x), :outcome [:value "x"]}
+{:form 0.1, :outcome [:value 0.1]}
+{:form (some pos? [1 2 3]), :outcome [:value true]}
+{:form :a, :outcome [:value :a]}
+{:form (if (seq? (some pos? (keys (select-keys {} [:a])))) (get {:a 1} :b) (nil? (get (zipmap [:a :b :c] [0 1 2 3 4]) :k/v))), :outcome [:value true]}
+{:form (let [x 7] (max x (count ""))), :outcome [:value 7]}
+{:form (zipmap [:a] (remove odd? [0 -1 7 7])), :outcome [:value {:a 0}]}
+{:form (assoc (dissoc (frequencies [3 1 2]) :c) :k/v 127), :outcome [:value {3 1, 1 1, 2 1, :k/v 127}]}
+{:form (get (merge (dissoc (merge {} {:a 1}) :b) (dissoc {:k/v "x", :a [1]} :a)) :c), :outcome [:value nil]}
+{:form sym, :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form (if (vector? (name :a)) (group-by pos? (drop 1 (sort-by - [0 1 2 3 4]))) 3.0), :outcome [:value 3.0]}
+{:form [0 -1 7 7], :outcome [:value [0 -1 7 7]]}
+{:form 10, :outcome [:value 10]}
+{:form -0.0, :outcome [:value -0.0]}
+{:form :k/v, :outcome [:value :k/v]}
+{:form (every? even? [0 -1 7 7]), :outcome [:value false]}
+{:form \z, :outcome [:value \z]}
+{:form [3 1000], :outcome [:value [3 1000]]}
+{:form -1, :outcome [:value -1]}
+{:form (vector? (some pos? (list 1 2))), :outcome [:value false]}
+{:form (if (even? 1.0E-5) (dissoc (assoc {:k/v "x", :a [1]} :b 0) :c) (* (nth (vector 2 (nth (vector 3 2) 0)) 0) (dec 9223372036854775807))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (dissoc (dissoc (select-keys {:k/v "x", :a [1]} [:a :b]) :k/v) :k/v), :outcome [:value {:a [1]}]}
+{:form \a, :outcome [:value \a]}
+{:form {:a 1, :b 2}, :outcome [:value {:a 1, :b 2}]}
+{:form (every? odd? (into [] (keys {}))), :outcome [:value true]}
+{:form (name :a), :outcome [:value "a"]}
+{:form (inc 0), :outcome [:value 1]}
+{:form " t ", :outcome [:value " t "]}
+{:form (string? (if (odd? (let [x (first (vector 256))] (* x 1))) (string? (inc 127)) (get {:k/v "x", :a [1]} :a))), :outcome [:value false]}
+{:form (count (pr-str (compare (min 0 0) (- -9223372036854775808 -1)))), :outcome [:value 1]}
+{:form [(inc (first (vector 9223372036854775807)))], :outcome [:throws "java.lang.ArithmeticException"]}
+{:form [(count (partition-all 1 (conj [0 -1 7 7] -1)))], :outcome [:value [5]]}
+{:form \a, :outcome [:value \a]}
+{:form 0.0, :outcome [:value 0.0]}
+{:form (every? odd? [0 1 2 3 4]), :outcome [:value false]}
+{:form sym, :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form -0.0, :outcome [:value -0.0]}
+{:form (some even? (concat (distinct (keys {:k/v "x", :a [1]})) (partition 2 (partition-all 1 [0 -1 7 7])))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (assoc {:a 1, :b 2} :k/v -1), :outcome [:value {:a 1, :b 2, :k/v -1}]}
+{:form (get {:k/v "x", :a [1]} :k/v), :outcome [:value "x"]}
+{:form (some odd? (list 1 2)), :outcome [:value true]}
+{:form (vec [0 1 2 3 4]), :outcome [:value [0 1 2 3 4]]}
+{:form (let [x 2] (max x (mod (count (conj [] 128)) 7))), :outcome [:value 2]}
+{:form (quot (nth (vector (max (mod 9223372036854775807 2) (* 1000 -3)) (first (vector (compare 7 -1)))) 0) -2), :outcome [:value 0]}
+{:form :b, :outcome [:value :b]}
+{:form (get (zipmap [:a :b] (mapv str (keys {:k/v "x", :a [1]}))) :x), :outcome [:value nil]}
+{:form (if (odd? (compare (+ (* 10 9223372036854775807) (count "Ab-C")) (compare -1 127))) (if (seq? (some even? [])) "" (if (odd? (get {:a 1, :b 2} :k/v)) "a b" true)) (pr-str -9223372036854775808)), :outcome [:throws "java.lang.ArithmeticException"]}
+{:form \z, :outcome [:value \z]}
+{:form (dissoc (frequencies (keys (merge {:a 1} {}))) :x), :outcome [:value {:a 1}]}
+{:form (some odd? (sort-by identity (mapv str (butlast [1 1 1])))), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (some odd? []), :outcome [:value nil]}
+{:form "a", :outcome [:value "a"]}
+{:form [(quot (* 2 -1) 2)], :outcome [:value [-1]]}
+{:form (get {:k/v "x", :a [1]} :x), :outcome [:value nil]}
+{:form (sort-by - (keys {:k/v "x", :a [1]})), :outcome [:throws "java.lang.ClassCastException"]}
+{:form (if (odd? \z) (seq (into #{} (mapv (fn [x] (if (odd? x) :odd :even)) [1 1 1]))) -1), :outcome [:throws "java.lang.IllegalArgumentException"]}
+{:form (compare (first (vector (count (butlast [1 2 3])))) 256), :outcome [:value -1]}
+{:form (if (coll? (if (string? (get (assoc {} :a 0) :b)) (let [x (count [])] (* x (min 256 128))) nil)) (clojure.string/join "," (keys {:a 1, :b 2})) sym), :outcome [:throws "clojure.lang.Compiler$CompilerException"]}
+{:form false, :outcome [:value false]}
+{:form (get (select-keys (group-by odd? []) [:a :b]) :c), :outcome [:value nil]}
+{:form (get (zipmap [:a :b] [0 1 2 3 4]) :x), :outcome [:value nil]}
+{:form [0 1 2 3 4], :outcome [:value [0 1 2 3 4]]}
+{:form [1 1 1], :outcome [:value [1 1 1]]}
+{:form (get (merge {:k/v "x", :a [1]} (assoc (assoc {:a 1, :b 2} :x 7) :b (first (vector 128)))) :x), :outcome [:value 7]}
+{:form (vector? (merge {} (zipmap [:a :b :c] [1 1 1]))), :outcome [:value false]}
+{:form -2.25, :outcome [:value -2.25]}
+{:form (get (merge {} (dissoc (frequencies []) :b)) :k/v), :outcome [:value nil]}
+{:form (if (number? (merge {:k/v "x", :a [1]} (select-keys (dissoc {:a 1} :k/v) []))) 1.5 (vector? (get {} :k/v))), :outcome [:value false]}

@@ -30,7 +30,7 @@
 (def kws [:a :b :c :k/v :x])
 (def scalars-extra [nil true false \a \z 'sym])
 
-(declare gen-int gen-num gen-coll gen-str gen-any gen-map gen-pred gen-fn1)
+(declare gen-int gen-num gen-coll gen-str gen-any gen-map gen-pred gen-fn1 gen-printable)
 
 (defn- gen-int [d]
   (if (or (<= d 0) (chance 0.4))
@@ -51,16 +51,22 @@
 (defn- gen-num [d]
   (if (chance 0.3) (pick double-leaves) (gen-int d)))
 
+;; What str and pr-str may print: never a map or a set, whose element order Clojure leaves
+;; unspecified (an order jank may rightly choose differently).
+(defn- gen-printable [d]
+  (case (below 6)
+    0 (gen-int d) 1 (gen-num d) 2 (gen-str d) 3 (gen-coll d) 4 (pick kws) 5 (pick scalars-extra)))
+
 (defn- gen-str [d]
   (if (or (<= d 0) (chance 0.4))
     (pick strs)
     (case (below 7)
-      0 (list 'str (gen-any (dec d)) (gen-any (dec d)))
+      0 (list 'str (gen-printable (dec d)) (gen-printable (dec d)))
       1 (list (pick '[clojure.string/upper-case clojure.string/lower-case clojure.string/trim clojure.string/reverse]) (gen-str (dec d)))
       2 (list 'clojure.string/join (pick ["" "," "-"]) (gen-coll (dec d)))
       3 (list 'subs (pick ["abcdef" "hello" "é-è"]) (below 3))
       4 (list 'name (pick kws))
-      5 (list 'pr-str (gen-any (dec d)))
+      5 (list 'pr-str (gen-printable (dec d)))
       6 (list 'clojure.string/replace (gen-str (dec d)) (pick ["a" "b" " "]) (pick ["" "X"])))))
 
 (defn- gen-pred []
@@ -82,11 +88,12 @@
       5 (list (pick '[take drop]) (below 4) (gen-coll (dec d)))
       6 (list 'concat (gen-coll (dec d)) (gen-coll (dec d)))
       7 (list 'conj (gen-coll (dec d)) (gen-int (dec d)))
-      8 (list 'into (pick [[] '(list) #{}]) (gen-coll (dec d)))
+      ;; gen-coll stays ordered: a set made here would feed sequence functions its unspecified order.
+      8 (list 'into (pick [[] '(list)]) (gen-coll (dec d)))
       9 (list 'interleave (gen-coll (dec d)) (gen-coll (dec d)))
       10 (list (pick '[partition partition-all]) (inc (below 3)) (gen-coll (dec d)))
       11 (list 'mapv (gen-fn1) (gen-coll (dec d)))
-      12 (list 'keys (gen-map (dec d)))
+      12 (list 'sort-by 'str (list 'keys (gen-map (dec d))))
       13 (list 'sort-by (pick '[- identity]) (gen-coll (dec d))))))
 
 (defn- gen-map [d]
@@ -102,7 +109,8 @@
       6 (list 'group-by (pick '[odd? even? pos?]) (gen-coll (dec d))))))
 
 (defn- gen-any [d]
-  (case (below 12)
+  (case (below 13)
+    12 (list 'into #{} (gen-coll (dec d)))
     0 (gen-int d) 1 (gen-num d) 2 (gen-str d) 3 (gen-coll d) 4 (gen-map d)
     5 (pick kws) 6 (pick scalars-extra)
     7 (list (gen-pred) (gen-any (dec d)))

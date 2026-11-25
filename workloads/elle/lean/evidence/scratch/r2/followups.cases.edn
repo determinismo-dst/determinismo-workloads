@@ -1,0 +1,94 @@
+[;; D10: round 1's history (snapshot isolation), and Elle's failure-to-observe-test history (strict)
+ {:id 100 :workload :closed-predicate :opts {:consistency-models [:snapshot-isolation]}
+  :history [{:process 0 :type :invoke :f :init :value {0 0, 1 0}}
+            {:process 0 :type :ok :f :init :value {0 0, 1 0}}
+            {:process 1 :type :invoke :f :txn :value [[:delete 1]]}
+            {:process 1 :type :ok :f :txn :value [[:delete 1]]}
+            {:process 2 :type :invoke :f :txn :value [[:rp [:= 0] nil] [:r 1 nil]]}
+            {:process 2 :type :ok :f :txn :value [[:rp [:= 0] {}] [:r 1 nil]]}]}
+ {:id 101 :workload :closed-predicate :opts {:consistency-models [:strict-serializable]}
+  :history [{:index 0, :type :invoke, :process 0, :f :init, :value {5 3}}
+            {:index 5, :type :ok, :process 0, :f :init, :value {5 3}}
+            {:index 8, :type :invoke, :process 1, :f :txn, :value [[:rp [:mod 2 1] nil] [:rp [:= 3] nil]]}
+            {:index 52, :type :ok, :process 1, :f :txn, :value [[:rp [:mod 2 1] {}] [:rp [:= 3] {}]]}]}
+ {:id 102 :workload :closed-predicate :opts {:consistency-models [:serializable]}
+  :history [{:index 0, :type :invoke, :process 0, :f :init, :value {5 3}}
+            {:index 5, :type :ok, :process 0, :f :init, :value {5 3}}
+            {:index 8, :type :invoke, :process 1, :f :txn, :value [[:rp [:mod 2 1] nil] [:rp [:= 3] nil]]}
+            {:index 52, :type :ok, :process 1, :f :txn, :value [[:rp [:mod 2 1] {}] [:rp [:= 3] {}]]}]}
+ ;; D3: the process order skips :info (round 1's two-transaction history and its four-op case)
+ {:id 200 :workload :list-append :opts {:consistency-models [:strong-session-read-committed]}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+            {:process 0, :type :ok, :f :txn, :value [[:r 0 [1]]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :info, :f :txn, :value [[:append 0 1]]}]}
+ {:id 201 :workload :list-append :opts {:consistency-models [:strong-session-serializable]}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+            {:process 0, :type :info, :f :txn, :value [[:append 0 2]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+            {:process 1, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}]}
+ ;; the same history: with the :info append aborted, the read is an aborted read, which read
+ ;; uncommitted allows: strong session (and strong) read uncommitted must stay valid
+ {:id 202 :workload :list-append :opts {:consistency-models [:strong-session-read-uncommitted]}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+            {:process 0, :type :info, :f :txn, :value [[:append 0 2]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+            {:process 1, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}]}
+ {:id 203 :workload :list-append :opts {:consistency-models [:strong-read-uncommitted]}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :ok, :f :txn, :value [[:append 0 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:append 0 2]]}
+            {:process 0, :type :info, :f :txn, :value [[:append 0 2]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+            {:process 1, :type :ok, :f :txn, :value [[:r 0 [2 1]]]}]}
+ ;; D13: an :info write read by an earlier operation of the same process
+ {:id 300 :workload :rw-register :opts {:consistency-models [:strict-serializable]}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+            {:process 0, :type :ok, :f :txn, :value [[:r 0 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+            {:process 0, :type :info, :f :txn, :value [[:w 0 1]]}]}
+ ;; D14 (needs D13's fix): an :info write between two :ok writes in the transaction order
+ {:id 301 :workload :rw-register :opts {:consistency-models [:strict-serializable] :transaction-order {3 0, 5 1, 1 2}}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:w 0 2]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 2]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:w 0 3]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 3]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:w 0 1]]}
+            {:process 1, :type :info, :f :txn, :value [[:w 0 1]]}]}
+ {:id 302 :workload :rw-register :opts {:consistency-models [:serializable] :transaction-order {1 0, 3 1, 5 2}}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:w 0 1] [:r 1 nil]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 1] [:r 1 3]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:w 0 2]]}
+            {:process 1, :type :info, :f :txn, :value [[:w 0 2]]}
+            {:process 2, :type :invoke, :f :txn, :value [[:w 0 3] [:w 1 3]]}
+            {:process 2, :type :ok, :f :txn, :value [[:w 0 3] [:w 1 3]]}]}
+ ;; D13's D5 hazard: an unread :info write ordered between two :ok writes that finished before it
+ ;; began. If it committed, G0-realtime; if it aborted, nothing: strict serializable must hold.
+ {:id 303 :workload :rw-register :opts {:consistency-models [:strict-serializable] :transaction-order {1 0, 5 1, 3 2}}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:w 0 1]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:w 0 3]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 3]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:w 0 2]]}
+            {:process 1, :type :info, :f :txn, :value [[:w 0 2]]}]}
+ ;; D13's refined fix: an :info write read by a later :ok transaction; the transaction order puts
+ ;; it before a write that finished before it began: G0-realtime if it committed, an aborted read
+ ;; if not. Strict serializable (prohibits G1a) must fail; strong read uncommitted must pass.
+ {:id 304 :workload :rw-register :opts {:consistency-models [:strict-serializable] :transaction-order {5 0, 3 1, 1 2}}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:w 0 2]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 2]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:w 0 1] [:w 1 1]]}
+            {:process 1, :type :info, :f :txn, :value [[:w 0 1] [:w 1 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+            {:process 0, :type :ok, :f :txn, :value [[:r 1 1]]}]}
+ {:id 305 :workload :rw-register :opts {:consistency-models [:strong-read-uncommitted] :transaction-order {5 0, 3 1, 1 2}}
+  :history [{:process 0, :type :invoke, :f :txn, :value [[:w 0 2]]}
+            {:process 0, :type :ok, :f :txn, :value [[:w 0 2]]}
+            {:process 1, :type :invoke, :f :txn, :value [[:w 0 1] [:w 1 1]]}
+            {:process 1, :type :info, :f :txn, :value [[:w 0 1] [:w 1 1]]}
+            {:process 0, :type :invoke, :f :txn, :value [[:r 1 nil]]}
+            {:process 0, :type :ok, :f :txn, :value [[:r 1 1]]}]}]

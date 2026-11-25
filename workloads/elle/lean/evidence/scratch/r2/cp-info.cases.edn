@@ -1,0 +1,14 @@
+[{:id 0 :workload :closed-predicate :opts {:consistency-models [:consistent-view]}
+  :history [{:process 0, :type :invoke, :f :init, :value {1 0, 2 0}}
+            {:process 0, :type :ok, :f :init, :value {1 0, 2 0}}
+            {:process 3, :type :invoke, :f :txn, :value [[:insert 0 2] [:w 1 3] [:r 2 nil]]}
+            {:process 3, :type :info, :f :txn, :value [[:insert 0 2] [:w 1 3] [:r 2 nil]]}
+            {:process 5, :type :invoke, :f :txn, :value [[:rp [:= 0] nil] [:r 0 nil] [:delete 2]]}
+            {:process 5, :type :ok, :f :txn, :value [[:rp [:= 0] {}] [:r 0 nil] [:delete 2]]}]}
+ {:id 1 :workload :closed-predicate :opts {:consistency-models [:consistent-view]}
+  :history [{:process 0, :type :invoke, :f :init, :value {1 0, 2 0}}
+            {:process 0, :type :ok, :f :init, :value {1 0, 2 0}}
+            {:process 3, :type :invoke, :f :txn, :value [[:insert 0 2] [:w 1 3]]}
+            {:process 3, :type :info, :f :txn, :value [[:insert 0 2] [:w 1 3]]}
+            {:process 5, :type :invoke, :f :txn, :value [[:rp [:= 0] nil] [:r 0 nil] [:delete 2]]}
+            {:process 5, :type :ok, :f :txn, :value [[:rp [:= 0] {}] [:r 0 nil] [:delete 2]]}]}]

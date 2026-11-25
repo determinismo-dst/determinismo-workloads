@@ -1,0 +1,98 @@
+[{:id 0 :model "list-append" :consistency "serializable" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,[]]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,null]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,[1,1]]],\"time\":3000}" :history nil}
+{:id 1 :model "list-append" :consistency "read-uncommitted" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,[]]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,null]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,[1,1]]],\"time\":3000}" :history nil}
+{:id 2 :model "list-append" :consistency "strict-serializable" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,[]]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,null]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,[1,1]]],\"time\":3000}" :history nil}
+{:id 10 :model "list-append" :consistency "strict-serializable" :lk false :body "{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,null]],\"time\":0}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,[2,1]]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",0,1],[\"append\",0,2]],\"time\":2000}
+{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,2],[\"r\",1,null]],\"time\":3000}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,2],[\"r\",1,[1,1,2]]],\"time\":4000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",0,1],[\"append\",0,2]],\"time\":5000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":6000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,[]]],\"time\":7000}"
+ :history [{:process 2, :type :invoke, :f :txn, :value [[:append 1 1] [:r 1 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 1 1] [:r 1 [2 1]]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 1 2] [:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 1 2]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []]]}]}
+{:id 11 :model "list-append" :consistency "strict-serializable" :lk false :body "{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,null]],\"time\":0}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,1],[\"r\",1,[2,1]]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",0,1],[\"append\",0,2]],\"time\":2000}
+{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"append\",1,2],[\"r\",1,null]],\"time\":3000}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",1,2],[\"r\",1,[1,1,2]]],\"time\":4000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"append\",0,1],[\"append\",0,2]],\"time\":5000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":6000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,[]]],\"time\":7000}"
+ :history [{:process 2, :type :invoke, :f :txn, :value [[:append 1 1] [:r 1 nil]]}
+ {:process 2, :type :ok, :f :txn, :value [[:append 1 1] [:r 1 [2 1]]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 0, :type :invoke, :f :txn, :value [[:append 1 2] [:r 1 nil]]}
+ {:process 0, :type :ok, :f :txn, :value [[:append 1 2] [:r 1 [1 2]]]}
+ {:process 1, :type :ok, :f :txn, :value [[:append 0 1] [:append 0 2]]}
+ {:process 1, :type :invoke, :f :txn, :value [[:r 0 nil]]}
+ {:process 1, :type :ok, :f :txn, :value [[:r 0 []]]}]}
+{:id 20 :model "rw-register" :consistency "strict-serializable-per-key" :lk false :body "{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",1,null],[\"w\",2,1]],\"time\":0}
+{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,null]],\"time\":1000}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,1]],\"time\":2000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":3000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",1,1],[\"w\",2,1]],\"time\":5000}" :history nil}
+{:id 21 :model "rw-register" :consistency "serializable" :lk false :body "{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",1,null],[\"w\",2,1]],\"time\":0}
+{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,null]],\"time\":1000}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,1]],\"time\":2000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":3000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",1,1],[\"w\",2,1]],\"time\":5000}" :history nil}
+{:id 22 :model "rw-register" :consistency "strict-serializable" :lk false :body "{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",1,null],[\"w\",2,1]],\"time\":0}
+{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,null]],\"time\":1000}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,1]],\"time\":2000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":3000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",1,1],[\"w\",2,1]],\"time\":5000}" :history nil}
+{:id 23 :model "rw-register" :consistency "strict-serializable-per-key" :lk true :body "{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",1,null],[\"w\",2,1]],\"time\":0}
+{\"process\":0,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,null]],\"time\":1000}
+{\"process\":0,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"r\",2,1]],\"time\":2000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":3000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,null],[\"w\",1,1]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",1,1],[\"w\",2,1]],\"time\":5000}" :history nil}
+{:id 30 :model "closed-predicate" :consistency "strict-serializable-per-key" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":3000}
+{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"rp\",\"true\",null]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"rp\",\"true\",[[0,0],[1,0]]]],\"time\":5000}" :history nil}
+{:id 31 :model "closed-predicate" :consistency "strict-serializable" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":3000}
+{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"rp\",\"true\",null]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"rp\",\"true\",[[0,0],[1,0]]]],\"time\":5000}" :history nil}
+{:id 32 :model "closed-predicate" :consistency "serializable" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":3000}
+{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"rp\",\"true\",null]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"rp\",\"true\",[[0,0],[1,0]]]],\"time\":5000}" :history nil}
+{:id 35 :model "closed-predicate" :consistency "strict-serializable-per-key" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":3000}
+{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,0]],\"time\":5000}" :history nil}
+{:id 36 :model "closed-predicate" :consistency "strict-serializable" :lk false :body "{\"process\":0,\"type\":\"invoke\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":0}
+{\"process\":0,\"type\":\"ok\",\"f\":\"init\",\"value\":[[\"init\",0,0],[\"init\",1,0]],\"time\":1000}
+{\"process\":1,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":2000}
+{\"process\":1,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"w\",0,1]],\"time\":3000}
+{\"process\":2,\"type\":\"invoke\",\"f\":\"txn\",\"value\":[[\"r\",0,null]],\"time\":4000}
+{\"process\":2,\"type\":\"ok\",\"f\":\"txn\",\"value\":[[\"r\",0,0]],\"time\":5000}" :history nil}]

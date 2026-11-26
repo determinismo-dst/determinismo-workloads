@@ -143,7 +143,11 @@ on the real jank.
   items written without a fix (H8-1, DEC8-1, Q1, Q2). jank's suite: 549 of 551 on stock and patched
   alike.
 - **Round 9**: on jank main 94d32623 (Linux x86-64, each test in its own process with a 120 s limit),
-  deviations_r9_test.jank's 181 tests on stock: 47 passed, 113 failed and 21 erred. With round 9's
+  deviations_r9_test.jank's 181 tests on stock: 47 passed, 113 failed and 21 erred. Against the
+  predictions: all 45 controls pass; 134 of the 136 deviation tests fail as predicted (the 21 errors
+  each a predicted one), each asserting the value Clojure 1.12.3 gives (174 of the 181 run on the JVM
+  and pass there; the 7 others need jank's nREPL or bencode); H9-1 is refuted (z29 and z29b pass on
+  stock: the twins agree). With round 9's
   combined patch and immer's half (it builds), 1,202 of 1,351 replica and generated tests passed (438 on
   stock): 764 flip to passing, none to failing, 5 move between fail and error. Round 9's tests: 113 of 181.
   jank's suite: 549 of 551 on stock and patched alike. One regression of a fix: U88's `jank/shell.jank`

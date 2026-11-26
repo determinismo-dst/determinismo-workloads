@@ -15,9 +15,15 @@ Each block runs in a REPL with Elle 0.2.8 on the classpath, after:
 "Expected" is the verdict over every interpretation of the history (every version order, every
 outcome of an indeterminate operation), from the definitions rather than Elle's code.
 
+Proposed fixes: each entry's line names the change in determinismo's own Elle checker
+(checkers/elle in the determinismo repository; each namespace's header says what it changes, and
+the checker's tests cover them). [fixes.diff](fixes.diff) is
+all of them as one patch to jepsen-io/elle main 4e359e5 (`git apply fixes.diff` in Elle's checkout).
+
 ## Wrong verdicts: Elle passes a history that violates the model
 
 - [ ] **D1: an unread append becomes an anti-dependency, so a G-single is reported as G2-item.**
+  Proposed fix: list_append.clj `rw-graph` without unread pairs, `unread-pairs` and `unread-cycles`; rw_register.clj, the register form (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (def h1 (h/history
@@ -38,6 +44,7 @@ names the adjacent `[:rw :rw]` G2-item. rw-register misses the same through its 
 value" rule (rw_register.clj:184-208, 704-735).
 
 - [ ] **D2: asking for two models at once drops the process order.**
+  Proposed fix: none written yet.
 
 ```clojure
 (def h2 (h/history
@@ -57,6 +64,7 @@ and the `strong-session-*-cycle-exists` subgraphs (txn.clj:330-337) need the pro
 absent. The same for `:strong-session-serializable`.
 
 - [ ] **D3: the process order skips `:info` transactions.**
+  Proposed fix: core.clj `process-graph-with-info` and `realtime-graph-without-info`, picked by txn.clj `additional-graphs` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (def h3 (h/history
@@ -75,6 +83,7 @@ absent. The same for `:strong-session-serializable`.
 (results/cases.txt, `process-order-skips-info`).
 
 - [ ] **D4: a failed append inside a read hides the write-write edge.**
+  Proposed fix: list_append.clj `element-before` and `committed-previous-element`, used by `ww-mop-dep` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (la/check {:consistency-models [:read-uncommitted]}
@@ -98,6 +107,7 @@ The write index is built over `h/possible` (list_append.clj:603-611), which has 
 which isn't in the index, and adds no edge.
 
 - [ ] **D6: rw-register's dependencies use only each transaction's first read of a key.**
+  Proposed fix: rw_register.clj: wr and rw edges from every external read; consistency_model.clj: `:fuzzy-read` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 ;; a fuzzy read
@@ -128,6 +138,7 @@ doesn't prohibit (consistency_model.clj:479-481). `wr-graph` (rw_register.clj:83
 first rule (rw_register.clj:14) covers every read.
 
 - [ ] **D7: rw-register drops the self-edge of a transaction reading its own later write.**
+  Proposed fix: rw_register.clj `op-future-read-case` and `future-read-cases` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (rr/check {:consistency-models [:strict-serializable]}
@@ -141,6 +152,7 @@ first rule (rw_register.clj:14) covers every read.
 singleton components (graph.clj:376).
 
 - [ ] **D9: closed-predicate's `ww-graph` matches `:write` where everything else uses `:w`.**
+  Proposed fix: closed_predicate.clj `ww-graph` matches `:w` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (def h9 (h/history
@@ -160,6 +172,7 @@ G-single-item, and its 15 closed-predicate tests still pass. Our SDK writes `["w
 closed-predicate run of ours was judged without those edges until our service's fix.
 
 - [ ] **D10: closed-predicate's `versions-after` discards its unborn branch (a misplaced paren).**
+  Proposed fix: closed_predicate.clj `versions-after` keeps its unborn branch (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (cp/check {:consistency-models [:snapshot-isolation]}
@@ -180,6 +193,7 @@ whole fix needs D11's too.
 
 - [ ] **D12: list-append's version order among incompatible reads follows Clojure's hash-set
   order.** Two histories that differ only in x's values 1 and 2 swapped:
+  Proposed fix: list_append.clj `sorted-values` orders reads of equal length by their count of elements no failed operation appended, then by where each was first read (round 4's refinement) (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (def h12a (h/history
@@ -213,6 +227,7 @@ sorted by length, stably (list_append.clj:316); `append-index` takes the last on
 the version order. Among incompatible reads of equal length, the hash order picks it.
 
 - [ ] **D13 (a TODO in the code): rw-register ignores `:info` writes.**
+  Proposed fix: rw_register.clj `ext-write-index`, `observed-info-indices` and `step-over-info` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (rr/check {:consistency-models [:strict-serializable]}
@@ -230,6 +245,7 @@ type :info. That's bad." (rw_register.clj:170-173). list-append catches the same
 
 - [ ] **D14: rw-register's `:transaction-order`: an `:info` write placed between two `:ok` writes
   hides their write-write edge.**
+  Proposed fix: none written yet.
 
 ```clojure
 (rr/check {:consistency-models [:strict-serializable] :transaction-order {3 0, 5 1, 1 2}}
@@ -251,6 +267,7 @@ the `:info` writer of 1, so no edge between the two `:ok` transactions remains.
 
 - [ ] **D20: closed-predicate names a cycle with one item and one predicate anti-dependency G2,
   not G2-item, so repeatable read passes it.**
+  Proposed fix: txn.clj: a cycle with two or more anti-dependencies, one an item's, is G2-item whatever its predicate edges, as Adya defines it (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (def h20 (h/history
@@ -272,6 +289,7 @@ one or more item anti-dependency edges (thesis §3.2.4), which Elle's repeatable
 (consistency_model.clj:479-481).
 
 - [ ] **D21: closed-predicate: a predicate read's rows give no item anti-dependency.**
+  Proposed fix: closed_predicate.clj: an `:ok` predicate read's rows are item reads too (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (cp/check {:consistency-models [:strict-serializable]}
@@ -293,6 +311,7 @@ under `:true` no write changes it, and the rows yield no item edge.
 
 - [ ] **D22: closed-predicate explains an `:info` operation's unknown read as a read of
   `:elle/dead`.**
+  Proposed fix: closed_predicate.clj: the explainers' item paths read an `:ok` operation's reads only, not an `:info` one's unknown read as `:elle/dead` (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (cp/check {:consistency-models [:consistent-view]}
@@ -315,6 +334,7 @@ G-single search drops it on type (txn.clj:790-795), and G1c's projection has no 
 ## A false positive
 
 - [ ] **D5: list-append treats an observed `:info` write as committed.**
+  Proposed fix: list_append.clj `preprocess`: for models allowing G1a, `:info` appends not indexed as writes (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (la/check {:consistency-models [:read-uncommitted]}
@@ -335,6 +355,7 @@ committed. The paper's Theorem 1 claims cycles only for clean interpretations, b
 ## Exceptions
 
 - [ ] **D8: list-append throws on a garbage read**, which the README lists as an anomaly to report.
+  Proposed fix: list_append.clj `dirty-update-cases` passes over an unappended element, reported as `:garbage-read`; consistency_model.clj: `:garbage-read` proscribed by PL-1 (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 (la/check {:consistency-models [:strict-serializable]}
@@ -351,6 +372,7 @@ threw it on 1,581 of 2,550 random runs with garbage reads.
 - [ ] **D15: jepsen.history's pair index depends on chunking**: a process invoking twice throws
   `double-invoke` within one 16,384-op chunk and goes unnoticed across chunks (malformed histories
   only).
+  Proposed fix: none written yet.
 
 ```clojure
 (def ops [{:process 0 :type :invoke :f :txn :value [[:append 0 1]]}
@@ -371,6 +393,7 @@ invocation from an earlier chunk. Folds run over 16,384-op chunks (fold.clj:115-
 - [ ] **D11: closed-predicate's `version<` is true whenever its first version exists.** On D10's
   history with the paren fix, the reported cycle is real, but its explanation names a false
   version order.
+  Proposed fix: closed_predicate.clj `version<`: `:elle/unborn` first, false when b never follows a (determinismo's Elle checker, deployed (fixes.diff)).
 
 ```clojure
 ;; D10's history, closed_predicate.clj with D10's paren fix alone:

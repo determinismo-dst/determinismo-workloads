@@ -1,0 +1,1233 @@
+SPDX-License-Identifier: EPL-2.0
+Elle is copyright 2019--2020 Jepsen, LLC and Peter Alvaro (EPL-2.0); these changes to it are under
+the same license. determinismo's Elle checker (checkers/elle in the determinismo repository) as a
+patch to jepsen-io/elle main 4e359e5: from Elle's checkout, git apply this file. REPROS.md says
+which entry each change fixes.
+
+--- a/src/elle/closed_predicate.clj
++++ b/src/elle/closed_predicate.clj
+@@ -1,3 +1,23 @@
++; SPDX-License-Identifier: EPL-2.0
++; Elle is copyright 2019--2020 Jepsen, LLC and Peter Alvaro, under the Eclipse Public License
++; 2.0 (src/elle/LICENSE); this copy's change is under the same license.
++; Elle 0.2.8's elle/closed_predicate.clj (github.com/jepsen-io/elle, EPL-2.0), loaded ahead of
++; Elle's jar (deps.edn's :paths come first), with these fixes:
++; - ww-graph matched `:write` where every other function, and the histories, spell a write `:w`,
++;   so a write got no write-write edge and serializable passed a read skew through writes;
++; - versions-after's unborn branch was an `if` closed before its `loop`, its value discarded, so a
++;   predicate anti-dependency through a key the init created was missed (snapshot isolation
++;   passed a G-single); and version< (which the RW explainer uses) was true whenever its first
++;   version existed and couldn't order :elle/unborn, so the paren fix alone threw "Explainer".
++;   Now :elle/unborn precedes every version and version< is false when b never follows a.
++; Elle's closed-predicate tests pass, except failure-to-observe-test, which now also reports the
++; G-single-realtime that version-set's own comment predicts for that history.
++; - Round 3's D21 fix (determinismo-workloads' workloads/elle/lean REPORT-3.md/fix-d21): an :ok predicate read's rows are item reads too (the
++;   namespace docstring assumes they appear as such), so a stale :true read is an item
++;   anti-dependency: strict serializability passed it.
++; - Round 3's D22 fix (determinismo-workloads' workloads/elle/lean REPORT-3.md/fix-d22): the explainers' item paths read an :ok operation's
++;   reads only: an :info operation's unknown read (its invocation's nil) was explained as a read
++;   of :elle/dead, so a G-single became a G1c and consistent view passed it.
+ (ns elle.closed-predicate
+   "A test for predicate safety. Uses a closed-universe assumption to
+   infer the version set selected for transactions based not only on what the
+@@ -271,16 +291,16 @@
+    (if (identical? :elle/unborn target-version)
+      (if (identical? :elle/unborn (first versions))
+        (subvec versions 1)
+-       versions))
+-   ; Some non-unborn version
+-   (loop [i 0]
+-     ; Stop when there are no versions that could follow
+-     (when (< i (dec (count versions)))
+-       (if (= (nth versions i) target-version)
+-         ; Found it
+-         (subvec versions (inc i))
+-         ; Keep looking
+-         (recur (inc i)))))))
++       versions)
++     ; Some non-unborn version
++     (loop [i 0]
++       ; Stop when there are no versions that could follow
++       (when (< i (dec (count versions)))
++         (if (= (nth versions i) target-version)
++           ; Found it
++           (subvec versions (inc i))
++           ; Keep looking
++           (recur (inc i))))))))
+ 
+ (defn version<
+   "Takes an all-versions map of keys to vectors of versions, a key, and two
+@@ -288,15 +308,22 @@
+   ([all-versions k a b]
+    (version< (get all-versions k) a b))
+   ([versions a b]
+-   (loopr [found-a? false]
+-          [v versions]
+-          (if found-a?
+-            (if (= v b)
+-              true
+-              (recur found-a?))
+-            (if (= v a)
+-              (recur true)
+-              (recur found-a?))))))
++   (if (identical? :elle/unborn a)
++     ; Every version follows :elle/unborn (see versions-after), whether or not
++     ; the unborn version is in this key's order.
++     (and (not (identical? :elle/unborn b))
++          (boolean (some #(= b %) versions)))
++     (loopr [found-a? false]
++            [v versions]
++            (if found-a?
++              (if (= v b)
++                true
++                (recur found-a?))
++              (if (= v a)
++                (recur true)
++                (recur found-a?)))
++            ; b never followed a
++            false))))
+ 
+ (defn resolve-version
+   "Both unborn and dead versions are returned by the database as `nil`.
+@@ -419,6 +446,19 @@
+                   vsets
+                   (assoc! vsets mop (version-set all-versions mop))))
+          (persistent! vsets)))
++
++(defn item-mops
++  "Round 3's D21 fix: an op's micro-ops, then each of its predicate reads' rows
++  as an item read [:r k v] (a predicate read reads the versions it returns)."
++  [op]
++  (let [mops (:value op)]
++    (if (sequential? mops)
++      (into (vec mops)
++            (for [[f _ rows] mops
++                  :when (and (= :rp f) (map? rows))
++                  [k v] rows]
++              [:r k v]))
++      mops)))
+ 
+ (defrecord RWExplainer [all-versions vsets]
+   elle/DataExplainer
+@@ -427,7 +467,8 @@
+       ; First, try to find a kv link. Loop over kv reads in a, looking
+       ; for cases where b overwrote a's read.
+       (or (loopr []
+-                 [[f k v :as mop] (filter (comp #{:r} first) (:value a))]
++                 ; Round 3's D22 fix: an :ok op's reads only
++                 [[f k v :as mop] (when (h/ok? a) (filter (comp #{:r} first) (item-mops a)))]
+                  (let [v (resolve-version all-versions k v)]
+                    ; Was there a value following this read?
+                    (if-let [v' (version-after all-versions k v)]
+@@ -498,7 +539,7 @@
+   {:graph
+    (loopr [g (b/linear (g/op-digraph))]
+           [op          (h/oks history)
+-           [f :as mop] (:value op)]
++           [f :as mop] (item-mops op)]
+           (recur
+             (condp identical? f
+               ; KV read
+@@ -548,7 +589,8 @@
+     ; Try for an item dependency
+     (let [writes (ext-writes-op a)]
+       (or (loopr []
+-                 [[f k v :as mop] (:value b)]
++                 ; Round 3's D22 fix: an :ok op's reads only
++                 [[f k v :as mop] (when (h/ok? b) (item-mops b))]
+                  (if-not (identical? f :r)
+                    (recur)
+                    (let [v (resolve-version all-versions k v)]
+@@ -591,7 +633,7 @@
+   {:graph
+    (loopr [g                (b/linear (g/op-digraph))]
+           [op               (h/oks history)
+-           [f k v :as mop]  (:value op)]
++           [f k v :as mop]  (item-mops op)]
+           (recur
+             (condp identical? f
+               ; Item read
+@@ -660,7 +702,7 @@
+            [f k v :as mop] (:value op)]
+           (recur
+             (case f
+-              (:insert :write :delete)
++              (:insert :w :delete)
+               (let [v' (if (identical? f :delete) :elle/dead v)]
+                 (if-let [v (version-before all-versions k v')]
+                   (if-let [write (get-in ext-writes [k v])]
+--- a/src/elle/consistency_model.clj
++++ b/src/elle/consistency_model.clj
+@@ -1,3 +1,6 @@
++; SPDX-License-Identifier: EPL-2.0
++; Elle 0.2.8's elle/consistency_model.clj (github.com/jepsen-io/elle, EPL-2.0), with round 3's
++; fixes (determinismo-workloads' workloads/elle/lean, REPORT-3.md): D6: :fuzzy-read proscribed by repeatable read and consistent view; D8: :garbage-read proscribed by PL-1, as :duplicate-elements is.
+ (ns elle.consistency-model
+   "Elle finds anomalies in histories. This namespace helps turn those
+   anomalies into claims about what kind of consistency models are supported
+@@ -419,7 +422,10 @@
+                                     :lost-update]      ; Adya, Bailis
+         :monotonic-view            [:G1 :G-monotonic]  ; Adya
+         :monotonic-snapshot-read   [:G1 :G-MSR]        ; Adya
+-        :consistent-view           [:G1 :G-single]     ; Adya
++        :consistent-view           [:G1 :G-single      ; Adya
++                                    ; Round 3's D6 fix: a fuzzy read is a
++                                    ; G-single-item in every interpretation
++                                    :fuzzy-read]
+         :forward-consistent-view   [:G1 :G-SIb]        ; Adya
+         :parallel-snapshot-isolation [:internal :G1a]  ; Cerone (incomplete)
+         :PL-3                      [:G1 :G2            ; Adya
+@@ -440,6 +446,9 @@
+                                     :duplicate-elements
+                                     ; Version orders are supposed to be total
+                                     :cyclic-versions
++                                    ; Round 3's D8 fix: a read of an element
++                                    ; no operation appended
++                                    :garbage-read
+                                     :PL-1-cycle-exists]
+         :prefix                    [:internal :G1a     ; Cerone (incomplete)
+                                     ; :prefix-cycle-exists ; Not yet ready
+@@ -478,7 +487,9 @@
+                                     :future-read]       ; Cerone (incomplete)
+         :repeatable-read           [:G1 :G2-item       ; Adya
+                                     :PL-2.99-cycle-exists
+-                                    :lost-update]      ; Bailis
++                                    :lost-update       ; Bailis
++                                    ; Round 3's D6 fix: Berenson et al.'s P2
++                                    :fuzzy-read]
+         :update-atomic             [:lost-update]      ; Cerone
+         :strict-serializable       [:G1                ; Adya
+                                     :G1c-realtime      ; Adya
+--- a/src/elle/core.clj
++++ b/src/elle/core.clj
+@@ -1,3 +1,12 @@
++; SPDX-License-Identifier: EPL-2.0
++; Elle is copyright 2019--2020 Jepsen, LLC and Peter Alvaro, under the Eclipse Public License
++; 2.0 (src/elle/LICENSE); this copy's changes are under the same license.
++; Elle 0.2.8's elle/core.clj (github.com/jepsen-io/elle), loaded ahead of Elle's jar, with:
++; - process-graph-with-info: the process order also reaches a process's :info operation (an
++;   edge into it, none out), and realtime-graph-without-info: no real-time edges into :info
++;   completions (both used by txn.clj per model).
++; Found by a Lean replica of Elle; checked over every interpretation of the replica's histories
++; (no new false positive), on Elle itself, and with Elle's test suite.
+ (ns elle.core
+   "Tests based on detecting cycles between operations in a history.
+ 
+@@ -342,7 +351,37 @@
+                 {:graph     (b/forked graph)
+                  :explainer (ProcessExplainer.)}))]
+     (h/fold history fold)))
++
++;; Round 2's D3 fix: the process order also reaches a process's :info
++;; operation (an edge into it; nothing follows a crashed operation). Out-edges
++;; of an :info operation come only from :ok reads observing its writes, so a
++;; cycle through it violates every model prohibiting G1a even if it aborted:
++;; txn/additional-graphs uses this graph only for those models.
++(defn process-graph-with-info
++  "Like process-graph, plus an edge from each process's last :ok operation to
++  its following :info operation."
++  [history]
++  {:graph (loopr [graph    (b/linear (g/op-digraph))
++                  last-ops (transient {})]
++                 [^Op op history :via :reduce]
++                 (let [p (.process op)
++                       last-op (get last-ops p)]
++                   (cond (h/ok? op)
++                         (recur (if last-op
++                                  (g/link graph last-op op rels/process)
++                                  graph)
++                                (assoc! last-ops p op))
+ 
++                         (h/info? op)
++                         (recur (if last-op
++                                  (g/link graph last-op op rels/process)
++                                  graph)
++                                last-ops)
++
++                         true (recur graph last-ops)))
++                 (b/forked graph))
++   :explainer (ProcessExplainer.)})
++
+ ; Realtime order
+ 
+ (defrecord RealtimeExplainer [history]
+@@ -432,6 +471,21 @@
+          ; All done!
+          {:graph     (b/forked g)
+           :explainer (RealtimeExplainer. history)}))
++
++;; Round 2's D3 fix, the other side: for models allowing G1a, an edge into an
++;; :info operation can only close cycles that vanish when it aborted (D5).
++(defn realtime-graph-without-info
++  "Like realtime-graph, without edges into :info completions."
++  [history]
++  (let [{:keys [graph explainer]} (realtime-graph history)
++        infos (filter h/info? history)]
++    {:graph (b/forked (reduce (fn [g op]
++                                (if-let [in (g/in g op)]
++                                  (reduce (fn [g a] (g/unlink g a op)) g (vec in))
++                                  g))
++                              (b/linear graph)
++                              infos))
++     :explainer explainer}))
+ 
+ (defn explain-binding
+   "Takes a seq of [name op] pairs, and constructs a string naming each op."
+--- a/src/elle/list_append.clj
++++ b/src/elle/list_append.clj
+@@ -1,3 +1,23 @@
++; SPDX-License-Identifier: EPL-2.0
++; Elle is copyright 2019--2020 Jepsen, LLC and Peter Alvaro, under the Eclipse Public License
++; 2.0; this copy's changes are under the same license.
++; Elle 0.2.8's elle/list_append.clj (github.com/jepsen-io/elle), with round 3's fixes from a
++; Lean replica of Elle (determinismo-workloads' workloads/elle/lean, REPORT-3.md, REPORT-4.md):
++; - D12 (round 4's refinement, REPORT-4.md): sorted-values orders reads of equal length by
++;   their count of elements no failed operation appended, then by where each was first read, so
++;   a verdict no longer follows Clojure's hash-set order (renaming values changed 250 to 505
++;   verdicts in 40,000 histories; with it none).
++; - D8: dirty-update-cases passes over an element no operation appended (it asserted), and a
++;   read holding one is reported as :garbage-read (proscribed by PL-1 in consistency_model.clj).
++; - D4: ww-mop-dep steps over an element no indexed operation appended (a failed one's, a
++;   dirty update) to the element before it, so read uncommitted no longer passes such a G0.
++; - D5: for models allowing G1a, :info appends are not indexed as writes (they may have
++;   aborted; with D4's step-over), so read uncommitted no longer rejects a history whose
++;   :info transaction aborted.
++; - D1: a reader of a key's last observed version that also appends to it, unread, gets a ww
++;   step (not rw) to another unread appender in a second cycle search: ww where its append came
++;   first, and a G-single through the reader otherwise; a G0 or G1c through such a step is
++;   reported as G-single-item. Snapshot isolation and consistent view passed such G-singles.
+ (ns elle.list-append
+   "Detects cycles in histories where operations are transactions over named
+   lists lists, and operations are either appends or reads."
+@@ -268,14 +288,42 @@
+                  [k #{[v]}])))
+        (into {})))
+ 
++(defn first-read-indices
++  "Round 4's D12 refinement: a map of keys to maps of each non-empty read value
++  to where it was first read: [operation index, micro-op position]."
++  [history]
++  (reduce (fn [m op]
++            (reduce (fn [m [j [f k v]]]
++                      (if (and (= :r f) v (not= [] v)
++                               (not (contains? (get m k) v)))
++                        (assoc-in m [k v] [(:index op) j])
++                        m))
++                    m
++                    (map-indexed vector (:value op))))
++          {}
++          history))
++
++(defn failed-appends
++  "Round 4's D12 refinement: the [k e] pairs failed operations appended."
++  [history]
++  (into #{} (for [op history :when (h/fail? op)
++                  [f k v] (:value op) :when (= :append f)]
++              [k v])))
++
+ (defn sorted-values
+   "Takes a history where operation values are transactions, and every micro-op
+   in a transaction is an append or a read. Computes a map of keys to all
+   distinct observed values for that key, ordered by length.
+ 
+   As a special case, if we have a key which only has a single append, we don't
+-  need a read: we can infer the sorted values it took on were simply [], [x]."
+-  [history]
++  need a read: we can infer the sorted values it took on were simply [], [x].
++
++  Round 4's D12 refinement: values of equal length are ordered by their count
++  of elements no failed operation appended (`failed`, a set of [k e]), then by
++  where each was first read."
++  ([history]
++   (sorted-values history (failed-appends history)))
++  ([history failed]
+   (let [fold
+         (loopf {:name :sorted-values}
+                ; Reducer
+@@ -308,12 +356,19 @@
+                               (bs/union values1 values2))))
+                 ; Transform back to Clojure
+                 (datafy states1)))]
+-    (->> (h/fold history fold)
+-         ; If we can't infer anything from reads, see if we can use a single
+-         ; append operation to infer a value.
+-         (merge (values-from-single-appends history))
+-         ; And sort
+-         (util/map-vals (comp vec (partial sort-by count))))))
++    (let [firsts (first-read-indices history)]
++      (->> (h/fold history fold)
++           ; If we can't infer anything from reads, see if we can use a single
++           ; append operation to infer a value.
++           (merge (values-from-single-appends history))
++           ; And sort, by length, then by elements no failed op appended, then
++           ; by where each was first read
++           (reduce-kv (fn [m k vs]
++                        (assoc m k (vec (sort-by (juxt count
++                                                       (fn [v] (count (remove #(failed [k %]) v)))
++                                                       #(get-in firsts [k %] [-1 -1]))
++                                                 vs))))
++                      {}))))))
+ 
+ (defn incompatible-orders
+   "Takes a map of keys to sorted observed values and verifies that for each key
+@@ -445,10 +500,13 @@
+                      (reduce (fn [[t1 vs cases] v]
+                                (assert t1)
+                                ; Keep track of the version range
+-                               (let [vs (conj vs v)
+-                                     t2 (get (get write-index k) v)]
+-                                 (assert t2 (str "No transaction wrote "
+-                                                 (pr-str k) " = " (pr-str v)))
++                               (let [t2 (get (get write-index k) v)]
++                                (if (nil? t2)
++                                 ; Round 3's D8 fix: no operation appended this
++                                 ; element (a garbage read, reported below);
++                                 ; pass over it
++                                 [t1 vs cases]
++                                (let [vs (conj vs v)]
+                                  (case [(:type t1) (:type t2)]
+                                    ; Moving along happily
+                                    [:ok    :ok] [t2 [v] cases]
+@@ -477,12 +535,23 @@
+                                    ; the anomaly, but I think covering is
+                                    ; probably more interesting from a "How bad
+                                    ; was this" perspective.
+-                                   [:fail  :fail] [t1 vs cases])))
++                                   [:fail  :fail] [t1 vs cases])))))
+                              ; The initial state is committed
+                              [{:type :ok} [] []])
+                      peek))
+               append-index))))
+ 
++(defn garbage-read-cases
++  "Round 3's D8 fix: ok reads holding an element no operation appended (a
++  garbage read, README: \"a read observes a state which could not have been
++  the product of any write\")."
++  [history]
++  (let [appended (into #{} (for [op history, [f k v] (:value op) :when (= :append f)] [k v]))]
++    (seq (for [op history :when (h/ok? op)
++               [f k v :as mop] (:value op) :when (= :r f)
++               e v :when (not (appended [k e]))]
++           {:op op, :mop mop, :element e}))))
++
+ (defn read-index
+   "Takes a history restricted to oks and infos, and constructs a map of keys to
+   append values to the operations which observed the state generated by the
+@@ -534,6 +603,27 @@
+     ; after the initial state.
+     (-> append-index (get k) :values peek (or ::init))))
+ 
++(defn element-before
++  "Round 3's D4 fix: the element before e in k's version order, ::init when e
++  is the first, nil when its position is unknown."
++  [append-index k e]
++  (when-let [i (get-in append-index [k :indices e])]
++    (if (pos? i)
++      (get-in append-index [k :values (dec i)])
++      ::init)))
++
++(defn committed-previous-element
++  "Round 3's D4 fix: from element e back, the first element an indexed
++  operation appended, and that operation, as [e op]; nil at ::init. An element
++  no indexed operation appended (a failed one's: a dirty update) is not a
++  version anyone could have installed, so the version before it is."
++  [append-index write-index k e]
++  (loop [e e]
++    (when (and (some? e) (not= ::init e))
++      (if-let [w (get-in write-index [k e])]
++        [e w]
++        (recur (element-before append-index k e))))))
++
+ (defn ww-mop-dep
+   "What (other) operation wrote the value just before this write mop?"
+   [append-index write-index op [f k v :as mop]]
+@@ -541,10 +631,11 @@
+                       append-index write-index op mop)]
+       ; If we read the initial state, no writer precedes us
+       (when (not= ::init prev-e)
+-        ; What op wrote that value?
+-        (let [writer (get-in write-index [k prev-e])]
++        ; What op wrote that value? Round 3's D4 fix: or, if none we index did,
++        ; the value before it
++        (let [[_ writer] (committed-previous-element append-index write-index k prev-e)]
+           ; If we wrote it, there's no dependency here
+-          (when (not= op writer)
++          (when (and writer (not= op writer))
+             writer)))))
+ 
+ (defn rw-mop-deps
+@@ -586,8 +677,17 @@
+   {:history       The history restricted to :ok and :info ops
+    :append-index  An append index
+    :write-index   A write index
+-   :read-index    A read index}"
+-  [history]
++   :read-index    A read index}
++
++  Round 3's D5 fix: with g1a? false (the models allow G1a), :info appends are
++  not indexed as writes: such a transaction may have aborted, and every edge
++  out of it comes from a read of its writes, an aborted read in that
++  interpretation."
++  ([history]
++   (preprocess history true))
++  ([history g1a?]
++   (preprocess history g1a? (failed-appends history)))
++  ([history g1a? failed]
+   (let [; Make sure there are only appends and reads
+         vmt (h/task history verify-mop-types-task []
+                     (verify-mop-types history))
+@@ -602,18 +702,38 @@
+    ; deps for failed ops too? Might simplify the dirty-update codepath.
+    (let [history       (h/possible history)
+          _ (h/ensure-pair-index history)
+-         sorted-values (sorted-values history)]
++         ; Round 3's D5 fix (after D23): for models allowing G1a, the version
++         ; order comes from the reads without the elements :info operations
++         ; appended (each may have aborted; the order of the rest holds,
++         ; transitively, either way)
++         sorted-values (sorted-values
++                         (if g1a?
++                           history
++                           (let [info-elements (into #{} (for [op history :when (h/info? op)
++                                                               [f k v] (:value op) :when (= :append f)]
++                                                           [k v]))]
++                             (h/history
++                               (mapv (fn [op]
++                                       (assoc op :value
++                                              (mapv (fn [[f k v :as mop]]
++                                                      (if (and (= :r f) (sequential? v))
++                                                        [f k (filterv #(not (info-elements [k %])) v)]
++                                                        mop))
++                                                    (:value op))))
++                                     history)
++                               {:have-indices? true, :already-ops? true})))
++                         failed)]
+      ; Compute indices
+      (let [append-index (h/task history append-index []
+                                 (append-index sorted-values))
+            write-index  (h/task history write-index []
+-                                (write-index history))
++                                (write-index (if g1a? history (h/oks history))))
+            read-index   (h/task history read-index []
+                                 (read-index history))]
+        {:history      history
+         :append-index @append-index
+         :write-index  @write-index
+-        :read-index   @read-index})))
++        :read-index   @read-index}))))
+ 
+ (defrecord WWExplainer [append-index write-index read-index]
+   elle/DataExplainer
+@@ -629,7 +749,10 @@
+                        (when (= a dep)
+                          {:type     :ww
+                           :key      k
+-                          :value    prev-v
++                          ; Round 3's D4 fix: the element a appended
++                          :value    (or (first (committed-previous-element
++                                                 append-index write-index k prev-v))
++                                        prev-v)
+                           :value'   v
+                           :a-mop-index (index-of (:value a) [:append k prev-v])
+                           :b-mop-index (index-of (:value b) b-mop)}))))))
+@@ -697,12 +820,14 @@
+                           history))
+     :explainer (WRExplainer. append-index write-index read-index)}))
+ 
+-(defrecord RWExplainer [append-index write-index read-index]
++(defrecord RWExplainer [append-index write-index read-index unread]
+   elle/DataExplainer
+   (explain-pair-data [_ a b]
+     (->> (:value b)
+          (keep-indexed (fn [i [f k v :as mop]]
+-                 (when (= f :append)
++                 (when (and (= f :append)
++                            ; Round 3's D1 fix
++                            (not (contains? unread [a b k])))
+                    (when-let [readers (rw-mop-deps append-index write-index
+                                                    read-index b mop)]
+                      (when (some #{a} readers)
+@@ -737,10 +862,13 @@
+            " to " (pr-str key)))))
+ 
+ (defn rw-graph
+-  "Analyzes read-write anti-dependencies."
++  "Analyzes read-write anti-dependencies. Round 3's D1 fix: without the given
++  unread pairs."
+   ([history]
+    (rw-graph (preprocess history) nil))
+-  ([{:keys [history append-index write-index read-index]} _]
++  ([{:keys [history append-index write-index read-index] :as pre} _]
++   (rw-graph pre nil #{}))
++  ([{:keys [history append-index write-index read-index]} _ unread]
+    {:graph (loopr [; Yourkit claims we were burning time in NamedGraph/link, so
+                    ; we'll fall back to the concrete digraph then wrap.
+                    ; Maybe inliner got confused?
+@@ -749,14 +877,15 @@
+                    [f :as mop]  (:value op)]
+                   (if (identical? f :append)
+                     ; Who read the state just before we wrote?
+-                    (if-let [deps (rw-mop-deps append-index
+-                                               write-index
+-                                               read-index op mop)]
++                    (if-let [deps (seq (remove #(unread [% op (second mop)])
++                                               (rw-mop-deps append-index
++                                                            write-index
++                                                            read-index op mop)))]
+                       (recur (g/link-all-to g deps op rw))
+                       (recur g))
+                     (recur g))
+                   (b/forked g))
+-    :explainer (RWExplainer. append-index write-index read-index)}))
++    :explainer (RWExplainer. append-index write-index read-index unread)}))
+ 
+ (defn graph
+   "Some parts of a transaction's dependency graph--for instance,
+@@ -797,15 +926,91 @@
+ 
+   For more context, see Adya, Liskov, and O'Neil's 'Generalized Isolation Level
+   Definitions', page 8."
+-  [history]
+   ; We need these auxiliary structures for each subgraph; might as well do the
+   ; work just once.
+-  (let [preprocessed (preprocess history)]
+-    ((elle/combine (partial ww-graph preprocessed)
+-                   (partial wr-graph preprocessed)
+-                   (partial rw-graph preprocessed))
+-     history)))
++  ([history]
++   (graph {} history))
++  ([opts history]
++   ; Round 3's D5 fix: whether the models prohibit G1a
++   (let [preprocessed (preprocess history (contains? (ct/prohibited-anomaly-types opts) :G1a))]
++     ((elle/combine (partial ww-graph preprocessed)
++                    (partial wr-graph preprocessed)
++                    (partial rw-graph preprocessed))
++      history))))
++
++(defn unread-element?
++  "Round 3's D1 fix: was element v of key k never read?"
++  [append-index k v]
++  (nil? (get-in append-index [k :indices v])))
++
++(defn unread-pairs
++  "Round 3's D1 fix: a set of [reader appender k]: the appender's element of k
++  was never read, so rw-mop-deps gives every reader of k's last observed
++  version an rw edge to it; this reader also appended to k an element never
++  read. In every interpretation where the reader's append came first, the
++  reader precedes the appender by ww; in every other, the version after the
++  one it read was installed before its own, a G-single through the reader. So
++  the edge is no anti-dependency in the first, and a cycle through it with one
++  rw elsewhere is a G-single in each."
++  [{:keys [history append-index write-index read-index]}]
++  (set (for [op history
++             [f k v :as mop] (:value op)
++             :when (and (= :append f) (unread-element? append-index k v))
++             r (rw-mop-deps append-index write-index read-index op mop)
++             :when (some (fn [[f' k' v']]
++                           (and (= :append f') (= k k')
++                                (unread-element? append-index k v')))
++                         (:value r))]
++         [r op k])))
+ 
++(defrecord UnreadExplainer [pairs]
++  elle/DataExplainer
++  (explain-pair-data [_ a b]
++    (first (for [[r op k] pairs :when (and (= a r) (= b op))]
++             {:type :ww, :key k, :unread? true})))
++
++  (render-explanation [_ {:keys [key]} a-name b-name]
++    (str a-name " read the last observed version of " (pr-str key)
++         " and appended to it, unobserved, as " b-name " did: " a-name
++         " came first, or the version after the one it read came before its own")))
++
++(defn unread-cycles
++  "Round 3's D1 fix: the cycles of the graph where each unread pair is a ww
++  step: a G0 or G1c through an unread step is reported as G-single-item (with
++  its variant); any other class stands (a G-single implies G-nonadjacent and
++  G2)."
++  [opts history]
++  (let [history+ (h/possible (h/client-ops history))
++        pre      (preprocess history+ (contains? (ct/prohibited-anomaly-types opts) :G1a)
++                             (failed-appends history))
++        pairs    (unread-pairs pre)]
++    (when (seq pairs)
++      (let [g (fn [h]
++                ((elle/combine (partial ww-graph pre)
++                               (partial wr-graph pre)
++                               (fn [_] (rw-graph pre nil pairs))
++                               (fn [_] {:graph (reduce (fn [g [r op _]] (g/link g r op ww))
++                                                       (b/linear (g/op-digraph))
++                                                       pairs)
++                                        :explainer (UnreadExplainer. pairs)}))
++                 h))
++            analyzer (apply elle/combine g (ct/additional-graphs opts))
++            found    (:anomalies (ct/cycles opts analyzer history))]
++        (->> (for [[t cs] found
++                   :when (and (sequential? cs) (ct/cycle-types t))
++                   c cs
++                   :let [n (name t)
++                         v (re-find #"-(process|realtime)$" n)
++                         base (if v (subs n 0 (- (count n) (count (first v)))) n)
++                         t' (if (and (#{"G0" "G1c"} base)
++                                     (some :unread? (:steps c)))
++                              (keyword (str "G-single-item" (first v)))
++                              t)]
++                   ; any other class stands: a G-single implies G-nonadjacent and G2
++                   :when true]
++               [t' (assoc c :type t')])
++             (reduce (fn [m [t c]] (update m t (fnil conj []) c)) {}))))))
++
+ (defn rand-bg-color
+   "Hashes anything and assigns a lightish hex color to it--helpful for
+   highlighting different values differently."
+@@ -954,6 +1159,8 @@
+          g1a          (h/task history g1a [] (g1a-cases history))
+          g1b          (h/task history g1b [] (g1b-cases history))
+          internal     (h/task history internal [] (internal-cases history))
++         ; Round 3's D8 fix
++         garbage      (h/task history garbage [] (garbage-read-cases history))
+          dirty-update (h/task history dirty-update []
+                               (dirty-update-cases
+                                 (append-index (sorted-values history))
+@@ -965,7 +1172,7 @@
+          _ (h/ensure-pair-index history+)
+          dups          (h/task history dups [] (duplicates history+))
+          sorted-values (h/task history sorted-values+ []
+-                               (sorted-values history+))
++                               (sorted-values history+ (failed-appends history)))
+          incmp-order   (h/task history incmp-order [sv sorted-values]
+                                (incompatible-orders sv))
+          _             (h/task history render-incmp-order [sv    sorted-values
+@@ -976,9 +1183,12 @@
+                                (ct/lost-update-cases #{:append} history+))
+ 
+          ; Great, now construct a graph analyzer...
+-         analyzers     (into [graph] (ct/additional-graphs opts))
++         analyzers     (into [(partial graph opts)] (ct/additional-graphs opts))
+          analyzer      (apply elle/combine analyzers)
+          cycles        (:anomalies (ct/cycles! opts analyzer history))
++         ; Round 3's D1 fix: the G-singles through unread appends
++         cycles        (merge-with (fn [a b] (vec (distinct (concat a b))))
++                                   cycles (unread-cycles opts history))
+ 
+          ; And merge in our own anomalies
+          anomalies (cond-> cycles
+@@ -988,7 +1198,8 @@
+                      @dirty-update  (assoc :dirty-update @dirty-update)
+                      @g1a           (assoc :G1a @g1a)
+                      @g1b           (assoc :G1b @g1b)
+-                     @lost-update   (assoc :lost-update @lost-update))]
++                     @lost-update   (assoc :lost-update @lost-update)
++                     @garbage       (assoc :garbage-read @garbage))]
+      (ct/result-map opts anomalies))))
+ 
+ (defn append-txns
+--- a/src/elle/rw_register.clj
++++ b/src/elle/rw_register.clj
+@@ -1,3 +1,26 @@
++; SPDX-License-Identifier: EPL-2.0
++; Elle is copyright 2019--2020 Jepsen, LLC and Peter Alvaro, under the Eclipse Public License
++; 2.0 (src/elle/LICENSE); this copy's changes are under the same license.
++; Elle 0.2.8's elle/rw_register.clj (github.com/jepsen-io/elle), loaded ahead of Elle's jar, with:
++; - :info writes are indexed (wr edges out of them, ww and rw edges into them); a ww edge out of
++;   an :info writer only when an :ok read saw its write and the models prohibit G1a; a version
++;   written only by :info operations is stepped over (its neighbours linked), so a transaction
++;   order through an :info write no longer hides a ww edge.
++; Found by a Lean replica of Elle; checked over every interpretation of the replica's histories
++; (no new false positive), on Elle itself, and with Elle's test suite.
++; Round 3's D1 fix, register form (determinismo-workloads' workloads/elle/lean REPORT-3.md/fix-d1): a reader of version v1 that also writes the
++; key gets, in a second cycle search, a ww step (not rw) to the writer of a version v2 after v1 when
++; v2 and its own write are unordered in the version graph: ww where its write came first, a
++; G-single through the reader otherwise; a G0 or G1c through such a step is reported as
++; G-single-item. Snapshot isolation and consistent view passed such G-singles.
++; Round 3's D6 fix (determinismo-workloads' workloads/elle/lean REPORT-3.md/fix-d6): wr and rw edges come from every external read (a read
++; of a key the transaction hasn't written yet), not only each key's first: a G1c through a second
++; read was missed. And an :ok transaction reading one key twice with two values (a fuzzy read) is
++; reported as :fuzzy-read, a G-single-item in every interpretation, which repeatable read and
++; consistent view prohibit (consistency_model.clj); it was reported only as :internal.
++; Round 3's D7 fix (determinismo-workloads' workloads/elle/lean REPORT-3.md/fix-d7): a transaction reading a value it writes itself later
++; (values are unique, so its own future write) is reported as :future-read, as list-append does
++; (the lattice takes it as G1c). wr-graph's self-edge for it was dropped with singleton SCCs.
+ (ns elle.rw-register
+   "A test which looks for cycles in write/read transactionss over registers.
+   Writes are assumed to be unique, but this is the only constraint.
+@@ -107,6 +130,53 @@
+   [history]
+   (ct/ok-keep op-internal-case history))
+ 
++(defn op-future-read-case
++  "Round 3's D7 fix: given an op, returns a map describing a read of a value
++  the same transaction writes later (with unique values, its own future
++  write), or nil."
++  [op]
++  (let [mops (vec (:value op))]
++    (first
++      (for [i (range (count mops))
++            :let [[f k v :as mop] (nth mops i)]
++            :when (and (= :r f) (some? v))
++            j (range (inc i) (count mops))
++            :let [[f' k' v'] (nth mops j)]
++            :when (and (= :w f') (= k k') (= v v'))]
++        {:op op, :mop mop}))))
++
++(defn future-read-cases
++  "Round 3's D7 fix: ok operations reading their own future writes."
++  [history]
++  (ct/ok-keep op-future-read-case history))
++
++(defn all-ext-reads
++  "Round 3's D6 fix: every [k v] read of a key the transaction hasn't written
++  yet, in order (txn/ext-reads keeps each key's first)."
++  [txn]
++  (loop [mops (seq txn), written #{}, reads []]
++    (if-let [[f k v] (first mops)]
++      (case f
++        :w (recur (next mops) (conj written k) reads)
++        :r (recur (next mops) written (if (written k) reads (conj reads [k v])))
++        (recur (next mops) written reads))
++      reads)))
++
++(defn op-fuzzy-read-case
++  "Round 3's D6 fix: an op whose external reads of one key returned two
++  values (a non-repeatable read), or nil."
++  [op]
++  (let [by-key (group-by first (all-ext-reads (:value op)))]
++    (first (for [[k reads] by-key
++                 :let [vs (distinct (map second reads))]
++                 :when (< 1 (count vs))]
++             {:op op, :key k, :values (vec vs)}))))
++
++(defn fuzzy-read-cases
++  "Round 3's D6 fix: ok operations with fuzzy reads."
++  [history]
++  (ct/ok-keep op-fuzzy-read-case history))
++
+ (defn g1a-cases
+   "G1a, or aborted read, is an anomaly where a transaction reads data from an
+   aborted transaction. For us, an aborted transaction is one that we know
+@@ -179,7 +249,60 @@
+                            (update-in idx [k v] conj op))
+                          idx
+                          (ext-fn (:value op))))
++               {})))
++
++(defn ext-write-index
++  "Round 2's D13 fix: like (ext-index txn/ext-writes history), but indexing
++  :info operations too (their writes are known)."
++  [history]
++  (->> history
++       h/possible
++       (reduce (fn [idx op]
++                 (reduce (fn [idx [k v]]
++                           (update-in idx [k v] conj op))
++                         idx
++                         (txn/ext-writes (:value op))))
+                {})))
++
++(defn observed-info-indices
++  "Round 2's D13 fix: indices of :info operations an :ok read saw a write of."
++  [history]
++  (let [read (into #{} (for [op (h/oks history) [f k v] (:value op) :when (= :r f)] [k v]))]
++    (into #{} (for [op history :when (h/info? op)
++                    [k v] (txn/ext-writes (:value op)) :when (read [k v])]
++                (:index op)))))
++
++(defn step-over-info
++  "Round 2's D13 fix: a version written only by :info operations may not
++  exist; link each of its predecessors to each of its successors, so the
++  transaction graph keeps the order around it."
++  [history version-graphs]
++  (let [ew    (ext-write-index history)
++        info? (fn [k v]
++                (let [ws (get-in ew [k v])]
++                  (and (seq ws) (every? h/info? ws))))]
++    (reduce-kv
++      (fn [vgs k vg]
++        (assoc vgs k
++               (loop [vg vg]
++                 (let [vg' (reduce (fn [vg' ^IEdge e]
++                                     (let [a (.from e), b (.to e)]
++                                       (if (info? k b)
++                                         (reduce (fn [vg' c]
++                                                   (if (or (= c a)
++                                                           (.contains ^ISet (g/out vg' a) c))
++                                                     vg'
++                                                     (g/link vg' a c)))
++                                                 vg'
++                                                 (vec (g/out vg b)))
++                                         vg')))
++                                   vg
++                                   (vec (bg/edges vg)))]
++                   (if (= (count (vec (bg/edges vg'))) (count (vec (bg/edges vg))))
++                     vg'
++                     (recur vg'))))))
++      {}
++      version-graphs)))
+ 
+ (defn initial-state-version-graphs
+   "We assume the initial state of every key is `nil`; every version trivially
+@@ -193,7 +316,8 @@
+               (let [txn (:value op)
+                     writes (txn/ext-writes txn)
+                     ; For reads, we only know their values when the op is OK.
+-                    reads  (when (h/ok? op) (txn/ext-reads txn))]
++                    ; Round 3's D6 fix: every external read
++                    reads  (when (h/ok? op) (all-ext-reads txn))]
+                 (->> (concat writes reads)
+                      ; OK, now iterate over kv maps, building up our version
+                      ; graph.
+@@ -701,6 +825,40 @@
+        :sources   sources
+        :graphs    graphs})))
+ 
++(defn unread-pairs
++  "Round 3's D1 fix (register form): a set of [reader writer k]: an edge
++  v1 -> v2 of k's version graph gives the reader of v1 an rw edge to v2's
++  writer; the reader also writes k (its final write v3), and v2 and v3 are
++  unordered in that graph. Where the reader's write came first, the reader
++  precedes the writer by ww; otherwise the version after v1 came before the
++  reader's own, a G-single through the reader."
++  [history version-graphs read-fn]
++  (let [er    (ext-index read-fn history)
++        ew    (ext-write-index history)
++        reach (fn [vg v] (set (g/bfs #(g/out vg %) [v])))]
++    (set (for [[k vg] version-graphs
++               ^IEdge e (bg/edges vg)
++               :let [v1 (.from e), v2 (.to e)]
++               r (get-in er [k v1])
++               w (get-in ew [k v2])
++               :when (not= r w)
++               :let [v3 (get (txn/ext-writes (:value r)) k ::none)]
++               :when (and (not= ::none v3) (not= v3 v2)
++                          (not (contains? (reach vg v3) v2))
++                          (not (contains? (reach vg v2) v3)))]
++           [r w k]))))
++
++(defrecord UnreadExplainer [pairs]
++  elle/DataExplainer
++  (explain-pair-data [_ a b]
++    (first (for [[r w k] pairs :when (and (= a r) (= b w))]
++             {:type :ww, :key k, :unread? true})))
++
++  (render-explanation [_ {:keys [key]} a-name b-name]
++    (str a-name " read a version of " (pr-str key) " and wrote it, as " b-name
++         " did, in an order we can't tell: " a-name " came first, or the version"
++         " after the one it read came before its own")))
++
+ (defn version-graphs->transaction-graph
+   "Takes a history and a map of keys to version graphs, and infers a graph of
+   dependencies between operations in that history by using the (likely partial)
+@@ -714,9 +872,19 @@
+   (assuming values just don't pop out of nowhere, internal consistency holds,
+   etc) manifest as a combination of :rw, :ww, and :wr edges; we don't gain
+   anything by emitting them here."
+-  [history version-graphs]
+-  (let [ext-read-index  (ext-index txn/ext-reads  history)
+-        ext-write-index (ext-index txn/ext-writes history)]
++  ([history version-graphs]
++   (version-graphs->transaction-graph history version-graphs false))
++  ([history version-graphs g1a?]
++   (version-graphs->transaction-graph history version-graphs g1a? #{}))
++  ([history version-graphs g1a? unread]
++  (let [; Round 3's D6 fix: every external read
++        ext-read-index  (ext-index all-ext-reads history)
++        ; Round 2's D13 fix: :info writers too
++        ext-write-index (ext-write-index history)
++        ; ... and ww edges out of an :info writer whose write an :ok read saw,
++        ; for models prohibiting G1a (in its aborted interpretation that read
++        ; is an aborted read).
++        observed        (if g1a? (observed-info-indices history) #{})]
+     (loopr [g (b/linear (g/op-digraph))]
+            [[k version-graph] version-graphs
+             ^IEdge edge (bg/edges version-graph)]
+@@ -725,14 +893,21 @@
+                  k-writes  (get ext-write-index k)
+                  k-reads   (get ext-read-index k)
+                  v1-reads  (get k-reads v1)
+-                 v1-writes (get k-writes v1)
++                 ; Round 2's D13 fix: no ww edge out of an unobserved :info
++                 ; writer
++                 v1-writes (filter #(or (h/ok? %) (contains? observed (:index %)))
++                                   (get k-writes v1))
+                  v2-writes (get k-writes v2)
+                  all-vals  (set (concat v1-reads v1-writes v2-writes))]
+              (recur (-> g
+                         (g/link-all-to-all v1-writes v2-writes ww)
+-                        (g/link-all-to-all v1-reads v2-writes rw)
++                        ; Round 3's D1 fix: no rw edge for an unread pair
++                        ((fn [g] (reduce (fn [g [r w]]
++                                           (if (unread [r w k]) g (g/link g r w rw)))
++                                         g
++                                         (for [r v1-reads, w v2-writes] [r w]))))
+                         (g/remove-self-edges all-vals))))
+-           (b/forked g))))
++           (b/forked g)))))
+ 
+ (defn explain-op-deps
+   "Given version graphs, a function extracting a map of keys to values from op
+@@ -749,8 +924,8 @@
+       (keep (fn [[k a-value]]
+               (when-let [version-graph (get version-graphs k)]
+                 (when-let [b-value (get b-kvs k)]
+-                  (when (.contains ^ISet (g/out version-graph a-value)
+-                                   b-value)
++                  (when (some-> ^ISet (g/out version-graph a-value)
++                                (.contains b-value))
+                     {:key     k
+                      :value   a-value
+                      :value'  b-value}))))
+@@ -772,12 +947,17 @@
+          b-name " set it to " (pr-str value')
+          ", which came later in the version order")))
+ 
+-(defrecord RWExplainer [version-graphs]
++(defrecord RWExplainer [version-graphs unread]
+   elle/DataExplainer
+   (explain-pair-data [_ a b]
+     (when-let [{:keys [key value value'] :as e}
+-               (explain-op-deps version-graphs
+-                                txn/ext-reads a txn/ext-writes b)]
++               ; Round 3's D1 fix: each external read alone, an unread pair's
++               ; key skipped
++               (first (keep (fn [r]
++                              (when-let [e (explain-op-deps version-graphs (constantly [r])
++                                                            a txn/ext-writes b)]
++                                (when-not (contains? unread [a b (:key e)]) e)))
++                            (seq (all-ext-reads (:value a)))))]
+       (assoc e
+              :type :rw
+              :a-mop-index (index-of (:value a) [:r key value])
+@@ -800,23 +980,34 @@
+     :wfr-keys?           Assumes writes follow reads in a txn
+ 
+   In addition, we infer a dependency edge from nil to every non-nil value."
+-  [opts history]
++  ([opts history]
++   (ww+rw-graph opts history false))
++  ([opts history unread?]
+   (let [{:keys [anomalies sources graphs]} (version-graphs opts history)
+-        tg  (version-graphs->transaction-graph history graphs)]
++        ; Round 2's D13 fix
++        graphs (step-over-info history graphs)
++        ; Round 3's D1 fix: in the second search, unread pairs are ww steps
++        unread (if unread? (unread-pairs history graphs all-ext-reads) #{})
++        tg  (version-graphs->transaction-graph
++              history graphs
++              (contains? (ct/prohibited-anomaly-types opts) :G1a)
++              unread)
++        tg  (b/forked (reduce (fn [g [r w _]] (g/link g r w ww)) (b/linear tg) unread))]
+     ; We might have found anomalies when computing the version graph
+     {:anomalies anomalies
+      :graph     tg
+      :explainer (elle/->CombinedExplainer [(WWExplainer. graphs)
+-                                           (RWExplainer. graphs)])}))
++                                           (RWExplainer. graphs unread)
++                                           (UnreadExplainer. unread)])})))
+ 
+ (defrecord WRExplainer []
+   elle/DataExplainer
+   (explain-pair-data [_ a b]
+     (let [writes (txn/ext-writes (:value a))
+-          reads  (txn/ext-reads  (:value b))]
++          ; Round 3's D6 fix: every external read
++          reads  (set (all-ext-reads (:value b)))]
+       (reduce (fn [_ [k v]]
+-                (when (and (contains? reads k)
+-                           (= v (get reads k)))
++                (when (contains? reads [k v])
+                   (reduced
+                     {:type  :wr
+                      :key   k
+@@ -835,8 +1026,10 @@
+   an order over txns based on the external writes and reads of key k: any txn
+   that reads value v must come after the txn that wrote v."
+   [history]
+-  (let [ext-writes (ext-index txn/ext-writes history)
+-        ext-reads  (ext-index txn/ext-reads  history)]
++  (let [; Round 2's D13 fix: :info writers too
++        ext-writes (ext-write-index history)
++        ; Round 3's D6 fix: every external read
++        ext-reads  (ext-index all-ext-reads history)]
+     ; Take all reads and relate them to prior writes.
+     {:graph
+      (b/forked
+@@ -898,14 +1091,41 @@
+   The graph we return combines all this information.
+ 
+   TODO: maybe use writes-follow-reads(?) to infer more versions from wr deps?"
+-  [opts history]
++  ([opts history]
++   (graph opts history false))
++  ([opts history unread?]
+   (let [; Build our combined analyzers
+-        analyzers (into [wr-graph (partial ww+rw-graph opts)]
++        analyzers (into [wr-graph #(ww+rw-graph opts % unread?)]
+                         (ct/additional-graphs opts))
+         analyzer (apply elle/combine analyzers)]
+     ; And go!
+-    (analyzer history)))
++    (analyzer history))))
+ 
++(defn unread-cycles
++  "Round 3's D1 fix (register form): the cycles of the graph where each unread
++  pair is a ww step: a G0 or G1c through an unread step is reported as
++  G-single-item (with its variant); any other class stands (a G-single implies
++  G-nonadjacent and G2)."
++  [opts history]
++  (let [history (h/client-ops history)
++        graphs  (step-over-info history (:graphs (version-graphs opts history)))]
++    (when (seq (unread-pairs history graphs all-ext-reads))
++      (let [found (:anomalies (ct/cycles opts #(graph opts % true) history))]
++        (->> (for [[t cs] found
++                   :when (and (sequential? cs) (ct/cycle-types t))
++                   c cs
++                   :let [n (name t)
++                         v (re-find #"-(process|realtime)$" n)
++                         base (if v (subs n 0 (- (count n) (count (first v)))) n)
++                         t' (if (and (#{"G0" "G1c"} base)
++                                     (some :unread? (:steps c)))
++                              (keyword (str "G-single-item" (first v)))
++                              t)]
++                   ; any other class stands: a G-single implies G-nonadjacent and G2
++                   :when true]
++               [t' (assoc c :type t')])
++             (reduce (fn [m [t c]] (update m t (fnil conj []) c)) {}))))))
++
+ (defn check
+   "Full checker for write-read registers. Options are:
+ 
+@@ -969,17 +1189,26 @@
+          g1a          (h/task history g1a [] (g1a-cases history))
+          g1b          (h/task history g1b [] (g1b-cases history))
+          internal     (h/task history internal [] (internal-cases history))
++         ; Round 3's D6 fix
++         fuzzy-read   (h/task history fuzzy-read [] (fuzzy-read-cases history))
++         ; Round 3's D7 fix
++         future-read  (h/task history future-read [] (future-read-cases history))
+          lost-update  (h/task history lost-update []
+                               (ct/lost-update-cases #{:w} history))
+          cycles       (:anomalies (ct/cycles! opts (partial graph opts)
+                                               history))
++         ; Round 3's D1 fix: the G-singles through unread pairs
++         cycles       (merge-with (fn [a b] (vec (distinct (concat a b))))
++                                  cycles (unread-cycles opts history))
+          _            @type-sanity ; Will throw if problems
+          ; Build up anomaly map
+          anomalies (cond-> cycles
+                      @internal     (assoc :internal @internal)
+                      @g1a          (assoc :G1a @g1a)
+                      @g1b          (assoc :G1b @g1b)
+-                     @lost-update  (assoc :lost-update @lost-update))]
++                     @lost-update  (assoc :lost-update @lost-update)
++                     @fuzzy-read   (assoc :fuzzy-read @fuzzy-read)
++                     @future-read  (assoc :future-read @future-read))]
+      (ct/result-map opts anomalies))))
+ 
+ (defn gen
+--- a/src/elle/txn.clj
++++ b/src/elle/txn.clj
+@@ -1,3 +1,16 @@
++; SPDX-License-Identifier: EPL-2.0
++; Elle is copyright 2019--2020 Jepsen, LLC and Peter Alvaro, under the Eclipse Public License
++; 2.0 (src/elle/LICENSE); this copy's changes are under the same license.
++; Elle 0.2.8's elle/txn.clj (github.com/jepsen-io/elle), loaded ahead of Elle's jar, with:
++; - additional-graphs: models prohibiting G1a get the process order through :info operations
++;   (a cycle through one violates them whether it committed or not); models allowing G1a get
++;   real time without edges into :info completions (those cycles vanish when it aborted).
++; Found by a Lean replica of Elle; checked over every interpretation of the replica's histories
++; (no new false positive), on Elle itself, and with Elle's test suite.
++; - Round 3's D20 fix (determinismo-workloads' workloads/elle/lean REPORT-3.md/fix-d20): a cycle with two or more anti-dependencies, one an
++;   item anti-dependency, is G2-item (or G-nonadjacent-item) whatever its predicate edges, as
++;   Adya defines G2-item, and the item searches take predicate anti-dependencies beside an item
++;   one: repeatable read passed such cycles as G2.
+ (ns elle.txn
+   "Functions for cycle analysis over transactional workloads."
+   (:require [bifurcan-clj [core :as b]
+@@ -513,14 +526,17 @@
+                                   "G-single"
+                                   "G-single-item")
+ 
++                                ; Round 3's D20 fix: Adya's G2-item is a
++                                ; cycle with one or more item
++                                ; anti-dependencies, whatever else it holds
+                                 (< 1 (+ rw rwp))
+                                 (if rw-adj?
+-                                  (if predicate?
+-                                    "G2"
+-                                    "G2-item")
+-                                  (if predicate?
+-                                    "G-nonadjacent"
+-                                    "G-nonadjacent-item"))
++                                  (if (< 0 rw)
++                                    "G2-item"
++                                    "G2")
++                                  (if (< 0 rw)
++                                    "G-nonadjacent-item"
++                                    "G-nonadjacent"))
+ 
+                                 (< 0 (+ wr wrp)) "G1c"
+                                 (< 0 (+ ww wwp)) "G0"
+@@ -583,9 +599,11 @@
+                 :single-rels (rels/union rw rwp)
+                 :type        :G-single}
+     ; G-nonadjacent-item: like G-nonadjacent, but no predicate rw edges.
++    ; Round 3's D20 fix: predicate anti-dependencies too, beside an item one
+     :G-nonadjacent-item {:rels             (rels/union ww wwp wr wrp)
+-                         :nonadjacent-rels rw
+-                         :multiple-rels    rw
++                         :nonadjacent-rels (rels/union rw rwp)
++                         :multiple-rels    (rels/union rw rwp)
++                         :required-rels    #{rw}
+                          :type             :G-nonadjacent-item}
+     ; G-nonadjacent is the more general form of G-single: it has multiple
+     ; nonadjacent rw edges.
+@@ -597,9 +615,11 @@
+     ; G2-item, likewise, starts with an anti-dep edge, but allows more, and
+     ; insists on being G2, rather than G-single. Not bulletproof, but G-single
+     ; is worse, so I'm OK with it.
+-    :G2-item   {:rels          (rels/union ww wwp wr wrp rw)
++    ; Round 3's D20 fix: predicate anti-dependencies too, beside an item one
++    :G2-item   {:rels          (rels/union ww wwp wr wrp rw rwp)
+                 ; A single rw rel is trivially G-Single
+-                :multiple-rels rw
++                :multiple-rels (rels/union rw rwp)
++                :required-rels #{rw}
+                 :type         :G2-item}
+     ; G2 is identical, except we want a cycle explained as G2
+     ; specifically--it'll have at least one :predicate? edge.
+@@ -682,15 +702,18 @@
+                             want to see
+       :additional-graphs    If you'd like even more dependencies"
+   [opts]
+-  (let [ats (reportable-anomaly-types opts)]
++  (let [ats  (reportable-anomaly-types opts)
++        ; Round 2's D3 fix: edges into :info operations only for models
++        ; prohibiting G1a.
++        g1a? (contains? (prohibited-anomaly-types opts) :G1a)]
+     (-> ; If we need realtime, use realtime-graph. No need to bother
+         ; with process, cuz we'll find those too.
+         (cond (seq (set/intersection realtime-anomaly-types ats))
+-              #{elle/realtime-graph}
++              #{(if g1a? elle/realtime-graph elle/realtime-graph-without-info)}
+ 
+               ; If we're looking for any process anomalies...
+               (seq (set/intersection process-anomaly-types ats))
+-              #{elle/process-graph}
++              #{(if g1a? elle/process-graph-with-info elle/process-graph)}
+ 
+               ; Otherwise, the usual graph is fine.
+               true nil)
+@@ -816,7 +839,11 @@
+                                cycle-types
+                                (cm/anomalies-prohibited-by possible-models))]
+     ;(info :impossible-anomalies impossible-anomalies)
+-    impossible-anomalies))
++    ; Round 3's D20 fix: PL-2.99's cycle-exists subgraph has no predicate
++    ; anti-dependencies, while a G2-item (or G-nonadjacent-item) cycle may hold
++    ; some beside an item one: its absence rules neither out.
++    (set (remove #(re-find #"^G(2|-nonadjacent)-item" (name %))
++                 impossible-anomalies))))
+ 
+ (defn merge-cycle-exists+cycle-cases
+   "Takes a vector of cycle-exists cases and a vector of cycle cases. Eliminates

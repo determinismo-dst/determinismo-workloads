@@ -94,6 +94,14 @@ components (F48-F51), instantiation aborting for a Parent child's Inherit compon
 Sparse storage (F52), `ecs_iter_changed`/`ecs_iter_skip` aborting in multi-threaded systems and run
 callbacks (F53, F54). F55 (a dirty state left in a freed table's slot) not reproduced.
 
+## Round 8
+
+[REPORT-8.md](REPORT-8.md): F55 corrected (the skip leaks a block and, with the default allocator,
+corrupts the query's monitor allocator; round 7's test was right, the model wrong), F52's abort
+explained (the predicted assert), and F56-F58, each confirmed on flecs v4.2.0 (2026-11-26, macOS):
+a deleted table's order_by slice used by later iterators (F56), no OnRemove when a Parent-storage
+child is re-parented (F57), spawn tables kept for good for instances at depth 6 or more (F58).
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled

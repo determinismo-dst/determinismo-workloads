@@ -19,6 +19,9 @@ import FlecsLean.WorkersSort
 import FlecsLean.EvInh
 import FlecsLean.SpawnInh
 import FlecsLean.IterKinds
+import FlecsLean.SlicesR8
+import FlecsLean.EvHier
+import FlecsLean.SpawnDepth
 
 open Flecs
 
@@ -539,6 +542,73 @@ def sl7Main (args : List String) : IO UInt32 := do
   | _ => IO.println "usage: sl7 explore SEED N NTAGS NINIT NCALLS NPOST | exhaust LIMIT NTAGS NINIT NCALLS NPOST | lib ... PROP | cases"; return 1
   return 0
 
+def s8Alloc : String → Slices8.Alloc
+  | "os" => .os | "sanitize" => .sanitize | _ => .block
+
+def s8Main (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : Slices8.Prog) => gshrink Slices8.shrink Slices8.check sig p
+  match args with
+  | ["explore", alloc, seed, n, ntags, ninit, nph] =>
+    let g : TapeM Slices8.Prog := Slices8.genProg (s8Alloc alloc) ntags.toNat! ninit.toNat! nph.toNat!
+    greport s!"s8 explore {alloc} seed={seed} n={n} ntags={ntags} ninit={ninit} nphases={nph}" (gexplore g Slices8.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", alloc, limit, ntags, ninit, nph] =>
+    let g : TapeM Slices8.Prog := Slices8.genProg (s8Alloc alloc) ntags.toNat! ninit.toNat! nph.toNat!
+    let (st, done) := gexhaust g Slices8.check limit.toNat!
+    greport s!"s8 exhaust {alloc} ntags={ntags} ninit={ninit} nphases={nph} limit={limit} complete={done}" st (some sh)
+  | ["lib", alloc, mode, seed, n, ntags, ninit, nph, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Slices8.Prog := Slices8.genProg (s8Alloc alloc) ntags.toNat! ninit.toNat! nph.toNat!
+    glib mode g Slices8.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in Slices8.cases do
+      IO.println s!"== s8 case {nm}: {repr p}"
+      match Slices8.run p with
+      | some w => IO.println s!"  planted blocks {w.planted}; monitor chunks freed {w.chunkFreed}, links overwritten {w.chunkBad}; crashed {w.crashed}"
+      | none => IO.println "  skipped"
+      let r := Slices8.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: s8 explore ALLOC SEED N NTAGS NINIT NPHASES | exhaust ALLOC LIMIT NTAGS NINIT NPHASES | lib ALLOC MODE SEED N NTAGS NINIT NPHASES PROP | cases  (ALLOC: block|os|sanitize)"; return 1
+  return 0
+
+def ehMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : EvHier.Prog) => gshrink EvHier.shrink EvHier.check sig p
+  match args with
+  | ["explore", seed, n, nents, len] =>
+    let g : TapeM EvHier.Prog := EvHier.genProg nents.toNat! len.toNat!
+    greport s!"eh explore seed={seed} n={n} nents={nents} len={len}" (gexplore g EvHier.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, nents, len] =>
+    let g : TapeM EvHier.Prog := EvHier.genProg nents.toNat! len.toNat!
+    let (st, done) := gexhaust g EvHier.check limit.toNat!
+    greport s!"eh exhaust nents={nents} len={len} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, nents, len, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions EvHier.Prog := EvHier.genProg nents.toNat! len.toNat!
+    glib mode g EvHier.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in EvHier.cases do
+      IO.println s!"== eh case {nm}: {repr p}"
+      for es in EvHier.trace p do
+        IO.println s!"  events: {es.map (fun (k, x, s) => s!"{k.show}(e{x}, e{s})")}"
+      let r := EvHier.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: eh explore SEED N NENTS LEN | exhaust LIMIT NENTS LEN | lib MODE SEED N NENTS LEN PROP | cases"; return 1
+  return 0
+
+def sdMain (args : List String) : IO UInt32 := do
+  match args with
+  | ["exhaust", limit, n] =>
+    let g : TapeM SpawnDepth.Prog := SpawnDepth.genProg n.toNat!
+    let (st, done) := gexhaust g SpawnDepth.check limit.toNat!
+    greport s!"sd exhaust n={n} limit={limit} complete={done}" st none
+  | ["cases"] =>
+    for (nm, p) in SpawnDepth.cases do
+      IO.println s!"== sd case {nm}: {repr p}"
+      let r := SpawnDepth.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: sd exhaust LIMIT N | cases"; return 1
+  return 0
+
 def slMain (args : List String) : IO UInt32 := do
   let sh := fun (sig : String) (p : Slices.Prog) => gshrink Slices.shrink Slices.check sig p
   match args with
@@ -732,6 +802,9 @@ def main (args : List String) : IO UInt32 := do
   | "si" :: rest => return (← siMain rest)
   | "ik" :: rest => return (← ikMain rest)
   | "sl7" :: rest => return (← sl7Main rest)
+  | "s8" :: rest => return (← s8Main rest)
+  | "eh" :: rest => return (← ehMain rest)
+  | "sd" :: rest => return (← sdMain rest)
   | _ =>
     IO.println "usage: flecs-search explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | ei-explore SEED N LEN | ei-exhaust LIMIT LEN"
     return 1

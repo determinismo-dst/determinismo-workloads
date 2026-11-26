@@ -144,3 +144,51 @@ Round 7 (all use ecs_mini() unless noted; none was run in round 7):
                   confirms it by the abort at query/cache/order_by.c 87-88
                   (ECS_UNSUPPORTED, "cannot sort query in multithreaded
                   mode"), a release build (-DNDEBUG) by the race.
+
+Round 8 (all use ecs_mini(); none was run in round 8):
+  F55 (corrected) query_order_by_freed_slot_dirty_state.c (round 7) is
+                  unchanged and its result stands: it showed no write
+                  past the planted block because flecs_init_table resets
+                  dirty_state (storage/table_graph.c 424). The corrected
+                  prediction has two tests:
+                  query_order_by_skip_leaks_dirty_state.c: the block the
+                  skip plants is never freed. Build flecs.c and the test
+                  with -DFLECS_USE_OS_ALLOC (the wrapper reports tagged
+                  4-byte blocks live after ecs_fini) or with
+                  -DFLECS_SANITIZE (ecs_fini aborts with "Leak detected!";
+                  the handler prints FAIL); a plain build returns 2:
+
+    cc -std=c99 -DFLECS_USE_OS_ALLOC -I ../../upstream/distr \
+        query_order_by_skip_leaks_dirty_state.c ../../upstream/distr/flecs.c \
+        -o t && ./t; echo $?
+    cc -std=c99 -DFLECS_SANITIZE -I ../../upstream/distr \
+        query_order_by_skip_leaks_dirty_state.c ../../upstream/distr/flecs.c \
+        -o t && ./t; echo $?
+
+                  query_order_by_skip_corrupts_monitor_allocator.c: the
+                  default build (debug, and also -DNDEBUG); the skip's
+                  writes into the freed monitor overwrite the monitor
+                  allocator's free-list link, and the second monitor
+                  allocated afterwards is a wild pointer. A crash or an
+                  abort confirms (the handler prints FAIL and exits 1);
+                  OS_ALLOC and SANITIZE builds return 2.
+  F56             query_order_by_stale_slice_next_iterator.c (a table
+                  deleted during an order_by iteration keeps its slice in
+                  the next iterator; a crash or an abort also confirms)
+  F57             parent_reparent_no_on_remove.c (no OnRemove when a
+                  Parent-storage child is re-parented; the ChildOf storage
+                  is the control)
+  F58             prefab_parent_instantiate_depth_keeps_tables.c (an
+                  instance at depth 8 keeps its children's table for good;
+                  a debug build aborts when the prefab is deleted, a
+                  release build leaves a table the control does not)
+  F48, F50        parent_storage_dont_fragment_events.c: the Parent-storage
+  (Parent forms)  forms of round 7's ChildOf forms, same mechanisms
+  F53 (round 7)   iter_changed_multi_threaded_system.c is unchanged; a
+                  release build (-DNDEBUG) crashes with a NULL dereference
+                  in flecs_query_get_match_monitor (change_detection.c 89),
+                  which the handler also counts. iter_skip_..., release:
+                  no abort, the skip is ignored (not detected by the test).
+  F52 (round 7)   the abort at flecs.c 7976 is the predicted assert:
+                  flecs.c 7938 opens flecs_notify_on_set_w_cr, 7974-7976
+                  are component_actions.c 677-679. The tests are unchanged.

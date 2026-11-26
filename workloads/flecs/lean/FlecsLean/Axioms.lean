@@ -5,6 +5,7 @@ import FlecsLean.TheoremsR4
 import FlecsLean.TheoremsR5
 import FlecsLean.TheoremsR6
 import FlecsLean.TheoremsR7
+import FlecsLean.TheoremsR8
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -72,3 +73,11 @@ import FlecsLean.TheoremsR7
 #print axioms Flecs.R7.worker_iter_calls_abort
 #print axioms Flecs.R7.run_trivial_next
 #print axioms Flecs.R7.dirty_state_case
+#print axioms Flecs.R8.new_table_drops_planted
+#print axioms Flecs.R8.slices8_cases
+#print axioms Flecs.R8.forward_kind
+#print axioms Flecs.R8.parent_reparent_no_remove
+#print axioms Flecs.R8.evhier_cases
+#print axioms Flecs.R8.spawn_depth_keeps
+#print axioms Flecs.R8.spawn_depth_cases
+#print axioms Flecs.R8.release_worker_iter_changed_crashes

@@ -25,6 +25,22 @@
     641-702), which for a component with an `on_set` hook looks up the
     instance child's table in the component's table cache and asserts it is
     there (672-681, the assert at 679).
+    Round 8: the real flecs aborted at flecs.c 7976 of the v4.2.0
+    amalgamation, which is this assert: flecs.c 7938 opens
+    `flecs_notify_on_set_w_cr` and 7974-7976 are its
+    `flecs_table_cache_get_elem` and `ecs_assert(elem != NULL, ...)`;
+    `flecs_new_entity` (flecs.c 8472-8494, entity.c 126-148) has no such
+    assert.  It is two frames below on the stack:
+    `ecs_new_w_id` (entity.c 801, flecs.c 9147) -> `flecs_new_entity`
+    (entity.c 143, flecs.c 8489) -> `flecs_actions_new` (component_actions.c
+    369-381, flecs.c 7666-7676) -> `flecs_actions_on_add_intern` (286-331,
+    its `flecs_emit`) -> `flecs_emit`, for the `(IsA, p)` OnAdd
+    (observable.c 1196-1226: `flecs_instantiate`, flecs.c 15515) ->
+    `flecs_instantiate` (instantiate.c 393-440: the TreeSpawner,
+    flecs.c 64969) -> `flecs_spawner_instantiate` (tree_spawner.c 337-338,
+    flecs.c 65674) -> `flecs_instantiate_sparse` (instantiate.c 129-130,
+    flecs.c 64661) -> `flecs_notify_on_set_w_cr` (component_actions.c 679,
+    flecs.c 7976).  The model's path stands.
   `ChildOf` children: `flecs_instantiate_children` (instantiate.c 135-299):
   the instance child gets the prefab child's ids except DontInherit ones
   (171-184), `AUTO_OVERRIDE | C` as C (193-207), values copied from the

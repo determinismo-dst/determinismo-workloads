@@ -1,7 +1,7 @@
 # flecs repros
 
-From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in seven
-rounds (REPORT.md to REPORT-7.md: each finding's minimal program, story, tape, code path and the
+From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in eight
+rounds (REPORT.md to REPORT-8.md: each finding's minimal program, story, tape, code path and the
 documentation it breaks). Every entry below was reproduced on the real flecs v4.2.0: its C test
 (tests/flecs_lean) compiled against the release's single-file distribution with asserts on (a
 debug build: `FLECS_DEBUG` without `NDEBUG`), on macOS and on Linux (the
@@ -201,6 +201,40 @@ cc -std=gnu99 -O1 -g -DNDEBUG -I flecs/distr tests/flecs_lean/workers_order_by_s
 cc -std=gnu99 -O1 -g -DNDEBUG -fsanitize=thread -I flecs/distr tests/flecs_lean/workers_order_by_sort_race.c flecs/distr/flecs.c -lm -lpthread -o t && TSAN_OPTIONS="halt_on_error=0" ./t
 # WARNING: ThreadSanitizer: data race (x19): flecs_query_cache_build_sorted_tables (18),
 #   flecs_query_cache_sort_tables, flecs_query_sync_match_monitor, flecs_run_system
+```
+
+- [ ] **F55: the skip of a deleted table's order_by slice leaks a block, and with the default allocator corrupts the query's monitor allocator** (the next new monitor is a wild pointer: a SIGSEGV in debug and release builds). The skip plants a one-int dirty state in the freed table's zeroed slot (round 7's reading; the next table there resets it, so no write past it) and writes the freed monitor, whose first bytes are the allocator's free-list link. Story, code path and the docs it breaks: REPORT-8.md, F55.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_skip_corrupts_monitor_allocator.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# control: 6 entities after the new tables (sum of x 50)
+# FAIL: signal 11 (ecs_query_iter after the new tables (their monitors)) after the skip of the stale slice wrote the freed monitor
+```
+
+```sh
+cc -std=gnu99 -O1 -g -DFLECS_SANITIZE -I flecs/distr tests/flecs_lean/query_order_by_skip_leaks_dirty_state.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# error: flecs.c: 31895: Leak detected! (size 16, remaining = 1)
+# fatal: flecs.c: 31909: abort(): LEAK_DETECTED
+```
+
+- [ ] **F56: a table deleted during an order_by iteration keeps its slice in later iterators; a new iterator uses it** (a table created later in the freed memory can be returned; a debug build aborts at the columns check first). The result sync resets `prev_match_count` (change_detection.c 632), so the next iterator's sort doesn't rebuild the slices. Story, code path and the docs it breaks: REPORT-8.md, F56.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_stale_slice_next_iterator.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 85074: assert(columns[i] == expected): it->columns[0]=-28112 does not match expected 1
+# FAIL: signal 6 while a new iterator used the slice of the table freed during the previous iteration
+```
+
+- [ ] **F58: instantiating a Parent-hierarchy prefab for an instance at depth 6 or more keeps its spawn table for good**: deleting the prefab afterwards aborts in a debug build ("tables are keeping it alive"), and a release build leaves the table behind. The spawner's temporary vector for depths past its cache (FLECS_TREE_SPAWNER_DEPTH_CACHE_SIZE, 6) keeps its tables and is freed without releasing them (tree_spawner.c 148, 348-350). Story, code path and the docs it breaks: REPORT-8.md, F58.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_instantiate_depth_keeps_tables.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 18120: assert(!force_delete || ...): cannot delete component '(*,#387)': tables are keeping it alive
+# FAIL: signal 6 deleting the prefab after an instance at depth 8 was instantiated and deleted
+# (release, -DNDEBUG) FAIL: the deep instantiation left 1 table(s) that no delete or cleanup can free
 ```
 
 ## Panics where the docs say none, and none where they say one
@@ -628,12 +662,20 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/system_run_trivial_cache_ne
 # fatal: flecs.c: 79095: assert(it->next == ecs_query_next) (INVALID_PARAMETER)
 ```
 
+- [ ] **F57: re-parenting a Parent-storage child (`ecs_set(e, EcsParent, {p2})`) delivers no OnRemove**: not for `(ChildOf, p1)`, not for p1's components the child and its children lose; the same re-parent with ChildOf storage delivers both. The Parent component's OnSet is re-emitted as the OnAdd of `(ChildOf, p2)` only (observable.c 1160-1183). The Parent-storage forms of F48 and F50 show too (their test: parent_storage_dont_fragment_events.c). Story, code path and the docs it breaks: REPORT-8.md, F57.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/parent_reparent_no_on_remove.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# controls: ChildOf re-parent: OnRemove Tag(up) 1, OnRemove (ChildOf, p1) 1; Parent removed: OnRemove Tag(up) 1, OnRemove (ChildOf, p1) 1
+# prediction: e re-parented to p2: 1; OnRemove Tag(up) for e 0, for its child g 0; OnRemove (ChildOf, p1) for e 0; events seen 0
+# FAIL: e and its child g lost Tag(up) from p1 without an OnRemove
+```
+
 ## Predicted but not reproduced
 
-- F55 (round 7: the skip of a deleted table's order_by slice plants a one-element dirty state the
-  next table writes past): its test, built with `-DFLECS_USE_OS_ALLOC`, exits 0 on v4.2.0 (the new
-  table takes the freed memory, no guard changes): not reproduced.
-
+- F55 as round 7 wrote it (a write past the planted block): the next table in the slot resets its dirty
+  state (table_graph.c 424), so nothing is written past it; the corrected F55 is above.
 - F2 as first predicted (`batch_remove_dead_target_panic.c`): flecs behaved as documented; a model
   error, corrected in round 2 (the entry above).
 - F17's first test (`ecs_init()`, whose builtin ProgressTasks system ran first): Update still ran.

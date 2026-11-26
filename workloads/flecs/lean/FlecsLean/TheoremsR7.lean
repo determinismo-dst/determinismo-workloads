@@ -169,7 +169,16 @@ theorem worker_iter_calls_abort (s : Sys) (hs : s.stages > 1) (hm : s.multiThrea
     nextOf s = .workerNext ∧ ∃ e, outcome s = .error e := by
   have hn : nextOf s = .workerNext := by simp [nextOf, hs, hm]
   refine ⟨hn, ?_⟩
-  rcases hc with h | h <;> simp only [outcome, hn, h] <;> exact ⟨_, if_pos rfl⟩
+  -- round 8: the outcome also covers the validator, F47's assert and
+  -- release builds; every branch with a worker iterator is an error
+  have hne : (Next.workerNext != Next.queryNext) = true := by decide
+  have hwq : (Next.workerNext == Next.workerNext) = true := by decide
+  obtain ⟨stages, mt, run, dc, ob, tr, call, rel⟩ := s
+  simp only at hs hm hc hn
+  subst hm
+  rcases hc with h | h <;> subst h <;>
+    cases run <;> cases dc <;> cases ob <;> cases tr <;> cases rel <;>
+    simp [outcome, hn, rejected, sortAbortsFirst, hs, hne, hwq, trivialCache]
 
 open Flecs.IterKinds in
 /-- F54, for every system: a run callback of a system that does not get a
@@ -196,13 +205,14 @@ def slDirtyDeleteBefore : Flecs.Slices.Prog7 :=
   { slDirty with base := { slDirty.base with
       init := slDirty.base.init ++ [.deleteTag 0], calls := [] } }
 
-/-- F55: the skip of the deleted table's slice plants a dirty state in its
-    slot (slot 1), the next table created there keeps it, and ecs_set on it
-    writes past it; without the delete, or with the delete before the
-    iterator is made, nothing is planted. -/
+/-- F55, as corrected in round 8: the skip of the deleted table's slice
+    plants a dirty state in its slot (slot 1), but `flecs_init_table`
+    (table_graph.c 424) resets it for the next table created there, so no
+    write goes past it (the block leaks instead: `SlicesR8`).  The controls
+    plant nothing. -/
 theorem dirty_state_case :
     ((Flecs.Slices.iterateLeaks slDirty.base).map (·.2.1)) = some [1] ∧
-    (Flecs.Slices.check7 slDirty).map (·.1) = ["P1 no write past an allocation"] ∧
+    Flecs.Slices.check7 slDirty = [] ∧
     Flecs.Slices.check7 slDirtyNoDelete = [] ∧
     Flecs.Slices.check7 slDirtyDeleteBefore = [] := by
   decide +kernel

@@ -338,10 +338,16 @@ def cases : List (String × Prog) := [
   `flecs_table_get_dirty_state` (storage/table.c 1432-1450) on the slice's
   table pointer: the store's zeroed memory.  Its `dirty_state` is NULL, so
   a block of `column_count + 1` = 1 int32 is allocated and its pointer
-  written into the zeroed slot.  `flecs_table_new` (table_graph.c 433-470)
+  written into the zeroed slot.  `flecs_table_new` (table_graph.c 433-494)
   takes the slot with `flecs_sparse_add_t`, which does not zero it
-  (sparse.c 258-269), and neither it nor `flecs_table_init` sets
-  `dirty_state`: the next table created there starts with the 1-int block.
+  (sparse.c 258-269).
+
+  ROUND 8 CORRECTION: `flecs_table_new` calls `flecs_init_table`
+  (table_graph.c 418-430), which sets `table->dirty_state = NULL` (424)
+  before `flecs_table_init`.  Round 7 missed that line: the next table
+  created in the slot drops the planted block (which leaks, `SlicesR8`), so
+  nothing below writes past it.  `check7` now models the reset and finds
+  no P1; the text below is round 7's reading, kept for the record.
   `flecs_table_mark_dirty` (storage/table.c 1397-1429), on every `ecs_set`
   and `ecs_modified` of a column of that table, increments
   `dirty_state[column]` with column >= 1; query monitors read
@@ -418,7 +424,7 @@ def check7 (p : Prog7) : List (String × String) := Id.run do
   if leaks.isEmpty then return []
   let mut w := w0
   -- the planted block per live table: a table created in a planted slot
-  let mut planted : List Nat := []   -- table indices
+  let planted : List Nat := []   -- table indices (never filled since round 8)
   let mut created : Array Nat := #[] -- entity ids created after the iteration
   let mut leaksLeft := leaks
   for op in p.post do
@@ -431,7 +437,8 @@ def check7 (p : Prog7) : List (String × String) := Id.run do
       if w.tables.size > before then
         let slot := (w.tables.getD t default).slot
         if leaksLeft.contains slot then
-          planted := t :: planted
+          -- flecs_init_table (table_graph.c 424): dirty_state = NULL; the
+          -- new table does not keep the planted block (round 8 correction)
           leaksLeft := leaksLeft.erase slot
       w := newEnt w hp ts 0
       created := created.push (w.ents.size - 1)

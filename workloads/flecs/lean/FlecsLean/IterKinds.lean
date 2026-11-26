@@ -68,10 +68,12 @@ structure Sys where
       wildcards, ...) -/
   trivialShape : Bool := true
   call : Call := .iterChanged
+  /-- round 8: a release build (asserts and checks compiled out) -/
+  release : Bool := false
   deriving Repr, BEq, Inhabited, DecidableEq
 
 def showSys (s : Sys) : String :=
-  s!"{s.stages} stage(s), {if s.multiThreaded then "multi_threaded" else "single-threaded"} system, {if s.run then "run callback" else "callback"}, query {if s.detectChanges then "with EcsQueryDetectChanges" else "without change detection"}{if s.orderBy then ", order_by" else ""}{if s.trivialShape then ", trivial cache shape" else ""}; the callback calls {match s.call with | .iterChanged => "ecs_iter_changed(it)" | .iterSkip => "ecs_iter_skip(it)" | .testNext => "it->next == ecs_query_next"}"
+  s!"{if s.release then "release build, " else ""}{s.stages} stage(s), {if s.multiThreaded then "multi_threaded" else "single-threaded"} system, {if s.run then "run callback" else "callback"}, query {if s.detectChanges then "with EcsQueryDetectChanges" else "without change detection"}{if s.orderBy then ", order_by" else ""}{if s.trivialShape then ", trivial cache shape" else ""}; the callback calls {match s.call with | .iterChanged => "ecs_iter_changed(it)" | .iterSkip => "ecs_iter_skip(it)" | .testNext => "it->next == ecs_query_next"}"
 
 /-- The query's cache is trivial (no change detection: the cache stores
     `ecs_query_triv_cache_match_t`, cache.c): asserted by the change
@@ -85,20 +87,47 @@ def nextOf (s : Sys) : Next :=
   else if s.run && trivialCache s then .trivialCachedNext
   else .queryNext
 
-/-- What the call does: `.ok` result, or an abort message (debug build). -/
+/-- Round 8: the validator rejects `EcsQueryDetectChanges` with order_by
+    ("change detection is not supported for queries with order_by",
+    query/validator.c 1831-1840): no system exists. -/
+def rejected (s : Sys) : Bool := s.detectChanges && s.orderBy
+
+/-- Round 8: in a debug build, a multi-threaded order_by system run on more
+    than one stage aborts in its stage's `ecs_query_iter`, when the sort
+    builds the slices (order_by.c 87-88, F47's assert), before any callback
+    runs. -/
+def sortAbortsFirst (s : Sys) : Bool := !s.release && s.orderBy && s.multiThreaded && s.stages > 1
+
+/-- F53 in a release build. -/
+def releaseIterChangedCrash : String :=
+  "crash: release build: ecs_iter_changed's checks are compiled out (change_detection.c 680-705); it reads it->priv_.iter.query.elem, which the worker iterator copied before the first result (ecs_worker_iter, iter.c 1020; system.c 97-101): NULL, which flecs_query_check_match_monitor passes to flecs_query_get_match_monitor, whose first read is match->_monitor (change_detection.c 89): a NULL dereference"
+
+/-- What the call does: `.ok` result, or an abort or crash message. -/
 def outcome (s : Sys) : Except String String :=
   let n := nextOf s
+  if rejected s then .error "rejected: the validator refuses change detection with order_by (validator.c 1831-1840)" else
+  if sortAbortsFirst s then .error "F47 first: the sort of the stage's ecs_query_iter asserts !(world->flags & EcsWorldMultiThreaded) (order_by.c 87-88) before the callback runs" else
   match s.call with
   | .testNext => .ok (if n == .queryNext then "true" else "false")
   | .iterChanged =>
     if n != .queryNext then
-      .error s!"ecs_iter_changed: ecs_check(it->next == ecs_query_next, ECS_UNSUPPORTED) fails (change_detection.c 680; it->next is {n.show}); a release build reads it->priv_.iter.query.elem, NULL in a worker iterator (iter.c 1020), and dereferences it in flecs_query_check_match_monitor"
+      if s.release then
+        if n == .workerNext then
+          .error releaseIterChangedCrash
+        else .ok "the change state (release build: the trivially cached iterator's elem is the current match)"
+      else
+      .error s!"ecs_iter_changed: ecs_check(it->next == ecs_query_next, ECS_UNSUPPORTED) fails (change_detection.c 680; it->next is {n.show})"
     else if trivialCache s then
       .error "precondition: change detection is not enabled on the query"
     else .ok "the change state"
   | .iterSkip =>
     if n != .queryNext then
-      .error s!"ecs_iter_skip: ecs_assert(it->next == ecs_query_next, ECS_INVALID_PARAMETER) fails (change_detection.c 718; it->next is {n.show}); {if n == .workerNext then "a release build sets EcsIterSkip on the worker iterator, whose flags ecs_worker_next overwrites from the query iterator (iter.c 1049-1054), which never sees it: the table is marked dirty anyway" else "a release build works: flecs_query_trivial_cached_next reads EcsIterSkip before it clears it (eval_iter.c 640-646)"}"
+      if s.release then
+        if n == .workerNext then
+          .error "skip lost: release build: EcsIterSkip is set on the worker iterator, whose flags ecs_worker_next overwrites from the query iterator (iter.c 1049-1054), which never sees it: the table is marked dirty anyway"
+        else .ok "skipped (release build: flecs_query_trivial_cached_next reads EcsIterSkip before it clears it, eval_iter.c 640-646)"
+      else
+      .error s!"ecs_iter_skip: ecs_assert(it->next == ecs_query_next, ECS_INVALID_PARAMETER) fails (change_detection.c 718; it->next is {n.show})"
     else .ok "skipped"
 
 /-- Properties:
@@ -110,7 +139,7 @@ def outcome (s : Sys) : Except String String :=
     not abort;
   - PI3: `ecs_iter_skip` on it does not abort. -/
 def check (s : Sys) : List (String × String) :=
-  let mt := s.stages > 1 && s.multiThreaded
+  if rejected s || sortAbortsFirst s then [] else
   match s.call, outcome s with
   | .testNext, .ok r =>
     if s.run && !s.multiThreaded && r == "false" then
@@ -136,7 +165,8 @@ def genSys : m Sys := do
   let ob := (← Pick.pick "ik.orderby" 2) == 1
   let tr := (← Pick.pick "ik.trivial" 2) == 1
   let call ← pickOf "ik.call" #[Call.iterChanged, .iterSkip, .testNext]
-  return { stages, multiThreaded := mtd, run, detectChanges := dc, orderBy := ob, trivialShape := tr, call }
+  let release := (← Pick.pick "ik.release" 2) == 1
+  return { stages, multiThreaded := mtd, run, detectChanges := dc, orderBy := ob, trivialShape := tr, call, release }
 
 end
 
@@ -152,6 +182,14 @@ def cases : List (String × Sys) := [
   ("system_run_trivial_cache_next: ecs_iter_skip in that run callback",
     { stages := 1, run := true, trivialShape := true, call := .iterSkip }),
   ("control: the same run callback with EcsQueryDetectChanges",
-    { stages := 1, run := true, detectChanges := true, trivialShape := true, call := .iterSkip }) ]
+    { stages := 1, run := true, detectChanges := true, trivialShape := true, call := .iterSkip }),
+  ("round 8, release build: iter_changed_multi_threaded_system",
+    { stages := 2, multiThreaded := true, detectChanges := true, trivialShape := true, call := .iterChanged, release := true }),
+  ("round 8, release build: iter_skip_multi_threaded_system",
+    { stages := 2, multiThreaded := true, trivialShape := true, call := .iterSkip, release := true }),
+  ("round 8, release build: ecs_iter_skip in the trivially cached run callback (works)",
+    { stages := 1, run := true, trivialShape := true, call := .iterSkip, release := true }),
+  ("round 8, debug build: round 7's PI2 tape (order_by, multi_threaded, 2 stages): F47's assert first",
+    { stages := 2, multiThreaded := true, orderBy := true, trivialShape := false, call := .iterChanged }) ]
 
 end Flecs.IterKinds

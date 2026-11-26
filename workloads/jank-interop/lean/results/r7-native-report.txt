@@ -1,0 +1,309 @@
+Round 7, area P (native values) and W (strings): exe jank7-native, Lean namespace Jank.R7.Native.
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). Clojure 1.12.3 on JDK 23
+(default locale en_CA). Every jank path is upstream-r5/compiler+runtime/<path>. Every item is a hypothesis from
+a Lean replica re-read against the source; jank was not built or run.
+
+========================================================================================================
+(1) DEVIATIONS
+========================================================================================================
+Tests: .r7-scratch/native/tests.jank (ns jank-lean.native-r7-test, 21 deftests, one assertion each);
+Clojure translation .r7-scratch/native/clj/jank_lean/native_r7_test.clj: 20 tests, 20 assertions, 0 failures,
+0 errors on Clojure 1.12.3 (results/r7-native-clj.txt). vP2e is jank only (below).
+
+P7-a. `zero?` and `abs` of a char-array element are numbers to math.hpp. (V64's cause, in two more templates)
+  (zero? (aget (char-array 1) 0))   Clojure: ClassCastException ("Character cannot be cast to Number")   jank: true
+  (abs (aget (char-array "a") 0))   Clojure: ClassCastException                                          jank: 97
+  (inc / dec of the element: 98 / 96, V64's own form; the unary walk below.)
+  Path [inlined]: core.jank zero? 1680-1686 / abs 1818-1827 -> math.hpp is_zero 1340-1350
+  (`primitive_number<L> && !is_same<L, bool>`: a char passes, `l == 0ll`), abs 992-1001
+  (`std::abs(static_cast<i64>(l))`); aget of a char_array_ref returns char& (core/array.hpp 32-36).
+  Fn value: `(apply zero? [(aget (char-array 1) 0)])` boxes a character object and is_zero throws a
+  std::runtime_error "not a number" (visit.hpp 507): both throw, `thrown?` cannot see jank's (V7's class).
+  Tests vP1-zero-of-a-char-array-element-throws, vP1b-abs-of-a-char-array-element-throws.
+  Status: V64's cause (primitive_number takes char), new forms. Confidence: high. Fix: fixes/P7-1.diff.
+
+P7-b. x86-64's default NaN through inlined literals, `let`, `parse-double` and jank.math. (D9's cause, new paths
+  and producers; D9 itself confirmed by the real jank: d09/d09b end with signal 11)
+  (NaN? (/ 0.0 0.0))                [literals]  Clojure true   jank SIGSEGV
+  (let [x ##Inf] (NaN? (- x x)))    [let]       Clojure true   jank SIGSEGV
+  (NaN? (* 0.0 ##Inf))              [literals]  Clojure true   jank SIGSEGV
+  (NaN? (parse-double "-NaN"))      [fn]        Clojure true   jank SIGSEGV
+  (NaN? (jank.math/sqrt -1.0)), (jank.math/pow -1.0 0.5), (jank.math/tan ##Inf)   with fixes/V24.diff:
+                                                 Clojure (clojure.math) ##NaN   jank SIGSEGV
+  Control: (NaN? (+ ##NaN 1)) true on both (a NaN operand keeps its positive sign).
+  Mechanism: oref.hpp stores a double's raw bits (tag(f64) 194); a word is a real only below max_real
+  0xFFF8000000000000 (94, 113); x86-64 SSE's default NaN is exactly that word; get_type() (386-398) then reads
+  ptr()->type at as_pointer(word) = 0. Producers:
+  - literals: codegen emits `auto tN(<text>);` (cpp_processor.cpp 1278-1285) with lift_constant's text
+    (132-150) from jtl string_builder (string_builder.cpp 83-135): `##Inf` -> `INFINITY`, `##NaN` -> `NAN`,
+    both C `float` constants, so the local is a float although literal_type says double (cpp_util.cpp
+    670-693). math.hpp's both-primitive sub/mul/div (284-292, 512-518, 400-406) compute at run time: the
+    runtime optimization level defaults to 0 (util/cli.cpp 205, 528-531; jit/processor_dynamic.cpp
+    281-298). divsd/mulsd give 0xFFF8000000000000; subss on floats gives 0xFFC00000, which make_box(float)
+    (make_box.hpp 79-85, static_cast<f64>) widens to 0xFFF8000000000000. NaN? is a defn (core.jank 7814),
+    so the native result is boxed (tag) and is_nan's visit_number_like (math.cpp 641-657) reads the type.
+  - parse-double: math.cpp parse_double 712-736 -> std::stod -> glibc strtod("-NaN") = -NAN = 0xFFF8000000000000.
+  - jank.math (only loadable with fixes/V24.diff): math.hpp tan 1041-1062, sqrt 1064-1085, pow 1087-1176 on
+    objects -> make_box(std::sqrt(...)): glibc sqrt(-1.0) is sqrtsd, pow(-1.0, 0.5) is __math_invalid's
+    (x - x) / (x - x), tan(inf) is x - x: the default NaN each.
+  Clojure: Numbers' primitive double operations return NaN; (parse-double "-NaN") is ##NaN; clojure.math/sqrt,
+  pow, tan give ##NaN (results/r7-native-clojure.txt).
+  Tests vP2-nan-of-zero-over-zero-literals, vP2b-nan-of-infinity-minus-infinity-let,
+  vP2c-nan-of-zero-times-infinity-literals, vP2d-parse-double-of-negative-nan,
+  vP2e-jank-math-sqrt-of-a-negative-is-nan (jank only: Clojure has no jank.math; stock jank fails it for V24),
+  control vP2f-control-a-nan-operand-keeps-its-sign.
+  Status: D9's cause. Confidence: high for vP2d and the fn paths at every optimization level; the literal and
+  let forms rest on PA7-1 (runtime -O0: at -O1+ LLVM folds them to the positive NaN and they agree).
+  Fix: fixes/D9.diff (round 6) canonicalizes in tag(f64), which every one of these boxes through (read-checked:
+  make_box(f64) -> small_real_ref -> oref<object> 284-289 -> tag). No new diff.
+
+P7-c. `dotimes` and `loop` counters wrap at 2^31. (R24's cause reached by dotimes; R24 confirmed on the real jank)
+  (try (dotimes [i 2147483649] (when (neg? i) (throw (ex-info "wrapped" {:i i})))) :done
+       (catch Exception e (:i (ex-data e))))                      Clojure :done (0.6 s)   jank -2147483648
+  (loop [i 0] (cond (neg? i) i (< i 2147483649) (recur (inc i)) :else :done))   Clojure :done   jank -2147483648
+  Without the throw, jank's (dotimes [i n] ...) never ends for any n >= 2^31.
+  Path [loop]: core.jank dotimes 2694-2709 `(let [n# (int ~n)] (loop [~i 0] (when (< ~i n#) ... (recur
+  (unchecked-inc ~i)))))`: the counter takes the int literal's type (literal_type 628-648, mutable_type
+  1064-1090); unchecked_inc(object_ref) (math.cpp 348-353) returns an object; recur stores it with
+  convert<int>::from_object = static_cast<int>(o.to_integer()) (convert/builtin.hpp 236-245), modulo 2^32.
+  `(recur (inc i))`: inc(int) returns the exact i64 (math.hpp 1184-1205), assigned to the int local.
+  Clojure's dotimes uses (long n) and a primitive long counter.
+  Tests vP3-dotimes-counts-past-int-max, vP3b-loop-counter-past-int-max (each iterates 2^31 times; jank needs
+  a minute or more). Status: R24's cause (new form: plain dotimes). Confidence: high. Fix: fixes/R24.diff
+  (round 6, boxes a builtin-typed loop local) covers both; no new diff.
+
+W7-a. R60 in full: JDK 23's SpecialCasing against jank's one-code-point mapping. (R60, confirmed; each class
+  now has its own test)
+  (upper-case "ß")  Clojure "SS"    jank "ß"        (upper-case "ŉ")  Clojure "ʼN"   jank "ŉ"
+  (upper-case "ǰ")  Clojure "J̌"     jank "ǰ"        (upper-case "ﬁ")  Clojure "FI"   jank "ﬁ"
+  (upper-case "ᾳ")  Clojure "ΑΙ"    jank "ᾼ"        (lower-case "İ")  Clojure "i̇" (2 chars)   jank "i"
+  (lower-case "ΣΑΣ") Clojure "σας"  jank "σασ"      (capitalize "ßa") Clojure "SSa"  jank "ßa" (with R61)
+  Control: (upper-case "é") "É" on both.
+  The complete set (results/r7-native-specialcasing.txt, derived on JDK 23 over all 1,112,064 scalar values):
+  102 code points whose upper case is 2 (86) or 3 (16) code points: ß ŉ ǰ ΐ ΰ և ẖ ẗ ẘ ẙ ẚ ὐ ὒ ὔ ὖ, 48 Greek
+  ypogegrammeni/prosgegrammeni forms U+1F80-1FAF, 1FB2-1FB4, 1FB6, 1FB7, 1FBC, 1FC2-1FC4, 1FC6, 1FC7, 1FCC,
+  1FD2, 1FD3, 1FD6, 1FD7, 1FE2-1FE4, 1FE6, 1FE7, 1FF2-1FF4, 1FF6, 1FF7, 1FFC, ligatures ﬀ-ﬆ, Armenian ﬓ-ﬗ;
+  one lower-case entry (İ -> i + U+0307); plus Final_Sigma. The default locale and the root locale agree on
+  every code point.
+  Path: string.jank upper-case 142-147, lower-case 149-154, capitalize 156-164 -> util/string.cpp to_uppercase
+  26-36 / to_lowercase 14-24: wstring_convert::from_bytes, ctype<wchar_t>::toupper/tolower in place (one
+  wchar_t to one), to_bytes; capitalize 54-70 upper-cases the first byte (R61).
+  Exact set (proved for every simple mapping): every text holding one of the 103 code points differs
+  (upper_count_differs, lower_count_differs); final Σ by example (lower_values) and the JVM run.
+  Tests vW1-upper-case-of-sharp-s, vW1b-upper-case-of-n-after-an-apostrophe, vW1c-upper-case-of-j-with-caron,
+  vW1d-upper-case-of-a-ligature, vW1e-upper-case-of-alpha-with-ypogegrammeni,
+  vW1f-lower-case-of-capital-i-with-dot, vW1g-lower-case-of-a-final-sigma, vW1h-capitalize-of-sharp-s,
+  control vW1i-control-upper-case-with-a-simple-mapping. Status: R60. Confidence: high (jank's values for ᾳ and
+  İ rest on WA7-1, glibc's simple mappings; the deviation itself holds whatever they are). No fix (11).
+
+W7-b. `replace` with a pattern that matches empty puts the replacement between a character's bytes. (V75's cause
+  through replace and replace with a fn)
+  (clojure.string/replace "é" (re-pattern "") "-")         Clojure "-é-"   jank "-\xC3-\xA9-"
+  (clojure.string/replace "é" (re-pattern "") (fn [_] "-")) Clojure "-é-"   jank "-\xC3-\xA9-"
+  (replace-first agrees: "-é".)
+  Path: string.jank replace -> string_native.cpp replace(regex, string) 218-224 (std::regex_replace) /
+  replace(regex, fn) 226-250 (sregex_iterator); libstdc++'s regex_iterator steps one byte after an empty match
+  (deps/libstdcxx-15.3.0/regex.tcc 556-584). Round 3's replica gives these values (results/r7-native-regex.txt).
+  Tests vW2-replace-with-an-empty-pattern-keeps-characters, vW2b-replace-with-a-fn-and-an-empty-pattern-keeps-
+  characters. Status: V75's cause (split) on two more functions. Confidence: high. No fix (regex engine).
+
+Shared causes: P7-a is V64's (primitive_number takes char) and with the bool cases R33's; P7-b is D9's (oref
+tagging); P7-c is R24's (a loop local keeps a literal's native type); W7-a is R60 (one-to-one case mapping), with
+R61 for capitalize; W7-b is V75's (regex_iterator's one-byte step) on design A's bytes. Five separate causes.
+
+Noted, not deviations from Clojure:
+- nREPL abbreviate (nrepl/server/util.jank 4-11): see (5) and the model; it never throws, sends nothing to the
+  client, and logs invalid UTF-8 exactly when byte 20 cuts a character.
+- `##Inf`/`##NaN` literals are C++ floats (above): no value of round 6's walk changes (it drew finite doubles);
+  only the NaN sign above matters.
+- No producer of an unsigned or other native type reachable from plain code beyond round 6's list (7).
+
+========================================================================================================
+(1b) THE BRIEF CHECK: the real jank's string observations on round 6's model
+========================================================================================================
+(results/r7-native-run.txt `brief`; theorems in Jank/R7/Native/Brief.lean)
+- (index-of "a" "a" -1): round 6's jIndexOf gives nil, Clojure 0. Real jank nil. Predicted exactly (V74).
+- (index-of "a" "" 5): jIndexOf nil, Clojure 1. Real jank nil. Predicted exactly (V74).
+- (last-index-of "aa" "a" -1): jLastIndexOf 1, Clojure nil. Real jank 1. Predicted exactly (V74).
+  (brief_index_of)
+- (upper-case (subs "é" 1)): (subs "é" 1) is the byte 0xA9; jUpper6 throws, labelled "range_error". Real jank:
+  "wstring_convert::from_bytes". Predicted exactly in kind (std::range_error, V67); the label was not the what()
+  text. Corrected: Brief.jUpper7/jLower7 carry libstdc++'s text (locale_conv.h 346); brief_upper_of_cut.
+  jUpper7_agrees_jUpper6: the change touches no value, only the error text. Nothing else used the label
+  (round 6's w4_values still states it for jUpper6; Fixes.lean's capitalize uses round 2's jLower).
+- (split "aéb" #""): round 3's replica (jSplit through round 5's verdict5) gives ["a" "\xC3" "\xA9" "b"],
+  Clojure ["a" "é" "b"]; (split "é" #"") ["\xC3" "\xA9"]. Real jank: é split into its two bytes. Predicted
+  exactly (V75).
+All five agree with the real jank. One model error corrected (the label); no other model touched.
+
+========================================================================================================
+(2) PROOFS (no sorry, no native_decide, no new axiom; results/r7-native-axioms.txt: 35 theorems, each on
+    propext / Classical.choice / Quot.sound or none)
+========================================================================================================
+- Brief: brief_index_of, brief_upper_of_cut (the observations on round 6's model); jUpper7_agrees_jUpper6
+  (for every locale and byte string).
+- Unary: zero_of_char_returns (for every char value, inlined zero? returns a boolean where Clojure throws);
+  abs_inc_dec_of_char_return (for every char value, abs/inc/dec return a number); zero_of_char_fn_value.
+- Nan: default_nan_is_null, widened_float_nan (cvtss2sd of 0xFFC00000 is 0xFFF8000000000000), strtod_neg_nan,
+  positive_nan_is_real; nonneg_real (every word below 2^63 is a real), non_nan_real (every non-NaN double is a
+  real), misdecoded_are_negative_quiet_nans (every word jank misreads is a NaN with sign and quiet bits set),
+  canon_real (with D9.diff every word is a real), every_program_crashes_at_O0 (every program × path),
+  folded_literals_agree (at -O1+ the literal/let forms agree, the fn and parse-double forms still crash).
+- Loop: counter_agrees (below 2^31 jank's counter equals Clojure's after k steps), counter_wraps (after 2^31
+  steps it is -2^31), never_ends (for every n >= 2^31 the test holds at every step), agrees_below (for every
+  n < 2^31 exactly n iterations), wrapI32_id, wrapI32_lt, clj_counter.
+- StrCase: count_differs (for every table whose entries have >= 2 code points, every pair of simple mappings
+  and every text holding a table code point, Java's result is longer than jank's), upper_count_differs,
+  lower_count_differs (instances on JDK 23's tables), special_upper_long/lower_long/upper_count (table facts),
+  upper_values, lower_values, capitalize_value (the tests' values).
+- StrAbbrev: subs_in_range (for every string and n <= its byte count, abbreviate's subs is in range: it never
+  throws), log_example, ten_e_acute.
+Not proved: abbreviate's validity rule (searched, (8)); the regex classes (searched); that glibc's towupper and
+Java's simple mappings agree off the table (WA7-1; the theorem holds for any pair of simple mappings).
+
+========================================================================================================
+(3) WHAT WAS REPLICATED
+========================================================================================================
+- Jank/R7/Native/Brief.lean: util/string.cpp to_uppercase/to_lowercase with libstdc++'s exception text
+  (locale_conv.h 336-347); uses round 2's jIndexOf/jLastIndexOf/jSubs and round 6's fromBytes.
+- Jank/R7/Native/Unary.lean: math.hpp is_zero 1340-1382, abs 992-1040, inc 1184-1260, dec 1262-1338 on round 6's
+  operands (extends Jank.R6.Native.jankBin, which had only two-operand templates); Numbers.isZero/abs/inc/dec.
+- Jank/R7/Native/Nan.lean: oref.hpp max_real, tags, get_type/as_pointer (94-150, 386-398); make_box(float)
+  (make_box.hpp 79-85); string_builder's INFINITY/NAN literal text (string_builder.cpp 83-135) and
+  cpp_literal_ref codegen (1278-1285); parse_double (math.cpp 712-736); jank.math with V24.diff; D9.diff's
+  canonicalization.
+- Jank/R7/Native/Loop.lean: core.jank dotimes 2694-2709, unchecked_inc (math.cpp 348-353), convert<int>::
+  from_object (builtin.hpp 236-245), inc (math.hpp 1184-1205); Clojure's dotimes (long counter).
+- Jank/R7/Native/StrCase.lean: util/string.cpp to_uppercase/to_lowercase (one wchar_t to one) and capitalize
+  (54-70); JDK 23's SpecialCasing tables (derived on the JVM).
+- Jank/R7/Native/StrAbbrev.lean: nrepl/server/util.jank abbreviate 4-11 (bytes) beside the same code on units.
+- Run/R7/Native.lean: `jank7-native brief | unary | nan | case | abbrev | regex | vw2 | all`; the regex part
+  runs round 3's libstdc++ replica (via round 4/5's jankEval4) against round 5's Java model (JM5).
+
+========================================================================================================
+(4) WHAT IS NOT EXACT
+========================================================================================================
+- Unary walk floats are Lean binary64 (round 6's caveat).
+- Nan.lean models only the bits of the results that matter (the default NaN, a positive NaN), not general
+  IEEE arithmetic; glibc's sqrt/pow/tan/strtod results are read from glibc's documented behavior, not its
+  source (PA7-3).
+- StrCase: glibc's simple mappings are given for the tests' code points only (WA7-1).
+- Regex sub-classes are a heuristic split of round 5's "bytes (R78)" trigger (an ASCII analog agrees; then a
+  non-ASCII pattern character -> S22, a pattern matching "" -> V75's step, else R78), not toggles.
+
+========================================================================================================
+(5) STILL LEFT OUT, AND WHY
+========================================================================================================
+- jank.math's pow/tan/sqrt on finite inputs: glibc's and HotSpot's libm may differ in the last bit for tan
+  and pow (both are allowed 1 ulp); not modeled (no glibc source here). sqrt is exactly rounded on both.
+  `(jank.math/abs -0.0)` is -0.0 (D6, same template).
+- nREPL abbreviate: what a client receives through which ops: nothing (it feeds only `log`, core.jank 86 and
+  89, printed under -v). It is computed for every request and response (log is a defn: its arguments are
+  evaluated even when not verbose). Never throws (subs_in_range; pr-str escapes bytes, util/escape.cpp
+  147-198). Invalid UTF-8 reaches the server's stdout exactly when byte 20 cuts a character (walk). No
+  Clojure counterpart, no test.
+- re-matcher with re-groups: the same matcher loop as re-seq in both implementations (core.jank re-seq ->
+  re-find on one matcher; R81's new-string search), counted under .seq.
+- R60's fix (11).
+
+========================================================================================================
+(6) ASSUMPTIONS
+========================================================================================================
+- PA7-1 The tests run at jank's default runtime optimization level 0 (no -O passed to run/run-main/test).
+  At -O1+ LLVM folds the literal/let NaN forms (vP2, vP2b, vP2c) to the positive NaN and they pass.
+- PA7-2 LLVM APFloat's invalid-operation result is the positive quiet NaN 0x7FF8000000000000.
+- PA7-3 glibc x86-64: sqrt(-1.0) and tan(±inf) return the SSE default NaN; pow(-1, 0.5) returns
+  __math_invalid's 0/0; strtod("-NaN") returns -NAN (sign bit set).
+- PA7-4 x86-64 SSE: invalid operations on non-NaN operands give 0xFFF8000000000000 (binary64) and
+  0xFFC00000 (binary32); cvtss2sd keeps a NaN's sign; a NaN operand propagates with its sign.
+- WA7-1 glibc's towupper/towlower follow UnicodeData's simple mappings (ᾳ -> ᾼ, İ -> i, Σ -> σ) in a UTF-8
+  locale; in the C locale non-ASCII is unchanged. Either way the R60 tests fail on jank.
+- Round 6's PA6-1..5 and StrA6-2 stand. Replaced: round 6's typing of special double literals (Src.dlit is a
+  `double`; for ##Inf/##-Inf/##NaN the emitted C++ is a `float`).
+
+========================================================================================================
+(7) PROPERTIES CHECKED (source)
+========================================================================================================
+- zero?/abs/inc/dec of a Character or Boolean throw ClassCastException (Numbers.isZero/abs/inc/dec(Object);
+  run on 1.12.3).
+- Primitive double arithmetic returns NaN for invalid operations; NaN? on it is true; (parse-double "-NaN") is
+  ##NaN (core.clj parse-double's grammar); clojure.math sqrt/pow/tan return ##NaN (run on 1.12.3).
+- dotimes runs n times for every long n (core.clj dotimes: (long n), primitive long counter; run on 1.12.3).
+- String.toUpperCase/toLowerCase apply SpecialCasing (the JDK javadoc; table derived on JDK 23).
+- clojure.string/replace with an empty-matching pattern inserts between chars (Matcher.find; run on 1.12.3).
+- Producers of native types (read from all :inline forms of core.jank and the C++ they call): usize
+  (sequence_length 180-192, alength 6021-6027), uhash (to_hash 2479), i64 (to_int 197-208, bit ops 1438-1536),
+  f64 (to_real 211-217, rand 1967), bool (every predicate, truthy, contains, bit_test, =, ==), T& for typed
+  array elements (aget/aset 6034-6053), literals (int/long/double/float/bool). Nothing else returns an unsigned
+  type; count/alength/hash stay the only unsigned producers (R92's cpp/ values are interop only).
+
+========================================================================================================
+(8) SEARCH RUNS (complete; results/r7-native-run.txt, r7-native-regex.txt)
+========================================================================================================
+- unary: 4 ops × round 6's 45 sources × 2 paths = 360 cases, complete. 42 differ: 30 the source's own value
+  (P6, P7, R122), R33 bool 6 (abs/inc/dec), char 4 (zero?, abs, inc, dec: V64's cause), float element 2
+  (inc/dec: V63's cause).
+- nan: 8 programs × 3 paths × 2 optimization levels, complete (above).
+- abbrev: every text of <= 8 code points over {a, é, €, 😀} (87,381 texts), n = 20: invalid UTF-8 logged for
+  22,698; the rule "valid iff shorter than 20 bytes or byte 20 starts a character" broken 0 times; differs from
+  the same code on units 41,165 times.
+- regex: 6 apis (find, seq, matches, replace "-", replace fn, split) × 15 patterns ("", x*, (?=.), ., \S, [^a],
+  (?=a), a?, \b, (.), é, é?, (?=é), a|, \W) × 85 inputs (<= 3 code points over a é € 😀) = 7,650 questions,
+  complete: 3,807 differ: an atom matches one byte (R78) 1,797; empty match steps one byte (V75's cause) 972;
+  a non-ASCII pattern character (S22) 310; R81 154 (+490 with bytes); R84 3 (+81 with bytes). No residual: no
+  new cause in regex positions at this bound.
+- JVM: the special casing derivation over all 1,112,064 scalar values (results/r7-native-specialcasing.txt).
+
+========================================================================================================
+(9) THEOREMS (* = new for-every-input)
+========================================================================================================
+brief_index_of, brief_upper_of_cut, * jUpper7_agrees_jUpper6, * zero_of_char_returns,
+* abs_inc_dec_of_char_return, * zero_of_char_fn_value, default_nan_is_null, widened_float_nan, strtod_neg_nan,
+positive_nan_is_real, * nonneg_real, * non_nan_real, * misdecoded_are_negative_quiet_nans, * canon_real,
+* every_program_crashes_at_O0, * folded_literals_agree, * wrapI32_id, * wrapI32_lt, * counter_agrees,
+* clj_counter, counter_wraps, * never_ends, * agrees_below, special_upper_long, special_lower_long,
+special_upper_count, * count_differs, * upper_count_differs, * lower_count_differs, upper_values,
+lower_values, capitalize_value, * subs_in_range, log_example, ten_e_acute.
+
+========================================================================================================
+(10) LIBRARY GAPS
+========================================================================================================
+- Core Lean 4.36 has no Function.iterate notation (Mathlib's): Loop.lean defines `iter`.
+- WF-defined decoders (round 2's decodeUtf8, unitsToBytes) do not reduce under `decide`; checked in the walk.
+
+========================================================================================================
+(11) FIXES WRITTEN
+========================================================================================================
+- fixes/P7-1.diff (include/cpp/jank/runtime/core/math.hpp, is_zero and abs): a `char` operand throws an
+  object ("Can't check if a char is zero.", "Can't abs a char."), as inc's "Overflow on increment." does, so
+  `thrown?` sees it. Tests: vP1, vP1b. `git -C upstream-r5 apply --check` clean alone; upstream-r5 clean.
+  Read-checked: L is deduced by value, so aget's char& gives L = char; abs keeps its i64 return type (an
+  unreachable `return i64{}` after the throw); is_zero's other branches unchanged (bool still throws the
+  runtime_error; objects still visit); jank's suite touches is_zero/abs only with ratios
+  (test/cpp/jank/runtime/obj/ratio.cpp 338-376). clang++ -std=c++20 -fsyntax-only of a TU instantiating
+  is_zero<char>, abs<char>, is_zero<int>, abs<double> against the patched header: no error
+  (.r7-scratch/native/fix/tu.cpp). Conflicts textually with R33a/R33b.diff (same templates): merge by hand.
+  A build must check: the JIT's handling of the new throw in an inlined template; `(int (aget (char-array
+  "a") 0))` stays 97 (to_int unchanged).
+- Not written: D9's paths (fixes/D9.diff covers them), dotimes (fixes/R24.diff covers it), W7-b (regex
+  engine), R60: the unconditional tables are complete for JDK 23 (102 + 1 entries, derived), but Final_Sigma
+  needs Java's context rule (Cased and case-ignorable properties, word boundaries), which libc does not
+  provide; a fix without it would not be a complete SpecialCasing table.
+- V24.diff checked, not wrong: it loads jank.math; through it sqrt/pow/tan expose D9 and abs D6.
+
+========================================================================================================
+(12) MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+========================================================================================================
+- Round 6's Cut.lean fromBytes: the error label "range_error" is not libstdc++'s what() text
+  "wstring_convert::from_bytes" (Brief.jUpper7). No value changed.
+- Rounds 3 and 6: a special double literal (##Inf, ##-Inf, ##NaN) is a C++ float in the emitted code
+  (INFINITY/NAN macros), not a double. No earlier prediction changes (round 6's walk drew finite doubles;
+  V56b's (max 1 ##NaN) is std::max over float: still 1.0).
+
+Files
+- Lean: Jank/R7/Native/{Brief, Unary, Nan, Loop, StrCase, StrAbbrev}.lean; Run/R7/Native.lean
+  (`lake build jank7-native` succeeds).
+- Results: results/r7-native-report.txt, r7-native-axioms.txt, r7-native-run.txt, r7-native-regex.txt,
+  r7-native-clj.txt, r7-native-clojure.txt, r7-native-specialcasing.txt.
+- Tests: .r7-scratch/native/tests.jank; .r7-scratch/native/clj/jank_lean/native_r7_test.clj.
+- Fix: fixes/P7-1.diff.

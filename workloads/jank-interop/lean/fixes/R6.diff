@@ -1,0 +1,68 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -770,6 +770,8 @@
+             {
+               if(found_r)
+               {
++                /* A digit of an arbitrary-radix number (16re is 14). */
++                expecting_more_digits = false;
+                 ++pos;
+                 continue;
+               }
+@@ -844,6 +846,8 @@
+               }
+               if(found_r)
+               {
++                /* A digit of an arbitrary-radix number (36rr is 27). */
++                expecting_more_digits = false;
+                 continue;
+               }
+               if(found_N)
+@@ -952,7 +956,9 @@
+                 /* If we don't have a leading digit, then we are parsing a symbol. */
+                 break;
+               }
+-              if(c == 'N')
++              /* After the r of an arbitrary-radix number, N and M are digits, never suffixes
++               * (36rN is 23); LispReader's intPat takes them into the digits. */
++              if(c == 'N' && !found_r)
+               {
+                 if(contains_dot)
+                 {
+@@ -983,7 +989,7 @@
+                 expecting_more_digits = false;
+                 break;
+               }
+-              if(c == 'M')
++              if(c == 'M' && !found_r)
+               {
+                 /* Big decimal number. */
+                 ++pos;
+@@ -1080,20 +1086,22 @@
+             }
+             if(found_r)
+             {
+-              radix = static_cast<i8>(std::stoi(file.data() + token_start, nullptr));
+-              if(radix < 0)
++              /* The base is checked before it is narrowed: 258r11 is not base 2. */
++              auto parsed_radix{ std::strtol(file.data() + token_start, nullptr, 10) };
++              if(parsed_radix < 0)
+               {
+-                radix = static_cast<i8>(-radix);
++                parsed_radix = -parsed_radix;
+                 found_beginning_negative = true;
+               }
+-              if(radix < 2 || radix > 36)
++              if(parsed_radix < 2 || parsed_radix > 36)
+               {
+                 return error::lex_invalid_number(
+                   util::format("The base `{}` is out of range. The supported bases are `2` through "
+                                "`36`, inclusive.",
+-                               radix),
++                               parsed_radix),
+                   { token_start, pos });
+               }
++              radix = static_cast<i8>(parsed_radix);
+               number_start = r_pos + 1llu;
+             }
+             else if(radix == 16)

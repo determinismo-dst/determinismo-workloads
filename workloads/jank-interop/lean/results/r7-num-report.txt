@@ -1,0 +1,265 @@
+Round 7, area N (numbers): BigDecimal with a scale, unchecked ops and bit operations, the min/max NaN check
+==========================================================================================================
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). Paths are under
+upstream-r5/compiler+runtime/. Clojure is 1.12.3 (JDK 23), run through the job slots. Every item is a hypothesis from
+the Lean replica, re-read against the source; jank was not built or run.
+
+How a BigDecimal reaches jank's code (read, not assumed):
+- A BigDecimal is boost `number<cpp_dec_float<100>, et_off>` (include/cpp/jank/type.hpp 35): 16 limbs of 8 digits,
+  a value with no scale. Literals: read/lex.cpp → big_decimal(string) → rd_string (round 3's replica).
+- `+ - * /` (2 args), `quot`, `rem`, `inc`, `dec`, `abs`, `min`, `max`, `hash` inline (core.jank 1371-1435, 1616-1701,
+  2476-2486); a BigDecimal is always an object, so math.hpp's object branches run; a native long or double literal
+  meeting it takes boost's mixed operators, the value its boxed form gives (math.hpp primitive templates compute
+  `l OP typed_r->data`): jank's answer does not depend on the path for a BigDecimal form (NumA7-2).
+- Printing: big_decimal.cpp 157-175 → string_builder.cpp 240-249: `str()`, then ".0" when the text has no '.'.
+- Clojure: BigDecimalOps (Numbers.java 964-1092) with *math-context* nil: exact add/multiply, divide exact or
+  "Non-terminating decimal expansion; no exact representable decimal result.", quotient = divideToIntegralValue,
+  remainder = remainder; minus(x, y) = add(x, ops(y).negate(y)) (162-165); toBigDecimal (298-322) converts a Ratio by
+  dividing (so a non-terminating ratio throws first); hasheqFrom (1132-1145) strips trailing zeros.
+
+(1) Deviations
+--------------
+N7-1 (new). The hash of a BigDecimal is boost's hash of its limbs, not Clojure's.
+  (hash 1.5M)        Clojure 466         jank 154574889
+  (apply hash [1M])  Clojure 31          jank 3307139568
+  also (hash 0.1M) 32 vs 1194974331, (hash 100M) 29 vs 414241650, (hash 0M) 0 vs 3774723415.
+  Property: Numbers.hasheqFrom (1132-1145): 0 for a zero, else stripTrailingZeros().hashCode() = 31·BigInteger.hashCode
+  (unscaled) + scale. ★ cljHashDec_value_only: it depends only on the value, so jank can compute it from the
+  cpp_dec_float alone.
+  Path: core.jank hash 2476-2486 (inline cpp/jank.runtime.to_hash) → core.cpp to_hash 623-626 → big_decimal.cpp to_hash
+  177-180 (std::hash<native_big_decimal> → cpp_dec_float.hpp hash_value 3528-3531, cut to uhash). Every path (inlined,
+  fn value) reaches it. jank's values were computed twice: by round 3's CDF.hash replica and by boost itself in a
+  standalone program (identical for all 10 values; results/r7-num-forms.txt, .r7-scratch/num/cppcheck/stockhash.cpp).
+  Tests: vN1-hash-of-a-bigdecimal [literals], vN1b-hash-of-a-bigdecimal-through-a-fn-value [fn value].
+  Status: new (round 1's D12 table and round 3's S10 cover equal values hashing apart, not the value). High.
+  Note: a negative Clojure hash still prints unsigned after the fix ((hash -1.5M): -464 vs 4294966832): V51's cause.
+  Shared cause: none (separate, as V70/V71/V83 for characters, strings and keywords).
+
+N7-2 (new as an item; round 3 noted it as "documented", REPORT-3 323, MPA8). Dividing a BigDecimal by zero gives
+  inf or nan.
+  (/ 1M 0M)                  Clojure ArithmeticException "Divide by zero"   jank inf.0M
+  ((fn [a b] (/ a b)) 0M 0M) Clojure "Divide by zero"                       jank nan.0M
+  (/ 1.5M 0)                 Clojure "Divide by zero"                       jank inf.0M
+  Property: Numbers.divide (182-192) checks ops(y).isZero(y) first. The book's "Division by integer 0 is undefined"
+  (differences-from-clojure.md) is a note on the deviation, not the property (round 6's rule).
+  Path: core.jank / 1421-1435 → math.hpp div 296-406 (`make_box(typed_l->data / typed_r->data)` and the native
+  branches) → cpp_dec_float.hpp operator/= 1014-1045: calculate_inv of 0 is inf; 0/0 is nan. D2.diff's zero check
+  covers integers only ("Other operand types keep their /"). Walk: 183 questions.
+  Tests: vN2-bigdecimal-division-by-zero-throws [literals], vN2b-bigdecimal-zero-over-zero-throws [fn],
+  vN2c-bigdecimal-divided-by-a-zero-int-throws [literals, native int 0]. High.
+  Shared cause: none in jank's decimal code; it is D2's zero check missing for decimals.
+
+N7-3 (new as an item; round 3 named with-precision as unported in S3's path, never an item or test).
+  `with-precision` throws when expanded and `*math-context*` does not exist.
+  (with-precision 10 (/ 1M 3))   Clojure 0.3333333333M                     jank ex-info "TODO: port with-precision"
+  *math-context*                 Clojure nil                               jank: unable to resolve the symbol
+  Path: core.jank 6487-6502 (the macro's body is the throw); nothing defines *math-context* (grep of src/jank, src/cpp,
+  include/cpp). Every with-precision form deviates; Clojure's results for 26 of them are in results/r7-num-probe-1.12.3.txt
+  (rounding modes, quot "Division impossible", `(with-precision 3 (compare 1/3 1M))` = -1, double rounding in minus).
+  Tests: vN3-with-precision-rounds-bigdecimal-division, vN3b-math-context-is-defined (both through ev). High.
+  Shared cause: U74's class (unported names). Not local: a MathContext would have to reach every decimal operation.
+
+Re-found and extended, already reported (tests added where they pin a point for a fix):
+- R72 (scale lost, ".0" added) on every result, not only literals: + - * / quot-after-D4 rem inc dec abs - max min bigdec
+  and str (walk: 4,278 questions by the scale alone, 594 by the notation, S5's ranges and Java's E-notation of negative
+  scales: (str 1E+2M) "1E+2" vs "100.0", (/ 0M 5.00M) "0E+2" vs "0.0", (bigdec 1e10) "1.0E+10" vs "10000000000.0").
+  Tests vN4-bigdecimal-quotient-keeps-the-preferred-scale ((/ 6M 3M): "2" vs "1.999…9" today, "2.0" after S2's fix),
+  vN4b-bigdecimal-sum-keeps-the-larger-scale ("3.00" vs "3.0"), vN4c-bigdecimal-quotient-with-a-negative-scale
+  ("2E+1" vs "20.0" after S2), vN4d-bigdecimal-quotient-by-a-power-of-two-keeps-the-scale ("0.250" vs "0.25" today and
+  after). One cause: cpp_dec_float has no scale (type.hpp 35) and str() prints the shortest digits.
+- S2 (82 questions), S3 (286 non-terminating quotients + 819 non-terminating ratio operands: + - * / quot rem compare
+  == < max min and bigdec all convert 1/3 by a Newton inverse where Clojure throws; (max 0M 1/3) is 1/3 in jank), S4
+  (210), S6 (903), S7 (14; (rem 1E+130M 7.5M) is even negative, -4200000000.0M vs 2.5M), S8 (216), S12 (1), D4 (1,522
+  long quotients, 56 out-of-range casts; Clojure's quotient is a BigDecimal at max(s1 − s2, −trailingZeros(t)):
+  (quot 100M 1.0M) = 1.0E+2M), V57 (36: (max 0M 0) is 0.0M vs 0).
+  Tests vN5-exact-bigdecimal-quotient-keeps-every-digit (S4 after S2's fix), vN6-quot-of-bigdecimals-is-a-bigdecimal
+  (D4), vN6b-control-quot-of-whole-bigdecimals-prints-no-point (control today; fails with D4.diff: R72),
+  vN10-dividing-by-a-non-terminating-ratio-throws (S3), vN11-bigdecimal-divided-by-a-double-is-a-double (S6).
+- U74: still unported at 94d32623 (core.jank): unchecked-inc-int, -dec, -dec-int, -negate, -negate-int, -add, -add-int,
+  -subtract, -subtract-int, -multiply, -multiply-int, -divide-int, -remainder-int (1835-1932), rationalize (1934-1938),
+  unchecked-byte/-short/-char/-int/-long/-float/-double, short, byte (5783-5841): each throws ex-info "TODO: port …".
+  Only unchecked-inc is ported (math.cpp unchecked_inc 348-353: `make_box(data + 1ll)`; agrees: wraps on a long, exact on
+  BigInt, ratio, BigDecimal with its value). Tests vN7-unchecked-int-arithmetic-wraps-at-32-bits, vN7b-rationalize-of-a-bigdecimal.
+- Also seen, not a BigDecimal difference: (double 1E-7M) prints "1e-07" vs "1.0E-7" (round 2's double printing).
+- Clojure's own path difference, not reported: (- x Long/MIN_VALUE) with a BigDecimal x throws "long overflow" in
+  Clojure (LongOps.negate of the subtrahend, V55's class); jank subtracts.
+
+What exact division (the coordinator's S2 fix) leaves, predicted (results/r7-num-div.txt, results/r7-num-walk.txt
+section 2, results/r7-num-forms.txt):
+- Printing (R72): a quotient prints jank's value text. Over every |u1| ≤ 20, 1 ≤ |u2| ≤ 20, scales −2..3 (59,040
+  pairs): 29,376 do not terminate (both throw with the fix); of 29,664 terminating quotients 15,296 print alike and
+  14,368 differently (scale alone 4,580; notation 9,788; value 0). Hypothesis H holds on all 59,040 (0 mispredicted):
+  the texts agree exactly when Java prints the quotient plainly (scale ≥ 0, adjusted exponent ≥ −6), boost prints it
+  fixed (−4 ≤ order < digits held), and Clojure's scale max(s1 − s2, minimal scale) equals the scale jank shows
+  (the minimal scale when positive, else 1). (/ 6M 3M) "2" vs "2.0"; (/ 6.00M 3) "2.00" vs "2.0"; (/ 60M 3.0M) "2E+1"
+  vs "20.0"; (/ 6.0M 3) agrees.
+- Digits (S4): an exact quotient past 128 significant digits is cut: (/ 1M 1606938044258990275541962092341162602522202993782792835301376M)
+  has 140 in Clojure; stored in cpp_dec_float it keeps ≤ 128 (vN5).
+- Ratio operands (S3): Clojure converts the ratio first and throws for 1/3, so (/ 1M 1/3) throws though 1/(1/3) = 3
+  terminates; a fix dividing the exact values gives 3.0M. The fix must apply its terminate-or-throw rule to a ratio
+  operand before dividing (vN10).
+- Double operands (S6): Clojure divides as doubles ((/ 1M 0.1) = 10.0); a fix applied to decimal/double pairs would throw
+  "Non-terminating" for most doubles (1/0.1d = 2^55/3602879701896397) (vN11).
+- Zero divisors: N7-2 unless the fix throws "Divide by zero" for them (fixes/N7-2.diff does).
+- quot and rem do not divide: D4, S7, S8 stay. In the walk, exact division removes S2 (82) and the 286 non-terminating
+  quotients; 8,845 of today's 9,221 disagreements remain.
+
+Bit operations beyond U75 (no deviation): counts ≥ 64 or negative agree with Java on x86-64 and AArch64 (NumA7-1):
+  math.cpp 530-583 shift an i64 by a register count (`l << r`, `l >> r`, `u64 >> u64`, `(l >> r) & 1`, `l | (1 << r)`),
+  undefined in C++ past [0, 63], but SHL/SAR/SHR/BT and LSLV/ASRV/LSRV take the count modulo 64, which is Java's `& 63`
+  (JLS 15.19). Checked: 15 forms from the probe ((bit-shift-left 1 64) = 1, (bit-test 1 -64) = true, (bit-flip 0 127) =
+  Long/MIN_VALUE, (unsigned-bit-shift-right -1 -1) = 1, …) compiled from the extracted functions (noinline) at -O0 and -O2,
+  arm64 and x86-64 (Rosetta): 0 differ (results/r7-num-cppcheck-bits.txt). Doubles, ratios, characters, booleans, BigDecimals
+  and nil: both throw (jank to_i64 math.cpp 10-30, std::runtime_error, which `thrown?` cannot see: V7's class; Clojure
+  bitOpsCast IllegalArgumentException, NPE for nil). BigInts: U75. bit-test's bool in arithmetic: V64's class.
+  Every path (literal, let, fn value) converts the operands to objects for these functions. Controls: vN8, vN8b, vN8c, vN8d.
+
+The brief's min/max NaN check (round 6's model, Jank.R6.Num.MinMax.jMinMax; results/r7-num-forms.txt):
+  form                                  path                 round 6 predicts   Clojure   real jank
+  ((fn [a b] (max a b)) ##NaN 1)        fn                   ##NaN              ##NaN     ##NaN (coordinator)
+  ((fn [a b] (min a b)) ##NaN 1)        fn                   1                  ##NaN     1 (v56, confirmed)
+  (max ##NaN 1), (let [a ##NaN b 1] …)  literals, let        ##NaN              ##NaN
+  (min ##NaN 1), (let …)                literals, let        ##NaN (std::min(NaN, 1.0) = `1.0 < NaN ? 1.0 : NaN`)
+  (apply min [##NaN 1])                 fn value             1                  ##NaN
+  ((fn [b] (min ##NaN b)) 1), ((fn [a] (min a 1)) ##NaN)     1                  ##NaN
+  max with NaN first, every path                             ##NaN              ##NaN
+  Round 6 predicted both observations correctly: NaN loses exactly when it is min's first operand on an object path
+  (`l < r ? l : r`), or min's second / max's second operand anywhere; it wins as max's first operand on every path and
+  as min's first operand on the native path. No model error. Controls: vN9 (literals), vN9b (fn).
+
+(2) Proofs
+----------
+For every input (Jank/R7/Num/Theorems.lean):
+- ★ tz10_mul_pow: trailingZeros(n·10^k) = trailingZeros(n) + k (n ≠ 0); lemmas tz10_succ, tz10_mul10.
+- ★ strip_scale: stripTrailingZeros(⟨u·10^k, s+k⟩) = stripTrailingZeros(⟨u, s⟩).
+- ★ cljHashDec_scale and ★ cljHashDec_value_only: Clojure's hash of a BigDecimal is the same for every scale of one value
+  (the premise of fixes/N7-1.diff: jank's scale-less value suffices).
+- ★ test_agree (bv_decide): jank's bit_test `(x >> n) & 1` equals Java's testBit `(x & (1 << n)) != 0` for every x and
+  every count taken modulo 64; set_clear_flip_agree (rfl): bit_set/clear/flip are Java's formulas term for term;
+  ★ cnt_in_range (bv_decide): in [0, 63] the masking changes nothing (C++ is defined there and is Java's).
+Axioms: results/r7-num-axioms.txt: propext, Classical.choice, Quot.sound; test_agree and cnt_in_range add bv_decide's
+per-proof certificate axiom (allowed by the rules; not re-proved kernel-only).
+Not proved, searched instead: everything about boost's printing and arithmetic (walk, complete), hypothesis H (complete
+search), the hardware masking (standalone runs).
+
+(3) What was replicated
+-----------------------
+- Jank/R7/Num/Dec.lean:
+  Java: tz10, strip (stripTrailingZeros), words32/bigIntegerHash (BigInteger.hashCode), bdHashCode, cljHashDec
+  (Numbers.hasheqFrom 1132-1145), BD.divToIntegral (divideToIntegralValue, preferred scale), BD.remainder; Clojure:
+  cNegate and `minus` (Numbers.java 162-165), cQuotRem (quotient/remainder 194-205; Numbers.quotient(double,double)
+  207-218), cAnswer (static `Numbers.divide(Object, double)` for a double literal; max/min Object overloads 4124-4228),
+  cUnary (str hash inc dec - abs bigdec long double bigint), over round 3's BD/CV/cArith/cLt/cCompare/cEquiv/cEqual/
+  cBigdec/toBD.
+  jank: jAnswer over round 3's jArith (math.hpp add/sub/mul/div 68-406 → boost), jQuot (math.cpp quot 321-345), jRemZ
+  (math.cpp rem 223-304 with each branch's zero check), jCompare (big_decimal.cpp 182-190), jEqual (146-155), jEquiv
+  (math.cpp is_equiv), max/min (math.hpp 738-992 object branches), jHash (big_decimal.cpp 177-180 → round 3's CDF.hash),
+  jUnary (inc/dec math.hpp 1186-1340 `data ± 1ll`; abs 994-1040 `-1ll * data`; unary - core.jank 1393: `0 - x`; bigdec
+  math.cpp to_big_decimal; long/double/bigint); jDivFixed: the S2 fix as the exact quotient read back with rd_string, or
+  the throw. The verdict (agree / text / value / kind / throws) and the notation test.
+- Jank/R7/Num/Walk.lean: the value set (19 BigDecimals incl. 0, 0.00, 1E+2, 1E+130, 1E-7; longs, BigInts, ratios incl. 1/3,
+  doubles incl. 0.0), the questions, the JVM program and its answers.
+- Jank/R7/Num/DivSearch.lean: the exact-division search and H.
+- Jank/R7/Num/NaN.lean: the brief's forms on round 6's jMinMax/cMinMax.
+- Run/R7/Num.lean (`jank7-num gen | cmp | div [b1 b2] | brief | forms`).
+
+(4) What is not exact
+---------------------
+- jDivFixed stands for a fix not yet written: the stored quotient (truncated by rd_string at ≤ 128 digits), zero divisors
+  and double operands follow today's paths; the coordinator's text decides these (predictions above are conditional).
+- Exceptions are compared by "throws", not class or message: jank's rem by zero throws a std::runtime_error (`thrown?`
+  misses it), quot by zero a boxed string; the walk counts those as agreeing.
+- jank's quot past the i64 range is undefined (static_cast of a double): modeled as an error.
+- jank's side of a BigDecimal form is one answer per form (NumA7-2), argued from math.hpp's templates, not modeled per template.
+- H's upper notation bound uses order < 128; boost's bound is the digit count held (121-128). The search's values stay far below.
+
+(5) Still left out, and why
+---------------------------
+- MathContext rounding (divide/add/multiply/quot/rem with a precision): jank has no with-precision at all, so every such
+  form deviates by N7-3 whatever the rounding; Clojure's results come from the JVM probe, not a Lean model.
+- The unchecked ops and rationalize: unported, every call throws; nothing to model.
+- Hash values of ratios and of BigInts past the long range (D12's class): not re-examined.
+- quot/rem under D4.diff and S8.diff: only vN6/vN6b's forms were reasoned (D4.diff boxes a BigDecimal: R72 then shows).
+
+(6) Assumptions
+---------------
+- NumA7-1: libjank's bit functions (math.cpp 492-583) shift by a run-time register count, and the shift and bit-test
+  instructions take it modulo 64 (x86-64, AArch64). Checked standalone at -O0/-O2 on arm64 and x86-64 (Rosetta); a build
+  with UBSan's shift check or LTO constant folding would differ.
+- NumA7-2: a native long or double literal meeting a BigDecimal object computes what its boxed form does (math.hpp's
+  primitive templates apply the same boost mixed operator to `l` and `typed_r->data`).
+- NumA7-3: the S2 fix stores an exact quotient through its decimal text (rd_string keeps ≤ 128 digits by truncation).
+- NumA7-4: java.math.BigDecimal on the coordinator's JDK behaves as on JDK 23 (its semantics are specified; the model was
+  checked against JDK 23 on every walk question).
+Replaced: round 3's MPA8 ("division by zero is documented") → N7-2 is flagged. Round 3's value-only BigDecimal quot/rem
+(scale 0) → the scale model above.
+
+(7) Properties checked, with sources
+------------------------------------
+- BigDecimal arithmetic, quotient, remainder, comparisons, = and ==, max/min, inc/dec/abs/negate, bigdec, long, double, bigint,
+  str and pr-str equal Clojure 1.12.3's on the same form (Numbers.java BigDecimalOps; java.math.BigDecimal; core.clj bigdec).
+- hash of a BigDecimal is Numbers.hasheqFrom's (1132-1145).
+- Division by zero throws "Divide by zero" (Numbers.divide 182-192).
+- with-precision binds *math-context* (core.clj with-precision; RT.MATH_CONTEXT, nil by default).
+- unchecked-*-int, unchecked casts and rationalize exist (core.clj; Numbers.unchecked_int_*, RT.unchecked*Cast, Numbers.rationalize).
+- Bit operations use the count's low six bits and accept only Long/Integer/Short/Byte (Numbers.shiftLeft etc., bitOpsCast).
+- min/max propagate NaN (Numbers.min/max, Math.min/max).
+
+(8) Search runs (exact bounds)
+------------------------------
+- BigDecimal walk (results/r7-num-walk.txt): complete, 22,549 questions = 12 binary operators × 931 ordered pairs with a
+  BigDecimal (34 values) × 2 paths + 205 unary. The Java/Clojure model against Clojure 1.12.3: 0 differ (after correcting
+  round 3's double quotient, section 12). jank today: agree 13,328, text 4,874, other 1,541, throws 1,369, kind 1,131,
+  value 306 (9,221 disagreements; classes in the file). With exact division only: 8,845.
+- Exact division (results/r7-num-div.txt): complete, 59,040 pairs (|u1| ≤ 20, 1 ≤ |u2| ≤ 20, scales −2..3); H: 0 mispredicted.
+- Clojure probe (results/r7-num-probe-1.12.3.txt): 288 forms (printing, scale, quot/rem, hashes, bigdec, with-precision,
+  unchecked, bits).
+- Standalone C++: N7-1's hash logic on 13 values against Clojure: 0 differ (results/r7-num-cppcheck-n7-1.txt); bit ops 15
+  forms × 4 builds: 0 differ (results/r7-num-cppcheck-bits.txt); boost's stock hash on 10 values = the Lean replica's.
+
+(9) Theorems (★ = new for-every-input)
+--------------------------------------
+★ tz10_mul_pow, ★ strip_scale, ★ cljHashDec_scale, ★ cljHashDec_value_only, ★ test_agree, ★ cnt_in_range,
+set_clear_flip_agree; lemmas tz10_succ, tz10_mul10.
+
+(10) Library gaps
+-----------------
+- Round 3's Java.tz and Java.terminating run bounded loops (not proof-friendly): tz10 is a recursive replacement.
+- No kernel-only route used for 64-bit shift identities (bv_decide used; omega does not see shifts by a variable).
+
+(11) Fixes written (each applies alone to 94d32623: `git -C upstream-r5 apply --check`; upstream-r5 stays clean)
+--------------------------------------------------------------------------------------------------------
+- N7-1 (fixes/N7-1.diff), src/cpp/jank/runtime/obj/big_decimal.cpp big_decimal::to_hash: 0 for zero; else the digits of
+  str(0, scientific) (every digit held, ≤ 128 < its 129-digit limit, so nothing rounds), trailing zeros stripped, scale =
+  digits − 1 − exponent, BigInteger.hashCode of the digits (32-bit words of a cpp_int, h = 31h + w in u32, negated for a
+  negative value), 31·h + scale. Test: vN1, vN1b. Read-checked: to_hash's only callers are hashing (core.cpp to_hash, maps,
+  sets, case); equal values (one cpp_dec_float) still hash alike; jank's own test/jank/form/case/pass-big-decimal.jank hashes
+  the case constant and the value with the same function (still :success); test/cpp/jank/runtime/obj/big_decimal.cpp has
+  no hash test. clang -fsyntax-only of the patched file: exit 0. Standalone run of the extracted logic: Clojure's value on
+  13 inputs. Build must check: the result on Linux (boost's str is platform-independent), and that no test pins the old
+  hash values.
+- N7-2 (fixes/N7-2.diff), include/cpp/jank/runtime/core/math.hpp div (and a detail helper beside it): a division with a
+  BigDecimal operand and an exact zero divisor (integer, BigInt, BigDecimal) throws the boxed string "Divide by zero" (an
+  object: `thrown?` sees it), at each of div's eight sites where a decimal can take part; double operands keep IEEE
+  (S6's domain, and Clojure's static (/ 1M 0.0) is ##Inf). Test: vN2, vN2b, vN2c. Read-checked: div's templates and their
+  operand types (i32, i64, f64, cpp_int, cpp_dec_float, ratio_data); a ratio divisor is never zero. clang -fsyntax-only of a
+  TU instantiating div on 14 operand shapes (object, int, double, typed refs, ratio, BigInt), base and patched headers: exit
+  0. Overlap: S2.diff (the coordinator's) rewrites the same lines; if it replaces them, fold this check into it. Build must
+  check: the instantiations in jank's codegen paths.
+Not written: N7-3 (with-precision needs MathContext in every decimal operation and a dynamic var: not local); R72/S5/S4
+(a representation with a scale); U74 (porting several functions).
+
+(12) Model errors of earlier rounds corrected
+---------------------------------------------
+- Round 3's cQuot on doubles negated a floor: (quot 0.5 -7.5M) gave -0.0, Java's Numbers.quotient(double, double) gives
+  (double)(long) q = 0.0. Found by the walk against the JVM (6 questions); corrected in Dec.cQuotRem.
+- Round 3's cQuot on BigDecimals put the quotient at scale 0, and cRem followed it (value-only models): Clojure's
+  divideToIntegralValue keeps max(s1 − s2, −trailingZeros(t)) ((quot 7.5M 2) = 3.0M, (quot 100M 1.0M) = 1.0E+2M,
+  (rem 100M 1.0M) = 0M); corrected in BD.divToIntegral / BD.remainder (0 differences on the 3,724 quot/rem walk questions).
+- Round 3's MPA8 hid N7-2.
+- Round 6's min/max model: both brief observations predicted correctly; no correction.
+
+Files: Jank/R7/Num/{Dec,Walk,DivSearch,NaN,Theorems}.lean, Run/R7/Num.lean, results/r7-num-{report,walk,div,forms,axioms,
+probe-1.12.3,cppcheck-n7-1,cppcheck-bits}.txt, .r7-scratch/num/tests.jank (24 deftests), .r7-scratch/num/clj/ (24 tests,
+24 assertions, all pass on Clojure 1.12.3: run-1.12.3.txt), .r7-scratch/num/walk/ (walk.clj, walk.out), .r7-scratch/num/probe/,
+.r7-scratch/num/cppcheck/, .r7-scratch/num/cc/, fixes/N7-1.diff, fixes/N7-2.diff.

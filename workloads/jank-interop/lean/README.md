@@ -6,8 +6,6 @@ determinismo-dst/determinismo, pinned in `lakefile.toml`). It was written blind:
 code and documentation, without our earlier findings. Each deviation it predicts was then tested
 on the real jank.
 
-How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../../../METHODOLOGY.md).
-
 ## Rounds
 
 - **Round 1** (jank f3d82d654, then main 7135b7708): numbers, hashing, equality, transients,
@@ -37,6 +35,18 @@ How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../.
   fixes for confirmed deviations of rounds 1–5 and LG1–LG2 as diffs against 94d32623 (`fixes/`, with one combined
   patch in `fixes/combined/`). LG1–LG3 extended, V49–V85. [REPORT-6.md](REPORT-6.md). Tests:
   [tests/jank_lean/deviations_r6_test.jank](tests/jank_lean/deviations_r6_test.jank).
+- **Round 7** (main 94d32623): the three regressions the real jank showed in round 6's combined patch, traced
+  and fixed in their diffs (S40's checked `int` against `case`'s int mode, which also fixes R44; D8's exact
+  `=` exposing inexact BigDecimal division, now exact in a new S2; R23, R24, R26 and U75 against five of
+  jank's own suite files), BigDecimal arithmetic with Java's scale, unchecked ops and bit operations, native
+  values (`zero?`/`abs` of a char, x86-64's default NaN on new paths, `dotimes` past 2^31), Unicode's
+  SpecialCasing in full, CHAMP's law 1 without the invariant and the transient sequence theorem (proved),
+  jank's `=` and hash across kinds in hash sets, `case` on hash collisions, local fixes round 6 left
+  unwritten, and a differential test generated from the replica's models (639 forms, each verdict
+  predicted). [REPORT-7.md](REPORT-7.md). Tests:
+  [tests/jank_lean/deviations_r7_test.jank](tests/jank_lean/deviations_r7_test.jank) (and its hangs file),
+  [tests/jank_lean/generated_r7_test.jank](tests/jank_lean/generated_r7_test.jank); what to check on the next
+  build of the combined patch: [fixes/combined/CHECK.md](fixes/combined/CHECK.md).
 
 ## What the real jank said
 
@@ -92,14 +102,14 @@ How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../.
   `max`), LG2 (long overflow wraps or gives a BigInt where Clojure throws) and LG3 (`subs` indexes
   bytes; round 2's R52 had predicted it, but its test recorded only its first assertion). Round 6
   starts from that lesson.
-- **Round 6**: its 56 tests run on jank main 7135b7708 (2026-11-26, Linux, each test in its own
-  process): 53 deviations confirmed, both controls pass (`fix-v03` checks a proposed fix, jank
-  only). Every expected value was checked on Clojure 1.12.3, and every example filed was run on
-  both (the observed values, not the predicted ones). Filed in jankifier as LV51-LV85 and as new
-  tests of S9, LG1-LG3, R5 and LS40.
+- **Round 6**: on jank main 7135b7708 (Linux x86-64, each test in its own process), 53 deviations of
+  deviations_r6_test.jank confirmed, both controls passing, and all 55 Clojure-runnable tests passing on
+  Clojure 1.12.3. With fixes/combined/all.diff applied, 182 of 358 replica tests passed (16 on stock), with
+  three regressions that round 7 traces and fixes: deviations_main_test no longer loaded (S40), s02 failed
+  (D8), and 5 of jank's 551 pass- files failed (R23, R24, R26, U75).
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
-jankifier's [specs/repros.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/repros.md), ordered by harm.
+jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
 
 ## Building and running
 
@@ -116,6 +126,7 @@ lake exe jank4-runtime       # round 4's: jank4-<area> (feedback, runtime, inter
 lake exe jank5-errors        # round 5's: jank5-<area> (native, errors, codegen, nrepl, regex,
                              # interop, core, coord)
 lake exe jank6-coord         # round 6's: jank6-<area> (num, native, str, champ, nrepl, coord)
+lake exe jank7-coord         # round 7's: jank7-<area> (num, native, champ, gen, coord)
 ```
 
 `./fetch-sources.sh` puts the sources the replica translates next to it, at the commits it was

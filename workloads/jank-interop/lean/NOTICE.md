@@ -13,9 +13,9 @@ README.md). Each part follows its project's license:
   `Jank/R6/Str/Search.lean` and `Run/R6/Str.lean`, under those terms (each folder's README.md,
   LICENSE and COPYING.RUNTIME).
 - **Boost.Multiprecision** (Boost Software License 1.0): `Jank/R3/Boost/` (cpp_int and
-  cpp_dec_float).
+  cpp_dec_float), used by `Jank/R7/Num/` (cpp_dec_float's arithmetic, printing and hash).
 - **immer** (Boost Software License 1.0): `Jank/R3/Immer/` and `Jank/R4/Immer/` (the RRB vector
-  and CHAMP, and their `_mut` paths); `Jank/R5/Core/Champ*.lean` and `Jank/R6/Champ/` prove laws over
+  and CHAMP, and their `_mut` paths); `Jank/R5/Core/Champ*.lean`, `Jank/R6/Champ/` and `Jank/R7/Champ/` prove laws over
   round 3's CHAMP.
 - **folly** (Apache License 2.0): `Jank/R3/Runtime/` (SharedMutex, fbvector), reused by
   `Jank/R4/Runtime/`.

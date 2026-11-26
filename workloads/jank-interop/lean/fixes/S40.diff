@@ -25,3 +25,26 @@
  (def ^{:arglists '([x])
         :doc "Coerce to float"
         :inline (fn* [o]
+@@ -2702,7 +2709,8 @@
+     (= 2 (count bindings)) "exactly 2 forms in binding vector")
+   (let [i (first bindings)
+         n (second bindings)]
+-    `(let [n# (int ~n)]
++    ; Clojure's dotimes takes a long count (RT.longCast): `int` now checks its range.
++    `(let [n# (long ~n)]
+        (loop [~i 0]
+          (when (< ~i n#)
+            ~@body
+@@ -4508,8 +4516,11 @@
+                     {} pairs)
+             tests (keys pairs)
+             thens (vals pairs)
++            ; Clojure's modes: ints only when every test fits an int (prep-ints runs `int` on each
++            ; test, and the switch hashes a value outside the int range, c_api.cpp
++            ; to_case_integer_or_hash); a long past the int range takes the hash mode.
+             mode (cond
+-                   (every? i64? tests)
++                   (every? i32? tests)
+                    :ints
+ 
+                    (every? keyword? tests)

@@ -1,0 +1,67 @@
+:clojure 1.12.3 :java 23 :locale en_CA
+(zero? (aget (char-array 1) 0)) => THROWS java.lang.ClassCastException class java.lang.Character cannot be cast to class java.lang.Number (java.lang.Character and java.lang.Number are in module java.base of loader 'bootstrap')
+(zero? \a) => THROWS java.lang.ClassCastException class java.lang.Character cannot be cast to class java.lang.Number (java.lang.Character and java.lang.Number are in module java.base of loader 'bootstrap')
+(apply zero? [(aget (char-array 1) 0)]) => THROWS java.lang.ClassCastException class java.lang.Character cannot be cast to class java.lang.Number (java.lang.Character and java.lang.Number are in module java.base of loader 'bootstrap')
+(zero? (nil? 1)) => THROWS java.lang.ClassCastException class java.lang.Boolean cannot be cast to class java.lang.Number (java.lang.Boolean and java.lang.Number are in module java.base of loader 'bootstrap')
+(NaN? (/ 0.0 0.0)) => true
+(NaN? (- ##Inf ##Inf)) => true
+(NaN? (* 0.0 ##Inf)) => true
+(NaN? (* ##Inf 0)) => true
+(NaN? (+ ##Inf ##-Inf)) => true
+(NaN? (/ ##Inf ##Inf)) => true
+(let [x ##Inf] (NaN? (- x x))) => true
+(let [x 0.0] (NaN? (/ x x))) => true
+(NaN? (apply - [##Inf ##Inf])) => true
+(NaN? (apply * [0.0 ##Inf])) => true
+(NaN? (parse-double "-NaN")) => true
+(parse-double "-NaN") => ##NaN
+(str (/ 0.0 0.0)) => "NaN"
+(str (- ##Inf ##Inf)) => "NaN"
+(pr-str (- ##Inf ##Inf)) => "##NaN"
+(clojure.math/sqrt -1) => ##NaN
+(clojure.math/sqrt 4) => 2.0
+(clojure.math/pow -1 0.5) => ##NaN
+(clojure.math/pow 2 0.5) => 1.4142135623730951
+(clojure.math/tan ##Inf) => ##NaN
+(abs -0.0) => 0.0
+((fn [x] (abs x)) -0.0) => 0.0
+(rem ##Inf 1) => THROWS java.lang.NumberFormatException Infinite or NaN
+"Elapsed time: 602.657625 msecs"
+(time (try (dotimes [i 2147483649] (when (neg? i) (throw (ex-info "w" {:i i})))) :done (catch Exception e (:i (ex-data e))))) => :done
+"Elapsed time: 917.122291 msecs"
+(time (loop [i 0] (cond (neg? i) i (< i 2147483649) (recur (inc i)) :else :done))) => :done
+(clojure.string/upper-case "ß") => "SS"
+(clojure.string/upper-case "ŉ") => "ʼN"
+(clojure.string/upper-case "ǰ") => "J̌"
+(clojure.string/upper-case "ﬀ") => "FF"
+(clojure.string/upper-case "ﬁ") => "FI"
+(clojure.string/upper-case "ﬃ") => "FFI"
+(clojure.string/upper-case "ΐ") => "Ϊ́"
+(clojure.string/upper-case "ᾀ") => "ἈΙ"
+(clojure.string/upper-case "ẞ") => "ẞ"
+(clojure.string/lower-case "ẞ") => "ß"
+(clojure.string/lower-case "İ") => "i̇"
+(count (clojure.string/lower-case "İ")) => 2
+(clojure.string/lower-case "ΣΑΣ") => "σας"
+(clojure.string/lower-case "Σ") => "σ"
+(clojure.string/lower-case "ΑΣ Α") => "ας α"
+(clojure.string/lower-case "ΑΣ.") => "ας."
+(clojure.string/capitalize "ßa") => "SSa"
+(clojure.string/capitalize "ǆa") => "Ǆa"
+(clojure.string/capitalize "ﬁx") => "FIx"
+(clojure.string/upper-case "ǅ") => "Ǆ"
+(clojure.string/lower-case "ǅ") => "ǆ"
+(clojure.string/replace "é" #"" "-") => "-é-"
+(clojure.string/replace "aé" (re-pattern "") "-") => "-a-é-"
+(clojure.string/replace "é" (re-pattern "x*") "-") => "-é-"
+(clojure.string/replace-first "éa" (re-pattern "(?=a)") "-") => "é-a"
+(clojure.string/replace "é" (re-pattern "") (fn [m] "-")) => "-é-"
+(re-seq #"." "é") => ("é")
+(re-seq #"\S" "é") => ("é")
+(re-find #"[^a]" "é") => "é"
+(clojure.string/split "é" #"(?=é)") => ["é"]
+(let [m (re-matcher #"(.)" "éè")] [(re-find m) (re-groups m) (re-find m) (re-groups m)]) => [["é" "é"] ["é" "é"] ["è" "è"] ["è" "è"]]
+(clojure.string/split "aéb" (re-pattern "(?=.)")) => ["a" "é" "b"]
+(clojure.string/split "éé" (re-pattern "é")) => []
+:default-vs-root-upper-differ 0
+exit 0

@@ -1,0 +1,277 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -42,7 +42,30 @@
+                                                     obj::big_decimal_ref,
+                                                     obj::ratio_ref>);
+ 
++    /* Clojure's `/` with a BigDecimal and a long or another BigDecimal (Numbers.divide,
++     * BigDecimalOps.divide): the exact quotient, or an error when it doesn't terminate
++     * (big_decimal.cpp exact_divide). A double keeps double division; a BigInt or a ratio goes
++     * through its own operator (big_decimal.cpp, ratio.cpp), which divides exactly too. */
+     template <typename T>
++    concept exact_decimal_operand
++      = (jtl::is_same<T, native_big_decimal> || (std::is_integral_v<T> && !jtl::is_same<T, bool>));
++
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto quotient(L const &l, R const &r)
++    {
++      if constexpr((jtl::is_same<L, native_big_decimal> || jtl::is_same<R, native_big_decimal>)
++                   && exact_decimal_operand<L> && exact_decimal_operand<R>)
++      {
++        return exact_divide(native_big_decimal(l), native_big_decimal(r));
++      }
++      else
++      {
++        return l / r;
++      }
++    }
++
++    template <typename T>
+     jtl::immutable_string type_name(T const t)
+     {
+       if constexpr(jtl::is_same<T, object_ref>)
+@@ -311,7 +334,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data / typed_r->data).erase();
++              return make_box(detail::quotient(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -322,20 +345,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data / r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::quotient(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data / typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::quotient(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data / r->data;
++      return detail::quotient(l->data, r->data);
+     }
+   }
+ 
+@@ -354,13 +377,13 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l / typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::quotient(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l / r->data;
++      return detail::quotient(l, r->data);
+     }
+     else
+     {
+@@ -383,13 +406,13 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data / r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::quotient(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data / r;
++      return detail::quotient(l->data, r);
+     }
+     else
+     {
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/big_decimal.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/big_decimal.hpp
+@@ -12,6 +12,10 @@
+   native_big_decimal operator*(native_big_integer const &l, native_big_decimal const &r);
+   native_big_decimal operator/(native_big_decimal const &l, native_big_integer const &r);
+   native_big_decimal operator/(native_big_integer const &l, native_big_decimal const &r);
++  /* BigDecimal.divide without a MathContext (Numbers' BigDecimalOps.divide): the exact quotient
++   * when its decimal expansion terminates; otherwise it throws, as Clojure's ArithmeticException
++   * "Non-terminating decimal expansion; no exact representable decimal result." does. */
++  native_big_decimal exact_divide(native_big_decimal const &l, native_big_decimal const &r);
+   bool operator==(native_big_decimal const &l, native_big_integer const &r);
+   bool operator==(native_big_integer const &l, native_big_decimal const &r);
+   bool operator!=(native_big_decimal const &l, native_big_integer const &r);
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -1,4 +1,5 @@
+ #include <jank/runtime/obj/big_decimal.hpp>
++#include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/visit.hpp>
+ #include <jank/util/fmt.hpp>
+ 
+@@ -21,7 +22,7 @@
+ 
+   native_big_decimal operator/(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l / native_big_decimal(r.str());
++    return exact_divide(l, native_big_decimal(r.str()));
+   }
+ 
+   native_big_decimal operator+(native_big_integer const &l, native_big_decimal const &r)
+@@ -41,7 +42,7 @@
+ 
+   native_big_decimal operator/(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) / r;
++    return exact_divide(native_big_decimal(l.str()), r);
+   }
+ 
+   bool operator==(native_big_decimal const &l, native_big_integer const &r)
+@@ -103,7 +104,110 @@
+   bool operator<=(native_big_integer const &l, native_big_decimal const &r)
+   {
+     return native_big_decimal(l.str()) <= r;
++  }
++
++  namespace
++  {
++    /* A finite decimal as digits * 10^exponent, exactly. cpp_dec_float's scientific text with
++     * 0 digits holds every digit the number stores (cpp_dec_float.hpp str, 1913-). */
++    struct exact_decimal
++    {
++      native_big_integer digits;
++      i64 exponent{};
++    };
++
++    exact_decimal to_exact_decimal(native_big_decimal const &d)
++    {
++      auto const text{ d.str(0, std::ios_base::scientific) };
++      std::string digits;
++      bool negative{};
++      i64 fraction_digits{};
++      bool after_point{};
++      usize i{};
++      if(i < text.size() && (text[i] == '-' || text[i] == '+'))
++      {
++        negative = text[i] == '-';
++        ++i;
++      }
++      for(; i < text.size() && text[i] != 'e' && text[i] != 'E'; ++i)
++      {
++        if(text[i] == '.')
++        {
++          after_point = true;
++          continue;
++        }
++        /* No leading zeros: boost reads "0..." as octal. */
++        if(!(digits.empty() && text[i] == '0'))
++        {
++          digits.push_back(text[i]);
++        }
++        if(after_point)
++        {
++          ++fraction_digits;
++        }
++      }
++      i64 exponent{};
++      if(i + 1 < text.size())
++      {
++        exponent = std::stoll(text.substr(i + 1));
++      }
++      exact_decimal ret{ native_big_integer{ digits.empty() ? std::string{ "0" } : digits },
++                         exponent - fraction_digits };
++      if(negative)
++      {
++        ret.digits = -ret.digits;
++      }
++      return ret;
++    }
+   }
++
++  native_big_decimal exact_divide(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    if(!(boost::multiprecision::isfinite)(l) || !(boost::multiprecision::isfinite)(r))
++    {
++      return l / r;
++    }
++    /* Numbers.divide checks the divisor first. */
++    if(r.is_zero())
++    {
++      throw make_box("Divide by zero").erase();
++    }
++
++    /* l / r = (a / b) * 10^(ea - eb), reduced; it terminates exactly when the reduced
++     * denominator has no prime factor but 2 and 5. */
++    auto const a{ to_exact_decimal(l) };
++    auto const b{ to_exact_decimal(r) };
++    auto const g{ boost::multiprecision::gcd(a.digits, b.digits) };
++    native_big_integer n{ a.digits / g };
++    native_big_integer d{ b.digits / g };
++    if(d < 0)
++    {
++      n = -n;
++      d = -d;
++    }
++    u32 twos{};
++    u32 fives{};
++    while(d % 2 == 0)
++    {
++      d /= 2;
++      ++twos;
++    }
++    while(d % 5 == 0)
++    {
++      d /= 5;
++      ++fives;
++    }
++    if(d != 1)
++    {
++      throw make_box("Non-terminating decimal expansion; no exact representable decimal result.")
++        .erase();
++    }
++    auto const k{ twos < fives ? fives : twos };
++    n *= boost::multiprecision::pow(native_big_integer{ 2 }, k - twos)
++      * boost::multiprecision::pow(native_big_integer{ 5 }, k - fives);
++    auto const exponent{ a.exponent - b.exponent - static_cast<i64>(k) };
++    return native_big_decimal{ util::format("{}e{}", n.str(), exponent).c_str() };
++  }
+ }
+ 
+ namespace jank::runtime::obj
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
+@@ -535,16 +535,24 @@
+   native_big_decimal operator*(native_big_decimal const &l, ratio_data const &r)
+   {
+     return l * to_native_big_decimal(r);
++  }
++
++  /* Numbers.toBigDecimal of a ratio for BigDecimal division: exact, or an error when it doesn't
++   * terminate. */
++  static native_big_decimal to_exact_big_decimal(ratio_data const &r)
++  {
++    return exact_divide(native_big_decimal(r.numerator.str().c_str()),
++                        native_big_decimal(r.denominator.str().c_str()));
+   }
+ 
+   native_big_decimal operator/(ratio_data const &l, native_big_decimal const &r)
+   {
+-    return to_native_big_decimal(l) / r;
++    return exact_divide(to_exact_big_decimal(l), r);
+   }
+ 
+   native_big_decimal operator/(native_big_decimal const &l, ratio_data const &r)
+   {
+-    return l / to_native_big_decimal(r);
++    return exact_divide(l, to_exact_big_decimal(r));
+   }
+ 
+   bool operator==(native_big_decimal const &l, ratio_data const &r)

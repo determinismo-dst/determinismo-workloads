@@ -1,0 +1,13 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -788,7 +788,9 @@
+ 
+   object_ref intern_var(object_ref const sym)
+   {
+-    return __rt_ctx->intern_var(try_object<obj::symbol>(sym)).expect_ok();
++    /* Namespace.intern: a var referred from another namespace is replaced by this namespace's
++     * own var, never rebound (`(intern 'user 'map 7)` leaves clojure.core/map alone). */
++    return __rt_ctx->intern_owned_var(try_object<obj::symbol>(sym)).expect_ok();
+   }
+ 
+   object_ref var_get_root(object_ref const o)

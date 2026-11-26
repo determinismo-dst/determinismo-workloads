@@ -1,0 +1,21 @@
+== regex: positions with non-ASCII text (round 3-5 replica vs round 5's Java model)
+  7650 questions (6 apis × 15 patterns × 85 inputs of ≤ 3 code points over a é € 😀), 3807 differ
+    bytes: an atom matches one byte (R78): 1797
+    bytes: a non-ASCII pattern character is bytes, a quantifier takes its last (S22): 310
+    re-seq-new-string (R81): 154
+    bytes (R78), ASCII analog also differs: re-seq-new-string (R81): 490
+    bytes: an empty match steps one byte (V75's cause): 972
+    fn-gets-match-string (R84): 3
+    bytes (R78), ASCII analog also differs: fn-gets-match-string (R84): 81
+    e.g. [bytes: an atom matches one byte (R78)] (re-find #"." "é"): Clojure "é", jank "\xc3" (invalid UTF-8)
+    e.g. [bytes: a non-ASCII pattern character is bytes, a quantifier takes its last (S22)] (re-find #"é?" ""): Clojure "", jank nil
+    e.g. [re-seq-new-string (R81)] (re-seq #"" ""): Clojure (""), jank ("" "" …) infinite
+    e.g. [bytes (R78), ASCII analog also differs: re-seq-new-string (R81)] (re-seq #"" "é"): Clojure ("" ""), jank ("" "" …) infinite
+    e.g. [bytes: an empty match steps one byte (V75's cause)] (clojure.string/replace "é" #"" "-"): Clojure "-é-", jank "-\xc3-\xa9-" (invalid UTF-8)
+    e.g. [fn-gets-match-string (R84)] (clojure.string/replace "a" #"(.)" f): Clojure "<a|a>", jank "<a>"
+    e.g. [bytes (R78), ASCII analog also differs: fn-gets-match-string (R84)] (clojure.string/replace "é" #"(.)" f): Clojure "<é|é>", jank "<\xc3><\xa9>" (invalid UTF-8)
+== vW2: replace with an empty pattern (round 3's replica; Clojure from round 5's Java model)
+  (clojure.string/replace "é" #"" "-"): Clojure "-é-", jank "-\xc3-\xa9-" (invalid UTF-8)
+  (clojure.string/replace "aé" #"" "-"): Clojure "-a-é-", jank "-a-\xc3-\xa9-" (invalid UTF-8)
+  (clojure.string/replace "é" #"" f): Clojure "<>é<>", jank "<>\xc3<>\xa9<>" (invalid UTF-8)
+  (clojure.string/replace-first "é" #"" "-"): Clojure "-é", jank "-é"

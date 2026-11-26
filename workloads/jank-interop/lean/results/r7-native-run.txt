@@ -1,0 +1,65 @@
+== brief: the real jank's observations on round 6's string model
+  (index-of "a" "a" -1): model nil, Clojure 0; real jank nil
+  (index-of "a" "" 5): model nil, Clojure 1; real jank nil
+  (last-index-of "aa" "a" -1): model 1, Clojure nil; real jank 1
+  (upper-case (subs "é" 1)): round 6 throws (range_error), round 7 throws (wstring_convert::from_bytes); real jank throws "wstring_convert::from_bytes"
+  (split "aéb" #""): round 3's replica ("a" "\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8) "b"), Clojure ("a" "é" "b"); real jank: é split into its two bytes
+  (split "é" #""): replica ("\xc3" (invalid UTF-8) "\xa9" (invalid UTF-8)), Clojure ("é")
+== unary: zero? abs inc dec × round 6's 45 sources × {inlined, fn value}, complete
+  360 cases, 42 differ from Clojure 1.12
+    char native is a number to math.hpp (V64's cause) [zero?]: 1
+    the source's own value (P6 hash, P7 float, R122 bytes): 30
+    bool native is a number to math.hpp (R33) [abs]: 2
+    char native is a number to math.hpp (V64's cause) [abs]: 1
+    float element computes in binary32 (V63's cause) [inc]: 1
+    bool native is a number to math.hpp (R33) [inc]: 2
+    char native is a number to math.hpp (V64's cause) [inc]: 1
+    float element computes in binary32 (V63's cause) [dec]: 1
+    bool native is a number to math.hpp (R33) [dec]: 2
+    char native is a number to math.hpp (V64's cause) [dec]: 1
+    e.g. [char native is a number to math.hpp (V64's cause) [zero?]] (zero? (aget (char-array "a") 0)): Clojure throws ClassCastException, jank false
+    e.g. [the source's own value (P6 hash, P7 float, R122 bytes)] (abs (hash 2)): Clojure 971005196, jank 3323962100
+    e.g. [bool native is a number to math.hpp (R33) [abs]] (abs (nil? nil)): Clojure throws ClassCastException, jank 1
+    e.g. [char native is a number to math.hpp (V64's cause) [abs]] (abs (aget (char-array "a") 0)): Clojure throws ClassCastException, jank 97
+    e.g. [float element computes in binary32 (V63's cause) [inc]] (inc (aget (float-array [0.1]) 0)): Clojure 1.1000000014901161, jank 1.1000000238418579
+    e.g. [bool native is a number to math.hpp (R33) [inc]] (inc (nil? nil)): Clojure throws ClassCastException, jank 2
+    e.g. [char native is a number to math.hpp (V64's cause) [inc]] (inc (aget (char-array "a") 0)): Clojure throws ClassCastException, jank 98
+    e.g. [float element computes in binary32 (V63's cause) [dec]] (dec (aget (float-array [0.1]) 0)): Clojure -0.89999999850988388, jank -0.89999997615814208
+    e.g. [bool native is a number to math.hpp (R33) [dec]] (dec (nil? nil)): Clojure throws ClassCastException, jank 0
+    e.g. [char native is a number to math.hpp (V64's cause) [dec]] (dec (aget (char-array "a") 0)): Clojure throws ClassCastException, jank 96
+== nan: producers of x86-64's default NaN, every path, runtime -O0 and -O1
+  (NaN? (/ 0.0 0.0)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (let [x 0.0] (NaN? (/ x x))): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (apply / [0.0 0.0])): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.throws "ArithmeticException: Divide by zero"
+  (NaN? (- ##Inf ##Inf)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (let [x ##Inf] (NaN? (- x x))): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (apply - [##Inf ##Inf])): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (* 0.0 ##Inf)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (let [x 0.0 y ##Inf] (NaN? (* x y))): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (apply * [0.0 ##Inf])): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (+ ##Inf ##-Inf)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (let [x ##Inf y ##-Inf] (NaN? (+ x y))): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.value "true", Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (apply + [##Inf ##-Inf])): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (parse-double "-NaN")): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (parse-double "-NaN")): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (parse-double "-NaN")): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/sqrt -1.0)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/sqrt -1.0)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/sqrt -1.0)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/pow -1.0 0.5)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/pow -1.0 0.5)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/pow -1.0 0.5)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/tan ##Inf)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/tan ##Inf)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+  (NaN? (jank.math/tan ##Inf)): bits 0xfff8000000000000, jank -O0 Jank.R7.Native.Nan.Outcome.crash 0, -O1 Jank.R7.Native.Nan.Outcome.crash 0, Clojure Jank.R7.Native.Nan.Outcome.value "true"
+== case (R60): JDK 23's special upper-case table has 102 entries, lower 1 (+ Final_Sigma)
+  entries mapping to 2 code points: 86, to 3: 16
+  upper-case U+df: jank "ß", Clojure "SS"
+  upper-case U+149: jank "ŉ", Clojure "ʼN"
+  upper-case U+1f0: jank "ǰ", Clojure "J̌"
+  upper-case U+fb01: jank "ﬁ", Clojure "FI"
+  upper-case U+1fb3: jank "ᾼ", Clojure "ΑΙ"
+  lower-case U+0130: jank "i"; ΣΑΣ: jank "σασ"
+== abbrev: every text of ≤ 8 code points over {a, é, €, 😀}, n = 20 (the callers' n), complete
+  87381 texts: logged string invalid UTF-8 for 22698; rule 'valid iff shorter than 20 bytes or byte 20 starts a character' broken 0 times; differs from the same code on UTF-16 units 41165 times
+== regex, vw2: see results/r7-native-regex.txt (rerun with the refined sub-classification)

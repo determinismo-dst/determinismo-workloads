@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -4413,17 +4413,19 @@
+                       (next ks)
+                       (next vs))
+                     m))
+-        assoc-multi (fn [m h bucket]
++        ; Every bucket, colliding or not, becomes one test with a checked expression: its first
++        ; test stands for it, so the next round's case-hash gives the bucket's hash again (the
++        ; hash itself as a test would be hashed again when it is past the int range), and since
++        ; case-map-collison-merged adds no check, a lone test's branch gets its own condp.
++        assoc-multi (fn [m bucket]
+                       (let [testexprs (mapcat (fn [kv]
+                                                 [(list 'quote (first kv)) (second kv)])
+                                               bucket)
+                             expr `(condp = ~expr-sym ~@testexprs ~default)]
+-                        (assoc m h expr)))
++                        (assoc m (ffirst bucket) expr)))
+         hmap (reduce
+-               (fn [m [h bucket]]
+-                 (if (== 1 (count bucket))
+-                   (assoc m (ffirst bucket) (second (first bucket)))
+-                   (assoc-multi m h bucket)))
++               (fn [m [_ bucket]]
++                 (assoc-multi m bucket))
+                {}
+                buckets)
+         skip-check (->> buckets

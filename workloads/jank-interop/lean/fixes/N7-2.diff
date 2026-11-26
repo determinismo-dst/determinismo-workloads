@@ -1,0 +1,109 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -60,6 +60,33 @@
+     }
+   }
+ 
++  namespace detail
++  {
++    /* Numbers.divide throws "Divide by zero" for a zero divisor; boost's cpp_dec_float gives inf
++     * or nan instead. So a division with a BigDecimal operand and an exact zero divisor (an
++     * integer, a BigInt or a BigDecimal) throws. A double operand keeps its IEEE result, as
++     * Clojure divides those as doubles. */
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline void check_decimal_divisor(L const &, R const &r)
++    {
++      using LT = std::decay_t<L>;
++      using RT = std::decay_t<R>;
++      constexpr bool has_decimal{ std::is_same_v<LT, native_big_decimal>
++                                  || std::is_same_v<RT, native_big_decimal> };
++      constexpr bool exact_divisor{ std::is_integral_v<RT>
++                                    || std::is_same_v<RT, native_big_integer>
++                                    || std::is_same_v<RT, native_big_decimal> };
++      if constexpr(has_decimal && exact_divisor && !std::is_floating_point_v<LT>)
++      {
++        if(r == 0)
++        {
++          throw make_box("Divide by zero").erase();
++        }
++      }
++    }
++  }
++
+   /* Only for fixed integer sizes (i.e. integer and small_integer). */
+   i64 to_i64(object_ref const o);
+   /* Only for fixed real sizes (i.e. real and small_real). */
+@@ -311,6 +338,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
++              detail::check_decimal_divisor(typed_l->data, typed_r->data);
+               return make_box(typed_l->data / typed_r->data).erase();
+             },
+             r,
+@@ -322,19 +350,26 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data / r->data).erase(); },
++        [](auto const typed_l, auto const r) {
++          detail::check_decimal_divisor(typed_l->data, r->data);
++          return make_box(typed_l->data / r->data).erase();
++        },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data / typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) {
++          detail::check_decimal_divisor(l->data, typed_r->data);
++          return make_box(l->data / typed_r->data).erase();
++        },
+         r,
+         l);
+     }
+     else
+     {
++      detail::check_decimal_divisor(l->data, r->data);
+       return l->data / r->data;
+     }
+   }
+@@ -354,12 +389,16 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l / typed_r->data).erase(); },
++        [](auto const typed_r, L const l) {
++          detail::check_decimal_divisor(l, typed_r->data);
++          return make_box(l / typed_r->data).erase();
++        },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
++      detail::check_decimal_divisor(l, r->data);
+       return l / r->data;
+     }
+     else
+@@ -383,12 +422,16 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data / r).erase(); },
++        [](auto const typed_l, R const r) {
++          detail::check_decimal_divisor(typed_l->data, r);
++          return make_box(typed_l->data / r).erase();
++        },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
++      detail::check_decimal_divisor(l->data, r);
+       return l->data / r;
+     }
+     else

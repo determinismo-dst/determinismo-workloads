@@ -1,13 +1,95 @@
 --- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
 +++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
-@@ -1924,6 +1924,25 @@
+@@ -5,6 +5,7 @@
+ 
+ #include <jank/analyze/cpp_util.hpp>
+ #include <jank/analyze/visit.hpp>
++#include <jank/analyze/local_frame.hpp>
+ #include <jank/runtime/context.hpp>
+ #include <jank/runtime/core/munge.hpp>
+ #include <jank/runtime/core/meta.hpp>
+@@ -1904,6 +1905,69 @@
+     return member_types;
+   }
+ 
++  /* Whether a branch's value is a C++ value the program asked for with `cpp/` (a constructor
++   * call, a C++ function, member or operator, a C++ global), rather than a Clojure value that
++   * jank types natively: a number or boolean literal, or a call into jank's runtime, which is
++   * what clojure.core's inline forms expand to (`count`, `hash`, `+`, ...). A local counts as
++   * the value it was bound to; a `do`, `let` or `if` as the values it can give. */
++  static bool is_interop_value(expression_ref const expr, u8 const depth = 0)
++  {
++    if(depth > 16)
++    {
++      return false;
++    }
++    switch(expr->kind)
++    {
++      case expression_kind::local_reference:
++        {
++          auto const binding{ expr::static_box_cast<expr::local_reference>(expr)->binding };
++          return binding->value_expr.is_some()
++            && is_interop_value(binding->value_expr.unwrap(), depth + 1);
++        }
++      case expression_kind::do_:
++        {
++          auto const do_{ expr::static_box_cast<expr::do_>(expr) };
++          return !do_->values.empty() && is_interop_value(do_->values.back(), depth + 1);
++        }
++      case expression_kind::let:
++        {
++          auto const let{ expr::static_box_cast<expr::let>(expr) };
++          return !let->body->values.empty()
++            && is_interop_value(let->body->values.back(), depth + 1);
++        }
++      case expression_kind::if_:
++        {
++          auto const if_{ expr::static_box_cast<expr::if_>(expr) };
++          return is_interop_value(if_->then, depth + 1)
++            && (if_->else_.is_none() || is_interop_value(if_->else_.unwrap(), depth + 1));
++        }
++      case expression_kind::cpp_conversion:
++        return is_interop_value(expr::static_box_cast<expr::cpp_conversion>(expr)->value_expr,
++                                depth + 1);
++      case expression_kind::cpp_literal:
++        return false;
++      case expression_kind::cpp_call:
++        {
++          auto const source{ expr::static_box_cast<expr::cpp_call>(expr)->source_expr };
++          if(source->kind == expression_kind::cpp_value)
++          {
++            /* The callee's symbol, such as `cpp/jank.runtime.lt`. */
++            auto const form{ expr::static_box_cast<expr::cpp_value>(source)->form };
++            if(form.is_some() && form.get_type() == runtime::object_type::symbol
++               && runtime::expect_object<runtime::obj::symbol>(form)->name.starts_with(
++                 "jank.runtime."))
++            {
++              return false;
++            }
++          }
++          return true;
++        }
++      default:
++        return expr->kind >= expression_kind::cpp_value_min
++          && expr->kind <= expression_kind::cpp_value_max;
++    }
++  }
++
+   jtl::string_result<branch_common_type>
+   find_branch_common_type(expression_ref const then_expr,
+                           jtl::option<expression_ref> const &else_expr_opt,
+@@ -1924,6 +1988,29 @@
                                || cpp_util::is_implicitly_assignable(else_type, then_type)
                                || common_type };
  
 +    /* Clojure keeps the value of whichever branch runs. Two branches of different native
 +     * number types (an `int` and a `double`, a `bool` and an `int`, a `u32` hash and a negative
 +     * `int`) are both boxed, rather than converted into their common C++ type. A reference
-+     * branch, such as a `cpp/` global, counts as the type it refers to. */
++     * branch, such as a `cpp/` global, counts as the type it refers to. When both branches are
++     * C++ values the program asked for (`(cpp/int 77)` and `(cpp/float)`), C++'s common type
++     * stays, as jank's own tests expect (test/jank/cpp/case/pass-implicitly-compatible-*). */
++    if(else_expr_opt.is_some()
++       && !(is_interop_value(then_expr) && is_interop_value(else_expr_opt.unwrap())))
 +    {
 +      auto const then_value_type{ cppinterop::get_type_without_cv(
 +        cppinterop::get_non_reference_type(then_type)) };

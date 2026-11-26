@@ -1,0 +1,698 @@
+== walk pool num (set): 12 values [0.0, -0.0, 2.0, 1.0, ##NaN, 1, 1N, 3, 1/2, 1M, 1.0M, 1.0000000000000000001M]; depth ≤ 1000, ≤ 300000 states
+  fixes all-but-negzero:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 101 states; frontier 87; disagreements so far 2
+    depth 3 complete: 421 states; frontier 320; disagreements so far 34
+    depth 4 complete: 1284 states; frontier 863; disagreements so far 282
+    depth 5 complete: 3136 states; frontier 1852; disagreements so far 1516
+    depth 6 complete: 6713 states; frontier 3577; disagreements so far 5704
+    depth 7 complete: 12955 states; frontier 6242; disagreements so far 15820
+    depth 8 complete: 22400 states; frontier 9445; disagreements so far 33808
+    depth 9 complete: 34671 states; frontier 12271; disagreements so far 58814
+    depth 10 complete: 48702 states; frontier 14031; disagreements so far 88012
+    depth 11 complete: 62798 states; frontier 14096; disagreements so far 117694
+    depth 12 complete: 74659 states; frontier 11861; disagreements so far 143100
+    depth 13 complete: 82491 states; frontier 7832; disagreements so far 159954
+    depth 14 complete: 86275 states; frontier 3784; disagreements so far 167904
+    depth 15 complete: 87495 states; frontier 1220; disagreements so far 170324
+    depth 16 complete: 87719 states; frontier 224; disagreements so far 170716
+    depth 17 complete: 87735 states; frontier 16; disagreements so far 170732
+    depth 18 complete: 87735 states; frontier 0; disagreements so far 170732
+  fixes all-but-negzero: 87735 states, every sequence of length ≤ 18 covered; COMPLETE (no new state at the next depth: every length covered) (8 s)
+    disagreements: count 47938, count-vs-seq 0, contains? 49520, get 0, representatives 15604, set= 57670
+    contains?/get of -0.0 (stored/expected -0.0): 14813
+    contains?/get of 0.0 (stored/expected 0.0): 14813
+    contains?/get of 0.0 (stored/expected -0.0): 9947
+    contains?/get of -0.0 (stored/expected 0.0): 9947
+    e.g. contains: #{} (conj 0.0) (conj 2.0) (contains? s -0.0): jank false Clojure true
+    e.g. contains: #{} (conj -0.0) (conj 2.0) (contains? s 0.0): jank false Clojure true
+    e.g. set=: #{} (conj 0.0) (conj 2.0) (conj -0.0): (= s (apply hash-set [0.0, 2.0])): jank false Clojure true
+    e.g. count: #{} (conj 0.0) (conj 2.0) (conj -0.0): count jank 3 Clojure 2
+    e.g. contains: #{} (conj 0.0) (conj 2.0) (conj 1.0) (contains? s -0.0): jank false Clojure true
+    e.g. set=: #{} (conj 0.0) (conj 2.0) (disj -0.0): (= s (apply hash-set [2.0])): jank false Clojure true
+    e.g. count: #{} (conj 0.0) (conj 2.0) (disj -0.0): count jank 2 Clojure 1
+    e.g. set=: #{} (conj -0.0) (conj 2.0) (conj 0.0): (= s (apply hash-set [-0.0, 2.0])): jank false Clojure true
+    e.g. count: #{} (conj -0.0) (conj 2.0) (conj 0.0): count jank 3 Clojure 2
+    e.g. repr: #{} (conj 0.0) (conj 2.0) (disj -0.0) (disj 2.0) (conj -0.0): (seq s) holds [0.0] Clojure [-0.0]
+    e.g. repr: #{} (conj -0.0) (conj 2.0) (disj 0.0) (disj 2.0) (conj 0.0): (seq s) holds [-0.0] Clojure [0.0]
+    e.g. repr: #{} (conj 0.0) (conj 2.0) (conj 1.0) (disj -0.0) (disj 2.0) (conj -0.0): (seq s) holds [0.0, 1.0] Clojure [-0.0, 1.0]
+  fixes all-but-identity:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 2
+    depth 2 complete: 103 states; frontier 89; disagreements so far 33
+    depth 3 complete: 447 states; frontier 344; disagreements so far 251
+    depth 4 complete: 1448 states; frontier 1001; disagreements so far 1277
+    depth 5 complete: 3821 states; frontier 2373; disagreements so far 4843
+    depth 6 complete: 8805 states; frontier 4984; disagreements so far 14394
+    depth 7 complete: 18201 states; frontier 9396; disagreements so far 34973
+    depth 8 complete: 34186 states; frontier 15985; disagreements so far 72456
+    depth 9 complete: 58998 states; frontier 24812; disagreements so far 132748
+    depth 10 complete: 94429 states; frontier 35431; disagreements so far 220330
+    depth 11 complete: 140752 states; frontier 46323; disagreements so far 335808
+    depth 12 complete: 196529 states; frontier 55777; disagreements so far 475665
+    depth 13 complete: 260120 states; frontier 63591; disagreements so far 635829
+  fixes all-but-identity: 300000 states, every sequence of length ≤ 13 covered; stopped in depth 14 (frontier 39880) (34 s)
+    disagreements: count 280105, count-vs-seq 0, contains? 163790, get 0, representatives 0, set= 292336
+    contains?/get of ##NaN (stored/expected ##NaN): 163790
+    e.g. set=: #{} (conj ##NaN): (= s (apply hash-set [##NaN])): jank false Clojure true
+    e.g. contains: #{} (conj ##NaN) (contains? s ##NaN): jank false Clojure true
+    e.g. set=: #{} (conj 0.0) (conj ##NaN): (= s (apply hash-set [0.0, ##NaN])): jank false Clojure true
+    e.g. contains: #{} (conj 0.0) (conj ##NaN) (contains? s ##NaN): jank false Clojure true
+    e.g. set=: #{} (conj -0.0) (conj ##NaN): (= s (apply hash-set [-0.0, ##NaN])): jank false Clojure true
+    e.g. contains: #{} (conj -0.0) (conj ##NaN) (contains? s ##NaN): jank false Clojure true
+    e.g. count: #{} (conj ##NaN) (conj ##NaN): count jank 2 Clojure 1
+    e.g. count: #{} (conj ##NaN) (disj ##NaN): count jank 1 Clojure 0
+    e.g. count: #{} (conj 0.0) (conj ##NaN) (conj ##NaN): count jank 3 Clojure 2
+  fixes all-but-bigint:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 2
+    depth 2 complete: 105 states; frontier 91; disagreements so far 36
+    depth 3 complete: 469 states; frontier 364; disagreements so far 282
+    depth 4 complete: 1534 states; frontier 1065; disagreements so far 1310
+    depth 5 complete: 3852 states; frontier 2318; disagreements so far 4158
+    depth 6 complete: 7817 states; frontier 3965; disagreements so far 9824
+    depth 7 complete: 13315 states; frontier 5498; disagreements so far 18488
+    depth 8 complete: 19796 states; frontier 6481; disagreements so far 29374
+    depth 9 complete: 26561 states; frontier 6765; disagreements so far 41134
+    depth 10 complete: 33022 states; frontier 6461; disagreements so far 52604
+    depth 11 complete: 38724 states; frontier 5702; disagreements so far 63266
+    depth 12 complete: 43049 states; frontier 4325; disagreements so far 72076
+    depth 13 complete: 45495 states; frontier 2446; disagreements so far 77478
+    depth 14 complete: 46391 states; frontier 896; disagreements so far 79576
+    depth 15 complete: 46575 states; frontier 184; disagreements so far 80024
+    depth 16 complete: 46591 states; frontier 16; disagreements so far 80064
+    depth 17 complete: 46591 states; frontier 0; disagreements so far 80064
+  fixes all-but-bigint: 46591 states, every sequence of length ≤ 17 covered; COMPLETE (no new state at the next depth: every length covered) (4 s)
+    disagreements: count 26688, count-vs-seq 0, contains? 26688, get 0, representatives 0, set= 26688
+    contains?/get of 1 (stored/expected 1N): 6672
+    contains?/get of 1 (stored/expected 1): 6672
+    contains?/get of 1N (stored/expected 1N): 6672
+    contains?/get of 1N (stored/expected 1): 6672
+    e.g. contains: #{} (conj 1) (contains? s 1N): jank false Clojure true
+    e.g. contains: #{} (conj 1N) (contains? s 1): jank false Clojure true
+    e.g. contains: #{} (conj 0.0) (conj 1) (contains? s 1N): jank false Clojure true
+    e.g. set=: #{} (conj 1) (conj 1N): (= s (apply hash-set [1])): jank false Clojure true
+    e.g. count: #{} (conj 1) (conj 1N): count jank 2 Clojure 1
+    e.g. set=: #{} (conj 1) (disj 1N): (= s (apply hash-set [])): jank false Clojure true
+    e.g. count: #{} (conj 1) (disj 1N): count jank 1 Clojure 0
+    e.g. set=: #{} (conj 1N) (conj 1): (= s (apply hash-set [1N])): jank false Clojure true
+    e.g. count: #{} (conj 1N) (conj 1): count jank 2 Clojure 1
+  fixes all-but-lazy:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 101 states; frontier 87; disagreements so far 0
+    depth 3 complete: 417 states; frontier 316; disagreements so far 0
+    depth 4 complete: 1230 states; frontier 813; disagreements so far 0
+    depth 5 complete: 2752 states; frontier 1522; disagreements so far 0
+    depth 6 complete: 5001 states; frontier 2249; disagreements so far 0
+    depth 7 complete: 7747 states; frontier 2746; disagreements so far 0
+    depth 8 complete: 10660 states; frontier 2913; disagreements so far 0
+    depth 9 complete: 13493 states; frontier 2833; disagreements so far 0
+    depth 10 complete: 16094 states; frontier 2601; disagreements so far 0
+    depth 11 complete: 18156 states; frontier 2062; disagreements so far 0
+    depth 12 complete: 19357 states; frontier 1201; disagreements so far 0
+    depth 13 complete: 19803 states; frontier 446; disagreements so far 0
+    depth 14 complete: 19895 states; frontier 92; disagreements so far 0
+    depth 15 complete: 19903 states; frontier 8; disagreements so far 0
+    depth 16 complete: 19903 states; frontier 0; disagreements so far 0
+  fixes all-but-lazy: 19903 states, every sequence of length ≤ 16 covered; COMPLETE (no new state at the next depth: every length covered) (1 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-mapseq:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 101 states; frontier 87; disagreements so far 0
+    depth 3 complete: 417 states; frontier 316; disagreements so far 0
+    depth 4 complete: 1230 states; frontier 813; disagreements so far 0
+    depth 5 complete: 2752 states; frontier 1522; disagreements so far 0
+    depth 6 complete: 5001 states; frontier 2249; disagreements so far 0
+    depth 7 complete: 7747 states; frontier 2746; disagreements so far 0
+    depth 8 complete: 10660 states; frontier 2913; disagreements so far 0
+    depth 9 complete: 13493 states; frontier 2833; disagreements so far 0
+    depth 10 complete: 16094 states; frontier 2601; disagreements so far 0
+    depth 11 complete: 18156 states; frontier 2062; disagreements so far 0
+    depth 12 complete: 19357 states; frontier 1201; disagreements so far 0
+    depth 13 complete: 19803 states; frontier 446; disagreements so far 0
+    depth 14 complete: 19895 states; frontier 92; disagreements so far 0
+    depth 15 complete: 19903 states; frontier 8; disagreements so far 0
+    depth 16 complete: 19903 states; frontier 0; disagreements so far 0
+  fixes all-but-mapseq: 19903 states, every sequence of length ≤ 16 covered; COMPLETE (no new state at the next depth: every length covered) (1 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-strseq:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 101 states; frontier 87; disagreements so far 0
+    depth 3 complete: 417 states; frontier 316; disagreements so far 0
+    depth 4 complete: 1230 states; frontier 813; disagreements so far 0
+    depth 5 complete: 2752 states; frontier 1522; disagreements so far 0
+    depth 6 complete: 5001 states; frontier 2249; disagreements so far 0
+    depth 7 complete: 7747 states; frontier 2746; disagreements so far 0
+    depth 8 complete: 10660 states; frontier 2913; disagreements so far 0
+    depth 9 complete: 13493 states; frontier 2833; disagreements so far 0
+    depth 10 complete: 16094 states; frontier 2601; disagreements so far 0
+    depth 11 complete: 18156 states; frontier 2062; disagreements so far 0
+    depth 12 complete: 19357 states; frontier 1201; disagreements so far 0
+    depth 13 complete: 19803 states; frontier 446; disagreements so far 0
+    depth 14 complete: 19895 states; frontier 92; disagreements so far 0
+    depth 15 complete: 19903 states; frontier 8; disagreements so far 0
+    depth 16 complete: 19903 states; frontier 0; disagreements so far 0
+  fixes all-but-strseq: 19903 states, every sequence of length ≤ 16 covered; COMPLETE (no new state at the next depth: every length covered) (1 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-bigdec:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 101 states; frontier 87; disagreements so far 0
+    depth 3 complete: 417 states; frontier 316; disagreements so far 0
+    depth 4 complete: 1230 states; frontier 813; disagreements so far 0
+    depth 5 complete: 2752 states; frontier 1522; disagreements so far 0
+    depth 6 complete: 5001 states; frontier 2249; disagreements so far 0
+    depth 7 complete: 7747 states; frontier 2746; disagreements so far 0
+    depth 8 complete: 10660 states; frontier 2913; disagreements so far 0
+    depth 9 complete: 13493 states; frontier 2833; disagreements so far 0
+    depth 10 complete: 16094 states; frontier 2601; disagreements so far 0
+    depth 11 complete: 18156 states; frontier 2062; disagreements so far 0
+    depth 12 complete: 19357 states; frontier 1201; disagreements so far 0
+    depth 13 complete: 19803 states; frontier 446; disagreements so far 0
+    depth 14 complete: 19895 states; frontier 92; disagreements so far 0
+    depth 15 complete: 19903 states; frontier 8; disagreements so far 0
+    depth 16 complete: 19903 states; frontier 0; disagreements so far 0
+  fixes all-but-bigdec: 19903 states, every sequence of length ≤ 16 covered; COMPLETE (no new state at the next depth: every length covered) (1 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-keepold:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 107 states; frontier 93; disagreements so far 6
+    depth 3 complete: 495 states; frontier 388; disagreements so far 78
+    depth 4 complete: 1713 states; frontier 1218; disagreements so far 474
+    depth 5 complete: 4799 states; frontier 3086; disagreements so far 1914
+    depth 6 complete: 11130 states; frontier 6331; disagreements so far 5678
+    depth 7 complete: 21737 states; frontier 10607; disagreements so far 13122
+    depth 8 complete: 36500 states; frontier 14763; disagreements so far 24584
+    depth 9 complete: 54036 states; frontier 17536; disagreements so far 38798
+    depth 10 complete: 72457 states; frontier 18421; disagreements so far 53910
+    depth 11 complete: 90015 states; frontier 17558; disagreements so far 68628
+    depth 12 complete: 104807 states; frontier 14792; disagreements so far 81612
+    depth 13 complete: 115067 states; frontier 10260; disagreements so far 91098
+    depth 14 complete: 120463 states; frontier 5396; disagreements so far 96294
+    depth 15 complete: 122439 states; frontier 1976; disagreements so far 98246
+    depth 16 complete: 122887 states; frontier 448; disagreements so far 98694
+    depth 17 complete: 122935 states; frontier 48; disagreements so far 98742
+    depth 18 complete: 122935 states; frontier 0; disagreements so far 98742
+  fixes all-but-keepold: 122935 states, every sequence of length ≤ 18 covered; COMPLETE (no new state at the next depth: every length covered) (11 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 98742, set= 0
+    e.g. repr: #{} (conj 0.0) (conj -0.0): (seq s) holds [-0.0] Clojure [0.0]
+    e.g. repr: #{} (conj -0.0) (conj 0.0): (seq s) holds [0.0] Clojure [-0.0]
+    e.g. repr: #{} (conj 1) (conj 1N): (seq s) holds [1N] Clojure [1]
+  [exit 0]
+== walk pool str (set): 12 values ["a", \a, (seq "a"), [\a], (list \a), (lazy-seq [\a]), (seq "\ue9"), [(char 233)], (list (char 233)), "\ue9", (seq "ab"), [\a \b]]; depth ≤ 1000, ≤ 300000 states
+  fixes all-but-negzero:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 95 states; frontier 81; disagreements so far 0
+    depth 3 complete: 349 states; frontier 254; disagreements so far 0
+    depth 4 complete: 843 states; frontier 494; disagreements so far 0
+    depth 5 complete: 1451 states; frontier 608; disagreements so far 0
+    depth 6 complete: 1895 states; frontier 444; disagreements so far 0
+    depth 7 complete: 2039 states; frontier 144; disagreements so far 0
+    depth 8 complete: 2039 states; frontier 0; disagreements so far 0
+  fixes all-but-negzero: 2039 states, every sequence of length ≤ 8 covered; COMPLETE (no new state at the next depth: every length covered) (0 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-identity:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 95 states; frontier 81; disagreements so far 0
+    depth 3 complete: 349 states; frontier 254; disagreements so far 0
+    depth 4 complete: 843 states; frontier 494; disagreements so far 0
+    depth 5 complete: 1451 states; frontier 608; disagreements so far 0
+    depth 6 complete: 1895 states; frontier 444; disagreements so far 0
+    depth 7 complete: 2039 states; frontier 144; disagreements so far 0
+    depth 8 complete: 2039 states; frontier 0; disagreements so far 0
+  fixes all-but-identity: 2039 states, every sequence of length ≤ 8 covered; COMPLETE (no new state at the next depth: every length covered) (0 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-bigint:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 95 states; frontier 81; disagreements so far 0
+    depth 3 complete: 349 states; frontier 254; disagreements so far 0
+    depth 4 complete: 843 states; frontier 494; disagreements so far 0
+    depth 5 complete: 1451 states; frontier 608; disagreements so far 0
+    depth 6 complete: 1895 states; frontier 444; disagreements so far 0
+    depth 7 complete: 2039 states; frontier 144; disagreements so far 0
+    depth 8 complete: 2039 states; frontier 0; disagreements so far 0
+  fixes all-but-bigint: 2039 states, every sequence of length ≤ 8 covered; COMPLETE (no new state at the next depth: every length covered) (0 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-lazy:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 95 states; frontier 81; disagreements so far 0
+    depth 3 complete: 349 states; frontier 254; disagreements so far 0
+    depth 4 complete: 843 states; frontier 494; disagreements so far 0
+    depth 5 complete: 1451 states; frontier 608; disagreements so far 0
+    depth 6 complete: 1895 states; frontier 444; disagreements so far 0
+    depth 7 complete: 2039 states; frontier 144; disagreements so far 0
+    depth 8 complete: 2039 states; frontier 0; disagreements so far 0
+  fixes all-but-lazy: 2039 states, every sequence of length ≤ 8 covered; COMPLETE (no new state at the next depth: every length covered) (0 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-mapseq:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 95 states; frontier 81; disagreements so far 0
+    depth 3 complete: 349 states; frontier 254; disagreements so far 0
+    depth 4 complete: 843 states; frontier 494; disagreements so far 0
+    depth 5 complete: 1451 states; frontier 608; disagreements so far 0
+    depth 6 complete: 1895 states; frontier 444; disagreements so far 0
+    depth 7 complete: 2039 states; frontier 144; disagreements so far 0
+    depth 8 complete: 2039 states; frontier 0; disagreements so far 0
+  fixes all-but-mapseq: 2039 states, every sequence of length ≤ 8 covered; COMPLETE (no new state at the next depth: every length covered) (0 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-strseq:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 12
+    depth 2 complete: 116 states; frontier 102; disagreements so far 199
+    depth 3 complete: 603 states; frontier 487; disagreements so far 1552
+    depth 4 complete: 2317 states; frontier 1714; disagreements so far 7518
+    depth 5 complete: 6949 states; frontier 4632; disagreements so far 25728
+    depth 6 complete: 16815 states; frontier 9866; disagreements so far 66882
+    depth 7 complete: 33685 states; frontier 16870; disagreements so far 138620
+    depth 8 complete: 57239 states; frontier 23554; disagreements so far 238080
+    depth 9 complete: 84427 states; frontier 27188; disagreements so far 350244
+    depth 10 complete: 110615 states; frontier 26188; disagreements so far 455284
+    depth 11 complete: 131959 states; frontier 21344; disagreements so far 537740
+    depth 12 complete: 146467 states; frontier 14508; disagreements so far 591732
+    depth 13 complete: 154659 states; frontier 8192; disagreements so far 621092
+    depth 14 complete: 158379 states; frontier 3720; disagreements so far 633724
+    depth 15 complete: 159579 states; frontier 1200; disagreements so far 637756
+    depth 16 complete: 159867 states; frontier 288; disagreements so far 638668
+    depth 17 complete: 159867 states; frontier 0; disagreements so far 638668
+  fixes all-but-strseq: 159867 states, every sequence of length ≤ 17 covered; COMPLETE (no new state at the next depth: every length covered) (15 s)
+    disagreements: count 149588, count-vs-seq 0, contains? 332376, get 0, representatives 7116, set= 149588
+    contains?/get of (seq "ab") (stored/expected [\a \b]): 22842
+    contains?/get of [\a \b] (stored/expected (seq "ab")): 22842
+    contains?/get of (seq "ab") (stored/expected (seq "ab")): 22842
+    contains?/get of [\a \b] (stored/expected [\a \b]): 22842
+    contains?/get of (seq "\ue9") (stored/expected (list (char 233))): 18900
+    contains?/get of (seq "\ue9") (stored/expected [(char 233)]): 18900
+    contains?/get of (seq "a") (stored/expected (lazy-seq [\a])): 17766
+    contains?/get of (seq "a") (stored/expected (list \a)): 17766
+    contains?/get of (seq "a") (stored/expected [\a]): 17766
+    contains?/get of [(char 233)] (stored/expected (seq "\ue9")): 11708
+    contains?/get of (list (char 233)) (stored/expected (seq "\ue9")): 11708
+    contains?/get of (seq "\ue9") (stored/expected (seq "\ue9")): 11708
+    e.g. contains: #{} (conj (seq "a")) (contains? s (lazy-seq [\a])): jank false Clojure true
+    e.g. contains: #{} (conj (seq "a")) (contains? s (list \a)): jank false Clojure true
+    e.g. contains: #{} (conj (seq "a")) (contains? s [\a]): jank false Clojure true
+    e.g. set=: #{} (conj (seq "a")) (conj [\a]): (= s (apply hash-set [(seq "a")])): jank false Clojure true
+    e.g. count: #{} (conj (seq "a")) (conj [\a]): count jank 2 Clojure 1
+    e.g. set=: #{} (conj (seq "a")) (conj (list \a)): (= s (apply hash-set [(seq "a")])): jank false Clojure true
+    e.g. count: #{} (conj (seq "a")) (conj (list \a)): count jank 2 Clojure 1
+    e.g. set=: #{} (conj (seq "a")) (conj (lazy-seq [\a])): (= s (apply hash-set [(seq "a")])): jank false Clojure true
+    e.g. count: #{} (conj (seq "a")) (conj (lazy-seq [\a])): count jank 2 Clojure 1
+    e.g. repr: #{} (conj [\a]) (disj (seq "a")) (conj (list \a)): (seq s) holds [[\a]] Clojure [(list \a)]
+    e.g. repr: #{} (conj [\a]) (disj (seq "a")) (conj (lazy-seq [\a])): (seq s) holds [[\a]] Clojure [(lazy-seq [\a])]
+    e.g. repr: #{} (conj (list \a)) (disj (seq "a")) (conj [\a]): (seq s) holds [(list \a)] Clojure [[\a]]
+  fixes all-but-bigdec:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 95 states; frontier 81; disagreements so far 0
+    depth 3 complete: 349 states; frontier 254; disagreements so far 0
+    depth 4 complete: 843 states; frontier 494; disagreements so far 0
+    depth 5 complete: 1451 states; frontier 608; disagreements so far 0
+    depth 6 complete: 1895 states; frontier 444; disagreements so far 0
+    depth 7 complete: 2039 states; frontier 144; disagreements so far 0
+    depth 8 complete: 2039 states; frontier 0; disagreements so far 0
+  fixes all-but-bigdec: 2039 states, every sequence of length ≤ 8 covered; COMPLETE (no new state at the next depth: every length covered) (0 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-keepold:
+    depth 1 complete: 14 states; frontier 13; disagreements so far 0
+    depth 2 complete: 115 states; frontier 101; disagreements so far 20
+    depth 3 complete: 579 states; frontier 464; disagreements so far 230
+    depth 4 complete: 2077 states; frontier 1498; disagreements so far 1232
+    depth 5 complete: 5589 states; frontier 3512; disagreements so far 4096
+    depth 6 complete: 11719 states; frontier 6130; disagreements so far 9600
+    depth 7 complete: 19889 states; frontier 8170; disagreements so far 17244
+    depth 8 complete: 28535 states; frontier 8646; disagreements so far 25412
+    depth 9 complete: 36437 states; frontier 7902; disagreements so far 32836
+    depth 10 complete: 43523 states; frontier 7086; disagreements so far 39444
+    depth 11 complete: 50321 states; frontier 6798; disagreements so far 45764
+    depth 12 complete: 57119 states; frontier 6798; disagreements so far 52084
+    depth 13 complete: 63917 states; frontier 6798; disagreements so far 58404
+    depth 14 complete: 70715 states; frontier 6798; disagreements so far 64724
+    depth 15 complete: 77513 states; frontier 6798; disagreements so far 71044
+    depth 16 complete: 84311 states; frontier 6798; disagreements so far 77364
+    depth 17 complete: 91087 states; frontier 6776; disagreements so far 83684
+    depth 18 complete: 97753 states; frontier 6666; disagreements so far 89964
+    depth 19 complete: 104039 states; frontier 6286; disagreements so far 95984
+    depth 20 complete: 109443 states; frontier 5404; disagreements so far 101240
+    depth 21 complete: 113455 states; frontier 4012; disagreements so far 105204
+    depth 22 complete: 115879 states; frontier 2424; disagreements so far 107628
+    depth 23 complete: 116983 states; frontier 1104; disagreements so far 108732
+    depth 24 complete: 117271 states; frontier 288; disagreements so far 109020
+    depth 25 complete: 117271 states; frontier 0; disagreements so far 109020
+  fixes all-but-keepold: 117271 states, every sequence of length ≤ 25 covered; COMPLETE (no new state at the next depth: every length covered) (14 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 109020, set= 0
+    e.g. repr: #{} (conj (seq "a")) (conj [\a]): (seq s) holds [[\a]] Clojure [(seq "a")]
+    e.g. repr: #{} (conj (seq "a")) (conj (list \a)): (seq s) holds [(list \a)] Clojure [(seq "a")]
+    e.g. repr: #{} (conj (seq "a")) (conj (lazy-seq [\a])): (seq s) holds [(lazy-seq [\a])] Clojure [(seq "a")]
+  [exit 0]
+== walk pool coll (set): 13 values [nil, [], (), (lazy-seq nil), {}, #{}, "", {:a 1}, (seq {:a 1}), [[:a 1]], (list [:a 1]), (hash-set 1), 13]; depth ≤ 1000, ≤ 300000 states
+  fixes all-but-negzero:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 115 states; frontier 100; disagreements so far 0
+    depth 3 complete: 509 states; frontier 394; disagreements so far 0
+    depth 4 complete: 1653 states; frontier 1144; disagreements so far 0
+    depth 5 complete: 4076 states; frontier 2423; disagreements so far 0
+    depth 6 complete: 8139 states; frontier 4063; disagreements so far 0
+    depth 7 complete: 13447 states; frontier 5308; disagreements so far 0
+    depth 8 complete: 18655 states; frontier 5208; disagreements so far 0
+    depth 9 complete: 22297 states; frontier 3642; disagreements so far 0
+    depth 10 complete: 23989 states; frontier 1692; disagreements so far 0
+    depth 11 complete: 24527 states; frontier 538; disagreements so far 0
+    depth 12 complete: 24651 states; frontier 124; disagreements so far 0
+    depth 13 complete: 24663 states; frontier 12; disagreements so far 0
+    depth 14 complete: 24663 states; frontier 0; disagreements so far 0
+  fixes all-but-negzero: 24663 states, every sequence of length ≤ 14 covered; COMPLETE (no new state at the next depth: every length covered) (3 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-identity:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 115 states; frontier 100; disagreements so far 0
+    depth 3 complete: 509 states; frontier 394; disagreements so far 0
+    depth 4 complete: 1653 states; frontier 1144; disagreements so far 0
+    depth 5 complete: 4076 states; frontier 2423; disagreements so far 0
+    depth 6 complete: 8139 states; frontier 4063; disagreements so far 0
+    depth 7 complete: 13447 states; frontier 5308; disagreements so far 0
+    depth 8 complete: 18655 states; frontier 5208; disagreements so far 0
+    depth 9 complete: 22297 states; frontier 3642; disagreements so far 0
+    depth 10 complete: 23989 states; frontier 1692; disagreements so far 0
+    depth 11 complete: 24527 states; frontier 538; disagreements so far 0
+    depth 12 complete: 24651 states; frontier 124; disagreements so far 0
+    depth 13 complete: 24663 states; frontier 12; disagreements so far 0
+    depth 14 complete: 24663 states; frontier 0; disagreements so far 0
+  fixes all-but-identity: 24663 states, every sequence of length ≤ 14 covered; COMPLETE (no new state at the next depth: every length covered) (3 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-bigint:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 115 states; frontier 100; disagreements so far 0
+    depth 3 complete: 509 states; frontier 394; disagreements so far 0
+    depth 4 complete: 1653 states; frontier 1144; disagreements so far 0
+    depth 5 complete: 4076 states; frontier 2423; disagreements so far 0
+    depth 6 complete: 8139 states; frontier 4063; disagreements so far 0
+    depth 7 complete: 13447 states; frontier 5308; disagreements so far 0
+    depth 8 complete: 18655 states; frontier 5208; disagreements so far 0
+    depth 9 complete: 22297 states; frontier 3642; disagreements so far 0
+    depth 10 complete: 23989 states; frontier 1692; disagreements so far 0
+    depth 11 complete: 24527 states; frontier 538; disagreements so far 0
+    depth 12 complete: 24651 states; frontier 124; disagreements so far 0
+    depth 13 complete: 24663 states; frontier 12; disagreements so far 0
+    depth 14 complete: 24663 states; frontier 0; disagreements so far 0
+  fixes all-but-bigint: 24663 states, every sequence of length ≤ 14 covered; COMPLETE (no new state at the next depth: every length covered) (3 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-lazy:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 4
+    depth 2 complete: 122 states; frontier 107; disagreements so far 71
+    depth 3 complete: 602 states; frontier 480; disagreements so far 559
+    depth 4 complete: 2208 states; frontier 1606; disagreements so far 2703
+    depth 5 complete: 6272 states; frontier 4064; disagreements so far 9322
+    depth 6 complete: 14496 states; frontier 8224; disagreements so far 24471
+    depth 7 complete: 27937 states; frontier 13441; disagreements so far 51546
+    depth 8 complete: 45671 states; frontier 17734; disagreements so far 89434
+    depth 9 complete: 63997 states; frontier 18326; disagreements so far 130014
+    depth 10 complete: 78777 states; frontier 14780; disagreements so far 163006
+    depth 11 complete: 87723 states; frontier 8946; disagreements so far 182534
+    depth 12 complete: 91901 states; frontier 4178; disagreements so far 191416
+    depth 13 complete: 93295 states; frontier 1394; disagreements so far 194328
+    depth 14 complete: 93583 states; frontier 288; disagreements so far 194916
+    depth 15 complete: 93619 states; frontier 36; disagreements so far 194988
+    depth 16 complete: 93619 states; frontier 0; disagreements so far 194988
+  fixes all-but-lazy: 93619 states, every sequence of length ≤ 16 covered; COMPLETE (no new state at the next depth: every length covered) (14 s)
+    disagreements: count 57156, count-vs-seq 0, contains? 67740, get 0, representatives 12936, set= 57156
+    contains?/get of (lazy-seq nil) (stored/expected []): 12936
+    contains?/get of (lazy-seq nil) (stored/expected ()): 12936
+    contains?/get of [] (stored/expected ()): 6468
+    contains?/get of () (stored/expected []): 6468
+    contains?/get of [] (stored/expected []): 6468
+    contains?/get of () (stored/expected ()): 6468
+    contains?/get of [] (stored/expected (lazy-seq nil)): 5332
+    contains?/get of (lazy-seq nil) (stored/expected (lazy-seq nil)): 5332
+    contains?/get of () (stored/expected (lazy-seq nil)): 5332
+    e.g. contains: #{} (conj []) (contains? s (lazy-seq nil)): jank false Clojure true
+    e.g. contains: #{} (conj ()) (contains? s (lazy-seq nil)): jank false Clojure true
+    e.g. contains: #{} (conj (lazy-seq nil)) (contains? s ()): jank false Clojure true
+    e.g. set=: #{} (conj []) (conj (lazy-seq nil)): (= s (apply hash-set [[]])): jank false Clojure true
+    e.g. count: #{} (conj []) (conj (lazy-seq nil)): count jank 2 Clojure 1
+    e.g. set=: #{} (conj []) (disj (lazy-seq nil)): (= s (apply hash-set [])): jank false Clojure true
+    e.g. count: #{} (conj []) (disj (lazy-seq nil)): count jank 1 Clojure 0
+    e.g. set=: #{} (conj ()) (conj (lazy-seq nil)): (= s (apply hash-set [()])): jank false Clojure true
+    e.g. count: #{} (conj ()) (conj (lazy-seq nil)): count jank 2 Clojure 1
+    e.g. repr: #{} (conj []) (disj (lazy-seq nil)) (conj ()): (seq s) holds [[]] Clojure [()]
+    e.g. repr: #{} (conj ()) (disj (lazy-seq nil)) (conj []): (seq s) holds [()] Clojure [[]]
+    e.g. repr: #{} (conj nil) (conj []) (disj (lazy-seq nil)) (conj ()): (seq s) holds [nil, []] Clojure [nil, ()]
+  fixes all-but-mapseq:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 115 states; frontier 100; disagreements so far 4
+    depth 3 complete: 516 states; frontier 401; disagreements so far 67
+    depth 4 complete: 1750 states; frontier 1234; disagreements so far 559
+    depth 5 complete: 4757 states; frontier 3007; disagreements so far 2915
+    depth 6 complete: 11073 states; frontier 6316; disagreements so far 10734
+    depth 7 complete: 22625 states; frontier 11552; disagreements so far 30056
+    depth 8 complete: 40849 states; frontier 18224; disagreements so far 66752
+    depth 9 complete: 65077 states; frontier 24228; disagreements so far 120560
+    depth 10 complete: 91431 states; frontier 26354; disagreements so far 181208
+    depth 11 complete: 114703 states; frontier 23272; disagreements so far 235080
+    depth 12 complete: 131249 states; frontier 16546; disagreements so far 273772
+    depth 13 complete: 140363 states; frontier 9114; disagreements so far 295838
+    depth 14 complete: 143839 states; frontier 3476; disagreements so far 304622
+    depth 15 complete: 144707 states; frontier 868; disagreements so far 306958
+    depth 16 complete: 144875 states; frontier 168; disagreements so far 307486
+    depth 17 complete: 144891 states; frontier 16; disagreements so far 307542
+    depth 18 complete: 144891 states; frontier 0; disagreements so far 307542
+  fixes all-but-mapseq: 144891 states, every sequence of length ≤ 18 covered; COMPLETE (no new state at the next depth: every length covered) (23 s)
+    disagreements: count 77238, count-vs-seq 0, contains? 97558, get 0, representatives 40452, set= 92294
+    contains?/get of (seq {:a 1}) (stored/expected (seq {:a 1})): 14834
+    contains?/get of (seq {:a 1}) (stored/expected [[:a 1]]): 11916
+    contains?/get of (seq {:a 1}) (stored/expected (list [:a 1])): 11916
+    contains?/get of (list [:a 1]) (stored/expected (list [:a 1])): 11070
+    contains?/get of (list [:a 1]) (stored/expected [[:a 1]]): 11070
+    contains?/get of [[:a 1]] (stored/expected (list [:a 1])): 11070
+    contains?/get of [[:a 1]] (stored/expected [[:a 1]]): 11070
+    contains?/get of (list [:a 1]) (stored/expected (seq {:a 1})): 7306
+    contains?/get of [[:a 1]] (stored/expected (seq {:a 1})): 7306
+    e.g. contains: #{} (conj (seq {:a 1})) (conj 13) (contains? s (list [:a 1])): jank false Clojure true
+    e.g. contains: #{} (conj (seq {:a 1})) (conj 13) (contains? s [[:a 1]]): jank false Clojure true
+    e.g. contains: #{} (conj [[:a 1]]) (conj 13) (contains? s (seq {:a 1})): jank false Clojure true
+    e.g. set=: #{} (conj (seq {:a 1})) (conj 13) (conj [[:a 1]]): (= s (apply hash-set [(seq {:a 1}), 13])): jank false Clojure true
+    e.g. count: #{} (conj (seq {:a 1})) (conj 13) (conj [[:a 1]]): count jank 3 Clojure 2
+    e.g. set=: #{} (conj (seq {:a 1})) (conj 13) (conj (list [:a 1])): (= s (apply hash-set [(seq {:a 1}), 13])): jank false Clojure true
+    e.g. count: #{} (conj (seq {:a 1})) (conj 13) (conj (list [:a 1])): count jank 3 Clojure 2
+    e.g. set=: #{} (conj (seq {:a 1})) (conj 13) (disj [[:a 1]]): (= s (apply hash-set [13])): jank false Clojure true
+    e.g. count: #{} (conj (seq {:a 1})) (conj 13) (disj [[:a 1]]): count jank 2 Clojure 1
+    e.g. repr: #{} (conj [[:a 1]]) (conj 13) (disj (seq {:a 1})) (conj (list [:a 1])): (seq s) holds [[[:a 1]], 13] Clojure [(list [:a 1]), 13]
+    e.g. repr: #{} (conj (list [:a 1])) (conj 13) (disj (seq {:a 1})) (conj [[:a 1]]): (seq s) holds [(list [:a 1]), 13] Clojure [[[:a 1]], 13]
+    e.g. repr: #{} (conj nil) (conj [[:a 1]]) (conj 13) (disj (seq {:a 1})) (conj (list [:a 1])): (seq s) holds [nil, [[:a 1]], 13] Clojure [nil, (list [:a 1]), 13]
+  fixes all-but-strseq:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 115 states; frontier 100; disagreements so far 0
+    depth 3 complete: 509 states; frontier 394; disagreements so far 0
+    depth 4 complete: 1653 states; frontier 1144; disagreements so far 0
+    depth 5 complete: 4076 states; frontier 2423; disagreements so far 0
+    depth 6 complete: 8139 states; frontier 4063; disagreements so far 0
+    depth 7 complete: 13447 states; frontier 5308; disagreements so far 0
+    depth 8 complete: 18655 states; frontier 5208; disagreements so far 0
+    depth 9 complete: 22297 states; frontier 3642; disagreements so far 0
+    depth 10 complete: 23989 states; frontier 1692; disagreements so far 0
+    depth 11 complete: 24527 states; frontier 538; disagreements so far 0
+    depth 12 complete: 24651 states; frontier 124; disagreements so far 0
+    depth 13 complete: 24663 states; frontier 12; disagreements so far 0
+    depth 14 complete: 24663 states; frontier 0; disagreements so far 0
+  fixes all-but-strseq: 24663 states, every sequence of length ≤ 14 covered; COMPLETE (no new state at the next depth: every length covered) (3 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-bigdec:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 115 states; frontier 100; disagreements so far 0
+    depth 3 complete: 509 states; frontier 394; disagreements so far 0
+    depth 4 complete: 1653 states; frontier 1144; disagreements so far 0
+    depth 5 complete: 4076 states; frontier 2423; disagreements so far 0
+    depth 6 complete: 8139 states; frontier 4063; disagreements so far 0
+    depth 7 complete: 13447 states; frontier 5308; disagreements so far 0
+    depth 8 complete: 18655 states; frontier 5208; disagreements so far 0
+    depth 9 complete: 22297 states; frontier 3642; disagreements so far 0
+    depth 10 complete: 23989 states; frontier 1692; disagreements so far 0
+    depth 11 complete: 24527 states; frontier 538; disagreements so far 0
+    depth 12 complete: 24651 states; frontier 124; disagreements so far 0
+    depth 13 complete: 24663 states; frontier 12; disagreements so far 0
+    depth 14 complete: 24663 states; frontier 0; disagreements so far 0
+  fixes all-but-bigdec: 24663 states, every sequence of length ≤ 14 covered; COMPLETE (no new state at the next depth: every length covered) (3 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-keepold:
+    depth 1 complete: 15 states; frontier 14; disagreements so far 0
+    depth 2 complete: 127 states; frontier 112; disagreements so far 12
+    depth 3 complete: 665 states; frontier 538; disagreements so far 156
+    depth 4 complete: 2644 states; frontier 1979; disagreements so far 978
+    depth 5 complete: 8381 states; frontier 5737; disagreements so far 4140
+    depth 6 complete: 22268 states; frontier 13887; disagreements so far 13188
+    depth 7 complete: 49824 states; frontier 27556; disagreements so far 33294
+    depth 8 complete: 96945 states; frontier 47121; disagreements so far 70386
+    depth 9 complete: 164619 states; frontier 67674; disagreements so far 125880
+    depth 10 complete: 248861 states; frontier 84242; disagreements so far 195912
+  fixes all-but-keepold: 300000 states, every sequence of length ≤ 10 covered; stopped in depth 11 (frontier 51139) (34 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 239990, set= 0
+    e.g. repr: #{} (conj []) (conj ()): (seq s) holds [()] Clojure [[]]
+    e.g. repr: #{} (conj []) (conj (lazy-seq nil)): (seq s) holds [(lazy-seq nil)] Clojure [[]]
+    e.g. repr: #{} (conj ()) (conj []): (seq s) holds [[]] Clojure [()]
+  [exit 0]
+== walk pool mix (set): 19 values [0.0, -0.0, 2.0, ##NaN, 1, 1N, 1M, 1.0000000000000000001M, (seq "a"), [\a], (seq "\ue9"), [(char 233)], (), (lazy-seq nil), (seq {:a 1}), [[:a 1]], :x/a, 'x/a, 13]; depth ≤ 1000, ≤ 300000 states
+  fixes all-but-negzero:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 0
+    depth 2 complete: 224 states; frontier 203; disagreements so far 2
+    depth 3 complete: 1425 states; frontier 1201; disagreements so far 48
+    depth 4 complete: 6453 states; frontier 5028; disagreements so far 570
+    depth 5 complete: 22236 states; frontier 15783; disagreements so far 4304
+    depth 6 complete: 62145 states; frontier 39909; disagreements so far 22842
+    depth 7 complete: 147750 states; frontier 85605; disagreements so far 91066
+  fixes all-but-negzero: 300000 states, every sequence of length ≤ 7 covered; stopped in depth 8 (frontier 152250) (16 s)
+    disagreements: count 86714, count-vs-seq 0, contains? 108222, get 0, representatives 2304, set= 87082
+    contains?/get of 0.0 (stored/expected -0.0): 34848
+    contains?/get of -0.0 (stored/expected 0.0): 34848
+    contains?/get of -0.0 (stored/expected -0.0): 19263
+    contains?/get of 0.0 (stored/expected 0.0): 19263
+    e.g. contains: #{} (conj 0.0) (conj 2.0) (contains? s -0.0): jank false Clojure true
+    e.g. contains: #{} (conj -0.0) (conj 2.0) (contains? s 0.0): jank false Clojure true
+    e.g. set=: #{} (conj 0.0) (conj 2.0) (conj -0.0): (= s (apply hash-set [0.0, 2.0])): jank false Clojure true
+    e.g. count: #{} (conj 0.0) (conj 2.0) (conj -0.0): count jank 3 Clojure 2
+    e.g. contains: #{} (conj 0.0) (conj 2.0) (conj ##NaN) (contains? s -0.0): jank false Clojure true
+    e.g. set=: #{} (conj 0.0) (conj 2.0) (disj -0.0): (= s (apply hash-set [2.0])): jank false Clojure true
+    e.g. count: #{} (conj 0.0) (conj 2.0) (disj -0.0): count jank 2 Clojure 1
+    e.g. set=: #{} (conj -0.0) (conj 2.0) (conj 0.0): (= s (apply hash-set [-0.0, 2.0])): jank false Clojure true
+    e.g. count: #{} (conj -0.0) (conj 2.0) (conj 0.0): count jank 3 Clojure 2
+    e.g. repr: #{} (conj 0.0) (conj 2.0) (disj -0.0) (disj 2.0) (conj -0.0): (seq s) holds [0.0] Clojure [-0.0]
+    e.g. repr: #{} (conj -0.0) (conj 2.0) (disj 0.0) (disj 2.0) (conj 0.0): (seq s) holds [-0.0] Clojure [0.0]
+    e.g. repr: #{} (conj 0.0) (conj 2.0) (conj ##NaN) (disj -0.0) (disj 2.0) (conj -0.0): (seq s) holds [0.0, ##NaN] Clojure [-0.0, ##NaN]
+  fixes all-but-identity:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 2
+    depth 2 complete: 226 states; frontier 205; disagreements so far 47
+    depth 3 complete: 1465 states; frontier 1239; disagreements so far 518
+    depth 4 complete: 6842 states; frontier 5377; disagreements so far 3725
+    depth 5 complete: 24631 states; frontier 17789; disagreements so far 19351
+    depth 6 complete: 72588 states; frontier 47957; disagreements so far 77898
+    depth 7 complete: 183205 states; frontier 110617; disagreements so far 254471
+  fixes all-but-identity: 300000 states, every sequence of length ≤ 7 covered; stopped in depth 8 (frontier 116795) (17 s)
+    disagreements: count 125234, count-vs-seq 0, contains? 151825, get 0, representatives 0, set= 204836
+    contains?/get of ##NaN (stored/expected ##NaN): 151825
+    e.g. set=: #{} (conj ##NaN): (= s (apply hash-set [##NaN])): jank false Clojure true
+    e.g. contains: #{} (conj ##NaN) (contains? s ##NaN): jank false Clojure true
+    e.g. set=: #{} (conj 0.0) (conj ##NaN): (= s (apply hash-set [0.0, ##NaN])): jank false Clojure true
+    e.g. contains: #{} (conj 0.0) (conj ##NaN) (contains? s ##NaN): jank false Clojure true
+    e.g. set=: #{} (conj -0.0) (conj ##NaN): (= s (apply hash-set [-0.0, ##NaN])): jank false Clojure true
+    e.g. contains: #{} (conj -0.0) (conj ##NaN) (contains? s ##NaN): jank false Clojure true
+    e.g. count: #{} (conj ##NaN) (conj ##NaN): count jank 2 Clojure 1
+    e.g. count: #{} (conj ##NaN) (disj ##NaN): count jank 1 Clojure 0
+    e.g. count: #{} (conj 0.0) (conj ##NaN) (conj ##NaN): count jank 3 Clojure 2
+  fixes all-but-bigint:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 2
+    depth 2 complete: 228 states; frontier 207; disagreements so far 50
+    depth 3 complete: 1501 states; frontier 1273; disagreements so far 570
+    depth 4 complete: 7111 states; frontier 5610; disagreements so far 3972
+    depth 5 complete: 25602 states; frontier 18491; disagreements so far 19136
+    depth 6 complete: 73469 states; frontier 47867; disagreements so far 68382
+    depth 7 complete: 173184 states; frontier 99715; disagreements so far 190218
+  fixes all-but-bigint: 300000 states, every sequence of length ≤ 7 covered; stopped in depth 8 (frontier 126816) (15 s)
+    disagreements: count 99779, count-vs-seq 0, contains? 154971, get 0, representatives 0, set= 99779
+    contains?/get of 1N (stored/expected 1): 53277
+    contains?/get of 1 (stored/expected 1N): 52758
+    contains?/get of 1 (stored/expected 1): 24581
+    contains?/get of 1N (stored/expected 1N): 24355
+    e.g. contains: #{} (conj 1) (contains? s 1N): jank false Clojure true
+    e.g. contains: #{} (conj 1N) (contains? s 1): jank false Clojure true
+    e.g. contains: #{} (conj 0.0) (conj 1) (contains? s 1N): jank false Clojure true
+    e.g. set=: #{} (conj 1) (conj 1N): (= s (apply hash-set [1])): jank false Clojure true
+    e.g. count: #{} (conj 1) (conj 1N): count jank 2 Clojure 1
+    e.g. set=: #{} (conj 1) (disj 1N): (= s (apply hash-set [])): jank false Clojure true
+    e.g. count: #{} (conj 1) (disj 1N): count jank 1 Clojure 0
+    e.g. set=: #{} (conj 1N) (conj 1): (= s (apply hash-set [1N])): jank false Clojure true
+    e.g. count: #{} (conj 1N) (conj 1): count jank 2 Clojure 1
+  fixes all-but-lazy:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 2
+    depth 2 complete: 228 states; frontier 207; disagreements so far 50
+    depth 3 complete: 1501 states; frontier 1273; disagreements so far 570
+    depth 4 complete: 7113 states; frontier 5612; disagreements so far 4004
+    depth 5 complete: 25696 states; frontier 18583; disagreements so far 19558
+    depth 6 complete: 74185 states; frontier 48489; disagreements so far 70998
+    depth 7 complete: 176842 states; frontier 102657; disagreements so far 201706
+  fixes all-but-lazy: 300000 states, every sequence of length ≤ 7 covered; stopped in depth 8 (frontier 123158) (15 s)
+    disagreements: count 103350, count-vs-seq 0, contains? 159550, get 0, representatives 0, set= 103350
+    contains?/get of () (stored/expected (lazy-seq nil)): 54966
+    contains?/get of (lazy-seq nil) (stored/expected ()): 54949
+    contains?/get of (lazy-seq nil) (stored/expected (lazy-seq nil)): 24820
+    contains?/get of () (stored/expected ()): 24815
+    e.g. contains: #{} (conj ()) (contains? s (lazy-seq nil)): jank false Clojure true
+    e.g. contains: #{} (conj (lazy-seq nil)) (contains? s ()): jank false Clojure true
+    e.g. contains: #{} (conj 0.0) (conj ()) (contains? s (lazy-seq nil)): jank false Clojure true
+    e.g. set=: #{} (conj ()) (conj (lazy-seq nil)): (= s (apply hash-set [()])): jank false Clojure true
+    e.g. count: #{} (conj ()) (conj (lazy-seq nil)): count jank 2 Clojure 1
+    e.g. set=: #{} (conj ()) (disj (lazy-seq nil)): (= s (apply hash-set [])): jank false Clojure true
+    e.g. count: #{} (conj ()) (disj (lazy-seq nil)): count jank 1 Clojure 0
+    e.g. set=: #{} (conj (lazy-seq nil)) (conj ()): (= s (apply hash-set [(lazy-seq nil)])): jank false Clojure true
+    e.g. count: #{} (conj (lazy-seq nil)) (conj ()): count jank 2 Clojure 1
+  fixes all-but-mapseq:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 0
+    depth 2 complete: 224 states; frontier 203; disagreements so far 2
+    depth 3 complete: 1425 states; frontier 1201; disagreements so far 48
+    depth 4 complete: 6453 states; frontier 5028; disagreements so far 570
+    depth 5 complete: 22202 states; frontier 15749; disagreements so far 4178
+    depth 6 complete: 61645 states; frontier 39443; disagreements so far 21294
+    depth 7 complete: 144436 states; frontier 82791; disagreements so far 81150
+    depth 8 complete: 295845 states; frontier 151409; disagreements so far 241252
+  fixes all-but-mapseq: 300000 states, every sequence of length ≤ 8 covered; stopped in depth 9 (frontier 4155) (16 s)
+    disagreements: count 72000, count-vs-seq 0, contains? 96346, get 0, representatives 2152, set= 72364
+    contains?/get of (seq {:a 1}) (stored/expected [[:a 1]]): 31428
+    contains?/get of [[:a 1]] (stored/expected (seq {:a 1})): 31428
+    contains?/get of [[:a 1]] (stored/expected [[:a 1]]): 16745
+    contains?/get of (seq {:a 1}) (stored/expected (seq {:a 1})): 16745
+    e.g. contains: #{} (conj (seq {:a 1})) (conj 13) (contains? s [[:a 1]]): jank false Clojure true
+    e.g. contains: #{} (conj [[:a 1]]) (conj 13) (contains? s (seq {:a 1})): jank false Clojure true
+    e.g. contains: #{} (conj 0.0) (conj (seq {:a 1})) (conj 13) (contains? s [[:a 1]]): jank false Clojure true
+    e.g. set=: #{} (conj (seq {:a 1})) (conj 13) (conj [[:a 1]]): (= s (apply hash-set [(seq {:a 1}), 13])): jank false Clojure true
+    e.g. count: #{} (conj (seq {:a 1})) (conj 13) (conj [[:a 1]]): count jank 3 Clojure 2
+    e.g. set=: #{} (conj (seq {:a 1})) (conj 13) (disj [[:a 1]]): (= s (apply hash-set [13])): jank false Clojure true
+    e.g. count: #{} (conj (seq {:a 1})) (conj 13) (disj [[:a 1]]): count jank 2 Clojure 1
+    e.g. set=: #{} (conj [[:a 1]]) (conj 13) (conj (seq {:a 1})): (= s (apply hash-set [[[:a 1]], 13])): jank false Clojure true
+    e.g. count: #{} (conj [[:a 1]]) (conj 13) (conj (seq {:a 1})): count jank 3 Clojure 2
+    e.g. repr: #{} (conj (seq {:a 1})) (conj 13) (disj [[:a 1]]) (disj 13) (conj [[:a 1]]): (seq s) holds [(seq {:a 1})] Clojure [[[:a 1]]]
+    e.g. repr: #{} (conj [[:a 1]]) (conj 13) (disj (seq {:a 1})) (disj 13) (conj (seq {:a 1})): (seq s) holds [[[:a 1]]] Clojure [(seq {:a 1})]
+    e.g. repr: #{} (conj 0.0) (conj (seq {:a 1})) (conj 13) (disj [[:a 1]]) (disj 13) (conj [[:a 1]]): (seq s) holds [0.0, (seq {:a 1})] Clojure [0.0, [[:a 1]]]
+  fixes all-but-strseq:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 4
+    depth 2 complete: 232 states; frontier 211; disagreements so far 100
+    depth 3 complete: 1581 states; frontier 1349; disagreements so far 1156
+    depth 4 complete: 7884 states; frontier 6303; disagreements so far 8300
+    depth 5 complete: 30321 states; frontier 22437; disagreements so far 41821
+    depth 6 complete: 94116 states; frontier 63795; disagreements so far 158356
+    depth 7 complete: 242520 states; frontier 148404; disagreements so far 472608
+  fixes all-but-strseq: 300000 states, every sequence of length ≤ 7 covered; stopped in depth 8 (frontier 57480) (12 s)
+    disagreements: count 147676, count-vs-seq 0, contains? 294215, get 0, representatives 0, set= 147676
+    contains?/get of [(char 233)] (stored/expected (seq "\ue9")): 55783
+    contains?/get of [\a] (stored/expected (seq "a")): 53167
+    contains?/get of (seq "a") (stored/expected [\a]): 52482
+    contains?/get of (seq "\ue9") (stored/expected [(char 233)]): 51712
+    contains?/get of (seq "\ue9") (stored/expected (seq "\ue9")): 20907
+    contains?/get of (seq "a") (stored/expected (seq "a")): 20286
+    contains?/get of [\a] (stored/expected [\a]): 19958
+    contains?/get of [(char 233)] (stored/expected [(char 233)]): 19920
+    e.g. contains: #{} (conj (seq "a")) (contains? s [\a]): jank false Clojure true
+    e.g. contains: #{} (conj [\a]) (contains? s (seq "a")): jank false Clojure true
+    e.g. contains: #{} (conj (seq "\ue9")) (contains? s [(char 233)]): jank false Clojure true
+    e.g. set=: #{} (conj (seq "a")) (conj [\a]): (= s (apply hash-set [(seq "a")])): jank false Clojure true
+    e.g. count: #{} (conj (seq "a")) (conj [\a]): count jank 2 Clojure 1
+    e.g. set=: #{} (conj (seq "a")) (disj [\a]): (= s (apply hash-set [])): jank false Clojure true
+    e.g. count: #{} (conj (seq "a")) (disj [\a]): count jank 1 Clojure 0
+    e.g. set=: #{} (conj [\a]) (conj (seq "a")): (= s (apply hash-set [[\a]])): jank false Clojure true
+    e.g. count: #{} (conj [\a]) (conj (seq "a")): count jank 2 Clojure 1
+  fixes all-but-bigdec:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 0
+    depth 2 complete: 224 states; frontier 203; disagreements so far 0
+    depth 3 complete: 1421 states; frontier 1197; disagreements so far 0
+    depth 4 complete: 6388 states; frontier 4967; disagreements so far 0
+    depth 5 complete: 21506 states; frontier 15118; disagreements so far 0
+    depth 6 complete: 57276 states; frontier 35770; disagreements so far 0
+    depth 7 complete: 125069 states; frontier 67793; disagreements so far 0
+    depth 8 complete: 231664 states; frontier 106595; disagreements so far 0
+  fixes all-but-bigdec: 300000 states, every sequence of length ≤ 8 covered; stopped in depth 9 (frontier 68336) (20 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 0, set= 0
+  fixes all-but-keepold:
+    depth 1 complete: 21 states; frontier 20; disagreements so far 0
+    depth 2 complete: 236 states; frontier 215; disagreements so far 12
+    depth 3 complete: 1661 states; frontier 1425; disagreements so far 240
+    depth 4 complete: 8668 states; frontier 7007; disagreements so far 2288
+    depth 5 complete: 35692 states; frontier 27024; disagreements so far 14118
+    depth 6 complete: 121154 states; frontier 85462; disagreements so far 63108
+  fixes all-but-keepold: 300000 states, every sequence of length ≤ 6 covered; stopped in depth 7 (frontier 178846) (10 s)
+    disagreements: count 0, count-vs-seq 0, contains? 0, get 0, representatives 181891, set= 0
+    e.g. repr: #{} (conj 0.0) (conj -0.0): (seq s) holds [-0.0] Clojure [0.0]
+    e.g. repr: #{} (conj -0.0) (conj 0.0): (seq s) holds [0.0] Clojure [-0.0]
+    e.g. repr: #{} (conj 1) (conj 1N): (seq s) holds [1N] Clojure [1]
+  [exit 0]
+ALL DONE

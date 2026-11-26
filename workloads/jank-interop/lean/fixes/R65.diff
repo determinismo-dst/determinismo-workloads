@@ -1,0 +1,41 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/context.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/context.hpp
+@@ -173,6 +173,10 @@
+     /*** XXX: Everything here is thread-safe. ***/
+     folly::Synchronized<native_unordered_map<obj::symbol_ref, ns_ref>> namespaces;
+     folly::Synchronized<native_unordered_map<jtl::immutable_string, obj::keyword_ref>> keywords;
++    /* Keywords whose namespace contains a '/', e.g. (keyword "a/b" "c"). Their text "a/b/c" would
++     * split at its first '/', so they are interned by their parts: "<ns length>:<ns>/<name>". */
++    folly::Synchronized<native_unordered_map<jtl::immutable_string, obj::keyword_ref>>
++      slashed_ns_keywords;
+     folly::Synchronized<native_unordered_map<std::thread::id, native_list<thread_binding_frame>>>
+       thread_binding_frames;
+     folly::Synchronized<native_unordered_set<obj::future_ref>> active_futures;
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -579,7 +579,25 @@
+       {
+         auto const current_ns(expect_object<jank::runtime::ns>(current_ns_var->deref()));
+         resolved_ns = current_ns->name->name;
++      }
++    }
++
++    /* Keyword.intern(Symbol.intern(ns, name)) keeps the namespace whole, so
++     * (namespace (keyword "a/b" "c")) is "a/b". Joined, "a/b/c" would split at its first '/'. */
++    if(resolved_ns.find('/') != jtl::immutable_string::npos)
++    {
++      auto const key{ util::format("{}:{}/{}", resolved_ns.size(), resolved_ns, name) };
++      auto locked_keywords(slashed_ns_keywords.wlock());
++      auto const found(locked_keywords->find(key));
++      if(found != locked_keywords->end())
++      {
++        return found->second;
+       }
++
++      auto const res(locked_keywords->emplace(
++        key,
++        make_box<obj::keyword>(runtime::detail::must_be_interned{}, resolved_ns, name)));
++      return res.first->second;
+     }
+     return intern_keyword(resolved_ns.empty() ? name : util::format("{}/{}", resolved_ns, name));
+   }

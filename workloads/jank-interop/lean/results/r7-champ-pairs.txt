@@ -1,0 +1,37 @@
+== pool num: 12 values: [0.0, -0.0, 2.0, 1.0, ##NaN, 1, 1N, 3, 1/2, 1M, 1.0M, 1.0000000000000000001M]
+  0.0 / -0.0: jank (= a b) true, (= b a) true; Clojure true; hashes 0 2147483648, shared low chunks 6
+  1 / 1N: jank (= a b) true, (= b a) true; Clojure true; hashes 1392991556 2654435770, shared low chunks 0
+  1M / 1.0000000000000000001M: jank (= a b) true, (= b a) true; Clojure false; hashes 3307139568 575929905, shared low chunks 0
+  1.0M / 1.0000000000000000001M: jank (= a b) true, (= b a) true; Clojure false; hashes 3307139568 575929905, shared low chunks 0
+  ##NaN: jank (= x x) false (identity in Clojure's collections: true)
+== pool dec: 10 values: [0M, 0.00000000000000015M, 0.0000000000000003M, 1M, 1.0000000000000000001M, 1.0000000000000000002M, 0.0M, 2M, 0, 0.0]
+  0M / 0.00000000000000015M: jank (= a b) true, (= b a) true; Clojure false; hashes 3774723415 154640416, shared low chunks 0
+  0.00000000000000015M / 0.0000000000000003M: jank (= a b) true, (= b a) true; Clojure false; hashes 154640416 3469766005, shared low chunks 0
+  0.00000000000000015M / 0.0M: jank (= a b) true, (= b a) true; Clojure false; hashes 154640416 3774723415, shared low chunks 0
+  1M / 1.0000000000000000001M: jank (= a b) true, (= b a) true; Clojure false; hashes 3307139568 575929905, shared low chunks 0
+  1M / 1.0000000000000000002M: jank (= a b) true, (= b a) true; Clojure false; hashes 3307139568 507083357, shared low chunks 0
+  1.0000000000000000001M / 1.0000000000000000002M: jank (= a b) true, (= b a) true; Clojure false; hashes 575929905 507083357, shared low chunks 0
+== pool str: 12 values: ["a", \a, (seq "a"), [\a], (list \a), (lazy-seq [\a]), (seq "\ue9"), [(char 233)], (list (char 233)), "\ue9", (seq "ab"), [\a \b]]
+  (seq "a") / [\a]: jank (= a b) true, (= b a) true; Clojure true; hashes 873615215 3091590493, shared low chunks 0
+  (seq "a") / (list \a): jank (= a b) true, (= b a) true; Clojure true; hashes 873615215 3091590493, shared low chunks 0
+  (seq "a") / (lazy-seq [\a]): jank (= a b) true, (= b a) true; Clojure true; hashes 873615215 3091590493, shared low chunks 0
+  (seq "\ue9") / [(char 233)]: jank (= a b) false, (= b a) true; Clojure true; hashes 501777105 2997761404, shared low chunks 0
+  (seq "\ue9") / (list (char 233)): jank (= a b) false, (= b a) true; Clojure true; hashes 501777105 2997761404, shared low chunks 0
+  (seq "ab") / [\a \b]: jank (= a b) true, (= b a) true; Clojure true; hashes 3956507885 3537702458, shared low chunks 0
+  (seq "\ue9"): jank (= x x) false (identity in Clojure's collections: true)
+== pool coll: 12 values: [nil, [], (), (lazy-seq nil), {}, #{}, "", {:a 1}, (seq {:a 1}), [[:a 1]], (list [:a 1]), (hash-set 1)]
+  [] / (lazy-seq nil): jank (= a b) true, (= b a) true; Clojure true; hashes 2277397642 1, shared low chunks 0
+  () / (lazy-seq nil): jank (= a b) true, (= b a) true; Clojure true; hashes 2277397642 1, shared low chunks 0
+  (seq {:a 1}) / [[:a 1]]: jank (= a b) true, (= b a) true; Clojure true; hashes 2767208205 1242899341, shared low chunks 1
+  (seq {:a 1}) / (list [:a 1]): jank (= a b) true, (= b a) true; Clojure true; hashes 2767208205 1242899341, shared low chunks 1
+== pool sym: 10 values: [:a, :x/a, :y/a, 'a, 'x/a, 'y/a, "a", "x/a", :x/b, 'x/b]
+== pool mix: 18 values: [0.0, -0.0, 2.0, ##NaN, 1, 1N, 1M, 1.0000000000000000001M, (seq "a"), [\a], (seq "\ue9"), [(char 233)], (), (lazy-seq nil), (seq {:a 1}), [[:a 1]], :x/a, 'x/a]
+  0.0 / -0.0: jank (= a b) true, (= b a) true; Clojure true; hashes 0 2147483648, shared low chunks 6
+  1 / 1N: jank (= a b) true, (= b a) true; Clojure true; hashes 1392991556 2654435770, shared low chunks 0
+  1M / 1.0000000000000000001M: jank (= a b) true, (= b a) true; Clojure false; hashes 3307139568 575929905, shared low chunks 0
+  (seq "a") / [\a]: jank (= a b) true, (= b a) true; Clojure true; hashes 873615215 3091590493, shared low chunks 0
+  (seq "\ue9") / [(char 233)]: jank (= a b) false, (= b a) true; Clojure true; hashes 501777105 2997761404, shared low chunks 0
+  () / (lazy-seq nil): jank (= a b) true, (= b a) true; Clojure true; hashes 2277397642 1, shared low chunks 0
+  (seq {:a 1}) / [[:a 1]]: jank (= a b) true, (= b a) true; Clojure true; hashes 2767208205 1242899341, shared low chunks 1
+  ##NaN: jank (= x x) false (identity in Clojure's collections: true)
+  (seq "\ue9"): jank (= x x) false (identity in Clojure's collections: true)

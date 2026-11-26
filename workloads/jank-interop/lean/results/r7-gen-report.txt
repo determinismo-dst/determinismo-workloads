@@ -1,0 +1,830 @@
+====================================================================================================
+Round 7, area G: a generated differential test driven from the replica's models (REPORT-6 section 14)
+====================================================================================================
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). Every path below is
+under upstream-r5/compiler+runtime/. jank was not built or run. Clojure: 1.12.3 (~/.m2), through
+.r7-scratch/clj-run.sh and clj-eval.sh. Everything is a hypothesis until the coordinator runs the
+generated file on jank.
+
+Result in brief
+- 639 deftests, .r7-scratch/gen/generated_r7_test.jank (namespace jank-lean.generated-r7-test), one
+  form and ONE assertion of Clojure 1.12's value each, drawn from the round-6 models (integers, min/max
+  and comparisons, native producers, strings) on every path each model distinguishes. Predictions per
+  test in results/r7-gen-predictions.tsv: pass 340, fail 270, throws 29 (an exception the assertion
+  does not catch). Every predicted failure carries the id of an existing deviation; no "?" remains.
+- Clojure check of the generated file: 651/651 tests passed on the first generation, 639/639 on the
+  final one (12 forms shared by two draws were then emitted once). Model's Clojure-side agreement:
+  100% before, 100% after. No model error on the Clojure side.
+- Complete check of the models' Clojure side over the generator's whole universe: every draw of every
+  stratum on every path, 243,540 distinct forms, each assertion evaluated on Clojure 1.12.3: 0
+  disagree (a seeded 32,849-form sample earlier: 0). The checker caught 4 of 4 planted false lines.
+- No new deviation class. The generator predicts three new instances of V7's class (jank throws a C++
+  exception that no object catch sees, where Clojure throws an exception): `rem` by zero, `nth` of a
+  string past its end, `subs` past the end. Shrunk tests in .r7-scratch/gen/tests.jank (vG1-vG3, a
+  control vG4), all passing on Clojure 1.12.3.
+- The brief's observations of this round agree with the generated predictions: through a fn,
+  `(min ##NaN x)` gives x (fail, V56) and `(max ##NaN x)` gives ##NaN (pass); `index-of` with a
+  negative start or one past the end gives nil (V74); `last-index-of` with a negative start gives the
+  last match (V74).
+
+Design
+- Jank/R7/Gen/Core.lean: paths, draws, `choose`, Clojure text, the test file's header and wrappers.
+  A draw is one operation and its operands; it is emitted on every path its model distinguishes:
+    [literals] the call written directly (literal or native-producer arguments; the inline expands);
+    [let] the arguments let-bound, then the call (analyze_let keeps each init's C++ type,
+          analyze/processor.cpp 2370-2421; Clojure compiles primitive locals);
+    [fn] object parameters, by one of three routes chosen per draw: a top-level defn- wrapper
+          (fn:defn, as round 6's n-add), a local fn (fn:local), or apply (fn:apply);
+    [mixed] (number models only) the call inlined in a local fn, one operand its object parameter,
+          the other a literal: the native/object templates of core/math.hpp.
+  Strings: the models predict every path alike (REPORT-6 3.3); the draws run on [literals], [let], [fn].
+- Selection (`choose`, per stratum): the stratum's draws shuffled by `mkStdGen (Determinismo.mixSeed
+  seed)`; first one draw failing on each path where the model has one (an explaining id not yet used
+  first), then more failing draws (a new signature of ids across paths first, then the least used
+  signature) up to half of the draws, then draws predicted to pass on every path. So each
+  operation x path has failing and passing forms in roughly equal measure where the model has both.
+- Each item: path, form, the one assertion (on Clojure's value), the model's Clojure value, the
+  model's jank value, the verdict that assertion gets on jank's value, and the explaining id.
+  Observations, chosen so jank's and Clojure's print forms do not decide a verdict:
+    long, BigInt: (= "<digits>[N]" (pr-str E))  (kind shows: 1 vs 1N vs 1.0);
+    double: (= <exact plain literal> E); ##NaN: (NaN? E); +-0.0: (= "0.0"/"-0.0" (str E));
+    ratio: (= n/d E); BigDecimal: (let [v E] (and (decimal? v) (zero? (compare <lit>M v))));
+    boolean: (true? E)/(false? E); compare's int, count, index: (= n E); nil: (nil? E);
+    string: (= "<\u-escaped>" E); character: (= "<\u-escaped>" (str E)); Clojure throws: (thrown? E).
+  The jank verdict evaluates exactly that assertion on jank's value: pr-str of round 3's JV.prStr,
+  str of JV.str, `=` of round 3's jEqual (a real equals only a real), NaN? false on non-reals
+  (math.cpp is_nan 641-656), `=` of strings by bytes, `str` of a character its bytes, and `thrown?`
+  catching only object_ref (clojure/test.jank 493-504).
+- Jank/R7/Gen/Num.lean, MinMax.lean, Native.lean, Str.lean: one per model (universes below);
+  Jank/R7/Gen/Plan.lean: the strata, seeds, the emitted files, the bulk check; Run/R7/Gen.lean:
+  `lake exe jank7-gen` (emit the test file, the TSV and .r7-scratch/gen/summary.txt) and
+  `lake exe jank7-gen bulk N PATH` (up to N draws per stratum, every path, for the JVM).
+
+Universes
+- Integers (Jank/R6/Num/Int.lean, Search.lean): Search.ints, 23 values: 0, +-1, +-2, +-3, 65536,
+  2147483647, -2147483647, -2147483648, 2147483648, -2147483649, 4294967296, +-3037000500,
+  9223372036854775807, 9223372036854775806, -9223372036854775808, -9223372036854775807, 1N, -1N,
+  9223372036854775808N. Operators: + - * +' -' *' quot rem (binary), (- x) inc dec inc' dec' abs
+  (unary). Sources: a literal on [literals]/[let] (Src.lit); on the fn side a literal through a
+  parameter (Src.fnLit) or a computed value (Src.fnVal: (identity v), (dec' -9223372036854775807) for
+  Long/MIN_VALUE so the reader's R5 does not apply). Search.admissible leaves out the literal
+  -2147483648 (typed int, emitted long: round 3). Binary: 3,362 draws per operator (x, y, their fn-side
+  sources, the [mixed] side); unary: 41.
+- Min/max and comparisons (Jank/R6/Num/MinMax.lean): MinMax.values, 29 values (longs incl. 2^53+1,
+  i64 max; doubles 0.0, -0.0, +-1.0, 2.5, 0.5, 2^53, ##NaN, ##Inf, ##-Inf; BigInts 0N, 1N, 2^53+1,
+  2^70; ratios 1/2, -1/2, 1/3, 7/3; BigDecimals 1M, 0.5M, 0.1M, 2.5M); min max < <= compare ==;
+  1,682 draws per operation (29 x 29 x [mixed] side).
+- Native producers (Jank/R6/Native/Math.lean): Native.sources without its parameter sources, 36:
+  int/long literals -2 -1 0 1 2 2147483647 4294967296; double literals -1.5 0.5 1.0 2.5; (count [..])
+  0/1/3; (alength (long-array n)) 0/2; (hash v) 0..3; (int v) -1/2; (bit-and v -1) -1/5; byte array
+  elements -1 1 200; short and int array -1; float array 0.1 -1.0; (float x) 0.1 2.0; (nil? nil),
+  (nil? 0); (aget (char-array "a") 0). [mixed] passes a literal operand through the parameter (R6's
+  .param/.dparam). < <= > >= min max + - * /: 2,592 draws per operation (2,312 for /: 280 left out
+  as undefined behavior, integer division by zero).
+- Strings (Jank/StrModel.lean, Jank/R6/Str/Fixes.lean): every text of at most 3 code points over a, -,
+  e-acute (2 bytes), euro (3), U+1F600 (4; a surrogate pair): 156 texts; indices -1..bytes+1; needles
+  "", a, e-acute, U+1F600, -; starts none, -5, -1, 0, 1, 2, 3, 4, 6, 9; compare over every pair of
+  texts of at most 2 code points (961). Draws: count 156, nth 1,242, get 1,242, contains? 1,414,
+  subs/2 1,328, subs/3 13,270, index-of 7,800, last-index-of 7,800, compare 961 (draws whose Clojure
+  result holds a lone surrogate left out: jank's reader turns a lone \uD83D escape into "?", V76).
+- The brief's strata: min/max with ##NaN on either side through a fn (168 draws each: 28 other values
+  x 2 sides x 3 routes); index-of with starts -5, -2, -1, len, len+1, len+3 (4,680); last-index-of
+  with starts -1, -2 (1,560).
+
+Seeds: base 70700; stratum k (order of the strata table below) uses seed 70700+k, mixed by
+Determinismo.mixSeed (splitmix64's finalizer) into mkStdGen; the 32,849-form sample used seed+1000.
+The draws are reproducible: `lake exe jank7-gen` rewrites the same files.
+
+(1) Deviations
+No new class. Every predicted failure is explained by an existing id (counts in the tables below):
+LG1, LG2, LG3, R5 (LG2's second form), R25, V53, D1 (32-bit wraps on [literals]/[let]/[fn]), V54,
+V55, D4, D2, D5, R99, S3, V50, V51, V56, V57, V58, V62, V63, V64, R122, R52, V65, V66, R58, V74, V72.
+A label "a|b" means each fix alone removes the disagreement; "a+b" means both are needed (round 6's
+switches, Jank/R6/Native/Math.lean `Sw`). One example per id, from the generated file:
+  R25 g1 (+ 2147483647 3) [literals]: Clojure 2147483650, jank -2147483646; V53 g2 the same let-bound;
+  D1 g3 the same through a local fn; LG2 g5 (+ 9223372036854775807 9223372036854775806): Clojure
+  throws, jank -3; R5 g49 (+' 3037000500 -9223372036854775808): Clojure ...308, jank ...308N; V54 g65
+  (-' -3 9223372036854775807): Clojure -9223372036854775810N, jank 9223372036854775806N; D4 g157
+  (quot -2147483649 -1N): Clojure 2147483649N, jank 2147483649; V58 g189 (min ##Inf 1): 1 vs 1.0;
+  S3 g193 (min 7/3 0.1M): Clojure throws (non-terminating), jank 0.1M; V56 g197 (min ##NaN 0N):
+  ##NaN vs 0N; V57 g215 (g-max -1.0 -1): -1 vs -1.0; R99 g237 (< 9007199254740992.0
+  9007199254740993N): false vs true; D5 g313 (== 9007199254740992 9007199254740993): false vs true;
+  V64 g333 (< (count [0 0 0]) (aget (char-array "a") 0)): Clojure throws, jank true; R122 g338
+  (apply < [(count [0]) (aget (byte-array [200]) 0)]): false vs true (inlined: LG1+R122, g336);
+  V51 g358 (> (aget (float-array [0.1]) 0) (hash 2)): true vs false; LG1 g371 (>= -2 (count [0 0 0])):
+  false vs true; LG1|V58 g389 (min (int -1) (alength (long-array 0))): -1 vs 0; V62 g452 (/ (float
+  0.1) 2147483647); R52 g465 (count "€€"): 2 vs 6; V65 g483 (nth "€--" 0): the euro sign
+  vs the byte 0xE2; V66 g495 (get "€-é" 5): nil vs the byte 0xA9; LG3 g528 (subs
+  "-€😀" 2); V74 g555 (string/index-of "-é-" "" -1): 0 vs nil; R58 g558
+  (string/index-of "😀a😀" "" 6): 5 vs 6; V72 g585 (compare "€😀"
+  "€"): 2 vs 4 (StrA6-1).
+
+New instances of V7's class (the generated file predicts them "throws"; shrunk in tests.jank):
+- vG1 `(rem 1 0)` [literals] and vG1b `(apply rem [1 0])` [fn]. Clojure 1.12.3: ArithmeticException
+  "Divide by zero" ((thrown? ...) true). Replica: an uncaught std::runtime_error "Division by zero is
+  not permitted.". Path: core.jank rem 1687-1693 (inline cpp/jank.runtime.rem) -> core/math.cpp rem
+  224-319, the long branch 299-302 (BigInts 288-291, BigDecimals 274-277), not an object.
+  Status: new instance of V7's class (V7: error_ref; this is a std::runtime_error, which every object
+  catch also misses). Confidence high (read; `thrown?` is test.jank 493-504's object_ref catch).
+- vG2 `(nth (identity "a") 1)`. Clojure: StringIndexOutOfBoundsException. Replica: uncaught
+  std::runtime_error "The index `1` is out of bounds for this `persistent_string`.". Path: seq.cpp nth
+  648-696 -> persistent_string.cpp nth 107-125 (throw at 114-117). Status: new instance (round 5's V10
+  shows nth's native error only inside a delay). High.
+- vG3 `(subs (identity "a") 2)`. Clojure: StringIndexOutOfBoundsException. Replica: an uncaught
+  error_ref "end index 1 is less than start 2". Path: core.cpp subs 398-409 -> persistent_string.cpp
+  substring 133-155 (an error result) -> `.expect_ok()` (core.cpp 408) -> jtl/result.hpp assert_ok
+  148-156 -> panic 41-68 -> error.cpp throw_result_failure 775-780 (`throw e`, an error_ref). Status:
+  new instance of V7's mechanism itself (an error_ref). High.
+- vG4 (control, predicted to pass): `(quot 1 0)`: math.cpp quot 331-335 throws make_box(...), an object.
+- Shared cause: one design choice, runtime errors raised as C++ exceptions (std::runtime_error, or an
+  error_ref through expect_ok) rather than objects; the same as V7, U79, V17, V64's fn path. In the
+  universe: 293 integer forms (rem by zero) and 28,662 string forms (nth/subs where both throw).
+
+(2) Proofs
+None this round. The generator's claims are about finite universes and were checked by complete
+enumeration instead (section 8). Not proved: that `choose` returns at most t distinct draws (it is an
+imperative loop; checked by the strata table), that the plain-decimal double printer reads back
+exactly (checked: every double literal of the 243,540 forms evaluated as asserted on the JVM), that
+the per-path predictions coincide where the models do not distinguish paths (true by construction:
+the same model call).
+
+(3) What was replicated (new reads this round; the models are round 6's)
+- Jank/R7/Gen/Num.lean: Search.answer, with the exception kind of each operation: math.cpp rem
+  299-302/288-291 std::runtime_error; quot 331-335 boxed string; math.hpp inc/dec 1186-1205 boxed string.
+- Jank/R7/Gen/MinMax.lean: MinMax's jMinMax/cMinMax, jLtAll/cLt, jLeAll/cLe, jCompareAll/cCompare,
+  jEquiv/cEquiv; Clojure's `none` on a non-terminating ratio against a BigDecimal is a throw
+  (Numbers.java toBigDecimal -> BigDecimal.divide); jank's comparisons (R3) answer it.
+- Jank/R7/Gen/Native.lean: Native.Case.jank/clj, jankInline/jankFnValue, JR.seen.
+- Jank/R7/Gen/Str.lean: StrModel's jCount/jNth/jGet/jContains/jSubs/jIndexOf/jLastIndexOf beside
+  cCount/.../cIndexOf'/cLastIndexOf', R6's jankCompare/javaCompare; exception kinds: persistent_string
+  nth 108-125 std::runtime_error, substring 133-155 + expect_ok -> error_ref; clojure/string.jank
+  index-of 227-238, last-index-of 240-251 (2-arity passes (count s), bytes).
+- Test harness reads: clojure/test.jank `thrown?` 493-504 (catch cpp/jank.runtime.object_ref only);
+  core.jank inline metadata of + - * / 1371-1435, < <= > >= 1552-1615, min max 1616-1645, inc dec
+  1646-1662, rem quot 1687-1701, abs 1818-1827, == 675-692 (cpp/jank.runtime.is_equiv), compare
+  5064-5071 (no inline); core.jank defines short-array, int-array, byte-array, float-array, char-array,
+  long-array, aget, alength, bit-and, NaN? (7814), decimal? (5857), true? (547), false? (555), nil?
+  (158), abs, inc', dec', +', -', *', subs (1979-1985, 2 and 3 arities); the reader takes -1/2
+  (test/cpp/jank/read/lex.cpp 535-550), 1M and 0.1M (read/lex.cpp 986, 1105-1114), ##Inf, ##-Inf,
+  ##NaN (read/parse.cpp 866-876). So no form of the file should fail to read or resolve.
+
+(4) What is not exact
+- Paths the models do not distinguish get one prediction: [literals] and [let] for every model; the
+  three [fn] routes; every path of the string model. The generated tests check those assumptions
+  (GA7-1, GA7-2): a jank result differing between them would be a model gap.
+- "throws" joins two outcomes: jank throws a non-object where Clojure throws (V7's class, V64's fn
+  path) and jank throws where Clojure returns a value (none drawn in the final file).
+- jank's printed values in the TSV are the models' printers (round 3's JV.prStr, StrModel's bytes);
+  only the verdicts rest on the observation forms listed in Design.
+- V72's values rest on StrA6-1 (glibc memcmp returns the byte difference); the sign does not.
+- The native group's D2 failures (truncating integer /) and V62/V63 values rest on round 6's model.
+
+(5) Left out, and why
+- Undefined behavior: integer division by zero and INT_MIN / -1 in the native model (280 draws of /),
+  out-of-range float-to-integer casts (none in the universe): nothing can be predicted there.
+- String results with a lone surrogate (the expected value cannot be written for jank's reader, V76).
+- Round 6's ratio parameter sources of the native model (min/max covers ratios); round 6's -2147483648
+  literal (Search.admissible); operations outside the round-6 models (bit operations, mod, the case
+  functions, split, regex; REPORT-6 section 14's other items).
+
+(6) Assumptions
+- GA7-1: [let] equals [literals] for every model here: a let keeps its init's C++ type (analyze_let
+  2370-2421) and Clojure compiles primitive locals. Checked on Clojure's side by the JVM run.
+- GA7-2: the three [fn] routes reach the same object templates (a defn- wrapper's and a local fn's
+  parameters, apply's vector elements are objects: REPORT-6 3, "Objects").
+- GA7-3: top-level defn- wrappers behave as round 6's n-add (compiled lazily, object parameters).
+- GA7-4: the observation forms are exact in jank on the values they see (pr-str of a long is its
+  digits, of a big_integer digits and N; str of +-0.0 is "0.0"/"-0.0" (round 3's jankDblStr); `=` of
+  two reals is ==, of a real and a non-real false; compare of two BigDecimals exact).
+- GA7-5: the jank runner records a test whose exception escapes `is` as not passing ("throws").
+- Earlier ones replaced: none.
+
+(7) Properties checked
+Clojure 1.12.3 itself: every assertion of the generated file and of the 243,540-form universe was
+evaluated on it. Sources behind the models' Clojure side: Numbers.java (min/max 4044-4228, add/minus/
+multiply long and Object overloads, quotient/remainder, toBigDecimal), RT.count/charAt/getFrom,
+java.lang.String (substring, indexOf, lastIndexOf, compareTo), clojure/string.clj (index-of with
+unchecked-int).
+
+(8) Search runs (exact bounds)
+- Generated file: 43 strata, 639 tests (651 before shared forms were emitted once); strata table below.
+- Bulk check, complete: every draw of every stratum, every path, 243,540 distinct forms (4 JVM jobs of
+  61,000/61,000/61,000/60,540 forms, 14-18 s each): 0 disagree. Earlier: a seeded sample of up to 300
+  draws per stratum, 32,849 forms: 0 disagree. Checker self-test: 6 lines, 4 planted false, 4 reported.
+  Reproduce: `lake exe jank7-gen bulk 1000000 .r7-scratch/gen/bulk-all.tsv`, `split -l 61000 -d
+  bulk-all.tsv bulk-part-` in .r7-scratch/gen, then .r7-scratch/gen/run-bulk-all.sh (the 20 MB input
+  files were deleted; the outputs bulk-part-*.out and census.txt are kept).
+- Census of the universe (predicted verdicts per operation x path and per id): below, after the strata.
+
+(9) Theorems: none new (section 2).
+
+(10) Library gaps: none needed; Determinismo.mixSeed, mkStdGen and randNat for the seeds, a partial
+Fisher-Yates shuffle, a plain-decimal double printer over round 3's javaDoubleString.
+
+(11) Fixes written: none (none assigned to area G).
+
+(12) Model errors of earlier rounds corrected
+- Clojure side: none found. Agreement 651/651 (first generation), 639/639 (final), 243,540/243,540
+  (the whole universe).
+- Jank side, extended in R7 (Jank/R7/Gen/Num.lean `excIsObject`, Str.lean `verdictOf`): round 6's
+  Int model (`jRem`, and `verdict`, which counts any two errors as agreeing) and round 2's string
+  model (`.err`) did not say which exceptions are objects; a `thrown?` test sees only objects, so
+  rem by zero and string nth/subs out of range are predicted "throws" (vG1-vG3), not "pass".
+- MinMax (round 6): Clojure's `none` for a non-terminating ratio against a BigDecimal is a throw
+  (S3); the JVM confirmed it on 576 forms. Its min/max class "tie (operand chosen)" missed ties decided
+  as doubles ((max 9007199254740993 9007199254740992.0) through a fn: Clojure 9007199254740992.0,
+  jank 9007199254740993); R7's `explain` names them V57.
+- Round 2's string compare kept only the sign (already replaced by round 6's exact values; used here).
+
+Files
+- Jank/R7/Gen/Core.lean, Num.lean, MinMax.lean, Native.lean, Str.lean, Plan.lean; Run/R7/Gen.lean
+  (lake build jank7-gen: succeeds; warnings only in rounds 1-6 files).
+- .r7-scratch/gen/generated_r7_test.jank (639 deftests), results/r7-gen-predictions.tsv (columns: test,
+  path, form, clojure, jank_predicted, verdict, id), .r7-scratch/gen/tests.jank (vG1-vG4),
+  .r7-scratch/gen/clj/ (the Clojure translations), clj-run-1/2/3.txt and clj-run-tests.txt (the
+  Clojure runs), bulk.clj and check.py (the checkers), bulk-part-*.out, census.txt, summary.txt.
+
+====================================================================================================
+Strata, seeds, tests emitted, predicted verdicts per operation x path and per explaining id
+(.r7-scratch/gen/summary.txt)
+====================================================================================================
+strata: 43; base seed 70700 (stratum k: seed 70700+k, mixed by Determinismo.mixSeed); tests: 639
+
+== Strata: group op | seed | candidate draws (failing somewhere) | draws chosen
+  num add | 70700 | 3362 (768) | 4
+  num sub | 70701 | 3362 (732) | 4
+  num mul | 70702 | 3362 (1248) | 4
+  num addp | 70703 | 3362 (176) | 4
+  num subp | 70704 | 3362 (524) | 4
+  num mulp | 70705 | 3362 (32) | 4
+  num neg | 70706 | 41 (2) | 4
+  num inc | 70707 | 41 (2) | 4
+  num dec | 70708 | 41 (2) | 4
+  num incp | 70709 | 41 (2) | 4
+  num decp | 70710 | 41 (0) | 4
+  num abs | 70711 | 41 (2) | 4
+  num quot | 70712 | 3362 (734) | 4
+  num rem | 70713 | 3362 (452) | 4
+  minmax min | 70714 | 1682 (222) | 6
+  minmax max | 70715 | 1682 (314) | 6
+  minmax lt | 70716 | 1682 (34) | 6
+  minmax lte | 70717 | 1682 (34) | 6
+  minmax compare | 70718 | 1682 (36) | 6
+  minmax equiv | 70719 | 1682 (40) | 6
+  native lt | 70720 | 2592 (996) | 4
+  native lte | 70721 | 2592 (996) | 4
+  native gt | 70722 | 2592 (996) | 4
+  native gte | 70723 | 2592 (996) | 4
+  native min | 70724 | 2592 (1404) | 4
+  native max | 70725 | 2592 (1468) | 4
+  native add | 70726 | 2592 (1152) | 4
+  native sub | 70727 | 2592 (1126) | 4
+  native mul | 70728 | 2592 (1032) | 4
+  native div | 70729 | 2312 (1264) | 4
+  str count | 70730 | 156 (141) | 5
+  str nth | 70731 | 1242 (1146) | 5
+  str get | 70732 | 1242 (678) | 5
+  str contains | 70733 | 1414 (430) | 5
+  str subs | 70734 | 1328 (1078) | 5
+  str subs3 | 70735 | 13270 (12462) | 5
+  str index-of | 70736 | 7800 (2054) | 5
+  str last-index-of | 70737 | 7800 (2268) | 5
+  str compare | 70738 | 961 (816) | 5
+  brief nan-min | 70739 | 168 (84) | 8
+  brief nan-max | 70740 | 168 (84) | 8
+  brief index-of-starts | 70741 | 4680 (1818) | 4
+  brief last-index-of-negative | 70742 | 1560 (880) | 4
+
+== Tests emitted by group and op (a form shared by two draws once)
+  brief index-of: 12
+  brief last-index-of: 12
+  brief max: 8
+  brief min: 8
+  minmax compare: 24
+  minmax equiv: 24
+  minmax lt: 24
+  minmax lte: 24
+  minmax max: 24
+  minmax min: 24
+  native add: 13
+  native div: 13
+  native gt: 13
+  native gte: 14
+  native lt: 13
+  native lte: 12
+  native max: 12
+  native min: 14
+  native mul: 14
+  native sub: 14
+  num abs: 10
+  num add: 16
+  num addp: 16
+  num dec: 10
+  num decp: 12
+  num inc: 10
+  num incp: 10
+  num mul: 16
+  num mulp: 14
+  num neg: 10
+  num quot: 16
+  num rem: 16
+  num sub: 16
+  num subp: 16
+  str compare: 15
+  str contains: 15
+  str count: 15
+  str get: 15
+  str index-of: 15
+  str last-index-of: 15
+  str nth: 15
+  str subs: 15
+  str subs3: 15
+
+== Predicted verdicts by group, op and path
+  brief index-of fn fail: 2
+  brief index-of fn pass: 2
+  brief index-of let fail: 2
+  brief index-of let pass: 2
+  brief index-of literals fail: 2
+  brief index-of literals pass: 2
+  brief last-index-of fn fail: 2
+  brief last-index-of fn pass: 2
+  brief last-index-of let fail: 2
+  brief last-index-of let pass: 2
+  brief last-index-of literals fail: 2
+  brief last-index-of literals pass: 2
+  brief max fn fail: 4
+  brief max fn pass: 4
+  brief min fn fail: 4
+  brief min fn pass: 4
+  minmax compare fn fail: 3
+  minmax compare fn pass: 3
+  minmax compare let fail: 3
+  minmax compare let pass: 3
+  minmax compare literals fail: 3
+  minmax compare literals pass: 3
+  minmax compare mixed fail: 3
+  minmax compare mixed pass: 3
+  minmax equiv fn fail: 3
+  minmax equiv fn pass: 3
+  minmax equiv let fail: 3
+  minmax equiv let pass: 3
+  minmax equiv literals fail: 3
+  minmax equiv literals pass: 3
+  minmax equiv mixed fail: 3
+  minmax equiv mixed pass: 3
+  minmax lt fn fail: 3
+  minmax lt fn pass: 3
+  minmax lt let fail: 3
+  minmax lt let pass: 3
+  minmax lt literals fail: 3
+  minmax lt literals pass: 3
+  minmax lt mixed fail: 3
+  minmax lt mixed pass: 3
+  minmax lte fn fail: 3
+  minmax lte fn pass: 3
+  minmax lte let fail: 3
+  minmax lte let pass: 3
+  minmax lte literals fail: 3
+  minmax lte literals pass: 3
+  minmax lte mixed fail: 3
+  minmax lte mixed pass: 3
+  minmax max fn fail: 3
+  minmax max fn pass: 3
+  minmax max let fail: 3
+  minmax max let pass: 3
+  minmax max literals fail: 3
+  minmax max literals pass: 3
+  minmax max mixed fail: 3
+  minmax max mixed pass: 3
+  minmax min fn fail: 2
+  minmax min fn pass: 4
+  minmax min let fail: 3
+  minmax min let pass: 3
+  minmax min literals fail: 3
+  minmax min literals pass: 3
+  minmax min mixed fail: 2
+  minmax min mixed pass: 4
+  native add fn fail: 2
+  native add fn pass: 2
+  native add let fail: 2
+  native add let pass: 2
+  native add literals fail: 2
+  native add literals pass: 2
+  native add mixed fail: 1
+  native div fn fail: 2
+  native div fn pass: 2
+  native div let fail: 2
+  native div let pass: 2
+  native div literals fail: 2
+  native div literals pass: 2
+  native div mixed pass: 1
+  native gt fn fail: 1
+  native gt fn pass: 2
+  native gt fn throws: 1
+  native gt let fail: 2
+  native gt let pass: 2
+  native gt literals fail: 2
+  native gt literals pass: 2
+  native gt mixed pass: 1
+  native gte fn pass: 3
+  native gte fn throws: 1
+  native gte let fail: 2
+  native gte let pass: 2
+  native gte literals fail: 2
+  native gte literals pass: 2
+  native gte mixed fail: 1
+  native gte mixed pass: 1
+  native lt fn fail: 1
+  native lt fn pass: 2
+  native lt fn throws: 1
+  native lt let fail: 2
+  native lt let pass: 2
+  native lt literals fail: 2
+  native lt literals pass: 2
+  native lt mixed pass: 1
+  native lte fn fail: 1
+  native lte fn pass: 2
+  native lte fn throws: 1
+  native lte let fail: 2
+  native lte let pass: 2
+  native lte literals fail: 2
+  native lte literals pass: 2
+  native max fn pass: 3
+  native max fn throws: 1
+  native max let fail: 2
+  native max let pass: 2
+  native max literals fail: 2
+  native max literals pass: 2
+  native min fn pass: 4
+  native min let fail: 2
+  native min let pass: 2
+  native min literals fail: 2
+  native min literals pass: 2
+  native min mixed pass: 2
+  native mul fn fail: 1
+  native mul fn pass: 2
+  native mul fn throws: 1
+  native mul let fail: 2
+  native mul let pass: 2
+  native mul literals fail: 2
+  native mul literals pass: 2
+  native mul mixed pass: 2
+  native sub fn fail: 1
+  native sub fn pass: 2
+  native sub fn throws: 1
+  native sub let fail: 2
+  native sub let pass: 2
+  native sub literals fail: 2
+  native sub literals pass: 2
+  native sub mixed fail: 1
+  native sub mixed pass: 1
+  num abs fn fail: 1
+  num abs fn pass: 3
+  num abs let fail: 1
+  num abs let pass: 2
+  num abs literals fail: 1
+  num abs literals pass: 2
+  num add fn fail: 2
+  num add fn pass: 2
+  num add let fail: 2
+  num add let pass: 2
+  num add literals fail: 2
+  num add literals pass: 2
+  num add mixed fail: 2
+  num add mixed pass: 2
+  num addp fn pass: 4
+  num addp let fail: 2
+  num addp let pass: 2
+  num addp literals fail: 2
+  num addp literals pass: 2
+  num addp mixed fail: 1
+  num addp mixed pass: 3
+  num dec fn fail: 1
+  num dec fn pass: 3
+  num dec let fail: 1
+  num dec let pass: 2
+  num dec literals fail: 1
+  num dec literals pass: 2
+  num decp fn pass: 4
+  num decp let pass: 4
+  num decp literals pass: 4
+  num inc fn fail: 1
+  num inc fn pass: 3
+  num inc let fail: 1
+  num inc let pass: 2
+  num inc literals fail: 1
+  num inc literals pass: 2
+  num incp fn fail: 1
+  num incp fn pass: 3
+  num incp let fail: 1
+  num incp let pass: 2
+  num incp literals fail: 1
+  num incp literals pass: 2
+  num mul fn fail: 2
+  num mul fn pass: 2
+  num mul let fail: 2
+  num mul let pass: 2
+  num mul literals fail: 2
+  num mul literals pass: 2
+  num mul mixed fail: 2
+  num mul mixed pass: 2
+  num mulp fn fail: 1
+  num mulp fn pass: 3
+  num mulp let fail: 1
+  num mulp let pass: 2
+  num mulp literals fail: 1
+  num mulp literals pass: 2
+  num mulp mixed fail: 1
+  num mulp mixed pass: 3
+  num neg fn fail: 2
+  num neg fn pass: 2
+  num neg let fail: 1
+  num neg let pass: 2
+  num neg literals fail: 1
+  num neg literals pass: 2
+  num quot fn fail: 2
+  num quot fn pass: 2
+  num quot let fail: 2
+  num quot let pass: 2
+  num quot literals fail: 2
+  num quot literals pass: 2
+  num quot mixed fail: 2
+  num quot mixed pass: 2
+  num rem fn pass: 3
+  num rem fn throws: 1
+  num rem let fail: 1
+  num rem let pass: 2
+  num rem let throws: 1
+  num rem literals fail: 1
+  num rem literals pass: 2
+  num rem literals throws: 1
+  num rem mixed pass: 3
+  num rem mixed throws: 1
+  num sub fn fail: 2
+  num sub fn pass: 2
+  num sub let fail: 2
+  num sub let pass: 2
+  num sub literals fail: 2
+  num sub literals pass: 2
+  num sub mixed fail: 2
+  num sub mixed pass: 2
+  num subp fn fail: 1
+  num subp fn pass: 3
+  num subp let fail: 2
+  num subp let pass: 2
+  num subp literals fail: 2
+  num subp literals pass: 2
+  num subp mixed fail: 1
+  num subp mixed pass: 3
+  str compare fn fail: 3
+  str compare fn pass: 2
+  str compare let fail: 3
+  str compare let pass: 2
+  str compare literals fail: 3
+  str compare literals pass: 2
+  str contains fn fail: 3
+  str contains fn pass: 2
+  str contains let fail: 3
+  str contains let pass: 2
+  str contains literals fail: 3
+  str contains literals pass: 2
+  str count fn fail: 3
+  str count fn pass: 2
+  str count let fail: 3
+  str count let pass: 2
+  str count literals fail: 3
+  str count literals pass: 2
+  str get fn fail: 3
+  str get fn pass: 2
+  str get let fail: 3
+  str get let pass: 2
+  str get literals fail: 3
+  str get literals pass: 2
+  str index-of fn fail: 3
+  str index-of fn pass: 2
+  str index-of let fail: 3
+  str index-of let pass: 2
+  str index-of literals fail: 3
+  str index-of literals pass: 2
+  str last-index-of fn fail: 3
+  str last-index-of fn pass: 2
+  str last-index-of let fail: 3
+  str last-index-of let pass: 2
+  str last-index-of literals fail: 3
+  str last-index-of literals pass: 2
+  str nth fn fail: 1
+  str nth fn pass: 2
+  str nth fn throws: 2
+  str nth let fail: 1
+  str nth let pass: 2
+  str nth let throws: 2
+  str nth literals fail: 1
+  str nth literals pass: 2
+  str nth literals throws: 2
+  str subs fn fail: 1
+  str subs fn pass: 2
+  str subs fn throws: 2
+  str subs let fail: 1
+  str subs let pass: 2
+  str subs let throws: 2
+  str subs literals fail: 1
+  str subs literals pass: 2
+  str subs literals throws: 2
+  str subs3 fn fail: 1
+  str subs3 fn pass: 2
+  str subs3 fn throws: 2
+  str subs3 let fail: 1
+  str subs3 let pass: 2
+  str subs3 let throws: 2
+  str subs3 literals fail: 1
+  str subs3 literals pass: 2
+  str subs3 literals throws: 2
+
+== Predicted verdicts by group and path
+  brief fn fail: 12
+  brief fn pass: 12
+  brief let fail: 4
+  brief let pass: 4
+  brief literals fail: 4
+  brief literals pass: 4
+  minmax fn fail: 17
+  minmax fn pass: 19
+  minmax let fail: 18
+  minmax let pass: 18
+  minmax literals fail: 18
+  minmax literals pass: 18
+  minmax mixed fail: 17
+  minmax mixed pass: 19
+  native fn fail: 9
+  native fn pass: 24
+  native fn throws: 7
+  native let fail: 20
+  native let pass: 20
+  native literals fail: 20
+  native literals pass: 20
+  native mixed fail: 3
+  native mixed pass: 9
+  num fn fail: 16
+  num fn pass: 39
+  num fn throws: 1
+  num let fail: 19
+  num let pass: 30
+  num let throws: 1
+  num literals fail: 19
+  num literals pass: 30
+  num literals throws: 1
+  num mixed fail: 11
+  num mixed pass: 20
+  num mixed throws: 1
+  str fn fail: 21
+  str fn pass: 18
+  str fn throws: 6
+  str let fail: 21
+  str let pass: 18
+  str let throws: 6
+  str literals fail: 21
+  str literals pass: 18
+  str literals throws: 6
+
+== Predicted verdicts overall
+  fail: 270
+  pass: 340
+  throws: 29
+
+== Predicted failures and throws by explaining id
+  D1 (fail): 6
+  D4 (fail): 8
+  D5 (fail): 4
+  LG1 (fail): 3
+  LG1+R122 (fail): 2
+  LG1|V58 (fail): 2
+  LG2 (fail): 13
+  LG3 (fail): 6
+  R122 (fail): 13
+  R25 (fail): 3
+  R5 (fail): 28
+  R52 (fail): 9
+  R58 (fail): 6
+  R99 (fail): 12
+  S3 (fail): 40
+  V51 (fail): 11
+  V53 (fail): 3
+  V54 (fail): 4
+  V56 (fail): 16
+  V57 (fail): 2
+  V58 (fail): 8
+  V62 (fail): 3
+  V64 (fail): 14
+  V64 (throws): 7
+  V65 (fail): 3
+  V66 (fail): 18
+  V7 (throws): 22
+  V72 (fail): 9
+  V74 (fail): 18
+  V74+R58 (fail): 6
+
+====================================================================================================
+Census of the whole universe (every draw of every stratum, every path; .r7-scratch/gen/census.txt)
+====================================================================================================
+universe: 243540 distinct forms (complete: every draw of every stratum, every path); predicted verdicts: pass 148723, fail 61802, throws 33015
+group op: per path pass/fail/throws
+  minmax compare: literals 823/18/0; let 823/18/0; fn 1646/36/0; mixed 1646/36/0
+  minmax equiv: literals 821/20/0; let 821/20/0; fn 1642/40/0; mixed 1642/40/0
+  minmax lt: literals 824/17/0; let 824/17/0; fn 1648/34/0; mixed 1648/34/0
+  minmax lte: literals 824/17/0; let 824/17/0; fn 1648/34/0; mixed 1648/34/0
+  minmax max: literals 690/151/0; let 690/151/0; fn 1512/170/0; mixed 1512/170/0
+  minmax min: literals 746/95/0; let 746/95/0; fn 1592/90/0; mixed 1592/90/0
+  native add: literals 695/552/0; let 695/552/0; fn 1489/633/414; mixed 592/200/0
+  native div: literals 556/600/0; let 556/600/0; fn 1146/832/334; mixed 447/282/0
+  native gt: literals 814/482/0; let 814/482/0; fn 1748/430/414; mixed 635/157/0
+  native gte: literals 814/482/0; let 814/482/0; fn 1748/430/414; mixed 635/157/0
+  native lt: literals 765/482/0; let 765/482/0; fn 1688/430/414; mixed 635/157/0
+  native lte: literals 765/482/0; let 765/482/0; fn 1688/430/414; mixed 635/157/0
+  native max: literals 531/716/0; let 531/716/0; fn 1562/556/414; mixed 610/182/0
+  native min: literals 562/685/0; let 562/685/0; fn 1586/532/414; mixed 602/190/0
+  native mul: literals 771/476/0; let 771/476/0; fn 1548/574/414; mixed 616/176/0
+  native sub: literals 711/536/0; let 711/536/0; fn 1532/590/414; mixed 599/193/0
+  num abs: literals 21/1/0; let 21/1/0; fn 40/1/0
+  num add: literals 388/96/0; let 388/96/0; fn 2682/680/0; mixed 1442/362/0
+  num addp: literals 462/22/0; let 462/22/0; fn 3274/88/0; mixed 1738/66/0
+  num dec: literals 21/1/0; let 21/1/0; fn 40/1/0
+  num decp: literals 22/0/0; let 22/0/0; fn 41/0/0
+  num inc: literals 21/1/0; let 21/1/0; fn 40/1/0
+  num incp: literals 21/1/0; let 21/1/0; fn 40/1/0
+  num mul: literals 328/156/0; let 328/156/0; fn 2130/1232/0; mixed 1184/620/0
+  num mulp: literals 480/4/0; let 480/4/0; fn 3346/16/0; mixed 1792/12/0
+  num neg: literals 21/1/0; let 21/1/0; fn 39/2/0
+  num quot: literals 330/154/0; let 330/154/0; fn 2628/734/0; mixed 1317/487/0
+  num rem: literals 426/36/22; let 426/36/22; fn 3052/146/164; mixed 1610/109/85
+  num sub: literals 391/93/0; let 391/93/0; fn 2662/700/0; mixed 1443/361/0
+  num subp: literals 429/55/0; let 429/55/0; fn 2904/458/0; mixed 1596/208/0
+  str compare: literals 145/816/0; let 145/816/0; fn 145/816/0
+  str contains: literals 984/430/0; let 984/430/0; fn 984/430/0
+  str count: literals 15/141/0; let 15/141/0; fn 15/141/0
+  str get: literals 564/678/0; let 564/678/0; fn 564/678/0
+  str index-of: literals 5746/2054/0; let 5746/2054/0; fn 5746/2054/0
+  str last-index-of: literals 5532/2268/0; let 5532/2268/0; fn 5532/2268/0
+  str nth: literals 96/678/468; let 96/678/468; fn 96/678/468
+  str subs: literals 250/766/312; let 250/766/312; fn 250/766/312
+  str subs3: literals 808/3688/8774; let 808/3688/8774; fn 808/3688/8774
+predicted failures and throws by group and explaining id
+  minmax D5 (fail): 24
+  minmax R99 (fail): 36
+  minmax S3 (fail): 576
+  minmax V56 (fail): 336
+  minmax V57 (fail): 212
+  minmax V58 (fail): 260
+  native D1 (fail): 90
+  native D1+R122 (fail): 15
+  native D2 (fail): 850
+  native LG1 (fail): 600
+  native LG1+R122 (fail): 296
+  native LG1+V51 (fail): 240
+  native LG1|V51 (fail): 176
+  native LG1|V58 (fail): 240
+  native LG1|V58|V51 (fail): 64
+  native LG2 (fail): 3
+  native R122 (fail): 3875
+  native R25 (fail): 4
+  native R25+R122 (fail): 5
+  native V50 (fail): 132
+  native V50+R122 (fail): 26
+  native V50+V51 (fail): 24
+  native V50|V51 (fail): 40
+  native V51 (fail): 4287
+  native V51+R122 (fail): 156
+  native V51+V62 (fail): 48
+  native V51|R122 (fail): 64
+  native V53 (fail): 4
+  native V53+R122 (fail): 5
+  native V57 (fail): 54
+  native V57+R122 (fail): 4
+  native V58 (fail): 624
+  native V58+R122 (fail): 64
+  native V58+V51 (fail): 64
+  native V62 (fail): 1138
+  native V62+R122 (fail): 80
+  native V63 (fail): 224
+  native V63+R122 (fail): 20
+  native V63+V51 (fail): 48
+  native V64 (fail): 4710
+  native V64 (throws): 4060
+  num D1 (fail): 636
+  num D4 (fail): 1529
+  num LG2 (fail): 2838
+  num R25 (fail): 53
+  num R5 (fail): 1690
+  num V53 (fail): 53
+  num V54 (fail): 596
+  num V55 (fail): 132
+  num V7 (throws): 293
+  str LG3 (fail): 13362
+  str R52 (fail): 423
+  str R58 (fail): 6999
+  str V65 (fail): 2034
+  str V66 (fail): 3324
+  str V7 (throws): 28662
+  str V72 (fail): 2448
+  str V74 (fail): 4764
+  str V74+R58 (fail): 1203

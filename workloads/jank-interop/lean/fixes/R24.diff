@@ -1,18 +1,168 @@
---- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
-+++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
-@@ -1063,6 +1063,15 @@
+--- a/compiler+runtime/include/cpp/jank/analyze/processor.hpp
++++ b/compiler+runtime/include/cpp/jank/analyze/processor.hpp
+@@ -244,5 +244,9 @@
+     local_frame_ptr root_frame;
+     native_vector<runtime::object_ref> macro_expansions;
+     jtl::option<expr::let_ptr> loop_details;
++    /* The innermost loop's locals (by index) that are boxed, and those a `recur` gave a value of
++     * another built-in type. analyze_loop analyzes the loop again with the latter boxed. */
++    native_set<usize> loop_boxed_locals;
++    native_set<usize> loop_recur_mismatches;
+   };
+ }
+--- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+@@ -2106,6 +2106,69 @@
+     static_ref_cast<expr::function>(ret)->is_variadic = found_variadic != 0;
  
-   jtl::ptr<void> mutable_type(jtl::ptr<void> const type)
-   {
-+    /* A loop local takes whatever `recur` gives it. In Clojure a primitive local that `recur`
-+     * gives another type is boxed, so a native number or bool local is an object here: a local
-+     * that starts at `0` keeps a `1.5` from `recur`, and a sum past 32 bits doesn't wrap.
-+     * int => object_ref, double const & => object_ref, void => object_ref */
-+    if(cppinterop::is_builtin(cppinterop::get_non_reference_type(type)))
+     return ret;
++  }
++
++  /* Whether a value is a C++ value the program asked for with `cpp/` (a constructor call, a
++   * C++ function, member or operator, a C++ global), rather than a Clojure value that jank
++   * types natively: a number or boolean literal, or a call into jank's runtime, which is what
++   * clojure.core's inline forms expand to (`inc`, `+`, `count`, ...). A local counts as the
++   * value it was bound to; a `do`, `let` or `if` as the values it can give. */
++  static bool is_interop_value(expression_ref const expr, u8 const depth = 0)
++  {
++    if(depth > 16)
 +    {
-+      return untyped_object_ref_type();
++      return false;
++    }
++    switch(expr->kind)
++    {
++      case expression_kind::local_reference:
++        {
++          auto const binding{ llvm::cast<expr::local_reference>(expr.data)->binding };
++          return binding->value_expr.is_some()
++            && is_interop_value(binding->value_expr.unwrap(), depth + 1);
++        }
++      case expression_kind::do_:
++        {
++          auto const do_{ static_box_cast<expr::do_>(expr) };
++          return !do_->values.empty() && is_interop_value(do_->values.back(), depth + 1);
++        }
++      case expression_kind::let:
++        {
++          auto const let{ static_box_cast<expr::let>(expr) };
++          return !let->body->values.empty()
++            && is_interop_value(let->body->values.back(), depth + 1);
++        }
++      case expression_kind::if_:
++        {
++          auto const if_{ static_box_cast<expr::if_>(expr) };
++          return is_interop_value(if_->then, depth + 1)
++            && (if_->else_.is_none() || is_interop_value(if_->else_.unwrap(), depth + 1));
++        }
++      case expression_kind::cpp_conversion:
++        return is_interop_value(static_box_cast<expr::cpp_conversion>(expr)->value_expr,
++                                depth + 1);
++      case expression_kind::cpp_literal:
++        return false;
++      case expression_kind::cpp_call:
++        {
++          auto const source{ static_box_cast<expr::cpp_call>(expr)->source_expr };
++          if(source->kind == expression_kind::cpp_value)
++          {
++            /* The callee's symbol, such as `cpp/jank.runtime.lt`. */
++            auto const form{ static_box_cast<expr::cpp_value>(source)->form };
++            if(form.is_some() && form.get_type() == runtime::object_type::symbol
++               && runtime::expect_object<runtime::obj::symbol>(form)->name.starts_with(
++                 "jank.runtime."))
++            {
++              return false;
++            }
++          }
++          return true;
++        }
++      default:
++        return expr->kind >= expression_kind::cpp_value_min
++          && expr->kind <= expression_kind::cpp_value_max;
++    }
+   }
+ 
+   processor::expression_result
+@@ -2188,6 +2251,28 @@
+         expected_type
+           = cpp_util::mutable_type(loop_details.unwrap()->pairs[arg_index].second->get_type());
+ 
++        /* A native local that this `recur` gives a value of another type (an `int` local given
++         * a `double`, a `long`, or an object such as `unchecked-inc`'s): Clojure boxes the local
++         * rather than convert the value (Compiler.java LetExpr.Parser's recurMismatches), so
++         * analyze_loop analyzes the loop again with it boxed. C++ values on both sides keep
++         * C++'s assignment. */
++        {
++          auto const local_type{ cppinterop::get_type_without_cv(
++            cppinterop::get_non_reference_type(expected_type)) };
++          auto const arg_type{ cppinterop::get_type_without_cv(cppinterop::get_non_reference_type(
++            cpp_util::expression_type(arg_expr.expect_ok()))) };
++          auto const other_builtin{ cppinterop::is_builtin(arg_type) && !cppinterop::is_void(arg_type)
++                                    && cppinterop::get_canonical_type(local_type)
++                                      != cppinterop::get_canonical_type(arg_type) };
++          if(cppinterop::is_builtin(local_type) && !cppinterop::is_void(local_type)
++             && (other_builtin || cpp_util::is_any_object(arg_type))
++             && !(is_interop_value(loop_details.unwrap()->pairs[arg_index].second)
++                  && is_interop_value(arg_expr.expect_ok())))
++          {
++            loop_recur_mismatches.insert(arg_index);
++          }
++        }
++
+         /* Check if op = can be used, since we'll be using it to update the loop values. */
+         auto const op_equal_sym{ make_box<obj::symbol>("cpp", "=") };
+         auto const op_equal_call{ analyze_call(
+@@ -2397,6 +2482,10 @@
+       {
+         auto const old_type{ expr_type };
+         expr_type = cpp_util::mutable_type(expr_type);
++        if(loop_boxed_locals.contains(i / 2))
++        {
++          expr_type = cpp_util::untyped_object_ref_type();
++        }
+         /* If old type is not an object and new type is, we need a conversion. */
+         if(!cpp_util::is_any_object(old_type) && cpp_util::is_any_object(expr_type))
+         {
+@@ -2609,8 +2698,16 @@
+     /* When we analyze a loop, we actually just set a flag and then analyze a let.
+      * The flag is setting `loop_details` to `some`, which conveys that we're in a loop. */
+     auto const old_loop_details{ loop_details };
++    auto const old_boxed_locals{ loop_boxed_locals };
++    auto const old_recur_mismatches{ loop_recur_mismatches };
+     loop_details = some(nullptr);
+-    util::scope_exit const finally{ [&]() { loop_details = old_loop_details; } };
++    loop_boxed_locals.clear();
++    loop_recur_mismatches.clear();
++    util::scope_exit const finally{ [&]() {
++      loop_details = old_loop_details;
++      loop_boxed_locals = old_boxed_locals;
++      loop_recur_mismatches = old_recur_mismatches;
++    } };
+ 
+     /* Using recur from this loop is fine, even if we're in a try, since the jump target
+      * is this loop. */
+@@ -2626,6 +2723,25 @@
+       return let_res;
+     }
+ 
++    /* A `recur` gave a native local a value of another built-in type: analyze the loop again
++     * with that local boxed, until no new local needs it (each pass boxes at least one more). */
++    while(!loop_recur_mismatches.empty())
++    {
++      auto const before{ loop_boxed_locals.size() };
++      loop_boxed_locals.insert(loop_recur_mismatches.begin(), loop_recur_mismatches.end());
++      loop_recur_mismatches.clear();
++      if(loop_boxed_locals.size() == before)
++      {
++        break;
++      }
++      loop_details = some(nullptr);
++      let_res = analyze_let(list, current_frame, expression_position::tail, fn_ctx, true);
++      if(let_res.is_err())
++      {
++        return let_res;
++      }
 +    }
 +
-     /* foo_ref => object_ref */
-     if(is_typed_object_ref(type))
-     {
+     auto const let{ static_box_cast<expr::let>(let_res.expect_ok()) };
+     let->propagate_position(position);
+ 

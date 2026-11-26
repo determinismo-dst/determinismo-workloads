@@ -1,0 +1,68 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -2,6 +2,9 @@
+ #include <jank/runtime/visit.hpp>
+ #include <jank/util/fmt.hpp>
+ 
++#include <string>
++#include <vector>
++
+ namespace jank::runtime
+ {
+   native_big_decimal operator+(native_big_decimal const &l, native_big_integer const &r)
+@@ -176,7 +179,54 @@
+ 
+   uhash big_decimal::to_hash() const
+   {
+-    return std::hash<native_big_decimal>{}(data);
++    /* Clojure's hash of a BigDecimal (Numbers.hasheqFrom): 0 for zero, else
++     * stripTrailingZeros().hashCode(), which is 31 * BigInteger.hashCode(unscaled) + scale.
++     * Stripping makes it a function of the value alone, which is all a cpp_dec_float holds.
++     * str(0, scientific) prints every digit held (at most 128, below its 129-digit limit, so
++     * nothing is rounded) as "[-]d.ddd...e[+-]xx". */
++    if(data.is_zero())
++    {
++      return 0;
++    }
++    std::string const text{ data.str(0, std::ios_base::scientific) };
++    auto const e_pos{ text.find('e') };
++    bool const negative{ text[0] == '-' };
++    std::string digits;
++    for(std::size_t i{ negative ? 1u : 0u }; i < e_pos; ++i)
++    {
++      if(text[i] != '.')
++      {
++        digits.push_back(text[i]);
++      }
++    }
++    while(digits.size() > 1 && digits.back() == '0')
++    {
++      digits.pop_back();
++    }
++    /* The value is digits * 10^(exponent - (digits - 1)): scale = digits - 1 - exponent. */
++    auto const exponent{ std::stoll(text.substr(e_pos + 1)) };
++    auto const scale{ static_cast<i64>(digits.size()) - 1 - exponent };
++
++    /* BigInteger.hashCode: the magnitude's 32-bit words, most significant first,
++     * h = 31 * h + word, then times the signum; Java int arithmetic is u32 arithmetic. */
++    native_big_integer magnitude{ digits.c_str() };
++    std::vector<u32> words;
++    while(magnitude != 0)
++    {
++      native_big_integer const low{ magnitude & 0xFFFFFFFFu };
++      words.push_back(low.convert_to<u32>());
++      magnitude >>= 32;
++    }
++    u32 h{};
++    for(auto it{ words.rbegin() }; it != words.rend(); ++it)
++    {
++      h = 31u * h + *it;
++    }
++    if(negative)
++    {
++      h = 0u - h;
++    }
++    return static_cast<uhash>(31u * h + static_cast<u32>(scale));
+   }
+ 
+   i64 big_decimal::compare(object const &o) const

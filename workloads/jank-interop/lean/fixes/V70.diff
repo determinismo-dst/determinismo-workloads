@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/character.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/character.cpp
+@@ -88,7 +88,8 @@
+ 
+   uhash character::to_hash() const
+   {
+-    return data.to_hash();
++    /* Character.hashCode is the character's value, so (hash c) is (int c). */
++    return static_cast<uhash>(to_integer());
+   }
+ 
+   i64 character::compare(object const &o) const

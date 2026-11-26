@@ -1,18 +1,40 @@
 --- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
 +++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
-@@ -1537,6 +1537,22 @@
+@@ -1484,6 +1484,8 @@
+     auto chosen_type{ cpp_util::expression_type(default_expr.expect_ok()) };
+     auto has_recur{ resolve_tail_expression(default_expr.expect_ok())->kind
+                     == expression_kind::recur };
++    /* Each non-recur branch's common type with the default. */
++    native_vector<jtl::ptr<void>> branch_types;
+     auto keys_exprs{ visit_map_like(
+       [&](auto const typed_imap_obj) -> jtl::string_result<keys_and_exprs> {
+         keys_and_exprs ret{};
+@@ -1519,6 +1521,10 @@
+           needs_conversion = needs_conversion || branch_common_type.then_needs_conversion
+             || branch_common_type.else_needs_conversion;
+           chosen_type = branch_common_type.type;
++          if(resolve_tail_expression(expr.expect_ok())->kind != expression_kind::recur)
++          {
++            branch_types.push_back(branch_common_type.type);
++          }
+           ret.keys.push_back(key);
+           ret.exprs.push_back(expr.expect_ok());
+         }
+@@ -1537,6 +1543,24 @@
      }
  
      auto pairs{ keys_exprs.expect_ok() };
 +
 +    /* Clojure keeps the value of whichever branch runs. The loop above keeps only the last
-+     * branch's common type with the default, so when the branches don't all have the default's
-+     * type, box them all. */
-+    auto const default_type{ cppinterop::get_canonical_type(
-+      cpp_util::expression_type(default_expr.expect_ok())) };
-+    for(auto const expr : pairs.exprs)
++     * branch's common type with the default, so when two branches' common types with the
++     * default differ (a string branch boxed beside keyword branches), box them all. When every
++     * branch shares one common type with the default, it stays, native or not: C++ values of
++     * compatible types (a char const[5] and a char*, a class and one that converts to it) keep
++     * their C++ common type, as jank's own tests expect (test/jank/cpp/case/). */
++    for(auto const type : branch_types)
 +    {
-+      if(cppinterop::get_canonical_type(cpp_util::expression_type(expr)) != default_type)
++      if(cppinterop::get_canonical_type(type)
++         != cppinterop::get_canonical_type(branch_types.front()))
 +      {
 +        needs_conversion = true;
 +        chosen_type = cpp_util::untyped_object_ref_type();

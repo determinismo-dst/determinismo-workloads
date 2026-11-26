@@ -1,0 +1,304 @@
+R7 FIXES (area F): the local fixes round 6 described but did not write, and why three round-6 fixes
+still failed their named tests on the real jank
+=====================================================================================================
+
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). Paths are under
+upstream-r5/compiler+runtime/; line numbers are 94d32623's (each hunk's "-N"). jank was not built or run.
+No Lean was written (none was needed). upstream-r5 stays clean (`git -C upstream-r5 status --short` empty).
+
+Checks run (all through ~/dev/.lean-jobs/job, one job at a time):
+- `git -C upstream-r5 apply --check ../fixes/<id>.diff` for each of the 15 new diffs: all apply alone.
+- Each diff on top of fixes/combined/all.diff (copies of .r6-scratch/merge/tree's files, read only): 14 of 15
+  apply unchanged; R4 conflicts with R3 (same lines) and supersedes it (section 11, merge notes).
+- Syntax-only compile, Apple clang 16, libc++, -std=c++20, deps/ headers (.r7-scratch/fix/cc.sh,
+  ccall*.sh, cccomb.sh; outputs .r7-scratch/fix/cc-out*.txt, cc-comb.txt):
+  - every changed .cpp, base and with its fix alone: all compile;
+  - the same files with jank's warning flags (CMakeLists 88-98): no warning a fix adds (cc-warn.txt);
+  - round 6's combined tree with R3 reverted and all 15 diffs stacked: the 11 changed .cpp files compile.
+  - New include setup: round 6 could not compile core.cpp, exception_info.cpp, ir/processor.cpp or
+    codegen/cpp_processor.cpp here. They compile with `-include jank/prelude.hpp -DGC_THREADS
+    -DJANK_VERSION="x"`, a cpptrace stand-in (.r7-scratch/fix/stub/cpptrace/, declarations only, mine), and
+    -I deps/cppinterop/include -I deps/llvm-23.1.0/llvm/include -I deps/llvm-23.1.0/clang/include.
+- Standalone C++ of my own copies of the diffs' logic (.r7-scratch/fix/chk/check.cpp), compared with
+  Clojure 1.12.3 on Java 23 (chk/clj-check.clj; outputs chk/cpp-out.txt, chk/clj-out.txt):
+  - R68: 42,554 doubles (30,000 random bit patterns, every power of ten and 2e/5e/9.5e of it, subnormals,
+    5,000 short decimals in the plain range): 0 differ from Double.toString.
+  - V83a/V83b: 8 keywords and symbols: the fixed hashes equal Clojure's for all 8 (stock: 6 of 8 differ).
+  - Clojure facts the lexer fixes rely on (44 read-string cases), Character.isWhitespace over U+0000-U+FFFF,
+    keyword/symbol/char results: chk/clj-out.txt.
+- core.jank (R67) read whole with Clojure 1.12.3's reader: 698 forms base and patched; only form 82
+  (`symbol`) differs (gensym names normalized; chk/readcheck.txt).
+- Area F's tests (.r7-scratch/fix/tests.jank, 9 deftests) translated with clj-translate.py and run on
+  Clojure 1.12.3: 9 tests, 9 assertions, 0 failures (chk/clj-tests.txt).
+
+
+(1) Deviations
+--------------
+New (one, from reading while writing R4):
+- vF9 `(read-string "1/-2")`: Clojure NumberFormatException "Invalid number: 1/-2" (ratioPat's denominator is
+  unsigned; run on 1.12.3); jank -1/2. Path: read/lex.cpp next() '/' branch 870-930 lexes the denominator with
+  next(), which reads "-2" as the integer -2; parse.cpp parse_ratio 1965-1986 -> ratio.cpp ratio_data 47-63
+  flips the sign. Test vF9-a-ratio-with-a-signed-denominator-is-not-read ([fn] read-string at run time; jank
+  predicted -1/2, no exception). Status: new. Confidence: high (read). Cause: separate (the denominator's
+  sign is never checked). R4's guard rejects "1/+2"; adding `|| file[...offset] == '-'` to it would fix vF9.
+Not new: `0x10M` reads as 10M (Clojure: invalid number) is S17's hex part (REPORT-3: 0x1e5M), still unfixed.
+
+One-cause splits of round-1-6 tests a fix can't make pass whole (all pass on Clojure 1.12.3):
+- vF1-bigdec-of-a-long-compares-exactly (D7 without d07's printing), vF2/vF3 (v64's two bool assertions,
+  R33a+R33b), vF4 (v64's char assertion: not R33's cause), vF5 (v79's wrap, R66), vF6 (v79's 128512:
+  design B), vF7/vF8 (v83's bits without V51).
+
+
+(2) Proofs: none (fixes only; no Lean written). No axioms file.
+(3) Replicated: nothing new.
+(4) Not exact: n/a.
+(5) Left out: see "Not done" at the end.
+(6) Assumptions:
+- FixA7-1: Clojure's Double.toString is Java 23's (JDK 19+ shortest decimal, with Java's 1-or-2-digit rule).
+  The coordinator's Clojure runs on this Mac's Java 23. On a JDK before 19, a few doubles print with extra
+  digits there, and R68 would not match those.
+- FixA7-2: jank's LC_NUMERIC uses '.' (R68 reads its two-digit candidate back with strtod, as lex.cpp
+  already reads real literals with strtod).
+(7) Properties, each with its source: LispReader intPat/ratioPat/floatPat and matchNumber (ratio and radix
+  rules, R4/R6/R7/vF9); Character.isWhitespace (R15, run on Java 23: 9-13, 28-32, U+1680, U+2000-2006,
+  U+2008-200A, U+2028, U+2029, U+205F, U+3000); Double.toString javadoc (R68); Namespace.intern and
+  checkReplacement (R102); Keyword.intern(Symbol.intern(ns, name)) (R65); Symbol.intern(null, name) (R67);
+  RT.charCast(Object) (R66); Character.hashCode via Util.hasheq (V70); Symbol.hasheq, Keyword.hasheq,
+  Util.hashCombine (V83). Each value checked on Clojure 1.12.3 (chk/clj-out.txt).
+(8) Search runs: the R68 comparison above (42,554 doubles, complete over that list).
+(9) Theorems: none.
+(10) Library gaps: none.
+
+
+(11) Fixes written (15 diffs, 14 ids). Each applies alone to 94d32623.
+----------------------------------------------------------------------
+
+-- R4 (fixes/R4.diff) -- src/cpp/jank/read/lex.cpp, processor::next() --------------------------------
+Cause: `+` goes straight to the symbol case (lex.cpp 1168; the TODO at 1070), so `+5` is a symbol.
+Change (hunks at 669, 676, 689, 889, 1027, 1065, 1165): `case '+':` joins `case '-':` in the number case and
+leaves the symbol labels; contains_leading_digit, the "-0" octal/hex branch, the single-0 escape and the
+"is it a number" test treat '+' like '-'; the tail already skipped a leading '+' (number_start, 1076-1080).
+A ratio denominator starting with '+' is rejected ("1/+2", Clojure: invalid number).
+Test that should pass: deviations_reader_test.jank a04-a-leading-plus-is-a-number. a03 (R3's) still passes.
+Read-checked: every result kind with a '+': integer (strtoll from number_start), real (strtod from
+token_start accepts '+'), BigDecimal and BigInt literals (from number_start), radix (stoi/strtol accept '+'),
+hex "+0x10", octal "+010". `+`, `+'`, `+a`, `+.5`, `+-5` still fall through to the symbol case (the loop
+breaks before any digit). Clojure 1.12.3: +5 5, +0 0, [+0] [0], +010 8, +0x10 16, +1/2 1/2, 1/+2 throws,
++' and +a symbols.
+Merge: R4's single-0 hunk (1027) rewrites R3's line with the condition for both signs, so R4 supersedes
+R3.diff (R3 is that one hunk). Checked: combined patch with R3 reverted, then R4, R6, R7, R15 stack cleanly.
+Needs S16 for "+n/d": S16's decimal() drops the sign; with R4 alone, boost's assign("+1") throws a
+std::runtime_error.
+Suite files checked: test/cpp/jank/read/lex.cpp (no '+'-number case; "-12E+18", "2.3E+", "-1e3-"
+unaffected); test/cpp/jank/read/parse.cpp "Leading plus" is commented out (TODO); if enabled, its token
+check expects big_decimal{"+12.34"} where R4 gives "12.34" (the value check holds). test/jank/**: no token
+of a '+' and a digit (the only "+0.0" is in a docstring).
+Compile: lex.cpp syntax-only OK, alone and stacked; no new warning.
+A build must check: the lexer unit tests; the cases above.
+
+-- R6 (fixes/R6.diff) -- src/cpp/jank/read/lex.cpp, processor::next() --------------------------------
+Causes (one function): after a radix's r, an `e` and a second `r` `continue` past the reset of
+expecting_more_digits (776, 845-848), so 16re and 36rr end "unexpectedly"; N and M are taken as suffixes
+(955, 986), so 36rN is 0N; the radix is narrowed to i8 before its range check (1083), so 258r11 is base 2.
+Change (hunks at 770, 844, 952, 983, 1080): reset expecting_more_digits in both `found_r` branches; the N and
+M branches only when !found_r (they are then letter digits); the radix read with strtol and checked against
+2..36 before the cast (the message shows the given base).
+Test that should pass: deviations_reader_test.jank a06-radix-literals-with-letter-digits.
+Clojure 1.12.3: 36rN 23, 36rZN 1283, 16re 14, 36rr 27, 36rM 22; 2r101N, 16rFFN, 2re, 258r11 throw (an N
+after r is a digit in intPat, so an invalid digit for small bases). With R6 jank: the same values; the
+throwing cases are lex errors (invalid digit, base out of range).
+Suite files checked (test/cpp/jank/read/lex.cpp, traced): 2rr1, 2r1r, 8re71 still lex_invalid_number with
+the same ranges; 16r3e 62, 16r3e4 996, 36r0...z (big_integer), 2048r0, 37r1234, 1r2, 0r0, 2r, 16r, 16rx.2,
+19r-ghi unchanged. No radix literal in test/jank or src/jank.
+Compile: OK; no new warning.
+A build must check: the lexer unit tests.
+
+-- R7 (fixes/R7.diff) -- src/cpp/jank/read/lex.cpp, processor::next() --------------------------------
+Cause: a leading 0 sets radix 8 (691-723) and an M keeps it, so the digit check rejects 08M (Clojure:
+floatPat, BigDecimal("08") = 8M).
+Change (hunk at 1008): in the M branch, radix 8 becomes 10 (as '.' and 'e' already do); the digits are
+parsed by cpp_dec_float from text either way. Hex (0x10M) is untouched: that is S17's other part.
+Test that should pass: deviations_reader_test.jank a07-leading-zeros-in-bigdecimals-and-ratios with S16
+(already written; its second assertion, -010/3, is S16's). R7's ratio half was S16's from the start.
+Read-checked: 08M, -08M (number_literal "-08"), 0M, 010M; 08, 08N still errors (Clojure: invalid).
+Suite files checked: lex.cpp "Octal number" (034 -034 08.9 07e1), "Invalid octal number" (08 0a -08), the
+"Big decimal" cases (radix 10 already): unchanged.
+Compile: OK; no new warning. A build must check: the lexer unit tests; (read-string "08M") 8M.
+
+-- R15 (fixes/R15.diff) -- src/cpp/jank/read/lex.cpp: next(), is_symbol_char, keyword checks --------------
+Cause: the whitespace skip tests one byte with std::isspace (558): no U+001C-1F, no non-ASCII space;
+is_symbol_char and the keyword checks use the locale's iswspace (501, 1230, 1248).
+Change (hunks at 488, 498, 555, 1227, 1245): a static is_java_whitespace (Character.isWhitespace, exactly
+the set Java 23 reports); the skip decodes a non-ASCII character (convert_to_codepoint) before testing it
+and steps over its length; is_symbol_char and both keyword checks use is_java_whitespace.
+Test that should pass: deviations_reader_test.jank a15-unicode-whitespace-separates.
+Read-checked: movable_position += counts bytes (col by byte, as elsewhere); the default case never sees a
+leading whitespace character now. Clojure 1.12.3: ( a) (a), [1\u001c2] [1 2], [1 2] and
+[1 2] invalid number (no-break spaces are not whitespace), [1　2] [1 2].
+Suite files checked: lex.cpp "Whitespace Characters" (Linux only): ":" + two U+2007 stays a keyword
+(U+2007 is not Java whitespace); it now holds on macOS too. Character whitespace cases unchanged. No
+Java-whitespace byte outside strings/comments in src/jank or test/jank.
+Compile: OK; no new warning. A build must check: the lexer unit tests.
+
+-- R40 (fixes/R40.diff) -- src/cpp/jank/ir/processor.cpp, gen(recursion_reference) 446-452 -------------
+Cause: a nested fn reaching an enclosing named fn looks up b.locals[fn_ctx->name] with the unmunged name;
+captures are keyed by munged names (gen_arity 255-258), so for my-f operator[] inserts an empty identifier
+and hoist_scoped_values' name_to_info.at("") throws std::out_of_range (hoist_scoped_values.cpp 136).
+Change: b.locals[runtime::munge(expr->fn_ctx->name)], as gen(named_recursion) already does (496).
+Traced: local_frame::register_captures (local_frame.cpp 118-130) captures the fn under symbol(fn_ctx->name),
+whose munged name is the b.locals key.
+Test that should pass: deviations_main_test.jank r40-nested-fn-refers-to-its-named-parent.
+Suite files checked: form/fn/named-recur/* (pass-recur-from-closure uses 496, unchanged), form/fn/closure/*;
+names munge alike or not, every b.locals key is munged (243, 250, 257, 520, 616, 766).
+Compile: OK (with deps/cppinterop and deps/llvm-23.1.0 headers); no new warning.
+A build must check: r40; the suites above.
+
+-- R47 (fixes/R47.diff) -- src/cpp/jank/codegen/cpp_processor.cpp, gen(ir::function) 1949-1999 ---------
+Cause: when a parameter has the fn's own name, the fn object's parameter is left unnamed (1957), but the
+closure context is still read from munged_fn_name (1992), now the argument: `((fn f [f] y) 5)` is UB.
+Change: the fn object's parameter gets a hidden name (munge(__rt_ctx->unique_string(name)), as the typed
+parameters already do), and the closure context is read from it. Without shadowing, nothing changes.
+Test that should pass: deviations_main_test.jank r47-param-named-like-its-fn.
+Read-checked: with the name shadowed, the body resolves it to the parameter (analyze_symbol: locals before
+named recursion), so nothing else refers to the fn object in that arity.
+Suite files checked: form/fn/named-recur/pass-same-name-param.jank ((fn* wow [wow] (wow)), no captures:
+the hidden parameter is unused, like most named fns' own parameter).
+Compile: OK (CppInterOp/LLVM headers); no new warning. A build must check: r47 and that suite file.
+
+-- R65 (fixes/R65.diff) -- include/cpp/jank/runtime/context.hpp + src/cpp/jank/runtime/context.cpp,
+   context::intern_keyword(ns, name, resolved) 561-583 ------------------------------------------------
+Cause: the two-part intern joins "a/b" "/" "c" and interns the text; keyword's symbol splits at the first
+'/' (symbol.cpp separate 8-20): namespace "a". Clojure keeps "a/b" (and (keyword "a/b" "c") is not
+(keyword "a" "b/c")).
+Change: a namespace containing '/' is interned in a new map slashed_ns_keywords by "<ns length>:<ns>/<name>"
+(injective), built with keyword's (ns, name) constructor. The text map can't hold both keywords: every
+text is some one-part keyword's key.
+Test that should pass: deviations_r6_test.jank v80-keyword-keeps-a-slashed-namespace.
+Read-checked: keywords compare by identity (keyword::operator==, equal_to), so interning is needed; the
+reader's ::alias path resolves to a namespace name (no '/'); find-keyword is unported.
+Suite files checked: only one-part intern_keyword in test/jank (cpp/call/global/pass-const-keyword-ref etc.).
+Compile: context.cpp and keyword.cpp OK; no new warning. A build must check: rebuild everything that includes
+context.hpp (a new member); v80.
+
+-- R66 (fixes/R66.diff) -- src/cpp/jank/runtime/core.cpp, to_char 1311-1319 ---------------------------
+Cause: utf8.cpp to_char checks only ch > 0x10FFFF, then static_cast<wchar_t> keeps the low 32 bits:
+(char -4294967231) is \A. Its other error is a std::runtime_error, which thrown? misses.
+Change: to_char checks the whole i64 (ch < 0 || ch > 0x10FFFF) and throws the object "Value out of range
+for char: <n>" (Clojure's message).
+Test that should pass: .r7-scratch/fix/tests.jank vF5 (= v79's first assertion). v79 stays failing on its
+second assertion, (char 128512): jank's characters are code points (design B).
+Suite files checked: no `char` call in test/jank. Compile: core.cpp OK (prelude flags); no new warning.
+A build must check: vF5; (char 65) \A.
+
+-- R67 (fixes/R67.diff) -- src/jank/clojure/core.jank, symbol 520-530 --------------------------------
+Cause: (symbol nil o) calls (symbol o), which splits "b/c" at '/'.
+Change: with a nil namespace and a string name, (cpp/jank.runtime.to_qualified_symbol "" o): an
+unqualified symbol of the whole name. Other names keep (symbol o).
+Test that should pass: deviations_r6_test.jank v81-symbol-with-a-nil-namespace.
+Read-checked: string? is defined at 485, before symbol; namespace_ returns nil for an empty ns;
+core.jank's own (symbol nil (name bb)) in destructure (3469) now keeps the name whole, as Clojure's does.
+Clojure reader: 698 forms base and patched, only `symbol` differs.
+Suite files checked: test/jank uses one-argument symbol only. A build must check: v81; core.jank loads.
+
+-- R68 (fixes/R68.diff) -- src/cpp/jank/runtime/obj/number.cpp, real::to_string(buff),
+   small_real::to_string(buff), new static to_java_double_string --------------------------------------
+Cause: both print through string_builder's double (string_builder.cpp 83-132): std::to_chars' shortest
+form, "1e+05", "1e-04".
+Change: the shortest decimal from to_chars (scientific form), plus Java's rule when it has one digit (the
+closest of one or two digits that reads back: 4.9E-324), written plain for 1e-3 <= |d| < 1e7 and as
+D.DDDE[-]N otherwise. Only these two printers change; codegen prints doubles through string_builder
+directly (cpp_processor.cpp 137-147) and is untouched.
+Test that should pass: deviations_r2_test.jank b15-doubles-print-as-java-does.
+Standalone: 42,554 doubles, 0 differences from Java 23 (FixA7-1).
+Suite files checked: no test/jank or test/bash file compares a printed double (numeric-equality compares
+values). Compile: OK; no new warning.
+A build must check: b15; libstdc++'s to_chars(double, chars_format::scientific[, precision]).
+
+-- R102 (fixes/R102.diff) -- src/cpp/jank/runtime/core.cpp, intern_var 789-792 ------------------------
+Cause: core.jank intern calls intern_var -> ns::intern_var (ns.cpp 26-47), which returns a var found under
+the name whatever namespace owns it, so (intern 'user 'map 7) rebinds clojure.core/map.
+Change: intern_owned_var (ns.cpp 63-104): a referred var is replaced by the namespace's own, with jank's
+warning, as Namespace.intern's checkReplacement does (Clojure warns too).
+Test that should pass: deviations_r2_test.jank c07-intern-replaces-a-referred-var. (Its noreport-1 in round
+6 was the runner itself calling clojure.core/map after the test rebound it to 7.)
+Read-checked: core.cpp intern_var's only caller is core.jank intern (both arities); def interns with
+intern_owned_var at analysis already (processor.cpp 1306). Suite files checked: no intern in test/jank.
+Compile: core.cpp OK; no new warning. A build must check: c07; the warning text on stdout.
+
+-- U64 (fixes/U64.diff) -- src/cpp/jank/runtime/obj/exception_info.cpp, to_code_string 80-83 -----------
+Cause: the :via loop prints cause_to_via(cause) at every step, so a 3-link chain repeats "b" and lacks "c".
+Change: cause_to_via(cause_it) (one token).
+Test that should pass: deviations_r4_test.jank u64-a-printed-exception-shows-every-cause.
+Read-checked: ex_info sets cause (core.cpp 1325-1335); U44 and U63 edit other functions of this file.
+Suite files checked: none prints an exception. Compile: OK (cpptrace stand-in); no new warning.
+
+-- V70 (fixes/V70.diff) -- src/cpp/jank/runtime/obj/character.cpp, to_hash 89-92 ---------------------
+Cause: a character hashes as a string (immutable_string to_hash: Murmur3 of the bytes' hash).
+Change: to_hash returns to_integer() (the code point; Character.hashCode), so (hash c) is (int c).
+Test that should pass: deviations_r6_test.jank v70-a-character-hashes-as-its-code (positive values, so V51
+doesn't matter). Read-checked: equal compares the bytes, so equal characters hash alike; case-hash and
+R56a's string-seq hash use the same to_hash. Suite files checked: no character hash or char case in
+test/jank (pass-escape-char.jank is commented out). Compile: OK.
+
+-- V83a (fixes/V83a.diff) -- src/cpp/jank/hash.cpp, combine 67-70 -----------------------------------
+-- V83b (fixes/V83b.diff) -- src/cpp/jank/runtime/obj/symbol.cpp, to_hash 152-155 ---------------------
+Causes (two): combine shifts a u32 (`seed >> 2`, logical) where Util.hashCombine shifts an int; and the
+symbol's namespace is hashed with Murmur3 where Symbol.hasheq takes String.hashCode.
+Changes: V83a shifts static_cast<i32>(seed); V83b hashes the namespace as 31*h + byte (String.hashCode for
+ASCII; non-ASCII namespaces hash their bytes, as names already do: V71's design).
+Tests that should pass: .r7-scratch/fix/tests.jank vF7 (V83a alone) and vF8 (V83a + V83b).
+deviations_r6_test.jank v83 also needs V51 (hash is a u32): its expected values are negative.
+Standalone: :c, :b/c, 'b/c, :a, 'map, 'clojure.core/map, :user/x, :foo all equal Clojure's.
+Read-checked: combine's other callers (var.cpp 84, ratio.cpp 135, reader_conditional.cpp 85,
+tagged_literal.cpp 57, analyze/expr/function.cpp 100) need only consistency; case hashes keys at
+macroexpansion and at run time with the same to_hash.
+Suite files checked: form/case/* (keyword and symbol cases: consistent), syntax-quote/pass-minimal (sets
+compared with =). Compile: both OK.
+
+Merge notes (fixes/combined is regenerated by the coordinator):
+- Files: lex.cpp (R4 R6 R7 R15), ir/processor.cpp (R40), codegen/cpp_processor.cpp (R47),
+  context.hpp + context.cpp (R65), core.cpp (R66 R102), core.jank (R67), obj/number.cpp (R68),
+  obj/exception_info.cpp (U64), obj/character.cpp (V70), hash.cpp (V83a), obj/symbol.cpp (V83b).
+- Drop R3.diff when adding R4. Every other new diff applies unchanged on top of all.diff.
+
+Diagnosis of round-6 fixes whose named test failed in results/r6c-patched.tsv
+---------------------------------------------------------------------------
+Scan: each section-4 "Test that should pass" name looked up in r6c-patched.tsv (.r7-scratch/fix/scan2.txt).
+Outside deviations_main_test (did not load), U49a and U59b: D7, R33a (v64), S17, and R58a (b07). The hangs
+files (S62 S63 S64, U8's u13/u13b, U19, U28) were not run.
+
+- D7: the diff is right; d07's form can't pass. (bigdec 9007199254740993) goes [fn] -> math.cpp
+  to_big_decimal, D7's integer branch: 9007199254740993 exactly. But d07 asserts (str ...) =
+  "9007199254740993", and string_builder.cpp 240-248 appends ".0" to an integral BigDecimal (no scale: R72/S5),
+  so jank prints "9007199254740993.0" (stock "9007199254740992.0", round 1's evidence). No diff change. The
+  test needs a scale-free observation: vF1, (zero? (compare 9007199254740993M (bigdec ...))), 0 on Clojure.
+- R33a: the diff is right for what it claims. v64's second assertion is a char, (+ (aget (char-array "a") 0)
+  1), and R33a keeps char a primitive_number on purpose (to_int must take a char: (int c) is 97 in
+  Clojure). Its first and third assertions (bool) throw R33b's string objects in the merged math.hpp
+  (add/inc of bool select the !valid_boxed_math branch). No diff change. The test needs splitting: vF2 and
+  vF3 should pass with R33a+R33b; vF4 (char) needs its own fix: char types out of the arithmetic templates
+  but kept in to_int (not written: not assigned, and Clojure's casts of a char differ per function).
+- S17: the diff is right, and the failure is the one its own section predicted: the lex error becomes a
+  jtl::result error, context::read_string's expect_ok panics with an error_ref (result.hpp 42-57), and
+  thrown? catches only object_ref (test.jank 493-504): V7's read part. The test needs read errors as
+  objects. A local candidate (not written; V7 is not in this brief): core.cpp read_string catching
+  error_ref and throwing its message as an object, as V17b does for EOF; it would also make v07 and a20's
+  read visible. S17's hex part (0x1e5M, 0x10M read as decimals) is still unfixed; one more condition in
+  R7's M branch (radix 16: error) would do it.
+- R58a (b07): expected by its own section: b07's first assertion is a byte index (LG3/R52); v74 passes.
+
+Not done
+--------
+- No jank build (the rules). What each build must check is listed per fix.
+- vF4 (v64's char), V51 (needed by v83), V7's read part (needed by s17), vF9, S17's hex part: described
+  above, not written (not assigned).
+- R4 alone with "+n/d" depends on S16 (in the combined patch).
+
+Files
+-----
+- fixes/R4.diff R6.diff R7.diff R15.diff R40.diff R47.diff R65.diff R66.diff R67.diff R68.diff R102.diff
+  U64.diff V70.diff V83a.diff V83b.diff
+- .r7-scratch/fix/tests.jank (9 deftests), clj/jank_lean/fix_r7_test.clj (Clojure translation)
+- .r7-scratch/fix/: mk.sh (diff writer), cc.sh, ccall*.sh, ccwarn.sh, cccomb.sh, cc-*.txt (compile results),
+  stub/cpptrace/ (declarations for syntax checks), chk/ (check.cpp, clj-check.clj, readcheck.clj, outputs),
+  scan2.txt (round-6 test scan), w/<id>/ (the edited files each diff was made from).

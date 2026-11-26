@@ -1,0 +1,13 @@
+--- a/compiler+runtime/src/cpp/jank/ir/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/ir/processor.cpp
+@@ -446,7 +446,9 @@
+   {
+     if(expr->fn_ctx != b.current_function()->arity->fn_ctx)
+     {
+-      auto name{ b.locals[expr->fn_ctx->name] };
++      /* The enclosing fn reaches this one as a capture, which is keyed by its munged name (as
++       * named recursion looks it up below): my-f is my_f. */
++      auto name{ b.locals[runtime::munge(expr->fn_ctx->name)] };
+       if(expr->position == analyze::expression_position::tail)
+       {
+         return b.ret(name, expression_type(expr));

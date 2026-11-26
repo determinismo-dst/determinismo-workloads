@@ -1,0 +1,18 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/symbol.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/symbol.cpp
+@@ -151,7 +151,14 @@
+ 
+   uhash symbol::to_hash() const
+   {
+-    return hash::combine(hash::string(name), hash::string(ns));
++    /* Symbol.hasheq combines the name's Murmur3 hash with the namespace's String.hashCode
++     * (0 without a namespace), not with its Murmur3 hash. */
++    u32 ns_hash{};
++    for(auto const c : ns)
++    {
++      ns_hash = (31 * ns_hash) + static_cast<u8>(c);
++    }
++    return hash::combine(hash::string(name), ns_hash);
+   }
+ 
+   symbol_ref symbol::with_meta(object_ref const m) const

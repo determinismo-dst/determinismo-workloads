@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -1008,6 +1008,12 @@
+                 }
+                 found_M = true;
+                 expecting_more_digits = false;
++                /* A BigDecimal's digits are decimal, as BigDecimal("08") reads them: a leading 0
++                 * doesn't make 08M an octal literal (numbers like 02.3 are decimal too). */
++                if(radix == 8)
++                {
++                  radix = 10;
++                }
+                 break;
+               }
+               if(contains_dot)

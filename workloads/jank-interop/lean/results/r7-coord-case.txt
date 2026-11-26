@@ -1,0 +1,10 @@
+jank hash of {} and #{}: 4279838538; of 4294967296: 987256456; of 2147483648: 386683422
+(case {} {} :map #{} :set :none)   [:map=1 :set=2 :none=0]
+    stock jank 0; corrected 1; Clojure 1
+(case #{} {} :map #{} :set :none)
+    stock jank 0; corrected 2; Clojure 2
+(case 987256456 {} :map #{} :set 4294967296 :big :none)   [:big=3]
+    stock jank 3; corrected 0; Clojure 0
+(case 987256456 4294967296 :big :none)   control
+    stock jank 0; corrected 0; Clojure 0
+(case 2147483648 2147483648 :hit :miss): stock key 2147483648, the value's integer 386683422; corrected key 386683422

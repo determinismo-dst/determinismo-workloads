@@ -13,14 +13,14 @@
 (int (first "😀")) => 55357 
 (count (seq "😀")) => 2 
 (hash \a) => 97 
-(hash é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:9:23). 
+(hash é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:9:23). 
 (hash "a") => 1455541201 
 (hash "é") => -1107437598 
 (hash :é) => 123053248 
 (hash (quote a)) => -482876059 
 (hash :a) => -2123407586 
 (compare "é" "e") => 132 
-(compare é \e) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:10:31). 
+(compare é \e) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:10:31). 
 (compare "é" "") => 1 
 (compare "ab" "a") => 1 
 (compare "a" "c") => -2 
@@ -46,7 +46,7 @@
 (s/replace "😀" "" "-") => "-?-?-"  units=5 cps=5
 (s/replace "é" "" "-") => "-é-"  units=3 cps=3
 (s/replace "ab" "" "-") => "-a-b-"  units=5 cps=5
-(s/escape "é" {é "X"}) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:17:13). 
+(s/escape "é" {é "X"}) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:17:13). 
 (s/escape "aéb" {\a "1", \b "2"}) => "1é2"  units=3 cps=3
 (s/capitalize "éa") => "Éa"  units=2 cps=2
 (s/capitalize "ÉA") => "Éa"  units=2 cps=2
@@ -69,7 +69,7 @@
 (s/join "é" ["a" "b"]) => "aéb"  units=3 cps=3
 (s/split-lines "é\na") => ["é" "a"] 
 (s/replace-first "éé" "é" "e") => "eé"  units=2 cps=2
-(s/replace "éaé" é \e) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:21:90). 
+(s/replace "éaé" é \e) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:21:90). 
 (s/re-quote-replacement "$1") => "\\$1"  units=3 cps=3
 char-escape-string => {\newline "\\n", \tab "\\t", \return "\\r", \" "\\\"", \\ "\\\\", \formfeed "\\f", \backspace "\\b"} 
 char-name-string => {\newline "newline", \tab "tab", \space "space", \backspace "backspace", \formfeed "formfeed", \return "return"} 
@@ -103,10 +103,10 @@ char-name-string => {\newline "newline", \tab "tab", \space "space", \backspace 
 (nth "éa" 2 :nf) => :nf 
 (contains? "éa" 2) => false 
 (pr-str "é") => "\"é\""  units=3 cps=3
-(pr-str é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:28:26). 
+(pr-str é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:28:26). 
 (print-str "é") => "é"  units=1 cps=1
-(str é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:28:53). 
-(str "é" è) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:28:61). 
+(str é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:28:53). 
+(str "é" è) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:28:61). 
 (count (str "?")) => 1 
 (int (first "?")) => 55357 
 (= "?" (str (char 55357))) => true 
@@ -121,8 +121,8 @@ char-name-string => {\newline "newline", \tab "tab", \space "space", \backspace 
 (format "%5s|" "é") => "    é|"  units=6 cps=6
 (format "%-3s|" "😀") => "😀 |"  units=4 cps=3
 (= (seq "é") (seq "é")) => true 
-(= (seq "é") [é]) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:33:37). 
-(= (hash (seq "é")) (hash [é])) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:33:75). 
+(= (seq "é") [é]) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:33:37). 
+(= (hash (seq "é")) (hash [é])) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (.r6-scratch/str/probe.clj:33:75). 
 (let [s (subs "aé" 0 2)] [(count (seq s)) (count (vec (seq s)))]) => [2 2] 
 (let [s "é"] (every? (set s) (seq (subs s 0 1)))) => true 
 (max-key count "é" "ab") => "ab"  units=2 cps=2

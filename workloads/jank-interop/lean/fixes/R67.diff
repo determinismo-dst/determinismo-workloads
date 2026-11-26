@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -523,7 +523,10 @@
+      (cpp/jank.runtime.to_unqualified_symbol o))
+     ([ns o]
+      (if (nil? ns)
+-       (symbol o)
++       ;; Symbol.intern(null, name) keeps the name whole: (symbol nil "b/c") has no namespace.
++       (if (string? o)
++         (cpp/jank.runtime.to_qualified_symbol "" o)
++         (symbol o))
+        (cpp/jank.runtime.to_qualified_symbol ns o)))))
+ 
+ (def ^{:arglists '([x])

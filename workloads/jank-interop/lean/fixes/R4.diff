@@ -1,0 +1,80 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -669,6 +669,7 @@
+         }
+         /* Numbers. */
+       case '-':
++      case '+':
+       case '0' ... '9':
+         {
+           if(auto &&e(check_whitespace(found_space)); e.is_some())
+@@ -676,7 +677,7 @@
+             return err(std::move(e.unwrap()));
+           }
+ 
+-          bool contains_leading_digit{ file[token_start] != '-' };
++          bool contains_leading_digit{ file[token_start] != '-' && file[token_start] != '+' };
+           bool contains_dot{};
+           bool is_scientific{};
+           bool found_exponent_sign{};
+@@ -689,7 +690,8 @@
+           bool found_beginning_negative{};
+ 
+           if(auto const [c, l]{ peek().unwrap_or({ ' ', 1 }) };
+-             file[token_start] == '-' && c == '0' && !found_slash_after_number)
++             (file[token_start] == '-' || file[token_start] == '+') && c == '0'
++             && !found_slash_after_number)
+           {
+             contains_leading_digit = true;
+             if(auto const [f, l]{ peek(2).unwrap_or({ ' ', 1 }) }; f != ' ')
+@@ -889,8 +891,11 @@
+               found_slash_after_number = false;
+               if(denominator.is_ok())
+               {
+-                if(denominator.expect_ok().kind != token_kind::integer
+-                   && denominator.expect_ok().kind != token_kind::big_integer)
++                /* Clojure's ratio denominator is unsigned digits: 1/+2 and 1/-2 are not ratios. */
++                if((denominator.expect_ok().kind != token_kind::integer
++                    && denominator.expect_ok().kind != token_kind::big_integer)
++                   || file[denominator.expect_ok().start.offset] == '+'
++                   || file[denominator.expect_ok().start.offset] == '-')
+                 {
+                   return error::lex_invalid_ratio(
+                     "A ratio denominator must be an integer.",
+@@ -1027,9 +1032,12 @@
+                   return error::lex_invalid_number("This integer literal ended unexpectedly.",
+                                                    { token_start, pos });
+                 }
+-                if(pos == token_start && file[token_start] == '0')
++                if((pos == token_start && file[token_start] == '0')
++                   || ((file[token_start] == '-' || file[token_start] == '+')
++                       && pos == token_start + 1llu && file[token_start + 1llu] == '0'))
+                 {
+-                  /* handle the case of a single digit 0 */
++                  /* handle the case of a single digit 0, or -0 and +0 (the branch above has
++                   * already stepped past the sign) */
+                   radix = 10;
+                   expecting_more_digits = false;
+                 }
+@@ -1065,10 +1073,9 @@
+               util::format("This base-{} number literal ended unexpectedly.", radix),
+               { token_start, pos });
+           }
+-          /* Tokens beginning with - are ambiguous; it's a negative number only if
+-           * followed by a number. Otherwise, it's a symbol. */
+-          /* TODO: Handle numbers starting with `+` */
+-          if(file[token_start] != '-' || (pos - token_start) >= 1)
++          /* Tokens beginning with - or + are ambiguous; it's a signed number only if
++           * followed by a number. Otherwise, it's a symbol (`-`, `+`, `+'`, `->`). */
++          if((file[token_start] != '-' && file[token_start] != '+') || (pos - token_start) >= 1)
+           {
+             require_space = true;
+             ++pos;
+@@ -1165,7 +1172,6 @@
+       case '_':
+       case '/':
+       case '?':
+-      case '+':
+       case '=':
+       case '*':
+       case '!':

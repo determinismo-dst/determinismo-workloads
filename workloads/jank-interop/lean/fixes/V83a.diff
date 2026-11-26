@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/hash.cpp
++++ b/compiler+runtime/src/cpp/jank/hash.cpp
+@@ -66,7 +66,8 @@
+ 
+   u32 combine(u32 const seed, u32 const t)
+   {
+-    return seed ^ (t + 0x9e3779b9 + (seed << 6) + (seed >> 2));
++    /* Util.hashCombine shifts an int: `seed >> 2` keeps the sign. */
++    return seed ^ (t + 0x9e3779b9 + (seed << 6) + static_cast<u32>(static_cast<i32>(seed) >> 2));
+   }
+ 
+   u32 integer(u32 const input)

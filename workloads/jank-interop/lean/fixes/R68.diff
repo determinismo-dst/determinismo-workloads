@@ -1,0 +1,115 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
+@@ -1,4 +1,8 @@
++#include <algorithm>
++#include <charconv>
+ #include <cmath>
++#include <cstdlib>
++#include <string>
+ 
+ #include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/oref.hpp>
+@@ -253,6 +257,85 @@
+   }
+ 
+   /***** real *****/
++  /* Double.toString of a finite double: the shortest decimal that reads back as it, written plain
++   * when 1e-3 <= |d| < 1e7 ("100000.0", "0.001") and as "D.DDDE[-]N" otherwise ("1.0E7",
++   * "1.0E-4"), where std::to_chars writes 1e+05 and 1e-04. When the shortest has one digit, Java
++   * takes the closest decimal of one or two digits that reads back (4.9E-324, not 5.0E-324). */
++  static void to_java_double_string(jtl::string_builder &buff, f64 const d)
++  {
++    if(d == 0.0)
++    {
++      buff(std::signbit(d) ? "-0.0" : "0.0");
++      return;
++    }
++
++    /* "[-]D[.DDD]e(+|-)NN" */
++    char text[64]{};
++    auto end{ std::to_chars(text, text + sizeof(text) - 1, d, std::chars_format::scientific).ptr };
++    if(std::find(text, end, '.') == end)
++    {
++      char two[64]{};
++      auto const two_end{
++        std::to_chars(two, two + sizeof(two) - 1, d, std::chars_format::scientific, 1).ptr
++      };
++      if(std::strtod(two, nullptr) == d)
++      {
++        end = std::copy(two, two_end, text);
++      }
++    }
++    *end = '\0';
++
++    auto const e{ std::find(text, end, 'e') };
++    std::string digits;
++    for(auto it{ text }; it != e; ++it)
++    {
++      if(*it >= '0' && *it <= '9')
++      {
++        digits.push_back(*it);
++      }
++    }
++    while(digits.size() > 1 && digits.back() == '0')
++    {
++      digits.pop_back();
++    }
++    auto const exponent{ std::atoi(e + 1) };
++
++    if(d < 0)
++    {
++      buff('-');
++    }
++    if(exponent >= -3 && exponent < 7)
++    {
++      if(exponent < 0)
++      {
++        buff("0.");
++        for(auto i{ exponent + 1 }; i < 0; ++i)
++        {
++          buff('0');
++        }
++        buff(digits);
++      }
++      else
++      {
++        auto const int_digits{ static_cast<usize>(exponent) + 1 };
++        for(usize i{}; i < int_digits; ++i)
++        {
++          buff(i < digits.size() ? digits[i] : '0');
++        }
++        buff('.');
++        buff(digits.size() > int_digits ? digits.substr(int_digits) : std::string{ "0" });
++      }
++    }
++    else
++    {
++      buff(digits[0]);
++      buff('.');
++      buff(digits.size() > 1 ? digits.substr(1) : std::string{ "0" });
++      buff('E');
++      buff(exponent);
++    }
++  }
++
+   real::real()
+     : object{ obj_type, obj_behaviors }
+   {
+@@ -307,7 +390,7 @@
+     }
+     else
+     {
+-      buff(data);
++      to_java_double_string(buff, data);
+     }
+   }
+ 
+@@ -425,7 +508,7 @@
+     }
+     else
+     {
+-      buff(data);
++      to_java_double_string(buff, data);
+     }
+   }
+ 

@@ -1,0 +1,350 @@
+ROUND 7, AREA H (CHAMP) AND Q (nREPL): LAW 1 WITHOUT THE INVARIANT, THE TRANSIENT SEQUENCE THEOREM,
+JANK'S = AND HASH OVER EVERY KIND THROUGH HASH SETS AND MAPS
+jank main 94d32623 (upstream-r5/compiler+runtime, = 7135b7708's tree); immer as pinned (deps/immer).
+Every jank path below is under upstream-r5/compiler+runtime/. Nothing here was run on jank.
+Lean: Jank/R7/Champ/{LawOne,Trans,Vals,Walk}.lean, Run/R7/Champ.lean (exe jank7-champ).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+Both are new programs in known classes; each has a control predicted to pass on jank.
+
+H7-1 (extends V84: another pair, D12's map-seq cause). Whether (seq {:a 1}) finds its = vector
+    [[:a 1]] in a hash set or map depends on an unrelated element.
+    (defn- id [x] x)
+    (defn- pusher [x] (first (filter (fn [n] (= (bit-and (hash n) 31) (bit-and (hash x) 31))) (range 2 100000))))
+    (let [e (id [[:a 1]]) ms (id (seq {:a 1})) p (id (pusher e))]
+      [(contains? (hash-set e) ms)            ; control: jank true (= Clojure)
+       (contains? (conj (hash-set e) p) ms)   ; jank false
+       (get (hash-map e :a p :b) ms)])        ; jank nil
+    Clojure 1.12.3: [true true :a]. Replica (results/r7-champ-show.txt): [true false nil]; with
+    every known cause fixed: [true true :a]. The pusher picks itself with the running language's
+    own hash (jank: 13, hash 838219053).
+    Why: (= [[:a 1]] (seq {:a 1})) is true both ways in jank (persistent_vector::equal 65- ->
+      core/seq.cpp sequence_equal 881-; base_persistent_map_sequence::equal 21-24), but the map seq
+      hashes with hash::unordered (base_persistent_map_sequence.cpp to_hash 84-87): 2767208205 vs
+      the vector's 1242899341 (hash.hpp ordered). Both end in the 5 bits 13 (CHAMP level 0), so in
+      a one-element set the map seq walks to [[:a 1]]'s data slot and Equal accepts it (the
+      control). A long whose hash also ends in 13 sends [[:a 1]] one level down (champ.hpp do_add
+      -> make_merged, node.hpp 993-1019), where the next 5 bits differ (vector 28, map seq 24): not
+      found. Round 1 listed this pair among D12's but only by its hashes (its d12 test's fifth
+      assertion, which never ran); round 6 found the path dependence for 0.0/-0.0 only.
+    Tests: vH1-control-alone-a-map-seq-finds-its-equal-vector (control),
+      vH1-an-unrelated-element-hides-an-equal-map-seq, vH1b-the-same-in-a-hash-map. [fn] path.
+    Status: extends V84 (V84's mechanism, another cause: D12's map-seq hash). Fix: fixes/D12d.diff
+      (hash::ordered), already written in round 6; with it the replica agrees (the walk's
+      all-but-mapseq run isolates it, section 8).
+    Confidence: medium-high. It rests on round 1's hash replicas of keywords, longs, vectors and
+      map seqs (Jank.Hash), which match D12's published numbers but were not observed on jank;
+      the control checks the shared low bits on jank itself.
+
+H7-2 (extends D8 into hash sets; corrects S10's reach). BigDecimals jank calls = merge in a hash set
+    when their hashes share the low 5 bits.
+    [(count (hash-set (id 1M) (id 1.0000000000000000001M)))   ; control: jank 2 (= Clojure)
+     (count (hash-set (id 1M) (id 1.0000000000000000023M)))   ; jank 1
+     (contains? (hash-set (id 1M)) (id 1.0000000000000000023M))] ; jank true
+    Clojure 1.12.3: [2 2 false]. Replica (results/r7-champ-decsearch.txt): [2 1 true].
+    Why: big_decimal::equal is |a - b| < 2^-52 (big_decimal.cpp 146-155: D8). The hashes
+      (cpp_dec_float::hash, big_decimal.cpp 177-180, round 3's replica) are 3307139568 and
+      2623107792: different, but both end in 16, so the second value walks to the first's data slot
+      at level 0 and Equal accepts it (do_add replaces: one element; get finds it). S10 showed the
+      pair (1M, 1.0000000000000000001M), whose hashes differ in those bits, and concluded that
+      jank keeps both (as Clojure does); that holds only for such pairs. Of 1.0000000000000000001M
+      ... 1.0000000000000002999M, the first four sharing 1M's low 5 bits are ...0023, ...0069,
+      ...0103, ...0112.
+    Tests: vH2-control-bigdecs-whose-hashes-differ-at-once-stay-apart (control),
+      vH2-epsilon-equal-bigdecs-merge-in-a-hash-set, vH2b-a-hash-set-finds-an-epsilon-equal-bigdec.
+      [fn] path; observed with count and contains? (not with =, D8's own lesson).
+    Status: extends D8 (D8's cause; S10's hashes). Fix: fixes/D8.diff (exact equality), already
+      written; the replica's bigdec switch removes it.
+    Confidence: medium. It rests on round 3's replicas of jank's BigDecimal reader (cpp_dec_float
+      from the literal) and of cpp_dec_float::hash; S10's two hashes came from the same replica.
+
+Shared causes: H7-1 is D12's map-seq hash (one fix, D12d) meeting V84's mechanism (a CHAMP finds
+an = key with another hash only while the stored key sits in a data slot the query's hash reaches);
+H7-2 is D8's equality, visible through the same mechanism. Separate from each other and from V84's
+-0.0 (D12a) and V85's NaN.
+
+Checked, not reported (each in a known class; the walks attribute every disagreement, section 8):
+- Asymmetric =: (= (seq "é") [\é]) false, (= [\é] (seq "é")) true (persistent_string_sequence.cpp
+  equal 34-37 compares BYTES, seq_ext.hpp 13-34; the other direction goes through sequence_equal by
+  characters): R55's cause. In a set their hashes differ at level 0 (R56: 501777105 vs
+  2997761404), so the asymmetry never decides a lookup in these pools; a self-unequal seq is V48.
+- Non-transitive =: D8's chains (0M = 0.00000000000000015M = 0.0000000000000003M, 0M not =
+  0.0000000000000003M): every jank-= pair in the dec pool has hashes differing at level 0, so jank's
+  sets agree with Clojure on count, contains? and set = for every sequence of every length (the dec
+  walk is complete); only which representative is stored differs (S59). H7-2 is the exception
+  found by search.
+- 1/1N, ()/(lazy-seq nil), (seq "a")/[\a] and the other R56 pairs: hashes differ at level 0, so the
+  miss is static (D12, R56 as stated); 0.0/-0.0 share 6 chunks (V84); ##NaN (V85).
+- Representatives (S59): jank's conj/assoc of an = element replaces the stored one; Clojure keeps it.
+- Symbols and namespaced keywords: no disagreement (symbol.cpp equal 67-76 and hash 152-155 agree;
+  keywords are interned). V80/V81's constructors with "/" in a part were not in the pool.
+- count vs (count (seq s)): never differs (proved in round 6; 0 in every walk).
+
+======================================================================
+2. PROOFS (no sorry, no native_decide, no new axiom; results/r7-champ-axioms.txt)
+======================================================================
+Over round 3's replica of immer's champ.hpp (Jank/R3/Immer/Champ.lean) and round 6's slot view.
+
+(a) Law 1 without the invariant (Jank/R7/Champ/LawOne.lean).
+- ★ add_walk: for EVERY well-formed node (round 3's wfNode; no hash-path invariant, no uniqueness),
+  do_add of v leaves find? of a query's predicate over the walk its hash takes unchanged, given only
+  that v is not Equal to the query, a value Equal to v is not Equal to the query, and a value Equal
+  to the query hashes as the query. Every branch of do_add (collision replace/insert, child,
+  replace value, make_merged, insert value).
+- ★ get_add_other_wf: so law 1 for add (assoc/conj) holds for every well-formed champ under a lawful
+  equality. Round 6's get_add_other assumed Inv (HP and uniqueness); neither is needed.
+- ★ sub_walk, ★ get_sub_other_hp: law 1 for sub (dissoc/disj) holds for every well-formed champ
+  meeting HP (uniqueness and the size premise dropped): every branch of do_sub, including the
+  singleton passed up and inlined by an ancestor (the inlined value is on its own hash's walk, by
+  round 6's walk_complete).
+- law1_sub_fails_without_HP (decide +kernel, with badChamp_wf, badChamp_get_before/after,
+  badChamp_not_HP): HP cannot be dropped for sub. Over Nat with == and the identity hash (natLawful:
+  a lawful equality), a well-formed champ holding 225 and 289 in the root's child at bit 1 (225 at
+  bit 3 though its hash names bit 7): get 225 is none; after sub 289 the two-value node collapses,
+  225 is passed up and inlined at the root, and get 225 finds it.
+- Can a jank program build such a champ? No. HP holds of champ::empty() and is kept by do_add,
+  do_sub, do_add_mut and do_sub_mut for every hash function and equality (round 6: add_step,
+  sub_step, addMut_step, subMut_step), so a champ off its hash paths needs a stored object whose
+  to_hash changed while stored. jank's value types are immutable (collections cache their hash;
+  lazy seqs realize once); atoms, volatiles, transients, arrays, delays, futures and promises
+  override neither equal nor to_hash (their headers), so they use object::equal (identity,
+  object.cpp 47-50) and object::to_hash (the address, 69-72), and Boehm's collector does not move
+  objects. So: law 1 holds for every champ jank builds under a lawful equality, and for add under
+  any well-formed champ; the sub counterexample is outside jank.
+
+(b) The transient sequence theorem (Jank/R7/Champ/Trans.lean).
+- ★ doSubMut_found: do_sub_mut of a key get finds is never "nothing", and at the root it is a tree,
+  on the mutating and the copying branch alike, for every hash and equality (round 5 had do_sub only).
+- ★ subMut_cases: sub_mut either leaves the champ (key absent: round 5's subMut_absent) or removes one
+  value Equal to the key with size - 1 (SubOut from round 6's subMut_step).
+- ★ inv_addMut, ★ inv_subMut, ★ keys_addMut, ★ keys_subMut, ★ get_addMut_other, ★ get_subMut_other:
+  Inv, law 2's step and law 1 for assoc!/conj! and dissoc!/disj! under a lawful equality (through
+  shared lemmas ★ inv_of_add, ★ keys_of_add, ★ get_other_of_add, ★ inv_of_sub, ★ keys_of_sub,
+  ★ get_other_of_sub, which also cover the persistent steps).
+- ★ buildT_keys, ★ buildT_from_empty: law 2 for EVERY sequence mixing persistent and transient steps
+  (assoc/conj, dissoc/disj, assoc!/conj!, dissoc!/disj!, any owner tokens), from any champ meeting
+  Inv and from champ::empty(): Inv is kept (each key once, count = the iteration's length) and the
+  keys are exactly Clojure's model (present iff the last step naming an = key added it). transient
+  and persistent! change only the owner token and move the champ (round 3's Champ.transient,
+  Transient.persistentL/R), so a jank program's conj/disj/transient/conj!/disj!/persistent! chain on
+  one collection is such a sequence.
+- ★ modelT_persist, ★ buildT_same_keys: a sequence and the same one with every transient step made
+  persistent yield the same keys (transients agree with persistent operations by contents).
+
+Not proved:
+- Law 1 for the transient steps without Inv (the walk-level proof was written for do_add and do_sub
+  only; do_add_mut/do_sub_mut are covered under Inv).
+- Node-by-node agreement of transients with persistent operations (the collision order differs:
+  do_add_mut writes in place, do_add moves the value first); only contents are compared.
+- Nothing about Clojure's own HAMT: Clojure's side is a set model (section 4).
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Jank/R7/Champ/LawOne.lean: get's walk after a one-slot edit (walk_edit, find_edit) over round 6's
+  Edit lemmas for node.hpp's constructors; do_add and do_sub as in round 3 (champ.hpp do_add 572-,
+  do_sub 1206-1276, get 537-).
+- Jank/R7/Champ/Trans.lean: do_sub_mut (champ.hpp 1346-) and add_mut/sub_mut at the root.
+- Jank/R7/Champ/Vals.lean: jank's equal and to_hash for nil, longs, BigInts, doubles (with -0.0,
+  ##NaN), ratios, BigDecimals (round 3's Jank.R3.Boost.Num.jEqual/jHash over cpp_int and
+  cpp_dec_float), characters, strings, string seqs (persistent_string_sequence.cpp equal 34-37,
+  to_hash 72-75 with hash.cpp visit(char) 151-154: the byte sign-extended; seq_ext.hpp 13-34;
+  core/equal.cpp 8-17), symbols (symbol.cpp 67-76, 152-155), keywords (identity; keyword.cpp
+  45-48), vectors, lists, lazy seqs, sets, maps, map seqs (round 1's Jank.Equality rules;
+  persistent_hash_set.cpp equal 55-81; base_persistent_map_sequence.cpp 21-24, 84-87). Clojure's =
+  beside it (Util.equiv, Numbers.equal by category over round 3's Java BigDecimal, sequential
+  collections elementwise). Switches for each known cause's fix.
+- Jank/R7/Champ/Walk.lean: a hash set or map over round 3's champ replica with those tables
+  (persistent_hash_set.cpp conj 149-154 = insert, disj 191-196 = erase, contains 186-189;
+  transient_hash_set.cpp conj_in_place 43-48, disjoin_in_place 103-108, to_persistent 50-55;
+  persistent_hash_map.cpp assoc 110-114 = set, dissoc 116-120 = erase, get = find), in persistent
+  and transient mode, beside Clojure's collection (first representative kept; for maps the old key
+  with the new value), and a breadth-first walk over distinct states (champ shape and values, owner
+  marks relative to the live transient, Clojure's contents).
+- Run/R7/Champ.lean: pairs (every jank-= or Clojure-= pair whose = or hashes disagree, with the
+  shared low chunks), walk, show (H7-1 on the replica), decsearch (H7-2's values).
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- Clojure's side is a set/map model (Util.equiv: identity, then =), not Clojure's HAMT with hasheq.
+  It assumes Clojure's hasheq agrees with its = on the pool (true by Clojure's design for these
+  kinds: Numbers.hasheq strips BigDecimal zeros, hashes -0.0 as 0.0 and long-range BigInts as longs;
+  ASeq/LazySeq/StringSeq/MapEntry hash ordered). Checked on Clojure 1.12.3 only through the six test
+  programs.
+- Each pool value is one object (as through a fn parameter); identity is pool-index equality. A
+  NaN read twice would be two objects.
+- jank's collections inside the pool (sets, maps) compare elements with round 1's containsH
+  abstraction ("same full hash and equal"), not a CHAMP walk; only flat elements are CHAMP-walked.
+- The walk threads one collection: no transient kept alive beside its persistent result (round 3/4
+  checked aliasing separately). transient/persistent! as in round 3's replica.
+- hash-map of several entries is assumed to insert them in argument order (create_from_seq);
+  H7-1's hash-map form gives nil in either order.
+- Hash values of keywords, longs and BigDecimals are the earlier rounds' replicas (not observed on
+  jank); H7-1 and H7-2 depend on them (their controls test the premise on jank).
+- Clojure's transient set conj replaces the stored map VALUE (ATransientSet.conj -> impl.assoc(o, o))
+  while keeping the key; only contains? and seq (keys) are observed, so this is not modeled.
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- nREPL (area Q's part of the brief: T3 beyond <=6 or decided under every schedule, the unlocked
+  T3/T9 beyond round 6's bounds, a proof that the counter equals the sdk's walk): NOT DONE this round.
+  The CHAMP proofs and searches used the time. Round 6's runs show what each needs: T3 <=7 and the
+  unlocked T3 <=3 / T9 <=4 exceed the few-GB bound with round 6's state representation (T3 <=6 took
+  about 3.6 GB; T3u <=3 stopped at 1.2 million states, about 4 GB), and an exact every-schedule T3
+  needs a compact state codec (3,174,744 states at about 3.8 KB each as Lean objects); none was
+  built. No nREPL job was run; round 6's bounds stand.
+- Array maps ({} literals, <= 8 entries): linear search with =, not CHAMP.
+- Sorted collections, non-BMP text (UTF-16 surrogates in Clojure's string seqs), V80/V81's
+  constructors with "/" inside a part, nested sets/maps as CHAMP-walked elements.
+- Law 1 for transient steps without Inv (section 2).
+
+======================================================================
+6. ASSUMPTIONS (champA7-n) AND EARLIER ONES REPLACED
+======================================================================
+- champA7-1. Clojure 1.12's hash sets and maps behave as a collection keyed by Util.equiv (hasheq
+  consistent with = on the pool's kinds); every reported disagreement was run on 1.12.3.
+- champA7-2. A value passed through a fn parameter is one object for its whole program (identity).
+- champA7-3. jank's hash-set/hash-map build CHAMPs at every size and insert in argument order
+  (round 6's reading of persistent_hash_set.cpp 45-53, persistent_hash_map.cpp create_from_seq).
+- champA7-4. Boehm's collector does not move objects, so object::to_hash (the address) is constant
+  while an object lives (used for "jank cannot build a champ off its hash paths").
+- Round 6's champA6-1, -2 and round 3's IMA1-IMA7 stand.
+- Replaced: round 6's "get_add_other and get_sub_other assume the invariant": add needs no invariant,
+  sub needs HP only (section 2). Round 3's S10 conclusion "(count (hash-set 1M x)) is 2" for every
+  BigDecimal x jank calls = to 1M: only when their hashes differ in the low 5 bits (H7-2).
+
+======================================================================
+7. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- (contains? s k) iff s holds an = element (identity first); get of another key unaffected by
+  conj/disj/assoc/dissoc and their transient forms; (count s) = (count (seq s)); count = number of
+  distinct = classes added; seq yields each element once, the first representative kept (sets) or
+  the old key with the new value (maps); (= s t) for sets with the same elements: clojure.core
+  docstrings (contains?, get, conj, disj, assoc, dissoc, conj!, disj!, assoc!, dissoc!, count, seq,
+  =); PersistentHashSet.cons (contains -> this), PersistentHashMap/BitmapIndexedNode find/assoc/
+  without with Util.equiv, ATransientSet, APersistentSet.setEquals (clojure-ref).
+- = and hash: Util.equiv, Numbers.equal/hasheq, APersistentVector.doEquiv, ASeq.equiv, StringSeq,
+  Symbol.equals, Keyword (interned), APersistentMap/Set.equiv.
+- Clojure 1.12.3's actual results: .r7-scratch/champ/clj/run-1.12.3.txt (6 tests, 6 pass).
+
+======================================================================
+8. SEARCH RUNS (complete = every input within the bounds)
+======================================================================
+All runs: results/r7-champ-walks.txt (jank as it is: "none"; every known cause fixed: "all"),
+results/r7-champ-attr.txt (every fix but one), results/r7-champ-pairs.txt, -show.txt, -decsearch.txt.
+A state is a jank collection beside Clojure's, merged when equal up to node ids; the walk is
+breadth first from #{} / (hash-map) over every operation on every pool value: conj/disj (sets) or
+assoc k :a / assoc k :b / dissoc (maps), transient, and inside a transient conj!/disj! (assoc!/
+dissoc!) and persistent!. Checked after every operation: count, (count (seq s)), contains? (sets)
+or get (maps) of every pool value, the representatives seq yields, and for sets
+(= s (apply hash-set clj)). "Length <= n covered" = every operation sequence of length <= n; COMPLETE
+= the next depth adds no state, so every sequence of every length is covered. Pushers: for each
+jank-= pair with different hashes sharing low chunks, a long whose jank hash shares them is added
+(13 for the coll and mix pools; none exists below 2^20 for 0.0/-0.0's 30 bits, where 2.0 is in the
+pool). Round 6's walk, for scale: every sequence of <= 4 conj/disj over 11 values (245,411 states).
+
+Pools (each value one object):
+  num  0.0 -0.0 2.0 1.0 ##NaN 1 1N 3 1/2 1M 1.0M 1.0000000000000000001M
+  dec  0M 0.00000000000000015M 0.0000000000000003M 1M 1.0000000000000000001M
+       1.0000000000000000002M 0.0M 2M 0 0.0
+  str  "a" \a (seq "a") [\a] (list \a) (lazy-seq [\a]) (seq "é") [\é] (list \é) "é" (seq "ab") [\a \b]
+  coll nil [] () (lazy-seq nil) {} #{} "" {:a 1} (seq {:a 1}) [[:a 1]] (list [:a 1]) #{1} + 13
+  sym  :a :x/a :y/a 'a 'x/a 'y/a "a" "x/a" :x/b 'x/b
+  mix  0.0 -0.0 2.0 ##NaN 1 1N 1M 1.0000000000000000001M (seq "a") [\a] (seq "é") [\é] () (lazy-seq nil)
+       (seq {:a 1}) [[:a 1]] :x/a 'x/a + 13
+
+Results (state cap 600,000 per run):
+  num set   none: length <= 10 covered (600,000 states): count 548,875, contains? 940,653, repr 31,651,
+                  set= 585,044 disagreements; count-vs-seq 0.
+            all:  COMPLETE, 19,903 states (depth 16): 0.
+  num map   none: <= 6 (600,000): count 374,129, contains?/get-nil 729,977, get-value 94,141, repr 94,522.
+            all:  <= 8 (600,000): 0.
+  dec set   none: COMPLETE, 31,273 states (depth 25): only repr 12,544 (S59); count, contains?, set= 0.
+            all:  COMPLETE, 3,263 states: 0.
+  dec map   none: <= 9 (600,000): only repr 216,060 (S59).   all: <= 15 (600,000): 0.
+  str set   none: <= 10 (600,000): count 585,389, contains? 1,679,558, repr 9,380, set= 589,377.
+            all:  COMPLETE, 2,039 states: 0.
+  str map   none: <= 5 (600,000): count 521,450, contains? 1,528,630, get 392,104, repr 35,792.
+            all:  COMPLETE, 240,862 states (depth 22): 0.
+  coll set  none: <= 10 (600,000): count 427,736, contains? 821,348, repr 118,006, set= 458,608
+                  (among them H7-1's path cases: contains? of (seq {:a 1}) with [[:a 1]] stored).
+            all:  COMPLETE, 24,663 states: 0.
+  coll map  none: <= 5 (600,000): count 302,696, contains? 632,190, get 210,204, repr 109,312.
+            all:  <= 6 (600,000): 0.
+  sym set   none: COMPLETE, 4,663 states (depth 15): 0.   all: COMPLETE, 3,647 states: 0.
+  sym map   none: COMPLETE, 346,194 states (depth 15): 0.  all: COMPLETE: 0.
+  mix set   none: <= 6 (600,000): count 431,890, contains? 1,435,379, repr 54,614, set= 531,129.
+            all:  <= 10 (600,000): 0.
+  mix map   none: <= 4 (600,000): count 254,414, contains? 1,146,284, get 66,230, repr 40,728.
+            all:  <= 5 (600,000): 0.
+  (count vs (count (seq s)): 0 in every run, as round 6 proved.)
+So with the known causes fixed (D12's four hashes, V85's identity, R55/R56's string seq, D8/S10's
+BigDecimals, S59's kept key), jank's hash sets agree with Clojure for every sequence of every length
+over the num, dec, str, coll and sym pools (persistent and transient steps mixed), and to the stated
+lengths for maps and the mixed pool: nothing outside the known classes. H7-1 and H7-2 are new
+programs of those classes (H7-2's value is not in the dec pool; it came from decsearch, section 1).
+Attribution (results/r7-champ-attr.txt; sets, every fix on but one, cap 300,000 states). Each
+known cause alone accounts for disagreements, and no fix's removal leaves an unexplained class:
+  num:  all-but-negzero COMPLETE 87,735 states: count 47,938, contains? 49,520 (V84/D12a);
+        all-but-identity <= 13: count 280,105, contains? 163,790 (V85); all-but-bigint COMPLETE
+        46,591: count = contains? = set= 26,688 (D12b); all-but-keepold COMPLETE 122,935: repr
+        98,742 (S59); all-but-lazy/-mapseq/-strseq/-bigdec: 0 (COMPLETE, 19,903).
+  str:  all-but-strseq COMPLETE 159,867: count 149,588, contains? 332,376 (R55/R56); all-but-keepold
+        COMPLETE 117,271: repr 109,020; every other: 0 (COMPLETE, 2,039).
+  coll: all-but-lazy COMPLETE 93,619: count 57,156, contains? 67,740 (D12c); all-but-mapseq
+        COMPLETE 144,891: count 77,238, contains? 97,558 (D12d: H7-1's cause); all-but-keepold <= 10:
+        repr 239,990; every other: 0 (COMPLETE, 24,663).
+  mix:  <= 7 or 8 each: negzero, identity, bigint, lazy, mapseq, strseq each nonzero; bigdec 0;
+        keepold repr only.
+  BigDecimals alone (all-but-bigdec) give 0 in num and mix: D8's pairs there have hashes that
+  differ at level 0; H7-2 needs hashes sharing the low 5 bits (decsearch).
+
+======================================================================
+9. THEOREMS (★ = for every input)
+======================================================================
+LawOne.lean: ★ add_walk, ★ get_add_other_wf, ★ sub_walk, ★ get_sub_other_hp, ★ walk_edit,
+  ★ find_edit, ★ walk_succ_slotW, ★ find?_eraseAt_false, find?_cons_false, find?_unique;
+  single inputs (decide +kernel) badChamp_wf, badChamp_get_before, badChamp_get_after;
+  badChamp_not_HP, law1_sub_fails_without_HP; natLawful (a lawful equality).
+Trans.lean: ★ doSubMut_found, ★ subMut_cases, ★ inv_of_add, ★ keys_of_add, ★ get_other_of_add,
+  ★ inv_of_sub, ★ keys_of_sub, ★ get_other_of_sub, ★ inv_addMut, ★ keys_addMut, ★ get_addMut_other,
+  ★ inv_subMut, ★ keys_subMut, ★ get_subMut_other, ★ stepT, ★ buildT_keys, ★ buildT_from_empty,
+  ★ modelT_persist, ★ buildT_same_keys; addMut_root, addMut_size, addMut_out, addMut_flag, sub_res,
+  run_bind_eq, hsymF.
+Axioms: propext, Classical.choice, Quot.sound (the decide +kernel facts: propext); no sorryAx.
+
+======================================================================
+10. LIBRARY GAPS (built here; sdk/lean untouched)
+======================================================================
+- get's walk after a one-slot edit of a packed-bitmap node (find_edit), usable for any node.hpp
+  constructor round 6 proved an Edit.
+- A breadth-first state-space walk with structural state keys (owner marks relative to the live
+  transient) and parent-pointer traces, which decides "every sequence of every length" when the
+  frontier empties; the sdk's exhaust enumerates sequences, not states.
+- A combined value model (round 1's kinds, round 3's numbers, string seqs, symbols) with switches
+  for known causes, so that a residual with every switch on is outside the known classes.
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+None new. H7-1 is fixed by round 6's fixes/D12d.diff (base_persistent_map_sequence.cpp to_hash:
+hash::ordered; read: the map seq then hashes as the vector of its entries, so both walk the same
+path), H7-2 by fixes/D8.diff (big_decimal.cpp equal: exact). Writing H7-1.diff/H7-2.diff would
+duplicate them. Checked on the replica: with the mapseq switch (D12d's semantics) the H7-1 programs
+give Clojure's [true true :a] (results/r7-champ-show.txt); the walks' all-but runs (section 8)
+isolate each cause. A build must confirm D12d's and D8's named tests and these six.
+
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 3's S10 ("(count (hash-set 1M 1.0000000000000000001M)) is 2 though jank's = says equal",
+  read as: jank keeps both BigDecimals jank calls =): true for that pair, not in general; pairs
+  whose hashes share the low 5 bits merge (H7-2).
+- Round 1's D12 fourth example ((seq {:a 1}) / [[:a 1]]) listed only the hashes; the CHAMP finds the
+  pair alone (shared level-0 bits) and loses it after an unrelated conj (H7-1).
+- Round 6's "get_add_other/get_sub_other need the invariant": add needs none; sub needs HP only, and
+  a kernel-checked champ shows HP is necessary.

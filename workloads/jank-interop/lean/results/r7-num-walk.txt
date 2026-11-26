@@ -1,0 +1,293 @@
+== BigDecimal walk: 22549 questions (complete over 34 values: 19 BigDecimals, 15 others; 12 binary operators × 2 paths on pairs with a BigDecimal, 10 unary)
+   JVM answers read: 22549
+== Java/Clojure model vs Clojure 1.12.3: 0 differ, 0 missing
+
+== jank today: verdicts
+  agree: 13328
+  kind: 1131
+  other: 1541
+  text: 4874
+  throws: 1369
+  value: 306
+-- by class
+  * text: notation (S5/R72): 132
+  * text: scale (R72): 754
+  + text: notation (S5/R72): 14
+  + text: scale (R72): 528
+  - text: notation (S5/R72): 19
+  - text: scale (R72): 538
+  / text: notation (S5/R72): 228
+  / text: scale (R72): 418
+  D4: quot is a long: 1522
+  D4: quot through doubles (UB cast past i64): 56
+  N7-1: hash of a BigDecimal: 19
+  N7-2: division by zero gives inf/nan: 183
+  S12: long of a huge BigDecimal saturates: 1
+  S2/S4: division by a Newton inverse in 128 digits: 82
+  S3: a non-terminating quotient returns a value: 286
+  S3: a non-terminating ratio converts (Clojure throws): 819
+  S4: 128 significant digits: 210
+  S6: with a double, a BigDecimal: 903
+  S7: rem is a 128-digit fmod: 14
+  S8: rem with a ratio truncates the decimal (kind): 192
+  S8: rem with a ratio truncates the decimal (throws): 24
+  V57: max keeps its first operand on a tie: 36
+  abs text: notation (S5/R72): 1
+  abs text: scale (R72): 10
+  bigdec text: notation (S5/R72): 1
+  bigdec text: scale (R72): 18
+  dec text: scale (R72): 9
+  double printing (round 2), not a BigDecimal difference: 2
+  inc text: scale (R72): 9
+  max text: notation (S5/R72): 120
+  max text: scale (R72): 700
+  min text: notation (S5/R72): 12
+  min text: scale (R72): 600
+  rem text: notation (S5/R72): 66
+  rem text: scale (R72): 684
+  str text: notation (S5/R72): 1
+  str text: scale (R72): 10
+-- examples (3 per class)
+  [+ text: scale (R72)] (+ 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [+ text: scale (R72)] ((fn [a b] (+ a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [+ text: scale (R72)] (+ 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [+ text: notation (S5/R72)] (+ 0M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [+ text: notation (S5/R72)] ((fn [a b] (+ a b)) 0M 1E+130M) [fn]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [S3: a non-terminating ratio converts (Clojure throws)] (+ 0M 1/3) [literals]: jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S3: a non-terminating ratio converts (Clojure throws)] ((fn [a b] (+ a b)) 0M 1/3) [fn]: jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S6: with a double, a BigDecimal] (+ 0M 0.5) [literals]: jank 0.5M (BigDecimal); Clojure 0.5 (double)
+  [S6: with a double, a BigDecimal] ((fn [a b] (+ a b)) 0M 0.5) [fn]: jank 0.5M (BigDecimal); Clojure 0.5 (double)
+  [S6: with a double, a BigDecimal] (+ 0M 2.0) [literals]: jank 2.0M (BigDecimal); Clojure 2.0 (double)
+  [+ text: notation (S5/R72)] (+ 0.00M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.00M (BigDecimal)
+  [S3: a non-terminating ratio converts (Clojure throws)] (+ 0.00M 1/3) [literals]: jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S4: 128 significant digits] (+ 1M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M (BigDecimal)
+  [S4: 128 significant digits] ((fn [a b] (+ a b)) 1M 1E+130M) [fn]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M (BigDecimal)
+  [S4: 128 significant digits] (+ 1.0M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001.0M (BigDecimal)
+  [- text: scale (R72)] (- 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [- text: scale (R72)] ((fn [a b] (- a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [- text: scale (R72)] (- 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [- text: notation (S5/R72)] (- 0M 1E+130M) [literals]: jank -1e+130.0M (BigDecimal); Clojure -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [- text: notation (S5/R72)] ((fn [a b] (- a b)) 0M 1E+130M) [fn]: jank -1e+130.0M (BigDecimal); Clojure -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [- text: notation (S5/R72)] (- 0.00M 1E+130M) [literals]: jank -1e+130.0M (BigDecimal); Clojure -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.00M (BigDecimal)
+  [* text: scale (R72)] (* 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [* text: scale (R72)] ((fn [a b] (* a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [* text: scale (R72)] (* 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [* text: notation (S5/R72)] (* 0M 1E+2M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [* text: notation (S5/R72)] ((fn [a b] (* a b)) 0M 1E+2M) [fn]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [* text: notation (S5/R72)] (* 0M 1E+130M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+130M (BigDecimal)
+  [N7-2: division by zero gives inf/nan] (/ 0M 0M) [literals]: jank nan.0M (BigDecimal); Clojure throws (Divide by zero)
+  [N7-2: division by zero gives inf/nan] ((fn [a b] (/ a b)) 0M 0M) [fn]: jank nan.0M (BigDecimal); Clojure throws (Divide by zero)
+  [N7-2: division by zero gives inf/nan] (/ 0M 0.00M) [literals]: jank nan.0M (BigDecimal); Clojure throws (Divide by zero)
+  [/ text: scale (R72)] (/ 0M 1M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [/ text: scale (R72)] ((fn [a b] (/ a b)) 0M 1M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [/ text: notation (S5/R72)] (/ 0M 1.0M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+1M (BigDecimal)
+  [/ text: notation (S5/R72)] ((fn [a b] (/ a b)) 0M 1.0M) [fn]: jank 0.0M (BigDecimal); Clojure 0E+1M (BigDecimal)
+  [/ text: notation (S5/R72)] (/ 0M 1.50M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [/ text: scale (R72)] (/ 0M 100M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [S3: a non-terminating quotient returns a value] (/ 1M 1.50M) [literals]: jank 0.66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S3: a non-terminating quotient returns a value] ((fn [a b] (/ a b)) 1M 1.50M) [fn]: jank 0.66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S3: a non-terminating quotient returns a value] (/ 1M 7.5M) [literals]: jank 0.13333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333339999999M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S2/S4: division by a Newton inverse in 128 digits] (/ 1.50M 7.5M) [literals]: jank 0.20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009999998M (BigDecimal); Clojure 0.2M (BigDecimal)
+  [S2/S4: division by a Newton inverse in 128 digits] ((fn [a b] (/ a b)) 1.50M 7.5M) [fn]: jank 0.20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009999998M (BigDecimal); Clojure 0.2M (BigDecimal)
+  [S2/S4: division by a Newton inverse in 128 digits] (/ 1.50M -7.5M) [literals]: jank -0.20000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009999998M (BigDecimal); Clojure -0.2M (BigDecimal)
+  [D4: quot is a long] (quot 0M 1M) [literals]: jank 0; Clojure 0M (BigDecimal)
+  [D4: quot is a long] ((fn [a b] (quot a b)) 0M 1M) [fn]: jank 0; Clojure 0M (BigDecimal)
+  [D4: quot is a long] (quot 0M 1.0M) [literals]: jank 0; Clojure 0E+1M (BigDecimal)
+  [D4: quot through doubles (UB cast past i64)] (quot 1E+130M 1M) [literals]: jank throws (UB: out-of-range double to i64 cast); Clojure 1E+130M (BigDecimal)
+  [D4: quot through doubles (UB cast past i64)] ((fn [a b] (quot a b)) 1E+130M 1M) [fn]: jank throws (UB: out-of-range double to i64 cast); Clojure 1E+130M (BigDecimal)
+  [D4: quot through doubles (UB cast past i64)] (quot 1E+130M 1.0M) [literals]: jank throws (UB: out-of-range double to i64 cast); Clojure 1E+130M (BigDecimal)
+  [rem text: scale (R72)] (rem 0M 1M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [rem text: scale (R72)] ((fn [a b] (rem a b)) 0M 1M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [rem text: scale (R72)] (rem 0M 1.0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (kind)] (rem 0M 1/2) [literals]: jank 0N (BigInt); Clojure 0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (kind)] ((fn [a b] (rem a b)) 0M 1/2) [fn]: jank 0N (BigInt); Clojure 0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (kind)] (rem 0M 1/4) [literals]: jank 0N (BigInt); Clojure 0M (BigDecimal)
+  [rem text: notation (S5/R72)] (rem 1E+2M 1M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [rem text: notation (S5/R72)] ((fn [a b] (rem a b)) 1E+2M 1M) [fn]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [rem text: notation (S5/R72)] (rem 1E+2M 1.0M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+1M (BigDecimal)
+  [S7: rem is a 128-digit fmod] (rem 1E+130M 1.50M) [literals]: jank 99999998.5M (BigDecimal); Clojure 1.00M (BigDecimal)
+  [S7: rem is a 128-digit fmod] ((fn [a b] (rem a b)) 1E+130M 1.50M) [fn]: jank 99999998.5M (BigDecimal); Clojure 1.00M (BigDecimal)
+  [S7: rem is a 128-digit fmod] (rem 1E+130M 7.5M) [literals]: jank -4200000000.0M (BigDecimal); Clojure 2.5M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (throws)] (rem 1/2 0.1M) [literals]: jank throws (Division by zero is not permitted.); Clojure 0.0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (throws)] ((fn [a b] (rem a b)) 1/2 0.1M) [fn]: jank throws (Division by zero is not permitted.); Clojure 0.0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (throws)] (rem 1/2 0.001M) [literals]: jank throws (Division by zero is not permitted.); Clojure 0.0M (BigDecimal)
+  [max text: scale (R72)] (max 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [max text: scale (R72)] ((fn [a b] (max a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [max text: scale (R72)] (max 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [max text: notation (S5/R72)] (max 0M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [max text: notation (S5/R72)] ((fn [a b] (max a b)) 0M 1E+2M) [fn]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [V57: max keeps its first operand on a tie] (max 0M 0) [literals]: jank 0.0M (BigDecimal); Clojure 0 (long)
+  [V57: max keeps its first operand on a tie] ((fn [a b] (max a b)) 0M 0) [fn]: jank 0.0M (BigDecimal); Clojure 0 (long)
+  [max text: notation (S5/R72)] (max 0.00M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [V57: max keeps its first operand on a tie] (max 0.00M 0) [literals]: jank 0.0M (BigDecimal); Clojure 0 (long)
+  [min text: scale (R72)] (min 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [min text: scale (R72)] ((fn [a b] (min a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [min text: scale (R72)] (min 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [min text: notation (S5/R72)] (min 100M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [min text: notation (S5/R72)] ((fn [a b] (min a b)) 100M 1E+2M) [fn]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [min text: notation (S5/R72)] (min 1E+2M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [str text: scale (R72)] (str 0M) [literal]: jank 0.0 (String); Clojure 0 (String)
+  [N7-1: hash of a BigDecimal] (hash 0M) [literal]: jank 3774723415; Clojure 0
+  [inc text: scale (R72)] (inc 0M) [literal]: jank 1.0M (BigDecimal); Clojure 1M (BigDecimal)
+  [dec text: scale (R72)] (dec 0M) [literal]: jank -1.0M (BigDecimal); Clojure -1M (BigDecimal)
+  [abs text: scale (R72)] (abs 0M) [literal]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [bigdec text: scale (R72)] (bigdec 0M) [literal]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [str text: scale (R72)] (str 0.00M) [literal]: jank 0.0 (String); Clojure 0.00 (String)
+  [N7-1: hash of a BigDecimal] (hash 0.00M) [literal]: jank 3774723415; Clojure 0
+  [inc text: scale (R72)] (inc 0.00M) [literal]: jank 1.0M (BigDecimal); Clojure 1.00M (BigDecimal)
+  [dec text: scale (R72)] (dec 0.00M) [literal]: jank -1.0M (BigDecimal); Clojure -1.00M (BigDecimal)
+  [abs text: scale (R72)] (abs 0.00M) [literal]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [bigdec text: scale (R72)] (bigdec 0.00M) [literal]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [str text: scale (R72)] (str 1M) [literal]: jank 1.0 (String); Clojure 1 (String)
+  [N7-1: hash of a BigDecimal] (hash 1M) [literal]: jank 3307139568; Clojure 31
+  [inc text: scale (R72)] (inc 1M) [literal]: jank 2.0M (BigDecimal); Clojure 2M (BigDecimal)
+  [dec text: scale (R72)] (dec 1M) [literal]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [abs text: scale (R72)] (abs 1M) [literal]: jank 1.0M (BigDecimal); Clojure 1M (BigDecimal)
+  [bigdec text: scale (R72)] (bigdec 1M) [literal]: jank 1.0M (BigDecimal); Clojure 1M (BigDecimal)
+  [str text: notation (S5/R72)] (str 1E+2M) [literal]: jank 100.0 (String); Clojure 1E+2 (String)
+  [abs text: notation (S5/R72)] (abs 1E+2M) [literal]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [bigdec text: notation (S5/R72)] (bigdec 1E+2M) [literal]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [S12: long of a huge BigDecimal saturates] (long 1E+130M) [literal]: jank 9223372036854775807 (long); Clojure throws (Value out of range for long)
+  [double printing (round 2), not a BigDecimal difference] (double 1E+130M) [literal]: jank 1e+130 (double); Clojure 1.0E130 (double)
+  [double printing (round 2), not a BigDecimal difference] (double 1E-7M) [literal]: jank 1e-07 (double); Clojure 1.0E-7 (double)
+
+== jank with exact division (S2's fix only): verdicts
+  agree: 13704
+  kind: 1131
+  other: 1541
+  text: 4900
+  throws: 1049
+  value: 224
+-- by class
+  * text: notation (S5/R72): 132
+  * text: scale (R72): 754
+  + text: notation (S5/R72): 14
+  + text: scale (R72): 528
+  - text: notation (S5/R72): 19
+  - text: scale (R72): 538
+  / text: notation (S5/R72): 228
+  / text: scale (R72): 444
+  D4: quot is a long: 1522
+  D4: quot through doubles (UB cast past i64): 56
+  N7-1: hash of a BigDecimal: 19
+  N7-2: division by zero gives inf/nan: 183
+  S12: long of a huge BigDecimal saturates: 1
+  S3: a non-terminating ratio converts (Clojure throws): 785
+  S4: 128 significant digits: 210
+  S6: with a double, a BigDecimal: 903
+  S7: rem is a 128-digit fmod: 14
+  S8: rem with a ratio truncates the decimal (kind): 192
+  S8: rem with a ratio truncates the decimal (throws): 24
+  V57: max keeps its first operand on a tie: 36
+  abs text: notation (S5/R72): 1
+  abs text: scale (R72): 10
+  bigdec text: notation (S5/R72): 1
+  bigdec text: scale (R72): 18
+  dec text: scale (R72): 9
+  double printing (round 2), not a BigDecimal difference: 2
+  inc text: scale (R72): 9
+  max text: notation (S5/R72): 120
+  max text: scale (R72): 700
+  min text: notation (S5/R72): 12
+  min text: scale (R72): 600
+  rem text: notation (S5/R72): 66
+  rem text: scale (R72): 684
+  str text: notation (S5/R72): 1
+  str text: scale (R72): 10
+-- examples (3 per class)
+  [+ text: scale (R72)] (+ 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [+ text: scale (R72)] ((fn [a b] (+ a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [+ text: scale (R72)] (+ 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [+ text: notation (S5/R72)] (+ 0M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [+ text: notation (S5/R72)] ((fn [a b] (+ a b)) 0M 1E+130M) [fn]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [S3: a non-terminating ratio converts (Clojure throws)] (+ 0M 1/3) [literals]: jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S3: a non-terminating ratio converts (Clojure throws)] ((fn [a b] (+ a b)) 0M 1/3) [fn]: jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S6: with a double, a BigDecimal] (+ 0M 0.5) [literals]: jank 0.5M (BigDecimal); Clojure 0.5 (double)
+  [S6: with a double, a BigDecimal] ((fn [a b] (+ a b)) 0M 0.5) [fn]: jank 0.5M (BigDecimal); Clojure 0.5 (double)
+  [S6: with a double, a BigDecimal] (+ 0M 2.0) [literals]: jank 2.0M (BigDecimal); Clojure 2.0 (double)
+  [+ text: notation (S5/R72)] (+ 0.00M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.00M (BigDecimal)
+  [S3: a non-terminating ratio converts (Clojure throws)] (+ 0.00M 1/3) [literals]: jank 0.33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333M (BigDecimal); Clojure throws (Non-terminating decimal expansion; no exact representable decimal result.)
+  [S4: 128 significant digits] (+ 1M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M (BigDecimal)
+  [S4: 128 significant digits] ((fn [a b] (+ a b)) 1M 1E+130M) [fn]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M (BigDecimal)
+  [S4: 128 significant digits] (+ 1.0M 1E+130M) [literals]: jank 1e+130.0M (BigDecimal); Clojure 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001.0M (BigDecimal)
+  [- text: scale (R72)] (- 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [- text: scale (R72)] ((fn [a b] (- a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [- text: scale (R72)] (- 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [- text: notation (S5/R72)] (- 0M 1E+130M) [literals]: jank -1e+130.0M (BigDecimal); Clojure -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [- text: notation (S5/R72)] ((fn [a b] (- a b)) 0M 1E+130M) [fn]: jank -1e+130.0M (BigDecimal); Clojure -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000M (BigDecimal)
+  [- text: notation (S5/R72)] (- 0.00M 1E+130M) [literals]: jank -1e+130.0M (BigDecimal); Clojure -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.00M (BigDecimal)
+  [* text: scale (R72)] (* 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [* text: scale (R72)] ((fn [a b] (* a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [* text: scale (R72)] (* 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [* text: notation (S5/R72)] (* 0M 1E+2M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [* text: notation (S5/R72)] ((fn [a b] (* a b)) 0M 1E+2M) [fn]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [* text: notation (S5/R72)] (* 0M 1E+130M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+130M (BigDecimal)
+  [N7-2: division by zero gives inf/nan] (/ 0M 0M) [literals]: jank nan.0M (BigDecimal); Clojure throws (Divide by zero)
+  [N7-2: division by zero gives inf/nan] ((fn [a b] (/ a b)) 0M 0M) [fn]: jank nan.0M (BigDecimal); Clojure throws (Divide by zero)
+  [N7-2: division by zero gives inf/nan] (/ 0M 0.00M) [literals]: jank nan.0M (BigDecimal); Clojure throws (Divide by zero)
+  [/ text: scale (R72)] (/ 0M 1M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [/ text: scale (R72)] ((fn [a b] (/ a b)) 0M 1M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [/ text: notation (S5/R72)] (/ 0M 1.0M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+1M (BigDecimal)
+  [/ text: notation (S5/R72)] ((fn [a b] (/ a b)) 0M 1.0M) [fn]: jank 0.0M (BigDecimal); Clojure 0E+1M (BigDecimal)
+  [/ text: notation (S5/R72)] (/ 0M 1.50M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [/ text: scale (R72)] (/ 0M 100M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [D4: quot is a long] (quot 0M 1M) [literals]: jank 0; Clojure 0M (BigDecimal)
+  [D4: quot is a long] ((fn [a b] (quot a b)) 0M 1M) [fn]: jank 0; Clojure 0M (BigDecimal)
+  [D4: quot is a long] (quot 0M 1.0M) [literals]: jank 0; Clojure 0E+1M (BigDecimal)
+  [D4: quot through doubles (UB cast past i64)] (quot 1E+130M 1M) [literals]: jank throws (UB: out-of-range double to i64 cast); Clojure 1E+130M (BigDecimal)
+  [D4: quot through doubles (UB cast past i64)] ((fn [a b] (quot a b)) 1E+130M 1M) [fn]: jank throws (UB: out-of-range double to i64 cast); Clojure 1E+130M (BigDecimal)
+  [D4: quot through doubles (UB cast past i64)] (quot 1E+130M 1.0M) [literals]: jank throws (UB: out-of-range double to i64 cast); Clojure 1E+130M (BigDecimal)
+  [rem text: scale (R72)] (rem 0M 1M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [rem text: scale (R72)] ((fn [a b] (rem a b)) 0M 1M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [rem text: scale (R72)] (rem 0M 1.0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (kind)] (rem 0M 1/2) [literals]: jank 0N (BigInt); Clojure 0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (kind)] ((fn [a b] (rem a b)) 0M 1/2) [fn]: jank 0N (BigInt); Clojure 0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (kind)] (rem 0M 1/4) [literals]: jank 0N (BigInt); Clojure 0M (BigDecimal)
+  [rem text: notation (S5/R72)] (rem 1E+2M 1M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [rem text: notation (S5/R72)] ((fn [a b] (rem a b)) 1E+2M 1M) [fn]: jank 0.0M (BigDecimal); Clojure 0E+2M (BigDecimal)
+  [rem text: notation (S5/R72)] (rem 1E+2M 1.0M) [literals]: jank 0.0M (BigDecimal); Clojure 0E+1M (BigDecimal)
+  [S7: rem is a 128-digit fmod] (rem 1E+130M 1.50M) [literals]: jank 99999998.5M (BigDecimal); Clojure 1.00M (BigDecimal)
+  [S7: rem is a 128-digit fmod] ((fn [a b] (rem a b)) 1E+130M 1.50M) [fn]: jank 99999998.5M (BigDecimal); Clojure 1.00M (BigDecimal)
+  [S7: rem is a 128-digit fmod] (rem 1E+130M 7.5M) [literals]: jank -4200000000.0M (BigDecimal); Clojure 2.5M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (throws)] (rem 1/2 0.1M) [literals]: jank throws (Division by zero is not permitted.); Clojure 0.0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (throws)] ((fn [a b] (rem a b)) 1/2 0.1M) [fn]: jank throws (Division by zero is not permitted.); Clojure 0.0M (BigDecimal)
+  [S8: rem with a ratio truncates the decimal (throws)] (rem 1/2 0.001M) [literals]: jank throws (Division by zero is not permitted.); Clojure 0.0M (BigDecimal)
+  [max text: scale (R72)] (max 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [max text: scale (R72)] ((fn [a b] (max a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [max text: scale (R72)] (max 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [max text: notation (S5/R72)] (max 0M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [max text: notation (S5/R72)] ((fn [a b] (max a b)) 0M 1E+2M) [fn]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [V57: max keeps its first operand on a tie] (max 0M 0) [literals]: jank 0.0M (BigDecimal); Clojure 0 (long)
+  [V57: max keeps its first operand on a tie] ((fn [a b] (max a b)) 0M 0) [fn]: jank 0.0M (BigDecimal); Clojure 0 (long)
+  [max text: notation (S5/R72)] (max 0.00M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [V57: max keeps its first operand on a tie] (max 0.00M 0) [literals]: jank 0.0M (BigDecimal); Clojure 0 (long)
+  [min text: scale (R72)] (min 0M 0M) [literals]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [min text: scale (R72)] ((fn [a b] (min a b)) 0M 0M) [fn]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [min text: scale (R72)] (min 0M 0.00M) [literals]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [min text: notation (S5/R72)] (min 100M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [min text: notation (S5/R72)] ((fn [a b] (min a b)) 100M 1E+2M) [fn]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [min text: notation (S5/R72)] (min 1E+2M 1E+2M) [literals]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [str text: scale (R72)] (str 0M) [literal]: jank 0.0 (String); Clojure 0 (String)
+  [N7-1: hash of a BigDecimal] (hash 0M) [literal]: jank 3774723415; Clojure 0
+  [inc text: scale (R72)] (inc 0M) [literal]: jank 1.0M (BigDecimal); Clojure 1M (BigDecimal)
+  [dec text: scale (R72)] (dec 0M) [literal]: jank -1.0M (BigDecimal); Clojure -1M (BigDecimal)
+  [abs text: scale (R72)] (abs 0M) [literal]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [bigdec text: scale (R72)] (bigdec 0M) [literal]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [str text: scale (R72)] (str 0.00M) [literal]: jank 0.0 (String); Clojure 0.00 (String)
+  [N7-1: hash of a BigDecimal] (hash 0.00M) [literal]: jank 3774723415; Clojure 0
+  [inc text: scale (R72)] (inc 0.00M) [literal]: jank 1.0M (BigDecimal); Clojure 1.00M (BigDecimal)
+  [dec text: scale (R72)] (dec 0.00M) [literal]: jank -1.0M (BigDecimal); Clojure -1.00M (BigDecimal)
+  [abs text: scale (R72)] (abs 0.00M) [literal]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [bigdec text: scale (R72)] (bigdec 0.00M) [literal]: jank 0.0M (BigDecimal); Clojure 0.00M (BigDecimal)
+  [str text: scale (R72)] (str 1M) [literal]: jank 1.0 (String); Clojure 1 (String)
+  [N7-1: hash of a BigDecimal] (hash 1M) [literal]: jank 3307139568; Clojure 31
+  [inc text: scale (R72)] (inc 1M) [literal]: jank 2.0M (BigDecimal); Clojure 2M (BigDecimal)
+  [dec text: scale (R72)] (dec 1M) [literal]: jank 0.0M (BigDecimal); Clojure 0M (BigDecimal)
+  [abs text: scale (R72)] (abs 1M) [literal]: jank 1.0M (BigDecimal); Clojure 1M (BigDecimal)
+  [bigdec text: scale (R72)] (bigdec 1M) [literal]: jank 1.0M (BigDecimal); Clojure 1M (BigDecimal)
+  [str text: notation (S5/R72)] (str 1E+2M) [literal]: jank 100.0 (String); Clojure 1E+2 (String)
+  [abs text: notation (S5/R72)] (abs 1E+2M) [literal]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [bigdec text: notation (S5/R72)] (bigdec 1E+2M) [literal]: jank 100.0M (BigDecimal); Clojure 1E+2M (BigDecimal)
+  [S12: long of a huge BigDecimal saturates] (long 1E+130M) [literal]: jank 9223372036854775807 (long); Clojure throws (Value out of range for long)
+  [double printing (round 2), not a BigDecimal difference] (double 1E+130M) [literal]: jank 1e+130 (double); Clojure 1.0E130 (double)
+  [double printing (round 2), not a BigDecimal difference] (double 1E-7M) [literal]: jank 1e-07 (double); Clojure 1.0E-7 (double)

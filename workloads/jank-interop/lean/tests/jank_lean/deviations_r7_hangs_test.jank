@@ -1,0 +1,44 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 7 (main 94d32623): predictions from REPORT-7, each test asserting
+; Clojure 1.12's result (checked on Clojure 1.12.3), so a failure confirms one. Tests named
+; "control" are predicted to pass on jank.
+; Paths (REPORT-6 section 3): jank types a literal or a let-bound literal natively (an `int` when it
+; fits 32 bits, else a `long`), inlines two-argument `+ - * / < <= > >= min max`, `count`, `inc`,
+; `dec`, `hash`, `zero?`, `abs`, ... into core/math.hpp's templates on those native types, and passes
+; a fn parameter as an object. Each test's comment says which path it runs:
+;   [literals] / inlined: the call written directly with literal or native arguments;
+;   [let]: let-bound literals, still native;
+;   [fn] / fn value: the values pass through a fn's object parameters, or the clojure.core fn is
+;   called as a value (apply), so no native operand reaches the template;
+;   [loop]: a loop counter (dotimes, loop/recur).
+; Every form is inside a deftest body, so it is compiled, not interpreted at the top level.
+; Forms jank may refuse go through `ev` (eval of read-string), so a refusal fails its own test.
+; Tests marked "; native" need jank's native typing to show the deviation (they run on Clojure too).
+; Non-ASCII text is written with \u escapes or (char n): run under a UTF-8 locale.
+; Run each test in its own process, from tests/ with `--module-path .`.
+; Each test here is predicted to hang (or run for minutes) on jank: run each with a time limit.
+(ns jank-lean.deviations-r7-hangs-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]))
+
+(defn- ev [s] (eval (read-string s)))
+
+(defn- id [x] x)
+
+(defn- pusher [x]
+  (first (filter (fn [n] (= (bit-and (hash n) 31) (bit-and (hash x) 31))) (range 2 100000))))
+
+;; vP3 (R24's class through dotimes): core.jank dotimes 2694-2709 starts the counter at the int literal
+;; 0; (recur (unchecked-inc i)) stores convert<int>::from_object (static_cast, builtin.hpp 236-245): after
+;; 2147483647 the counter is -2147483648 and (< i n) holds again, so the loop would never end.
+;; Clojure's dotimes counts with a primitive long.
+(deftest x17-dotimes-counts-past-int-max
+  ; [loop] jank predicted: -2147483648 (the body throws at the first negative counter). Clojure :done.
+  (is (= :done (try (dotimes [i 2147483649] (when (neg? i) (throw (ex-info "wrapped" {:i i}))))
+                    :done
+                    (catch cpp/jank.runtime.object_ref e (:i (ex-data e)))))))
+
+(deftest x17b-loop-counter-past-int-max
+  ; [loop] (recur (inc i)): inc(int) returns the exact i64 (math.hpp 1184-1205); recur assigns it to the
+  ; int local (modulo 2^32). jank predicted: -2147483648. Clojure :done.
+  (is (= :done (loop [i 0] (cond (neg? i) i (< i 2147483649) (recur (inc i)) :else :done)))))

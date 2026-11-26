@@ -1,0 +1,640 @@
+test	path	form	clojure	jank_predicted	verdict	id
+g1-add-literals	literals	(+ 2147483647 3)	2147483650	-2147483646	fail	R25
+g2-add-let	let	(let [a 2147483647 b 3] (+ a b))	2147483650	-2147483646	fail	V53
+g3-add-fn	fn:local	((fn [a b] (+ a b)) (identity 2147483647) (identity 3))	2147483650	-2147483646	fail	D1
+g4-add-mixed	mixed	((fn [a] (+ a 3)) (identity 2147483647))	2147483650	-2147483646	fail	D1
+g5-add-literals	literals	(+ 9223372036854775807 9223372036854775806)	throws (long overflow)	-3	fail	LG2
+g6-add-let	let	(let [a 9223372036854775807 b 9223372036854775806] (+ a b))	throws (long overflow)	-3	fail	LG2
+g7-add-fn	fn:defn	(g-add (identity 9223372036854775807) (identity 9223372036854775806))	throws (long overflow)	-3	fail	LG2
+g8-add-mixed	mixed	((fn [b] (+ 9223372036854775807 b)) (identity 9223372036854775806))	throws (long overflow)	-3	fail	LG2
+g9-add-literals	literals	(+ -2147483649 9223372036854775806)	9223372034707292157	9223372034707292157	pass	-
+g10-add-let	let	(let [a -2147483649 b 9223372036854775806] (+ a b))	9223372034707292157	9223372034707292157	pass	-
+g11-add-fn	fn:local	((fn [a b] (+ a b)) -2147483649 9223372036854775806)	9223372034707292157	9223372034707292157	pass	-
+g12-add-mixed	mixed	((fn [b] (+ -2147483649 b)) 9223372036854775806)	9223372034707292157	9223372034707292157	pass	-
+g13-add-literals	literals	(+ 0 -2147483649)	-2147483649	-2147483649	pass	-
+g14-add-let	let	(let [a 0 b -2147483649] (+ a b))	-2147483649	-2147483649	pass	-
+g15-add-fn	fn:apply	(apply + [0 -2147483649])	-2147483649	-2147483649	pass	-
+g16-add-mixed	mixed	((fn [b] (+ 0 b)) -2147483649)	-2147483649	-2147483649	pass	-
+g17-sub-literals	literals	(- -9223372036854775807 2)	throws (long overflow)	9223372036854775807	fail	LG2
+g18-sub-let	let	(let [a -9223372036854775807 b 2] (- a b))	throws (long overflow)	9223372036854775807	fail	LG2
+g19-sub-fn	fn:apply	(apply - [(identity -9223372036854775807) (identity 2)])	throws (long overflow)	9223372036854775807	fail	LG2
+g20-sub-mixed	mixed	((fn [a] (- a 2)) (identity -9223372036854775807))	throws (long overflow)	9223372036854775807	fail	LG2
+g21-sub-literals	literals	(- -2147483647 65536)	-2147549183	2147418113	fail	R25
+g22-sub-let	let	(let [a -2147483647 b 65536] (- a b))	-2147549183	2147418113	fail	V53
+g23-sub-fn	fn:apply	(apply - [-2147483647 65536])	-2147549183	2147418113	fail	D1
+g24-sub-mixed	mixed	((fn [b] (- -2147483647 b)) 65536)	-2147549183	2147418113	fail	D1
+g25-sub-literals	literals	(- -1N -3037000500)	3037000499N	3037000499N	pass	-
+g26-sub-let	let	(let [a -1N b -3037000500] (- a b))	3037000499N	3037000499N	pass	-
+g27-sub-fn	fn:defn	(g-sub -1N (identity -3037000500))	3037000499N	3037000499N	pass	-
+g28-sub-mixed	mixed	((fn [a] (- a -3037000500)) -1N)	3037000499N	3037000499N	pass	-
+g29-sub-literals	literals	(- 3 -2)	5	5	pass	-
+g30-sub-let	let	(let [a 3 b -2] (- a b))	5	5	pass	-
+g31-sub-fn	fn:apply	(apply - [(identity 3) -2])	5	5	pass	-
+g32-sub-mixed	mixed	((fn [b] (- 3 b)) -2)	5	5	pass	-
+g33-mul-literals	literals	(* 9223372036854775807 65536)	throws (long overflow)	-65536	fail	LG2
+g34-mul-let	let	(let [a 9223372036854775807 b 65536] (* a b))	throws (long overflow)	-65536	fail	LG2
+g35-mul-fn	fn:local	((fn [a b] (* a b)) 9223372036854775807 65536)	throws (long overflow)	-65536	fail	LG2
+g36-mul-mixed	mixed	((fn [a] (* a 65536)) 9223372036854775807)	throws (long overflow)	-65536	fail	LG2
+g37-mul-literals	literals	(* -2147483647 2)	-4294967294	2	fail	R25
+g38-mul-let	let	(let [a -2147483647 b 2] (* a b))	-4294967294	2	fail	V53
+g39-mul-fn	fn:local	((fn [a b] (* a b)) (identity -2147483647) 2)	-4294967294	2	fail	D1
+g40-mul-mixed	mixed	((fn [b] (* -2147483647 b)) 2)	-4294967294	2	fail	D1
+g41-mul-literals	literals	(* 1 2147483648)	2147483648	2147483648	pass	-
+g42-mul-let	let	(let [a 1 b 2147483648] (* a b))	2147483648	2147483648	pass	-
+g43-mul-fn	fn:defn	(g-mul (identity 1) 2147483648)	2147483648	2147483648	pass	-
+g44-mul-mixed	mixed	((fn [a] (* a 2147483648)) (identity 1))	2147483648	2147483648	pass	-
+g45-mul-literals	literals	(* -1 9223372036854775808N)	-9223372036854775808N	-9223372036854775808N	pass	-
+g46-mul-let	let	(let [a -1 b 9223372036854775808N] (* a b))	-9223372036854775808N	-9223372036854775808N	pass	-
+g47-mul-fn	fn:apply	(apply * [(identity -1) 9223372036854775808N])	-9223372036854775808N	-9223372036854775808N	pass	-
+g48-mul-mixed	mixed	((fn [b] (* -1 b)) 9223372036854775808N)	-9223372036854775808N	-9223372036854775808N	pass	-
+g49-addp-literals	literals	(+' 3037000500 -9223372036854775808)	-9223372033817775308	-9223372033817775308N	fail	R5
+g50-addp-let	let	(let [a 3037000500 b -9223372036854775808] (+' a b))	-9223372033817775308	-9223372033817775308N	fail	R5
+g51-addp-fn	fn:defn	(g-addp 3037000500 (dec' -9223372036854775807))	-9223372033817775308	-9223372033817775308	pass	-
+g52-addp-mixed	mixed	((fn [a] (+' a -9223372036854775808)) 3037000500)	-9223372033817775308	-9223372033817775308N	fail	R5
+g53-addp-literals	literals	(+' 65536 -9223372036854775808)	-9223372036854710272	-9223372036854710272N	fail	R5
+g54-addp-let	let	(let [a 65536 b -9223372036854775808] (+' a b))	-9223372036854710272	-9223372036854710272N	fail	R5
+g55-addp-fn	fn:local	((fn [a b] (+' a b)) 65536 (dec' -9223372036854775807))	-9223372036854710272	-9223372036854710272	pass	-
+g56-addp-mixed	mixed	((fn [b] (+' 65536 b)) (dec' -9223372036854775807))	-9223372036854710272	-9223372036854710272	pass	-
+g57-addp-literals	literals	(+' -3037000500 -3037000500)	-6074001000	-6074001000	pass	-
+g58-addp-let	let	(let [a -3037000500 b -3037000500] (+' a b))	-6074001000	-6074001000	pass	-
+g59-addp-fn	fn:defn	(g-addp -3037000500 (identity -3037000500))	-6074001000	-6074001000	pass	-
+g60-addp-mixed	mixed	((fn [a] (+' a -3037000500)) -3037000500)	-6074001000	-6074001000	pass	-
+g61-addp-literals	literals	(+' -9223372036854775807 -2147483647)	-9223372039002259454N	-9223372039002259454N	pass	-
+g62-addp-let	let	(let [a -9223372036854775807 b -2147483647] (+' a b))	-9223372039002259454N	-9223372039002259454N	pass	-
+g63-addp-fn	fn:local	((fn [a b] (+' a b)) (identity -9223372036854775807) -2147483647)	-9223372039002259454N	-9223372039002259454N	pass	-
+g64-addp-mixed	mixed	((fn [b] (+' -9223372036854775807 b)) -2147483647)	-9223372039002259454N	-9223372039002259454N	pass	-
+g65-subp-literals	literals	(-' -3 9223372036854775807)	-9223372036854775810N	9223372036854775806N	fail	V54
+g66-subp-let	let	(let [a -3 b 9223372036854775807] (-' a b))	-9223372036854775810N	9223372036854775806N	fail	V54
+g67-subp-fn	fn:apply	(apply -' [(identity -3) 9223372036854775807])	-9223372036854775810N	9223372036854775806N	fail	V54
+g68-subp-mixed	mixed	((fn [a] (-' a 9223372036854775807)) (identity -3))	-9223372036854775810N	9223372036854775806N	fail	V54
+g69-subp-literals	literals	(-' -9223372036854775808 -2)	-9223372036854775806	-9223372036854775806N	fail	R5
+g70-subp-let	let	(let [a -9223372036854775808 b -2] (-' a b))	-9223372036854775806	-9223372036854775806N	fail	R5
+g71-subp-fn	fn:defn	(g-subp (dec' -9223372036854775807) (identity -2))	-9223372036854775806	-9223372036854775806	pass	-
+g72-subp-mixed	mixed	((fn [a] (-' a -2)) (dec' -9223372036854775807))	-9223372036854775806	-9223372036854775806	pass	-
+g73-subp-literals	literals	(-' 65536 9223372036854775808N)	-9223372036854710272N	-9223372036854710272N	pass	-
+g74-subp-let	let	(let [a 65536 b 9223372036854775808N] (-' a b))	-9223372036854710272N	-9223372036854710272N	pass	-
+g75-subp-fn	fn:local	((fn [a b] (-' a b)) 65536 9223372036854775808N)	-9223372036854710272N	-9223372036854710272N	pass	-
+g76-subp-mixed	mixed	((fn [a] (-' a 9223372036854775808N)) 65536)	-9223372036854710272N	-9223372036854710272N	pass	-
+g77-subp-literals	literals	(-' 2147483648 9223372036854775807)	-9223372034707292159	-9223372034707292159	pass	-
+g78-subp-let	let	(let [a 2147483648 b 9223372036854775807] (-' a b))	-9223372034707292159	-9223372034707292159	pass	-
+g79-subp-fn	fn:local	((fn [a b] (-' a b)) 2147483648 (identity 9223372036854775807))	-9223372034707292159	-9223372034707292159	pass	-
+g80-subp-mixed	mixed	((fn [a] (-' a 9223372036854775807)) 2147483648)	-9223372034707292159	-9223372034707292159	pass	-
+g81-mulp-literals	literals	(*' -9223372036854775808 1)	-9223372036854775808	-9223372036854775808N	fail	R5
+g82-mulp-let	let	(let [a -9223372036854775808 b 1] (*' a b))	-9223372036854775808	-9223372036854775808N	fail	R5
+g83-mulp-fn	fn:defn	(g-mulp -9223372036854775808 (identity 1))	-9223372036854775808	-9223372036854775808N	fail	R5
+g84-mulp-mixed	mixed	((fn [a] (*' a 1)) -9223372036854775808)	-9223372036854775808	-9223372036854775808N	fail	R5
+g85-mulp-fn	fn:defn	(g-mulp (dec' -9223372036854775807) (identity 1))	-9223372036854775808	-9223372036854775808	pass	-
+g86-mulp-mixed	mixed	((fn [a] (*' a 1)) (dec' -9223372036854775807))	-9223372036854775808	-9223372036854775808	pass	-
+g87-mulp-literals	literals	(*' 2 9223372036854775806)	18446744073709551612N	18446744073709551612N	pass	-
+g88-mulp-let	let	(let [a 2 b 9223372036854775806] (*' a b))	18446744073709551612N	18446744073709551612N	pass	-
+g89-mulp-fn	fn:defn	(g-mulp 2 9223372036854775806)	18446744073709551612N	18446744073709551612N	pass	-
+g90-mulp-mixed	mixed	((fn [a] (*' a 9223372036854775806)) 2)	18446744073709551612N	18446744073709551612N	pass	-
+g91-mulp-literals	literals	(*' 1 4294967296)	4294967296	4294967296	pass	-
+g92-mulp-let	let	(let [a 1 b 4294967296] (*' a b))	4294967296	4294967296	pass	-
+g93-mulp-fn	fn:apply	(apply *' [1 (identity 4294967296)])	4294967296	4294967296	pass	-
+g94-mulp-mixed	mixed	((fn [b] (*' 1 b)) (identity 4294967296))	4294967296	4294967296	pass	-
+g95-neg-literals	literals	(- -9223372036854775808)	throws (long overflow)	9223372036854775808N	fail	R5
+g96-neg-let	let	(let [a -9223372036854775808] (- a))	throws (long overflow)	9223372036854775808N	fail	R5
+g97-neg-fn	fn:defn	(g-neg (dec' -9223372036854775807))	throws (long overflow)	-9223372036854775808	fail	LG2
+g98-neg-fn	fn:apply	(apply - [-9223372036854775808])	throws (long overflow)	9223372036854775808N	fail	R5
+g99-neg-literals	literals	(- 65536)	-65536	-65536	pass	-
+g100-neg-let	let	(let [a 65536] (- a))	-65536	-65536	pass	-
+g101-neg-fn	fn:defn	(g-neg (identity 65536))	-65536	-65536	pass	-
+g102-neg-literals	literals	(- 3)	-3	-3	pass	-
+g103-neg-let	let	(let [a 3] (- a))	-3	-3	pass	-
+g104-neg-fn	fn:local	((fn [a] (- a)) 3)	-3	-3	pass	-
+g105-inc-literals	literals	(inc -9223372036854775808)	-9223372036854775807	-9223372036854775807N	fail	R5
+g106-inc-let	let	(let [a -9223372036854775808] (inc a))	-9223372036854775807	-9223372036854775807N	fail	R5
+g107-inc-fn	fn:apply	(apply inc [-9223372036854775808])	-9223372036854775807	-9223372036854775807N	fail	R5
+g108-inc-fn	fn:defn	(g-inc (dec' -9223372036854775807))	-9223372036854775807	-9223372036854775807	pass	-
+g109-inc-literals	literals	(inc 1)	2	2	pass	-
+g110-inc-let	let	(let [a 1] (inc a))	2	2	pass	-
+g111-inc-fn	fn:apply	(apply inc [1])	2	2	pass	-
+g112-inc-literals	literals	(inc -2147483647)	-2147483646	-2147483646	pass	-
+g113-inc-let	let	(let [a -2147483647] (inc a))	-2147483646	-2147483646	pass	-
+g114-inc-fn	fn:defn	(g-inc -2147483647)	-2147483646	-2147483646	pass	-
+g115-dec-literals	literals	(dec -9223372036854775808)	throws (long overflow)	-9223372036854775809N	fail	R5
+g116-dec-let	let	(let [a -9223372036854775808] (dec a))	throws (long overflow)	-9223372036854775809N	fail	R5
+g117-dec-fn	fn:defn	(g-dec (dec' -9223372036854775807))	throws (long overflow)	throws Overflow on increment. (an object)	pass	-
+g118-dec-fn	fn:apply	(apply dec [-9223372036854775808])	throws (long overflow)	-9223372036854775809N	fail	R5
+g119-dec-literals	literals	(dec 65536)	65535	65535	pass	-
+g120-dec-let	let	(let [a 65536] (dec a))	65535	65535	pass	-
+g121-dec-fn	fn:apply	(apply dec [65536])	65535	65535	pass	-
+g122-dec-literals	literals	(dec 3)	2	2	pass	-
+g123-dec-let	let	(let [a 3] (dec a))	2	2	pass	-
+g124-dec-fn	fn:apply	(apply dec [(identity 3)])	2	2	pass	-
+g125-incp-literals	literals	(inc' -9223372036854775808)	-9223372036854775807	-9223372036854775807N	fail	R5
+g126-incp-let	let	(let [a -9223372036854775808] (inc' a))	-9223372036854775807	-9223372036854775807N	fail	R5
+g127-incp-fn	fn:apply	(apply inc' [-9223372036854775808])	-9223372036854775807	-9223372036854775807N	fail	R5
+g128-incp-fn	fn:defn	(g-incp (dec' -9223372036854775807))	-9223372036854775807	-9223372036854775807	pass	-
+g129-incp-literals	literals	(inc' -2)	-1	-1	pass	-
+g130-incp-let	let	(let [a -2] (inc' a))	-1	-1	pass	-
+g131-incp-fn	fn:apply	(apply inc' [-2])	-1	-1	pass	-
+g132-incp-literals	literals	(inc' 2)	3	3	pass	-
+g133-incp-let	let	(let [a 2] (inc' a))	3	3	pass	-
+g134-incp-fn	fn:defn	(g-incp 2)	3	3	pass	-
+g135-decp-literals	literals	(dec' 9223372036854775806)	9223372036854775805	9223372036854775805	pass	-
+g136-decp-let	let	(let [a 9223372036854775806] (dec' a))	9223372036854775805	9223372036854775805	pass	-
+g137-decp-fn	fn:defn	(g-decp 9223372036854775806)	9223372036854775805	9223372036854775805	pass	-
+g138-decp-literals	literals	(dec' 0)	-1	-1	pass	-
+g139-decp-let	let	(let [a 0] (dec' a))	-1	-1	pass	-
+g140-decp-fn	fn:defn	(g-decp 0)	-1	-1	pass	-
+g141-decp-literals	literals	(dec' 2147483648)	2147483647	2147483647	pass	-
+g142-decp-let	let	(let [a 2147483648] (dec' a))	2147483647	2147483647	pass	-
+g143-decp-fn	fn:local	((fn [a] (dec' a)) (identity 2147483648))	2147483647	2147483647	pass	-
+g144-decp-literals	literals	(dec' 3)	2	2	pass	-
+g145-decp-let	let	(let [a 3] (dec' a))	2	2	pass	-
+g146-decp-fn	fn:local	((fn [a] (dec' a)) 3)	2	2	pass	-
+g147-abs-literals	literals	(abs -9223372036854775808)	-9223372036854775808	9223372036854775808N	fail	R5
+g148-abs-let	let	(let [a -9223372036854775808] (abs a))	-9223372036854775808	9223372036854775808N	fail	R5
+g149-abs-fn	fn:defn	(g-abs (dec' -9223372036854775807))	-9223372036854775808	-9223372036854775808	pass	-
+g150-abs-fn	fn:apply	(apply abs [-9223372036854775808])	-9223372036854775808	9223372036854775808N	fail	R5
+g151-abs-literals	literals	(abs 2147483648)	2147483648	2147483648	pass	-
+g152-abs-let	let	(let [a 2147483648] (abs a))	2147483648	2147483648	pass	-
+g153-abs-fn	fn:local	((fn [a] (abs a)) (identity 2147483648))	2147483648	2147483648	pass	-
+g154-abs-literals	literals	(abs 0)	0	0	pass	-
+g155-abs-let	let	(let [a 0] (abs a))	0	0	pass	-
+g156-abs-fn	fn:local	((fn [a] (abs a)) (identity 0))	0	0	pass	-
+g157-quot-literals	literals	(quot -2147483649 -1N)	2147483649N	2147483649	fail	D4
+g158-quot-let	let	(let [a -2147483649 b -1N] (quot a b))	2147483649N	2147483649	fail	D4
+g159-quot-fn	fn:defn	(g-quot -2147483649 -1N)	2147483649N	2147483649	fail	D4
+g160-quot-mixed	mixed	((fn [b] (quot -2147483649 b)) -1N)	2147483649N	2147483649	fail	D4
+g161-quot-literals	literals	(quot 1N 9223372036854775806)	0N	0	fail	D4
+g162-quot-let	let	(let [a 1N b 9223372036854775806] (quot a b))	0N	0	fail	D4
+g163-quot-fn	fn:local	((fn [a b] (quot a b)) 1N 9223372036854775806)	0N	0	fail	D4
+g164-quot-mixed	mixed	((fn [b] (quot 1N b)) 9223372036854775806)	0N	0	fail	D4
+g165-quot-literals	literals	(quot -3037000500 -3)	1012333500	1012333500	pass	-
+g166-quot-let	let	(let [a -3037000500 b -3] (quot a b))	1012333500	1012333500	pass	-
+g167-quot-fn	fn:defn	(g-quot -3037000500 -3)	1012333500	1012333500	pass	-
+g168-quot-mixed	mixed	((fn [a] (quot a -3)) -3037000500)	1012333500	1012333500	pass	-
+g169-quot-literals	literals	(quot -9223372036854775808 4294967296)	-2147483648	-2147483648	pass	-
+g170-quot-let	let	(let [a -9223372036854775808 b 4294967296] (quot a b))	-2147483648	-2147483648	pass	-
+g171-quot-fn	fn:defn	(g-quot -9223372036854775808 4294967296)	-2147483648	-2147483648	pass	-
+g172-quot-mixed	mixed	((fn [b] (quot -9223372036854775808 b)) 4294967296)	-2147483648	-2147483648	pass	-
+g173-rem-literals	literals	(rem -9223372036854775808 -2147483647)	-2	-2N	fail	R5
+g174-rem-let	let	(let [a -9223372036854775808 b -2147483647] (rem a b))	-2	-2N	fail	R5
+g175-rem-fn	fn:apply	(apply rem [(dec' -9223372036854775807) (identity -2147483647)])	-2	-2	pass	-
+g176-rem-mixed	mixed	((fn [a] (rem a -2147483647)) (dec' -9223372036854775807))	-2	-2	pass	-
+g177-rem-literals	literals	(rem 2147483648 0)	throws (Divide by zero)	throws Division by zero is not permitted. (a std::runtime_error, not an object)	throws	V7
+g178-rem-let	let	(let [a 2147483648 b 0] (rem a b))	throws (Divide by zero)	throws Division by zero is not permitted. (a std::runtime_error, not an object)	throws	V7
+g179-rem-fn	fn:defn	(g-rem 2147483648 (identity 0))	throws (Divide by zero)	throws Division by zero is not permitted. (a std::runtime_error, not an object)	throws	V7
+g180-rem-mixed	mixed	((fn [b] (rem 2147483648 b)) (identity 0))	throws (Divide by zero)	throws Division by zero is not permitted. (a std::runtime_error, not an object)	throws	V7
+g181-rem-literals	literals	(rem 2 -2147483649)	2	2	pass	-
+g182-rem-let	let	(let [a 2 b -2147483649] (rem a b))	2	2	pass	-
+g183-rem-fn	fn:local	((fn [a b] (rem a b)) 2 -2147483649)	2	2	pass	-
+g184-rem-mixed	mixed	((fn [a] (rem a -2147483649)) 2)	2	2	pass	-
+g185-rem-literals	literals	(rem 0 -1N)	0N	0N	pass	-
+g186-rem-let	let	(let [a 0 b -1N] (rem a b))	0N	0N	pass	-
+g187-rem-fn	fn:apply	(apply rem [0 -1N])	0N	0N	pass	-
+g188-rem-mixed	mixed	((fn [a] (rem a -1N)) 0)	0N	0N	pass	-
+g189-min-literals	literals	(min ##Inf 1)	1	1.0	fail	V58
+g190-min-let	let	(let [a ##Inf b 1] (min a b))	1	1.0	fail	V58
+g191-min-fn	fn:defn	(g-min ##Inf 1)	1	1	pass	-
+g192-min-mixed	mixed	((fn [b] (min ##Inf b)) 1)	1	1	pass	-
+g193-min-literals	literals	(min 7/3 0.1M)	throws ArithmeticException (non-terminating decimal expansion)	0.1M	fail	S3
+g194-min-let	let	(let [a 7/3 b 0.1M] (min a b))	throws ArithmeticException (non-terminating decimal expansion)	0.1M	fail	S3
+g195-min-fn	fn:local	((fn [a b] (min a b)) 7/3 0.1M)	throws ArithmeticException (non-terminating decimal expansion)	0.1M	fail	S3
+g196-min-mixed	mixed	((fn [b] (min 7/3 b)) 0.1M)	throws ArithmeticException (non-terminating decimal expansion)	0.1M	fail	S3
+g197-min-literals	literals	(min ##NaN 0N)	##NaN	0N	fail	V56
+g198-min-let	let	(let [a ##NaN b 0N] (min a b))	##NaN	0N	fail	V56
+g199-min-fn	fn:local	((fn [a b] (min a b)) ##NaN 0N)	##NaN	0N	fail	V56
+g200-min-mixed	mixed	((fn [b] (min ##NaN b)) 0N)	##NaN	0N	fail	V56
+g201-min-literals	literals	(min 7/3 -1)	-1	-1	pass	-
+g202-min-let	let	(let [a 7/3 b -1] (min a b))	-1	-1	pass	-
+g203-min-fn	fn:local	((fn [a b] (min a b)) 7/3 -1)	-1	-1	pass	-
+g204-min-mixed	mixed	((fn [a] (min a -1)) 7/3)	-1	-1	pass	-
+g205-min-literals	literals	(min ##Inf ##-Inf)	##-Inf	##-Inf	pass	-
+g206-min-let	let	(let [a ##Inf b ##-Inf] (min a b))	##-Inf	##-Inf	pass	-
+g207-min-fn	fn:apply	(apply min [##Inf ##-Inf])	##-Inf	##-Inf	pass	-
+g208-min-mixed	mixed	((fn [a] (min a ##-Inf)) ##Inf)	##-Inf	##-Inf	pass	-
+g209-min-literals	literals	(min 0.5M 1N)	0.5M	0.5M	pass	-
+g210-min-let	let	(let [a 0.5M b 1N] (min a b))	0.5M	0.5M	pass	-
+g211-min-fn	fn:defn	(g-min 0.5M 1N)	0.5M	0.5M	pass	-
+g212-min-mixed	mixed	((fn [b] (min 0.5M b)) 1N)	0.5M	0.5M	pass	-
+g213-max-literals	literals	(max -1.0 -1)	-1	-1.0	fail	V58
+g214-max-let	let	(let [a -1.0 b -1] (max a b))	-1	-1.0	fail	V58
+g215-max-fn	fn:defn	(g-max -1.0 -1)	-1	-1.0	fail	V57
+g216-max-mixed	mixed	((fn [b] (max -1.0 b)) -1)	-1	-1.0	fail	V57
+g217-max-literals	literals	(max 1/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	1.0M	fail	S3
+g218-max-let	let	(let [a 1/3 b 1M] (max a b))	throws ArithmeticException (non-terminating decimal expansion)	1.0M	fail	S3
+g219-max-fn	fn:local	((fn [a b] (max a b)) 1/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	1.0M	fail	S3
+g220-max-mixed	mixed	((fn [a] (max a 1M)) 1/3)	throws ArithmeticException (non-terminating decimal expansion)	1.0M	fail	S3
+g221-max-literals	literals	(max -1 ##NaN)	##NaN	-1.0	fail	V56
+g222-max-let	let	(let [a -1 b ##NaN] (max a b))	##NaN	-1.0	fail	V56
+g223-max-fn	fn:defn	(g-max -1 ##NaN)	##NaN	-1	fail	V56
+g224-max-mixed	mixed	((fn [a] (max a ##NaN)) -1)	##NaN	-1	fail	V56
+g225-max-literals	literals	(max 9007199254740992.0 1/3)	9.007199254740992E15	9007199254740992.0	pass	-
+g226-max-let	let	(let [a 9007199254740992.0 b 1/3] (max a b))	9.007199254740992E15	9007199254740992.0	pass	-
+g227-max-fn	fn:apply	(apply max [9007199254740992.0 1/3])	9.007199254740992E15	9007199254740992.0	pass	-
+g228-max-mixed	mixed	((fn [a] (max a 1/3)) 9007199254740992.0)	9.007199254740992E15	9007199254740992.0	pass	-
+g229-max-literals	literals	(max ##-Inf 1/2)	1/2	1/2	pass	-
+g230-max-let	let	(let [a ##-Inf b 1/2] (max a b))	1/2	1/2	pass	-
+g231-max-fn	fn:local	((fn [a b] (max a b)) ##-Inf 1/2)	1/2	1/2	pass	-
+g232-max-mixed	mixed	((fn [a] (max a 1/2)) ##-Inf)	1/2	1/2	pass	-
+g233-max-literals	literals	(max 9007199254740992 0N)	9007199254740992	9007199254740992	pass	-
+g234-max-let	let	(let [a 9007199254740992 b 0N] (max a b))	9007199254740992	9007199254740992	pass	-
+g235-max-fn	fn:local	((fn [a b] (max a b)) 9007199254740992 0N)	9007199254740992	9007199254740992	pass	-
+g236-max-mixed	mixed	((fn [b] (max 9007199254740992 b)) 0N)	9007199254740992	9007199254740992	pass	-
+g237-lt-literals	literals	(< 9007199254740992.0 9007199254740993N)	false	true	fail	R99
+g238-lt-let	let	(let [a 9007199254740992.0 b 9007199254740993N] (< a b))	false	true	fail	R99
+g239-lt-fn	fn:defn	(g-lt 9007199254740992.0 9007199254740993N)	false	true	fail	R99
+g240-lt-mixed	mixed	((fn [a] (< a 9007199254740993N)) 9007199254740992.0)	false	true	fail	R99
+g241-lt-literals	literals	(< 2.5M 7/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g242-lt-let	let	(let [a 2.5M b 7/3] (< a b))	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g243-lt-fn	fn:apply	(apply < [2.5M 7/3])	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g244-lt-mixed	mixed	((fn [b] (< 2.5M b)) 7/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g245-lt-literals	literals	(< 7/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g246-lt-let	let	(let [a 7/3 b 1M] (< a b))	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g247-lt-fn	fn:apply	(apply < [7/3 1M])	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g248-lt-mixed	mixed	((fn [a] (< a 1M)) 7/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g249-lt-literals	literals	(< 9223372036854775807 9007199254740992.0)	false	false	pass	-
+g250-lt-let	let	(let [a 9223372036854775807 b 9007199254740992.0] (< a b))	false	false	pass	-
+g251-lt-fn	fn:defn	(g-lt 9223372036854775807 9007199254740992.0)	false	false	pass	-
+g252-lt-mixed	mixed	((fn [b] (< 9223372036854775807 b)) 9007199254740992.0)	false	false	pass	-
+g253-lt-literals	literals	(< 9007199254740993 -1)	false	false	pass	-
+g254-lt-let	let	(let [a 9007199254740993 b -1] (< a b))	false	false	pass	-
+g255-lt-fn	fn:defn	(g-lt 9007199254740993 -1)	false	false	pass	-
+g256-lt-mixed	mixed	((fn [b] (< 9007199254740993 b)) -1)	false	false	pass	-
+g257-lt-literals	literals	(< 7/3 9223372036854775807)	true	true	pass	-
+g258-lt-let	let	(let [a 7/3 b 9223372036854775807] (< a b))	true	true	pass	-
+g259-lt-fn	fn:defn	(g-lt 7/3 9223372036854775807)	true	true	pass	-
+g260-lt-mixed	mixed	((fn [a] (< a 9223372036854775807)) 7/3)	true	true	pass	-
+g261-lte-literals	literals	(<= 1M 7/3)	throws ArithmeticException (non-terminating decimal expansion)	true	fail	S3
+g262-lte-let	let	(let [a 1M b 7/3] (<= a b))	throws ArithmeticException (non-terminating decimal expansion)	true	fail	S3
+g263-lte-fn	fn:apply	(apply <= [1M 7/3])	throws ArithmeticException (non-terminating decimal expansion)	true	fail	S3
+g264-lte-mixed	mixed	((fn [b] (<= 1M b)) 7/3)	throws ArithmeticException (non-terminating decimal expansion)	true	fail	S3
+g265-lte-literals	literals	(<= 9007199254740993N 9007199254740992.0)	true	false	fail	R99
+g266-lte-let	let	(let [a 9007199254740993N b 9007199254740992.0] (<= a b))	true	false	fail	R99
+g267-lte-fn	fn:local	((fn [a b] (<= a b)) 9007199254740993N 9007199254740992.0)	true	false	fail	R99
+g268-lte-mixed	mixed	((fn [b] (<= 9007199254740993N b)) 9007199254740992.0)	true	false	fail	R99
+g269-lte-literals	literals	(<= 0.5M 1/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g270-lte-let	let	(let [a 0.5M b 1/3] (<= a b))	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g271-lte-fn	fn:local	((fn [a b] (<= a b)) 0.5M 1/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g272-lte-mixed	mixed	((fn [b] (<= 0.5M b)) 1/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g273-lte-literals	literals	(<= -1/2 9223372036854775807)	true	true	pass	-
+g274-lte-let	let	(let [a -1/2 b 9223372036854775807] (<= a b))	true	true	pass	-
+g275-lte-fn	fn:apply	(apply <= [-1/2 9223372036854775807])	true	true	pass	-
+g276-lte-mixed	mixed	((fn [b] (<= -1/2 b)) 9223372036854775807)	true	true	pass	-
+g277-lte-literals	literals	(<= 1/3 -1/2)	false	false	pass	-
+g278-lte-let	let	(let [a 1/3 b -1/2] (<= a b))	false	false	pass	-
+g279-lte-fn	fn:apply	(apply <= [1/3 -1/2])	false	false	pass	-
+g280-lte-mixed	mixed	((fn [b] (<= 1/3 b)) -1/2)	false	false	pass	-
+g281-lte-literals	literals	(<= 2.5 ##-Inf)	false	false	pass	-
+g282-lte-let	let	(let [a 2.5 b ##-Inf] (<= a b))	false	false	pass	-
+g283-lte-fn	fn:local	((fn [a b] (<= a b)) 2.5 ##-Inf)	false	false	pass	-
+g284-lte-mixed	mixed	((fn [a] (<= a ##-Inf)) 2.5)	false	false	pass	-
+g285-compare-literals	literals	(compare 9007199254740992.0 9007199254740993N)	0	-1	fail	R99
+g286-compare-let	let	(let [a 9007199254740992.0 b 9007199254740993N] (compare a b))	0	-1	fail	R99
+g287-compare-fn	fn:defn	(g-compare 9007199254740992.0 9007199254740993N)	0	-1	fail	R99
+g288-compare-mixed	mixed	((fn [a] (compare a 9007199254740993N)) 9007199254740992.0)	0	-1	fail	R99
+g289-compare-literals	literals	(compare 7/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	1	fail	S3
+g290-compare-let	let	(let [a 7/3 b 1M] (compare a b))	throws ArithmeticException (non-terminating decimal expansion)	1	fail	S3
+g291-compare-fn	fn:apply	(apply compare [7/3 1M])	throws ArithmeticException (non-terminating decimal expansion)	1	fail	S3
+g292-compare-mixed	mixed	((fn [a] (compare a 1M)) 7/3)	throws ArithmeticException (non-terminating decimal expansion)	1	fail	S3
+g293-compare-literals	literals	(compare 7/3 2.5M)	throws ArithmeticException (non-terminating decimal expansion)	-1	fail	S3
+g294-compare-let	let	(let [a 7/3 b 2.5M] (compare a b))	throws ArithmeticException (non-terminating decimal expansion)	-1	fail	S3
+g295-compare-fn	fn:apply	(apply compare [7/3 2.5M])	throws ArithmeticException (non-terminating decimal expansion)	-1	fail	S3
+g296-compare-mixed	mixed	((fn [a] (compare a 2.5M)) 7/3)	throws ArithmeticException (non-terminating decimal expansion)	-1	fail	S3
+g297-compare-literals	literals	(compare -1/2 9007199254740992)	-1	-1	pass	-
+g298-compare-let	let	(let [a -1/2 b 9007199254740992] (compare a b))	-1	-1	pass	-
+g299-compare-fn	fn:defn	(g-compare -1/2 9007199254740992)	-1	-1	pass	-
+g300-compare-mixed	mixed	((fn [b] (compare -1/2 b)) 9007199254740992)	-1	-1	pass	-
+g301-compare-literals	literals	(compare 1/2 9007199254740993)	-1	-1	pass	-
+g302-compare-let	let	(let [a 1/2 b 9007199254740993] (compare a b))	-1	-1	pass	-
+g303-compare-fn	fn:apply	(apply compare [1/2 9007199254740993])	-1	-1	pass	-
+g304-compare-mixed	mixed	((fn [a] (compare a 9007199254740993)) 1/2)	-1	-1	pass	-
+g305-compare-literals	literals	(compare ##-Inf 2.5)	-1	-1	pass	-
+g306-compare-let	let	(let [a ##-Inf b 2.5] (compare a b))	-1	-1	pass	-
+g307-compare-fn	fn:defn	(g-compare ##-Inf 2.5)	-1	-1	pass	-
+g308-compare-mixed	mixed	((fn [b] (compare ##-Inf b)) 2.5)	-1	-1	pass	-
+g309-equiv-literals	literals	(== 7/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g310-equiv-let	let	(let [a 7/3 b 1M] (== a b))	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g311-equiv-fn	fn:apply	(apply == [7/3 1M])	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g312-equiv-mixed	mixed	((fn [a] (== a 1M)) 7/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g313-equiv-literals	literals	(== 9007199254740992 9007199254740993)	false	true	fail	D5
+g314-equiv-let	let	(let [a 9007199254740992 b 9007199254740993] (== a b))	false	true	fail	D5
+g315-equiv-fn	fn:local	((fn [a b] (== a b)) 9007199254740992 9007199254740993)	false	true	fail	D5
+g316-equiv-mixed	mixed	((fn [a] (== a 9007199254740993)) 9007199254740992)	false	true	fail	D5
+g317-equiv-literals	literals	(== 1/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g318-equiv-let	let	(let [a 1/3 b 1M] (== a b))	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g319-equiv-fn	fn:local	((fn [a b] (== a b)) 1/3 1M)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g320-equiv-mixed	mixed	((fn [a] (== a 1M)) 1/3)	throws ArithmeticException (non-terminating decimal expansion)	false	fail	S3
+g321-equiv-literals	literals	(== 0N 9223372036854775807)	false	false	pass	-
+g322-equiv-let	let	(let [a 0N b 9223372036854775807] (== a b))	false	false	pass	-
+g323-equiv-fn	fn:apply	(apply == [0N 9223372036854775807])	false	false	pass	-
+g324-equiv-mixed	mixed	((fn [a] (== a 9223372036854775807)) 0N)	false	false	pass	-
+g325-equiv-literals	literals	(== 1M 9007199254740992)	false	false	pass	-
+g326-equiv-let	let	(let [a 1M b 9007199254740992] (== a b))	false	false	pass	-
+g327-equiv-fn	fn:defn	(g-equiv 1M 9007199254740992)	false	false	pass	-
+g328-equiv-mixed	mixed	((fn [b] (== 1M b)) 9007199254740992)	false	false	pass	-
+g329-equiv-literals	literals	(== 0.5 1180591620717411303424N)	false	false	pass	-
+g330-equiv-let	let	(let [a 0.5 b 1180591620717411303424N] (== a b))	false	false	pass	-
+g331-equiv-fn	fn:local	((fn [a b] (== a b)) 0.5 1180591620717411303424N)	false	false	pass	-
+g332-equiv-mixed	mixed	((fn [a] (== a 1180591620717411303424N)) 0.5)	false	false	pass	-
+g333-lt-literals	literals	(< (count [0 0 0]) (aget (char-array "a") 0))	throws ClassCastException	true	fail	V64
+g334-lt-let	let	(let [a (count [0 0 0]) b (aget (char-array "a") 0)] (< a b))	throws ClassCastException	true	fail	V64
+g335-lt-fn	fn:apply	(apply < [(count [0 0 0]) (aget (char-array "a") 0)])	throws ClassCastException	throws not a number: a character (a std::runtime_error, not an object)	throws	V64
+g336-lt-literals	literals	(< (count [0]) (aget (byte-array [200]) 0))	false	true	fail	LG1+R122
+g337-lt-let	let	(let [a (count [0]) b (aget (byte-array [200]) 0)] (< a b))	false	true	fail	LG1+R122
+g338-lt-fn	fn:apply	(apply < [(count [0]) (aget (byte-array [200]) 0)])	false	true	fail	R122
+g339-lt-literals	literals	(< 2147483647 1)	false	false	pass	-
+g340-lt-let	let	(let [a 2147483647 b 1] (< a b))	false	false	pass	-
+g341-lt-fn	fn:defn	(g-lt 2147483647 1)	false	false	pass	-
+g342-lt-mixed	mixed	((fn [x] (< x 1)) 2147483647)	false	false	pass	-
+g343-lt-literals	literals	(< (hash 1) (aget (float-array [-1.0]) 0))	false	false	pass	-
+g344-lt-let	let	(let [a (hash 1) b (aget (float-array [-1.0]) 0)] (< a b))	false	false	pass	-
+g345-lt-fn	fn:defn	(g-lt (hash 1) (aget (float-array [-1.0]) 0))	false	false	pass	-
+g346-lte-literals	literals	(<= (nil? 0) (float 2.0))	throws ClassCastException	true	fail	V64
+g347-lte-let	let	(let [a (nil? 0) b (float 2.0)] (<= a b))	throws ClassCastException	true	fail	V64
+g348-lte-fn	fn:apply	(apply <= [(nil? 0) (float 2.0)])	throws ClassCastException	throws not a number: false (a std::runtime_error, not an object)	throws	V64
+g349-lte-literals	literals	(<= 0.5 (aget (byte-array [200]) 0))	false	true	fail	R122
+g350-lte-let	let	(let [a 0.5 b (aget (byte-array [200]) 0)] (<= a b))	false	true	fail	R122
+g351-lte-fn	fn:apply	(apply <= [0.5 (aget (byte-array [200]) 0)])	false	true	fail	R122
+g352-lte-literals	literals	(<= (aget (byte-array [1]) 0) -2)	false	false	pass	-
+g353-lte-let	let	(let [a (aget (byte-array [1]) 0) b -2] (<= a b))	false	false	pass	-
+g354-lte-fn	fn:defn	(g-lte (aget (byte-array [1]) 0) -2)	false	false	pass	-
+g355-lte-literals	literals	(<= 2147483647 (aget (float-array [-1.0]) 0))	false	false	pass	-
+g356-lte-let	let	(let [a 2147483647 b (aget (float-array [-1.0]) 0)] (<= a b))	false	false	pass	-
+g357-lte-fn	fn:local	((fn [a b] (<= a b)) 2147483647 (aget (float-array [-1.0]) 0))	false	false	pass	-
+g358-gt-literals	literals	(> (aget (float-array [0.1]) 0) (hash 2))	true	false	fail	V51
+g359-gt-let	let	(let [a (aget (float-array [0.1]) 0) b (hash 2)] (> a b))	true	false	fail	V51
+g360-gt-fn	fn:defn	(g-gt (aget (float-array [0.1]) 0) (hash 2))	true	false	fail	V51
+g361-gt-literals	literals	(> (aget (char-array "a") 0) (hash 3))	throws ClassCastException	false	fail	V64
+g362-gt-let	let	(let [a (aget (char-array "a") 0) b (hash 3)] (> a b))	throws ClassCastException	false	fail	V64
+g363-gt-fn	fn:apply	(apply > [(aget (char-array "a") 0) (hash 3)])	throws ClassCastException	throws not a number: a character (a std::runtime_error, not an object)	throws	V64
+g364-gt-literals	literals	(> (count [0]) 2.5)	false	false	pass	-
+g365-gt-let	let	(let [a (count [0]) b 2.5] (> a b))	false	false	pass	-
+g366-gt-fn	fn:defn	(g-gt (count [0]) 2.5)	false	false	pass	-
+g367-gt-mixed	mixed	((fn [x] (> (count [0]) x)) 2.5)	false	false	pass	-
+g368-gt-literals	literals	(> (aget (float-array [-1.0]) 0) (aget (short-array [-1]) 0))	false	false	pass	-
+g369-gt-let	let	(let [a (aget (float-array [-1.0]) 0) b (aget (short-array [-1]) 0)] (> a b))	false	false	pass	-
+g370-gt-fn	fn:local	((fn [a b] (> a b)) (aget (float-array [-1.0]) 0) (aget (short-array [-1]) 0))	false	false	pass	-
+g371-gte-literals	literals	(>= -2 (count [0 0 0]))	false	true	fail	LG1
+g372-gte-let	let	(let [a -2 b (count [0 0 0])] (>= a b))	false	true	fail	LG1
+g373-gte-fn	fn:apply	(apply >= [-2 (count [0 0 0])])	false	false	pass	-
+g374-gte-mixed	mixed	((fn [x] (>= x (count [0 0 0]))) -2)	false	true	fail	LG1
+g375-gte-literals	literals	(>= (aget (char-array "a") 0) (count [0]))	throws ClassCastException	true	fail	V64
+g376-gte-let	let	(let [a (aget (char-array "a") 0) b (count [0])] (>= a b))	throws ClassCastException	true	fail	V64
+g377-gte-fn	fn:defn	(g-gte (aget (char-array "a") 0) (count [0]))	throws ClassCastException	throws not a number: a character (a std::runtime_error, not an object)	throws	V64
+g378-gte-literals	literals	(>= -1 (aget (int-array [-1]) 0))	true	true	pass	-
+g379-gte-let	let	(let [a -1 b (aget (int-array [-1]) 0)] (>= a b))	true	true	pass	-
+g380-gte-fn	fn:apply	(apply >= [-1 (aget (int-array [-1]) 0)])	true	true	pass	-
+g381-gte-mixed	mixed	((fn [x] (>= x (aget (int-array [-1]) 0))) -1)	true	true	pass	-
+g382-gte-literals	literals	(>= (float 2.0) 4294967296)	false	false	pass	-
+g383-gte-let	let	(let [a (float 2.0) b 4294967296] (>= a b))	false	false	pass	-
+g384-gte-fn	fn:defn	(g-gte (float 2.0) 4294967296)	false	false	pass	-
+g385-min-literals	literals	(min 1.0 -2)	-2	-2.0	fail	V58
+g386-min-let	let	(let [a 1.0 b -2] (min a b))	-2	-2.0	fail	V58
+g387-min-fn	fn:defn	(g-min 1.0 -2)	-2	-2	pass	-
+g388-min-mixed	mixed	((fn [x] (min x -2)) 1.0)	-2	-2	pass	-
+g389-min-literals	literals	(min (int -1) (alength (long-array 0)))	-1	0	fail	LG1|V58
+g390-min-let	let	(let [a (int -1) b (alength (long-array 0))] (min a b))	-1	0	fail	LG1|V58
+g391-min-fn	fn:apply	(apply min [(int -1) (alength (long-array 0))])	-1	-1	pass	-
+g392-min-literals	literals	(min (alength (long-array 0)) (count [0 0 0]))	0	0	pass	-
+g393-min-let	let	(let [a (alength (long-array 0)) b (count [0 0 0])] (min a b))	0	0	pass	-
+g394-min-fn	fn:apply	(apply min [(alength (long-array 0)) (count [0 0 0])])	0	0	pass	-
+g395-min-literals	literals	(min 2147483647 (hash 0))	0	0	pass	-
+g396-min-let	let	(let [a 2147483647 b (hash 0)] (min a b))	0	0	pass	-
+g397-min-fn	fn:apply	(apply min [2147483647 (hash 0)])	0	0	pass	-
+g398-min-mixed	mixed	((fn [x] (min x (hash 0))) 2147483647)	0	0	pass	-
+g399-max-literals	literals	(max 4294967296 (aget (char-array "a") 0))	throws ClassCastException	4294967296	fail	V64
+g400-max-let	let	(let [a 4294967296 b (aget (char-array "a") 0)] (max a b))	throws ClassCastException	4294967296	fail	V64
+g401-max-fn	fn:apply	(apply max [4294967296 (aget (char-array "a") 0)])	throws ClassCastException	throws not a number: a character (a std::runtime_error, not an object)	throws	V64
+g402-max-literals	literals	(max (float 0.1) (aget (byte-array [1]) 0))	1	1.0	fail	V58
+g403-max-let	let	(let [a (float 0.1) b (aget (byte-array [1]) 0)] (max a b))	1	1.0	fail	V58
+g404-max-fn	fn:defn	(g-max (float 0.1) (aget (byte-array [1]) 0))	1	1	pass	-
+g405-max-literals	literals	(max 4294967296 (aget (byte-array [200]) 0))	4294967296	4294967296	pass	-
+g406-max-let	let	(let [a 4294967296 b (aget (byte-array [200]) 0)] (max a b))	4294967296	4294967296	pass	-
+g407-max-fn	fn:apply	(apply max [4294967296 (aget (byte-array [200]) 0)])	4294967296	4294967296	pass	-
+g408-max-literals	literals	(max (bit-and -1 -1) 1)	1	1	pass	-
+g409-max-let	let	(let [a (bit-and -1 -1) b 1] (max a b))	1	1	pass	-
+g410-max-fn	fn:defn	(g-max (bit-and -1 -1) 1)	1	1	pass	-
+g411-add-literals	literals	(+ (aget (byte-array [200]) 0) 1)	-55	201	fail	R122
+g412-add-let	let	(let [a (aget (byte-array [200]) 0) b 1] (+ a b))	-55	201	fail	R122
+g413-add-fn	fn:defn	(g-add (aget (byte-array [200]) 0) 1)	-55	201	fail	R122
+g414-add-literals	literals	(+ (hash 2) 1)	-971005195	3323962101	fail	V51
+g415-add-let	let	(let [a (hash 2) b 1] (+ a b))	-971005195	3323962101	fail	V51
+g416-add-fn	fn:local	((fn [a b] (+ a b)) (hash 2) 1)	-971005195	3323962101	fail	V51
+g417-add-mixed	mixed	((fn [x] (+ (hash 2) x)) 1)	-971005195	3323962101	fail	V51
+g418-add-literals	literals	(+ (alength (long-array 0)) (bit-and -1 -1))	-1	-1	pass	-
+g419-add-let	let	(let [a (alength (long-array 0)) b (bit-and -1 -1)] (+ a b))	-1	-1	pass	-
+g420-add-fn	fn:defn	(g-add (alength (long-array 0)) (bit-and -1 -1))	-1	-1	pass	-
+g421-add-literals	literals	(+ (bit-and 5 -1) (hash 1))	1392991561	1392991561	pass	-
+g422-add-let	let	(let [a (bit-and 5 -1) b (hash 1)] (+ a b))	1392991561	1392991561	pass	-
+g423-add-fn	fn:local	((fn [a b] (+ a b)) (bit-and 5 -1) (hash 1))	1392991561	1392991561	pass	-
+g424-sub-literals	literals	(- (nil? nil) (aget (float-array [0.1]) 0))	throws ClassCastException	0.89999997615814208	fail	V64
+g425-sub-let	let	(let [a (nil? nil) b (aget (float-array [0.1]) 0)] (- a b))	throws ClassCastException	0.89999997615814208	fail	V64
+g426-sub-fn	fn:local	((fn [a b] (- a b)) (nil? nil) (aget (float-array [0.1]) 0))	throws ClassCastException	throws not a number: true (a std::runtime_error, not an object)	throws	V64
+g427-sub-literals	literals	(- (hash 2) 1.0)	-971005197.0	3323962099.0	fail	V51
+g428-sub-let	let	(let [a (hash 2) b 1.0] (- a b))	-971005197.0	3323962099.0	fail	V51
+g429-sub-fn	fn:local	((fn [a b] (- a b)) (hash 2) 1.0)	-971005197.0	3323962099.0	fail	V51
+g430-sub-mixed	mixed	((fn [x] (- (hash 2) x)) 1.0)	-971005197.0	3323962099.0	fail	V51
+g431-sub-literals	literals	(- (alength (long-array 2)) (float 2.0))	0.0	0.0	pass	-
+g432-sub-let	let	(let [a (alength (long-array 2)) b (float 2.0)] (- a b))	0.0	0.0	pass	-
+g433-sub-fn	fn:apply	(apply - [(alength (long-array 2)) (float 2.0)])	0.0	0.0	pass	-
+g434-sub-literals	literals	(- 1.0 1)	0.0	0.0	pass	-
+g435-sub-let	let	(let [a 1.0 b 1] (- a b))	0.0	0.0	pass	-
+g436-sub-fn	fn:local	((fn [a b] (- a b)) 1.0 1)	0.0	0.0	pass	-
+g437-sub-mixed	mixed	((fn [x] (- 1.0 x)) 1)	0.0	0.0	pass	-
+g438-mul-literals	literals	(* (alength (long-array 2)) (aget (byte-array [200]) 0))	-112	400	fail	R122
+g439-mul-let	let	(let [a (alength (long-array 2)) b (aget (byte-array [200]) 0)] (* a b))	-112	400	fail	R122
+g440-mul-fn	fn:apply	(apply * [(alength (long-array 2)) (aget (byte-array [200]) 0)])	-112	400	fail	R122
+g441-mul-literals	literals	(* (aget (char-array "a") 0) (hash 3))	throws ClassCastException	3648797395	fail	V64
+g442-mul-let	let	(let [a (aget (char-array "a") 0) b (hash 3)] (* a b))	throws ClassCastException	3648797395	fail	V64
+g443-mul-fn	fn:apply	(apply * [(aget (char-array "a") 0) (hash 3)])	throws ClassCastException	throws not a number: a character (a std::runtime_error, not an object)	throws	V64
+g444-mul-literals	literals	(* -1 -1)	1	1	pass	-
+g445-mul-let	let	(let [a -1 b -1] (* a b))	1	1	pass	-
+g446-mul-fn	fn:defn	(g-mul -1 -1)	1	1	pass	-
+g447-mul-mixed	mixed	((fn [x] (* -1 x)) -1)	1	1	pass	-
+g448-mul-literals	literals	(* (alength (long-array 0)) 1.0)	0.0	0.0	pass	-
+g449-mul-let	let	(let [a (alength (long-array 0)) b 1.0] (* a b))	0.0	0.0	pass	-
+g450-mul-fn	fn:local	((fn [a b] (* a b)) (alength (long-array 0)) 1.0)	0.0	0.0	pass	-
+g451-mul-mixed	mixed	((fn [x] (* (alength (long-array 0)) x)) 1.0)	0.0	0.0	pass	-
+g452-div-literals	literals	(/ (float 0.1) 2147483647)	0.000000000046566129446347358	0.000000000046566128752457970	fail	V62
+g453-div-let	let	(let [a (float 0.1) b 2147483647] (/ a b))	0.000000000046566129446347358	0.000000000046566128752457970	fail	V62
+g454-div-fn	fn:local	((fn [a b] (/ a b)) (float 0.1) 2147483647)	0.000000000046566129446347358	0.000000000046566128752457970	fail	V62
+g455-div-literals	literals	(/ (aget (float-array [-1.0]) 0) (aget (byte-array [-1]) 0))	1.0	-0.0039215688593685626	fail	R122
+g456-div-let	let	(let [a (aget (float-array [-1.0]) 0) b (aget (byte-array [-1]) 0)] (/ a b))	1.0	-0.0039215688593685626	fail	R122
+g457-div-fn	fn:defn	(g-div (aget (float-array [-1.0]) 0) (aget (byte-array [-1]) 0))	1.0	-0.0039215686274509803	fail	R122
+g458-div-literals	literals	(/ (hash 0) 1)	0	0	pass	-
+g459-div-let	let	(let [a (hash 0) b 1] (/ a b))	0	0	pass	-
+g460-div-fn	fn:local	((fn [a b] (/ a b)) (hash 0) 1)	0	0	pass	-
+g461-div-mixed	mixed	((fn [x] (/ (hash 0) x)) 1)	0	0	pass	-
+g462-div-literals	literals	(/ 0.5 (count [0 0 0]))	0.16666666666666665	0.16666666666666665	pass	-
+g463-div-let	let	(let [a 0.5 b (count [0 0 0])] (/ a b))	0.16666666666666665	0.16666666666666665	pass	-
+g464-div-fn	fn:defn	(g-div 0.5 (count [0 0 0]))	0.16666666666666665	0.16666666666666665	pass	-
+g465-count-literals	literals	(count "\u20ac\u20ac")	2	6	fail	R52
+g466-count-let	let	(let [s "\u20ac\u20ac"] (count s))	2	6	fail	R52
+g467-count-fn	fn:defn	(g-count "\u20ac\u20ac")	2	6	fail	R52
+g468-count-literals	literals	(count "a\ud83d\ude00a")	4	6	fail	R52
+g469-count-let	let	(let [s "a\ud83d\ude00a"] (count s))	4	6	fail	R52
+g470-count-fn	fn:defn	(g-count "a\ud83d\ude00a")	4	6	fail	R52
+g471-count-literals	literals	(count "a\ud83d\ude00\u00e9")	4	7	fail	R52
+g472-count-let	let	(let [s "a\ud83d\ude00\u00e9"] (count s))	4	7	fail	R52
+g473-count-fn	fn:apply	(apply count ["a\ud83d\ude00\u00e9"])	4	7	fail	R52
+g474-count-literals	literals	(count "aa-")	3	3	pass	-
+g475-count-let	let	(let [s "aa-"] (count s))	3	3	pass	-
+g476-count-fn	fn:apply	(apply count ["aa-"])	3	3	pass	-
+g477-count-literals	literals	(count "--a")	3	3	pass	-
+g478-count-let	let	(let [s "--a"] (count s))	3	3	pass	-
+g479-count-fn	fn:local	((fn [x0] (count x0)) "--a")	3	3	pass	-
+g480-nth-literals	literals	(nth "\u20ac\u20aca" -1)	throws (StringIndexOutOfBoundsException)	throws (index out of bounds)	throws	V7
+g481-nth-let	let	(let [s "\u20ac\u20aca" x0 -1] (nth s x0))	throws (StringIndexOutOfBoundsException)	throws (index out of bounds)	throws	V7
+g482-nth-fn	fn:local	((fn [x0 x1] (nth x0 x1)) "\u20ac\u20aca" -1)	throws (StringIndexOutOfBoundsException)	throws (index out of bounds)	throws	V7
+g483-nth-literals	literals	(nth "\u20ac--" 0)	char "\u20ac"	char "\xe2" (invalid UTF-8)	fail	V65
+g484-nth-let	let	(let [s "\u20ac--" x0 0] (nth s x0))	char "\u20ac"	char "\xe2" (invalid UTF-8)	fail	V65
+g485-nth-fn	fn:defn	(g-nth "\u20ac--" 0)	char "\u20ac"	char "\xe2" (invalid UTF-8)	fail	V65
+g486-nth-literals	literals	(nth "--a" 3)	throws (StringIndexOutOfBoundsException)	throws (index out of bounds)	throws	V7
+g487-nth-let	let	(let [s "--a" x0 3] (nth s x0))	throws (StringIndexOutOfBoundsException)	throws (index out of bounds)	throws	V7
+g488-nth-fn	fn:apply	(apply nth ["--a" 3])	throws (StringIndexOutOfBoundsException)	throws (index out of bounds)	throws	V7
+g489-nth-literals	literals	(nth "aa-" 0)	char "a"	char "a"	pass	-
+g490-nth-let	let	(let [s "aa-" x0 0] (nth s x0))	char "a"	char "a"	pass	-
+g491-nth-fn	fn:apply	(apply nth ["aa-" 0])	char "a"	char "a"	pass	-
+g492-nth-literals	literals	(nth "a-" 1)	char "-"	char "-"	pass	-
+g493-nth-let	let	(let [s "a-" x0 1] (nth s x0))	char "-"	char "-"	pass	-
+g494-nth-fn	fn:defn	(g-nth "a-" 1)	char "-"	char "-"	pass	-
+g495-get-literals	literals	(get "\u20ac-\u00e9" 5)	nil	char "\xa9" (invalid UTF-8)	fail	V66
+g496-get-let	let	(let [s "\u20ac-\u00e9" x0 5] (get s x0))	nil	char "\xa9" (invalid UTF-8)	fail	V66
+g497-get-fn	fn:local	((fn [x0 x1] (get x0 x1)) "\u20ac-\u00e9" 5)	nil	char "\xa9" (invalid UTF-8)	fail	V66
+g498-get-literals	literals	(get "\u20ac\u00e9" 3)	nil	char "\xc3" (invalid UTF-8)	fail	V66
+g499-get-let	let	(let [s "\u20ac\u00e9" x0 3] (get s x0))	nil	char "\xc3" (invalid UTF-8)	fail	V66
+g500-get-fn	fn:local	((fn [x0 x1] (get x0 x1)) "\u20ac\u00e9" 3)	nil	char "\xc3" (invalid UTF-8)	fail	V66
+g501-get-literals	literals	(get "\ud83d\ude00aa" 5)	nil	char "a"	fail	V66
+g502-get-let	let	(let [s "\ud83d\ude00aa" x0 5] (get s x0))	nil	char "a"	fail	V66
+g503-get-fn	fn:local	((fn [x0 x1] (get x0 x1)) "\ud83d\ude00aa" 5)	nil	char "a"	fail	V66
+g504-get-literals	literals	(get "-aa" 1)	char "a"	char "a"	pass	-
+g505-get-let	let	(let [s "-aa" x0 1] (get s x0))	char "a"	char "a"	pass	-
+g506-get-fn	fn:defn	(g-get "-aa" 1)	char "a"	char "a"	pass	-
+g507-get-literals	literals	(get "-a\u20ac" -1)	nil	nil	pass	-
+g508-get-let	let	(let [s "-a\u20ac" x0 -1] (get s x0))	nil	nil	pass	-
+g509-get-fn	fn:apply	(apply get ["-a\u20ac" -1])	nil	nil	pass	-
+g510-contains-literals	literals	(contains? "a\u20aca" 3)	false	true	fail	V66
+g511-contains-let	let	(let [s "a\u20aca" x0 3] (contains? s x0))	false	true	fail	V66
+g512-contains-fn	fn:local	((fn [x0 x1] (contains? x0 x1)) "a\u20aca" 3)	false	true	fail	V66
+g513-contains-literals	literals	(contains? "\u00e9a\ud83d\ude00" 5)	false	true	fail	V66
+g514-contains-let	let	(let [s "\u00e9a\ud83d\ude00" x0 5] (contains? s x0))	false	true	fail	V66
+g515-contains-fn	fn:apply	(apply contains? ["\u00e9a\ud83d\ude00" 5])	false	true	fail	V66
+g516-contains-literals	literals	(contains? "-\u20ac-" 4)	false	true	fail	V66
+g517-contains-let	let	(let [s "-\u20ac-" x0 4] (contains? s x0))	false	true	fail	V66
+g518-contains-fn	fn:local	((fn [x0 x1] (contains? x0 x1)) "-\u20ac-" 4)	false	true	fail	V66
+g519-contains-literals	literals	(contains? "\u20ac-" 5)	false	false	pass	-
+g520-contains-let	let	(let [s "\u20ac-" x0 5] (contains? s x0))	false	false	pass	-
+g521-contains-fn	fn:apply	(apply contains? ["\u20ac-" 5])	false	false	pass	-
+g522-contains-literals	literals	(contains? "-\ud83d\ude00\u00e9" 2)	true	true	pass	-
+g523-contains-let	let	(let [s "-\ud83d\ude00\u00e9" x0 2] (contains? s x0))	true	true	pass	-
+g524-contains-fn	fn:local	((fn [x0 x1] (contains? x0 x1)) "-\ud83d\ude00\u00e9" 2)	true	true	pass	-
+g525-subs-literals	literals	(subs "\u20ac\u20ac\u00e9" 9)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g526-subs-let	let	(let [s "\u20ac\u20ac\u00e9" x0 9] (subs s x0))	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g527-subs-fn	fn:local	((fn [x0 x1] (subs x0 x1)) "\u20ac\u20ac\u00e9" 9)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g528-subs-literals	literals	(subs "-\u20ac\ud83d\ude00" 2)	"\ud83d\ude00"	"\x82\xac\xf0\x9f\x98\x80" (invalid UTF-8)	fail	LG3
+g529-subs-let	let	(let [s "-\u20ac\ud83d\ude00" x0 2] (subs s x0))	"\ud83d\ude00"	"\x82\xac\xf0\x9f\x98\x80" (invalid UTF-8)	fail	LG3
+g530-subs-fn	fn:apply	(apply subs ["-\u20ac\ud83d\ude00" 2])	"\ud83d\ude00"	"\x82\xac\xf0\x9f\x98\x80" (invalid UTF-8)	fail	LG3
+g531-subs-literals	literals	(subs "a\u20aca" 6)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g532-subs-let	let	(let [s "a\u20aca" x0 6] (subs s x0))	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g533-subs-fn	fn:local	((fn [x0 x1] (subs x0 x1)) "a\u20aca" 6)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g534-subs-literals	literals	(subs "--\u20ac" 2)	"\u20ac"	"\u20ac"	pass	-
+g535-subs-let	let	(let [s "--\u20ac" x0 2] (subs s x0))	"\u20ac"	"\u20ac"	pass	-
+g536-subs-fn	fn:apply	(apply subs ["--\u20ac" 2])	"\u20ac"	"\u20ac"	pass	-
+g537-subs-literals	literals	(subs "\u20ac\u20aca" 0)	"\u20ac\u20aca"	"\u20ac\u20aca"	pass	-
+g538-subs-let	let	(let [s "\u20ac\u20aca" x0 0] (subs s x0))	"\u20ac\u20aca"	"\u20ac\u20aca"	pass	-
+g539-subs-fn	fn:apply	(apply subs ["\u20ac\u20aca" 0])	"\u20ac\u20aca"	"\u20ac\u20aca"	pass	-
+g540-subs3-literals	literals	(subs "a\ud83d\ude00-" 2 0)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g541-subs3-let	let	(let [s "a\ud83d\ude00-" x0 2 x1 0] (subs s x0 x1))	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g542-subs3-fn	fn:apply	(apply subs ["a\ud83d\ude00-" 2 0])	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g543-subs3-literals	literals	(subs "\u00e9-a" 3 4)	throws (StringIndexOutOfBoundsException)	"a"	fail	LG3
+g544-subs3-let	let	(let [s "\u00e9-a" x0 3 x1 4] (subs s x0 x1))	throws (StringIndexOutOfBoundsException)	"a"	fail	LG3
+g545-subs3-fn	fn:defn	(g-subs "\u00e9-a" 3 4)	throws (StringIndexOutOfBoundsException)	"a"	fail	LG3
+g546-subs3-literals	literals	(subs "\ud83d\ude00\u00e9\u20ac" 5 -1)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g547-subs3-let	let	(let [s "\ud83d\ude00\u00e9\u20ac" x0 5 x1 -1] (subs s x0 x1))	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g548-subs3-fn	fn:defn	(g-subs "\ud83d\ude00\u00e9\u20ac" 5 -1)	throws (StringIndexOutOfBoundsException)	throws (end index is less than start)	throws	V7
+g549-subs3-literals	literals	(subs "\u00e9\ud83d\ude00" 3 3)	""	""	pass	-
+g550-subs3-let	let	(let [s "\u00e9\ud83d\ude00" x0 3 x1 3] (subs s x0 x1))	""	""	pass	-
+g551-subs3-fn	fn:defn	(g-subs "\u00e9\ud83d\ude00" 3 3)	""	""	pass	-
+g552-subs3-literals	literals	(subs "\u20ac\u20aca" 1 1)	""	""	pass	-
+g553-subs3-let	let	(let [s "\u20ac\u20aca" x0 1 x1 1] (subs s x0 x1))	""	""	pass	-
+g554-subs3-fn	fn:local	((fn [x0 x1 x2] (subs x0 x1 x2)) "\u20ac\u20aca" 1 1)	""	""	pass	-
+g555-index-of-literals	literals	(string/index-of "-\u00e9-" "" -1)	0	nil	fail	V74
+g556-index-of-let	let	(let [s "-\u00e9-" x0 "" x1 -1] (string/index-of s x0 x1))	0	nil	fail	V74
+g557-index-of-fn	fn:local	((fn [x0 x1 x2] (string/index-of x0 x1 x2)) "-\u00e9-" "" -1)	0	nil	fail	V74
+g558-index-of-literals	literals	(string/index-of "\ud83d\ude00a\ud83d\ude00" "" 6)	5	6	fail	R58
+g559-index-of-let	let	(let [s "\ud83d\ude00a\ud83d\ude00" x0 "" x1 6] (string/index-of s x0 x1))	5	6	fail	R58
+g560-index-of-fn	fn:apply	(apply string/index-of ["\ud83d\ude00a\ud83d\ude00" "" 6])	5	6	fail	R58
+g561-index-of-literals	literals	(string/index-of "\u20ac\u20ac\u00e9" "\u00e9" -1)	2	nil	fail	V74+R58
+g562-index-of-let	let	(let [s "\u20ac\u20ac\u00e9" x0 "\u00e9" x1 -1] (string/index-of s x0 x1))	2	nil	fail	V74+R58
+g563-index-of-fn	fn:local	((fn [x0 x1 x2] (string/index-of x0 x1 x2)) "\u20ac\u20ac\u00e9" "\u00e9" -1)	2	nil	fail	V74+R58
+g564-index-of-literals	literals	(string/index-of "\u20ac\ud83d\ude00\ud83d\ude00" "\u00e9" 4)	nil	nil	pass	-
+g565-index-of-let	let	(let [s "\u20ac\ud83d\ude00\ud83d\ude00" x0 "\u00e9" x1 4] (string/index-of s x0 x1))	nil	nil	pass	-
+g566-index-of-fn	fn:apply	(apply string/index-of ["\u20ac\ud83d\ude00\ud83d\ude00" "\u00e9" 4])	nil	nil	pass	-
+g567-index-of-literals	literals	(string/index-of "--a" "")	0	0	pass	-
+g568-index-of-let	let	(let [s "--a" x0 ""] (string/index-of s x0))	0	0	pass	-
+g569-index-of-fn	fn:apply	(apply string/index-of ["--a" ""])	0	0	pass	-
+g570-last-index-of-literals	literals	(string/last-index-of "\ud83d\ude00\u00e9\u00e9" "" -1)	nil	8	fail	V74
+g571-last-index-of-let	let	(let [s "\ud83d\ude00\u00e9\u00e9" x0 "" x1 -1] (string/last-index-of s x0 x1))	nil	8	fail	V74
+g572-last-index-of-fn	fn:defn	(g-last-index-of "\ud83d\ude00\u00e9\u00e9" "" -1)	nil	8	fail	V74
+g573-last-index-of-literals	literals	(string/last-index-of "\u00e9a" "")	2	3	fail	R58
+g574-last-index-of-let	let	(let [s "\u00e9a" x0 ""] (string/last-index-of s x0))	2	3	fail	R58
+g575-last-index-of-fn	fn:apply	(apply string/last-index-of ["\u00e9a" ""])	2	3	fail	R58
+g576-last-index-of-literals	literals	(string/last-index-of "\u00e9-\u20ac" "" -5)	nil	6	fail	V74
+g577-last-index-of-let	let	(let [s "\u00e9-\u20ac" x0 "" x1 -5] (string/last-index-of s x0 x1))	nil	6	fail	V74
+g578-last-index-of-fn	fn:apply	(apply string/last-index-of ["\u00e9-\u20ac" "" -5])	nil	6	fail	V74
+g579-last-index-of-literals	literals	(string/last-index-of "-aa" "-" 2)	0	0	pass	-
+g580-last-index-of-let	let	(let [s "-aa" x0 "-" x1 2] (string/last-index-of s x0 x1))	0	0	pass	-
+g581-last-index-of-fn	fn:local	((fn [x0 x1 x2] (string/last-index-of x0 x1 x2)) "-aa" "-" 2)	0	0	pass	-
+g582-last-index-of-literals	literals	(string/last-index-of "\ud83d\ude00\u20ac\u20ac" "-" 6)	nil	nil	pass	-
+g583-last-index-of-let	let	(let [s "\ud83d\ude00\u20ac\u20ac" x0 "-" x1 6] (string/last-index-of s x0 x1))	nil	nil	pass	-
+g584-last-index-of-fn	fn:local	((fn [x0 x1 x2] (string/last-index-of x0 x1 x2)) "\ud83d\ude00\u20ac\u20ac" "-" 6)	nil	nil	pass	-
+g585-compare-literals	literals	(compare "\u20ac\ud83d\ude00" "\u20ac")	2	4	fail	V72
+g586-compare-let	let	(let [s "\u20ac\ud83d\ude00" x0 "\u20ac"] (compare s x0))	2	4	fail	V72
+g587-compare-fn	fn:apply	(apply compare ["\u20ac\ud83d\ude00" "\u20ac"])	2	4	fail	V72
+g588-compare-literals	literals	(compare "-a" "\u00e9")	-188	-150	fail	V72
+g589-compare-let	let	(let [s "-a" x0 "\u00e9"] (compare s x0))	-188	-150	fail	V72
+g590-compare-fn	fn:apply	(apply compare ["-a" "\u00e9"])	-188	-150	fail	V72
+g591-compare-literals	literals	(compare "\ud83d\ude00\ud83d\ude00" "\u20ac\u00e9")	46993	14	fail	V72
+g592-compare-let	let	(let [s "\ud83d\ude00\ud83d\ude00" x0 "\u20ac\u00e9"] (compare s x0))	46993	14	fail	V72
+g593-compare-fn	fn:apply	(apply compare ["\ud83d\ude00\ud83d\ude00" "\u20ac\u00e9"])	46993	14	fail	V72
+g594-compare-literals	literals	(compare "-\u00e9" "a")	-52	-52	pass	-
+g595-compare-let	let	(let [s "-\u00e9" x0 "a"] (compare s x0))	-52	-52	pass	-
+g596-compare-fn	fn:apply	(apply compare ["-\u00e9" "a"])	-52	-52	pass	-
+g597-compare-literals	literals	(compare "a-" "a-")	0	0	pass	-
+g598-compare-let	let	(let [s "a-" x0 "a-"] (compare s x0))	0	0	pass	-
+g599-compare-fn	fn:apply	(apply compare ["a-" "a-"])	0	0	pass	-
+g600-min-fn	fn:defn	(g-min ##NaN 0.5M)	##NaN	0.5M	fail	V56
+g601-min-fn	fn:defn	(g-min ##NaN 0)	##NaN	0	fail	V56
+g602-min-fn	fn:defn	(g-min ##NaN 9007199254740992)	##NaN	9007199254740992	fail	V56
+g603-min-fn	fn:local	((fn [a b] (min a b)) ##NaN 1)	##NaN	1	fail	V56
+g604-min-fn	fn:apply	(apply min [0.5M ##NaN])	##NaN	##NaN	pass	-
+g605-min-fn	fn:defn	(g-min 1180591620717411303424N ##NaN)	##NaN	##NaN	pass	-
+g606-min-fn	fn:local	((fn [a b] (min a b)) 7/3 ##NaN)	##NaN	##NaN	pass	-
+g607-min-fn	fn:defn	(g-min 2.5M ##NaN)	##NaN	##NaN	pass	-
+g608-max-fn	fn:apply	(apply max [1180591620717411303424N ##NaN])	##NaN	1180591620717411303424N	fail	V56
+g609-max-fn	fn:defn	(g-max 9007199254740992.0 ##NaN)	##NaN	9007199254740992.0	fail	V56
+g610-max-fn	fn:apply	(apply max [-1 ##NaN])	##NaN	-1	fail	V56
+g611-max-fn	fn:apply	(apply max [0.0 ##NaN])	##NaN	0.0	fail	V56
+g612-max-fn	fn:apply	(apply max [##NaN 2.5])	##NaN	##NaN	pass	-
+g613-max-fn	fn:defn	(g-max ##NaN 9007199254740992)	##NaN	##NaN	pass	-
+g614-max-fn	fn:defn	(g-max ##NaN 2.5)	##NaN	##NaN	pass	-
+g615-max-fn	fn:apply	(apply max [##NaN 1180591620717411303424N])	##NaN	##NaN	pass	-
+g616-index-of-literals	literals	(string/index-of "--\u20ac" "-" -5)	0	nil	fail	V74
+g617-index-of-let	let	(let [s "--\u20ac" x0 "-" x1 -5] (string/index-of s x0 x1))	0	nil	fail	V74
+g618-index-of-fn	fn:defn	(g-index-of "--\u20ac" "-" -5)	0	nil	fail	V74
+g619-index-of-literals	literals	(string/index-of "\u20ac\u00e9" "\u00e9" -2)	1	nil	fail	V74+R58
+g620-index-of-let	let	(let [s "\u20ac\u00e9" x0 "\u00e9" x1 -2] (string/index-of s x0 x1))	1	nil	fail	V74+R58
+g621-index-of-fn	fn:local	((fn [x0 x1 x2] (string/index-of x0 x1 x2)) "\u20ac\u00e9" "\u00e9" -2)	1	nil	fail	V74+R58
+g622-index-of-literals	literals	(string/index-of "\ud83d\ude00\u00e9\u20ac" "\u00e9" 5)	nil	nil	pass	-
+g623-index-of-let	let	(let [s "\ud83d\ude00\u00e9\u20ac" x0 "\u00e9" x1 5] (string/index-of s x0 x1))	nil	nil	pass	-
+g624-index-of-fn	fn:local	((fn [x0 x1 x2] (string/index-of x0 x1 x2)) "\ud83d\ude00\u00e9\u20ac" "\u00e9" 5)	nil	nil	pass	-
+g625-index-of-literals	literals	(string/index-of "\u20acaa" "-" -1)	nil	nil	pass	-
+g626-index-of-let	let	(let [s "\u20acaa" x0 "-" x1 -1] (string/index-of s x0 x1))	nil	nil	pass	-
+g627-index-of-fn	fn:apply	(apply string/index-of ["\u20acaa" "-" -1])	nil	nil	pass	-
+g628-last-index-of-literals	literals	(string/last-index-of "\u00e9-a" "\u00e9" -1)	nil	0	fail	V74
+g629-last-index-of-let	let	(let [s "\u00e9-a" x0 "\u00e9" x1 -1] (string/last-index-of s x0 x1))	nil	0	fail	V74
+g630-last-index-of-fn	fn:defn	(g-last-index-of "\u00e9-a" "\u00e9" -1)	nil	0	fail	V74
+g631-last-index-of-literals	literals	(string/last-index-of "aa\ud83d\ude00" "\ud83d\ude00" -1)	nil	2	fail	V74
+g632-last-index-of-let	let	(let [s "aa\ud83d\ude00" x0 "\ud83d\ude00" x1 -1] (string/last-index-of s x0 x1))	nil	2	fail	V74
+g633-last-index-of-fn	fn:apply	(apply string/last-index-of ["aa\ud83d\ude00" "\ud83d\ude00" -1])	nil	2	fail	V74
+g634-last-index-of-literals	literals	(string/last-index-of "a\ud83d\ude00\u20ac" "\u00e9" -2)	nil	nil	pass	-
+g635-last-index-of-let	let	(let [s "a\ud83d\ude00\u20ac" x0 "\u00e9" x1 -2] (string/last-index-of s x0 x1))	nil	nil	pass	-
+g636-last-index-of-fn	fn:apply	(apply string/last-index-of ["a\ud83d\ude00\u20ac" "\u00e9" -2])	nil	nil	pass	-
+g637-last-index-of-literals	literals	(string/last-index-of "\ud83d\ude00-\u20ac" "a" -2)	nil	nil	pass	-
+g638-last-index-of-let	let	(let [s "\ud83d\ude00-\u20ac" x0 "a" x1 -2] (string/last-index-of s x0 x1))	nil	nil	pass	-
+g639-last-index-of-fn	fn:local	((fn [x0 x1 x2] (string/last-index-of x0 x1 x2)) "\ud83d\ude00-\u20ac" "a" -2)	nil	nil	pass	-

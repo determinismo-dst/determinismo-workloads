@@ -1,0 +1,32 @@
+--- a/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+@@ -1949,12 +1949,19 @@
+       param_shadows_fn |= param.name->name == fn.arity->fn_ctx->fn->name;
+     }
+ 
++    /* The fn object itself, the first parameter. A parameter with the fn's own name wins in the
++     * body, so the fn object then takes a hidden name: the closure's context is read from it,
++     * never from that argument (`((fn f [f] y) 5)`). */
++    auto const self_name{ param_shadows_fn
++                            ? munge(__rt_ctx->unique_string(fn.arity->fn_ctx->fn->name))
++                            : munged_fn_name };
++
+     util::format_to(
+       b.body_buffer,
+       "\nextern \"C\" jank::runtime::object_ref {}_{}(jank::runtime::object_ref const {}",
+       munged_linkage_name,
+       fn.arity->params.size(),
+-      param_shadows_fn ? "" : munged_fn_name);
++      self_name);
+ 
+     /* If parameters have type hints, we'll generate the actual param with a hidden name and
+      * then introduce a local with the param name, along with whatever conversion is necessary
+@@ -1989,7 +1996,7 @@
+                       "closure*>({}.ptr())->context) };\n",
+                       closure_ctx,
+                       closure_ctx,
+-                      munged_fn_name);
++                      self_name);
+     }
+ 
+     u8 param_index{};

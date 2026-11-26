@@ -1,0 +1,424 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 7 (main 94d32623): predictions from REPORT-7, each test asserting
+; Clojure 1.12's result (checked on Clojure 1.12.3), so a failure confirms one. Tests named
+; "control" are predicted to pass on jank.
+; Paths (REPORT-6 section 3): jank types a literal or a let-bound literal natively (an `int` when it
+; fits 32 bits, else a `long`), inlines two-argument `+ - * / < <= > >= min max`, `count`, `inc`,
+; `dec`, `hash`, `zero?`, `abs`, ... into core/math.hpp's templates on those native types, and passes
+; a fn parameter as an object. Each test's comment says which path it runs:
+;   [literals] / inlined: the call written directly with literal or native arguments;
+;   [let]: let-bound literals, still native;
+;   [fn] / fn value: the values pass through a fn's object parameters, or the clojure.core fn is
+;   called as a value (apply), so no native operand reaches the template;
+;   [loop]: a loop counter (dotimes, loop/recur).
+; Every form is inside a deftest body, so it is compiled, not interpreted at the top level.
+; Forms jank may refuse go through `ev` (eval of read-string), so a refusal fails its own test.
+; Tests marked "; native" need jank's native typing to show the deviation (they run on Clojure too).
+; Non-ASCII text is written with \u escapes or (char n): run under a UTF-8 locale.
+; Run each test in its own process, from tests/ with `--module-path .`.
+; The tests that predict a hang are in deviations_r7_hangs_test.jank.
+(ns jank-lean.deviations-r7-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]))
+
+(defn- ev [s] (eval (read-string s)))
+
+(defn- id [x] x)
+
+(defn- pusher [x]
+  (first (filter (fn [n] (= (bit-and (hash n) 31) (bit-and (hash x) 31))) (range 2 100000))))
+
+;; X1: `case` with two test constants of one hash (jank's hash of {} and #{} is 4279838538, past the
+;; int range). core.jank merge-hash-collisions keys the merged branch by that hash, and the next
+;; round's case-hash hashes it again (it is not an i32), so the switch never finds it.
+; [fn] jank predicted: :none.
+(deftest x1-case-on-two-tests-of-one-hash
+  (is (= :map ((fn [x] (case x {} :map #{} :set :none)) {}))))
+
+; [fn] jank predicted: :none.
+(deftest x1b-case-on-two-tests-of-one-hash-the-other
+  (is (= :set ((fn [x] (case x {} :map #{} :set :none)) #{}))))
+
+;; X1 (second cause): with a collision, case-map-collison-merged adds no equality check to the
+;; other branches, so a value whose case integer is a test's hash takes that branch. jank's hash
+;; of 4294967296 is 987256456, an int, which the switch takes as itself.
+; [fn] jank predicted: :big.
+(deftest x1c-case-with-a-collision-checks-the-other-tests
+  (is (= :none ((fn [x] (case x {} :map #{} :set 4294967296 :big :none)) 987256456))))
+
+;; Control: without a collision each branch keeps its condp check.
+; [fn] jank predicted: :none (passes).
+(deftest x1d-control-case-without-a-collision-checks-its-test
+  (is (= :none ((fn [x] (case x 4294967296 :big :none)) 987256456))))
+
+;; vN2 (N7-2, new as an item; round 3 noted it as documented): dividing a BigDecimal by zero. Clojure:
+;; Numbers.divide checks the divisor first, ArithmeticException "Divide by zero". jank: math.hpp div
+;; (296-406) divides the cpp_dec_float values; calculate_inv of 0 is inf (0/0 is nan).
+(deftest x2-bigdecimal-division-by-zero-throws
+  ; [literals] div(object_ref, object_ref). jank predicted: returns inf.0M, no exception.
+  (is (thrown? (/ 1M 0M))))
+
+(deftest x2b-bigdecimal-zero-over-zero-throws
+  ; [fn] the same template through fn parameters. jank predicted: returns nan.0M, no exception.
+  (is (thrown? ((fn [a b] (/ a b)) 0M 0M))))
+
+(deftest x2c-bigdecimal-divided-by-a-zero-int-throws
+  ; [literals] div(object_ref, int): boost's decimal / 0. jank predicted: returns inf.0M, no exception.
+  (is (thrown? (/ 1.5M 0))))
+
+;; X3 (R23's let path): let-bound literals keep their native types (int, double), and an `if` of
+;; the two takes their C++ common type, so the int branch gives 1.0.
+; [let] native. jank predicted: 1.0.
+(deftest x3-if-of-let-bound-literals-keeps-each-value
+  (let [a 1 b 2.5]
+    (is (= 1 (if (pos? a) a b)))))
+
+;; X4 (R24's let path): a loop local that starts at the int 0 takes a let-bound double from
+;; `recur`, which converts it to the int 1.
+; [let] native. jank predicted: 1.
+(deftest x4-loop-local-takes-a-let-bound-double
+  (is (= 1.5 (loop [x 0 n 0] (let [d 1.5] (if (= n 1) x (recur d 1)))))))
+
+;; vN1 (N7-1, new): the hash of a BigDecimal. Clojure (Numbers.hasheqFrom): 0 for a zero, else
+;; stripTrailingZeros().hashCode() = 31 * BigInteger.hashCode(unscaled) + scale, a function of the value.
+;; jank: big_decimal::to_hash (big_decimal.cpp 177-180) is boost's std::hash of the cpp_dec_float limbs.
+(deftest x5-hash-of-a-bigdecimal
+  ; [literals] hash inlines to to_hash (core.jank 2476-2486). jank predicted: 154574889.
+  (is (= 466 (hash 1.5M))))
+
+(deftest x5b-hash-of-a-bigdecimal-through-a-fn-value
+  ; [fn value] (apply hash [1M]): the same big_decimal::to_hash. jank predicted: 3307139568.
+  (is (= 31 (apply hash [1M]))))
+
+;; vN3 (N7-3, new as an item; round 3 noted it in S3's path): with-precision and *math-context*.
+(deftest x6-with-precision-rounds-bigdecimal-division
+  ; [macro] core.jank 6487-6502: the macro's body throws ex-info "TODO: port with-precision" when it is
+  ; expanded. jank predicted: that ex-info (an analysis error inside ev).
+  (is (= "0.3333333333" (str (ev "(with-precision 10 (/ 1M 3))")))))
+
+(deftest x6b-math-context-is-defined
+  ; [var] clojure.core has no *math-context* in jank (nothing defines it). jank predicted: an analysis
+  ; error, unable to resolve *math-context*.
+  (is (nil? (ev "*math-context*"))))
+
+;; vN4 (R72, extended to every result; what exact division leaves): a BigDecimal has no scale in jank
+;; (cpp_dec_float<100>, type.hpp 35); it prints str() and then ".0" when the text has no point
+;; (string_builder.cpp 240-249). Clojure keeps BigDecimal's scale: sum max(s1, s2), product s1 + s2, exact
+;; quotient max(s1 - s2, the quotient's minimal scale).
+(deftest x7-bigdecimal-quotient-keeps-the-preferred-scale
+  ; [literals] Clojure 2M (scale 0). jank predicted today: "1.999...9" (121 nines, S2); with exact division
+  ; (the S2 fix): "2.0" (R72).
+  (is (= "2" (str (/ 6M 3M)))))
+
+(deftest x7b-bigdecimal-sum-keeps-the-larger-scale
+  ; [literals] Clojure 3.00M. jank predicted: "3.0".
+  (is (= "3.00" (str (+ 1.25M 1.75M)))))
+
+(deftest x7c-bigdecimal-quotient-with-a-negative-scale
+  ; [literals] preferred scale 0 - 1: Clojure 2E+1M. jank predicted today: "19.999...9" (S2); with exact
+  ; division: "20.0".
+  (is (= "2E+1" (str (/ 60M 3.0M)))))
+
+(deftest x7d-bigdecimal-quotient-by-a-power-of-two-keeps-the-scale
+  ; [literals] the Newton inverse of 4 is exact, so only the scale differs, today and after S2's fix:
+  ; Clojure 0.250M. jank predicted: "0.25".
+  (is (= "0.250" (str (/ 1.000M 4)))))
+
+;; vN5 (S4's class, after exact division): an exact quotient with more than 128 significant digits.
+(deftest x8-exact-bigdecimal-quotient-keeps-every-digit
+  ; [literals] 1/2^200 = 5^200 * 10^-200 has 140 significant digits; Clojure's quotient is exact, so the
+  ; product is exactly 1. jank predicted: not 0 (today a Newton inverse, S2; with exact division the
+  ; quotient is kept to 128 digits by cpp_dec_float, so the product is below 1: 1).
+  (is (= 0 (compare 1M (* 1606938044258990275541962092341162602522202993782792835301376M
+                          (/ 1M 1606938044258990275541962092341162602522202993782792835301376M))))))
+
+;; vN6 (D4, with the scale): quot of BigDecimals. Clojure: BigDecimal.divideToIntegralValue, a BigDecimal at
+;; the preferred scale s1 - s2. jank: math.cpp quot (321-345) divides doubles and boxes a long.
+(deftest x9-quot-of-bigdecimals-is-a-bigdecimal
+  ; [literals] Clojure 3.0M. jank predicted: "3" (a long); with fixes/D4.diff "3.0M" (passes).
+  (is (= "3.0M" (pr-str (quot 7.5M 2)))))
+
+(deftest x9b-control-quot-of-whole-bigdecimals-prints-no-point
+  ; [literals] Control, predicted to pass on stock jank: Clojure 3M prints "3", jank's long 3 prints "3".
+  ; With fixes/D4.diff jank's quotient is the BigDecimal 3, printed "3.0" (R72): this control then fails.
+  (is (= "3" (str (quot 7M 2)))))
+
+;; vN7 (U74, still unported at 94d32623): the unchecked int operations and rationalize.
+(deftest x10-unchecked-int-arithmetic-wraps-at-32-bits
+  ; [literals] core.jank 1878-1883: the defn throws. jank predicted: ex-info "TODO: port unchecked-add-int".
+  (is (= -2147483648 (unchecked-add-int 2147483647 1))))
+
+(deftest x10b-rationalize-of-a-bigdecimal
+  ; [literals] core.jank 1934-1938: the defn throws. jank predicted: ex-info "TODO: port rationalize".
+  (is (= 3/2 (rationalize 1.5M))))
+
+;; vN10 (S3's class, a point for the exact-division fix): a ratio operand converts first. Clojure:
+;; Numbers.toBigDecimal(1/3) divides 1 by 3 and throws before the division, though 1/(1/3) = 3 terminates.
+(deftest x11-dividing-by-a-non-terminating-ratio-throws
+  ; [literals] ratio.cpp operator/ (decimal, ratio_data) converts 1/3 with a Newton inverse. jank predicted
+  ; today: 3.000...001M; with a fix that divides the exact values: 3.0M. Either way no exception.
+  (is (thrown? (/ 1M 1/3))))
+
+;; vN11 (S6's class, a point for the exact-division fix): a BigDecimal with a double divides as doubles.
+(deftest x12-bigdecimal-divided-by-a-double-is-a-double
+  ; [literals] boost's decimal / double (S6). jank predicted today: a BigDecimal near 9.99999999999999944M (1 over
+  ; the binary 0.1); with a fix that divides the exact values: "Non-terminating" thrown (2^55/3602879701896397).
+  (is (= 10.0 (/ 1M 0.1))))
+
+;; vN8 (controls): shift counts outside [0, 63]. math.cpp 530-583 shift an i64 by the count: undefined in
+;; C++ outside [0, 63], but compiled as a shift by a register, which x86-64 (SHL/SAR/SHR/BT) and AArch64
+;; (LSLV/ASRV/LSRV) take modulo 64, as Java does (count & 63). Predicted to pass.
+(deftest x13-control-shift-count-past-63-is-masked
+  ; [literals] bit_shift_left(1, 64): jank predicted 1.
+  (is (= 1 (bit-shift-left 1 64))))
+
+(deftest x13b-control-bit-test-past-63-through-fn-values
+  ; [fn] bit_test(1, 64) = (1 >> 64) & 1 with the count masked: jank predicted true.
+  (is (= true (bit-test (identity 1) (identity 64)))))
+
+(deftest x13c-control-unsigned-shift-by-64
+  ; [literals] bit_unsigned_shift_right: u64 >> 64, masked to >> 0: jank predicted -1.
+  (is (= -1 (unsigned-bit-shift-right -1 64))))
+
+(deftest x13d-control-negative-shift-count
+  ; [literals] bit_shift_left(1, -1): the count's low six bits are 63: jank predicted true.
+  (is (= true (= (bit-shift-left 1 63) (bit-shift-left 1 -1)))))
+
+;; vN9 (controls): the brief's min/max with ##NaN, on the paths round 6's model says agree.
+(deftest x14-control-min-with-nan-first-literals
+  ; [literals] min(double, int), both primitive: std::min(NaN, 1.0) is `1.0 < NaN ? 1.0 : NaN`, NaN.
+  ; jank predicted: ##NaN.
+  (is (NaN? (min ##NaN 1))))
+
+(deftest x14b-control-max-with-nan-first-through-a-fn
+  ; [fn] max's object branch `l < r ? r : l` (math.hpp 877-907) keeps a first NaN. jank predicted: ##NaN
+  ; (the coordinator saw it on jank).
+  (is (NaN? ((fn [a b] (max a b)) ##NaN 1))))
+
+;; vP1 (V64's cause, in is_zero): math.hpp is_zero 1342-1350 takes a `char` as a primitive number
+;; (`primitive_number<char> && !is_same<char, bool>`), so `(zero? (aget (char-array 1) 0))` compares the
+;; char with 0. Clojure: Numbers.isZero(Object) casts the Character to Number: ClassCastException.
+; native
+(deftest x15-zero-of-a-char-array-element-throws
+  ; [inlined] is_zero(char&): jank predicted: true (no exception).
+  (is (thrown? (zero? (aget (char-array 1) 0)))))
+
+; native
+(deftest x15b-abs-of-a-char-array-element-throws
+  ; [inlined] abs(char) = std::abs(static_cast<i64>(c)) (math.hpp 992-1001): jank predicted: 97.
+  (is (thrown? (abs (aget (char-array "a") 0)))))
+
+;; vP2 (D9's class, new paths and producers): x86-64's default NaN 0xFFF8000000000000 is not a real to
+;; oref.hpp (max_real 94); get_type() reads a null object. Inlined and let-bound literals compute at run
+;; time (runtime -O0, the default): divsd/subss give the default NaN; ##Inf is the float macro INFINITY.
+;; Clojure: ##NaN (primitive double operations), so NaN? is true.
+; native
+(deftest x16-nan-of-zero-over-zero-literals
+  ; [literals] div(double, double) (math.hpp 400-406): jank predicted: SIGSEGV in is_nan's get_type().
+  (is (NaN? (/ 0.0 0.0))))
+
+; native
+(deftest x16b-nan-of-infinity-minus-infinity-let
+  ; [let] x is a float (auto x(INFINITY);), sub(float, float) = 0xFFC00000, widened to 0xFFF8000000000000
+  ; by make_box(float): jank predicted: SIGSEGV.
+  (is (let [x ##Inf] (NaN? (- x x)))))
+
+; native
+(deftest x16c-nan-of-zero-times-infinity-literals
+  ; [literals] mul(double, float): jank predicted: SIGSEGV.
+  (is (NaN? (* 0.0 ##Inf))))
+
+(deftest x16d-parse-double-of-negative-nan
+  ; [fn] parse_double (math.cpp 712-736) -> std::stod -> glibc strtod negates its NaN: 0xFFF8000000000000.
+  ; jank predicted: SIGSEGV. Clojure: (parse-double "-NaN") is ##NaN.
+  (is (NaN? (parse-double "-NaN"))))
+
+(deftest x16e-jank-math-sqrt-of-a-negative-is-nan
+  ; [fn] jank only; needs fixes/V24.diff. jank.math/sqrt -> make_box(std::sqrt(-1.0)): sqrtsd gives the
+  ; default NaN. jank predicted: stock, the require fails (V24); with V24.diff, SIGSEGV; with V24.diff and
+  ; D9.diff, passes. Clojure's (clojure.math/sqrt -1) is ##NaN.
+  (ev "(require 'jank.math)")
+  (is (NaN? (ev "(jank.math/sqrt -1.0)"))))
+
+; native
+(deftest x16f-control-a-nan-operand-keeps-its-sign
+  ; [literals] control: add(float NAN, int) returns the NaN operand (positive), a real to oref: true.
+  (is (NaN? (+ ##NaN 1))))
+
+;; vW1 (R60, each class of JDK 23's SpecialCasing): util/string.cpp to_uppercase/to_lowercase map one
+;; wchar_t to one wchar_t (ctype<wchar_t>::toupper -> towupper); Clojure's String.toUpperCase applies
+;; the 102 multi-character mappings, İ's lower case and Final_Sigma.
+(deftest x18-upper-case-of-sharp-s
+  ; jank predicted: "ß".
+  (is (= "SS" (string/upper-case (identity "ß")))))
+
+(deftest x18b-upper-case-of-n-after-an-apostrophe
+  ; jank predicted: "ŉ".
+  (is (= "ʼN" (string/upper-case (identity "ŉ")))))
+
+(deftest x18c-upper-case-of-j-with-caron
+  ; jank predicted: "ǰ".
+  (is (= "J̌" (string/upper-case (identity "ǰ")))))
+
+(deftest x18d-upper-case-of-a-ligature
+  ; jank predicted: "ﬁ".
+  (is (= "FI" (string/upper-case (identity "ﬁ")))))
+
+(deftest x18e-upper-case-of-alpha-with-ypogegrammeni
+  ; jank predicted: "ᾼ" (the simple mapping).
+  (is (= "ΑΙ" (string/upper-case (identity "ᾳ")))))
+
+(deftest x18f-lower-case-of-capital-i-with-dot
+  ; jank predicted: "i".
+  (is (= "i̇" (string/lower-case (identity "İ")))))
+
+(deftest x18g-lower-case-of-a-final-sigma
+  ; jank predicted: "σασ".
+  (is (= "σας" (string/lower-case (identity "ΣΑΣ")))))
+
+(deftest x18h-capitalize-of-sharp-s
+  ; R60 and R61: jank lower-cases, then upper-cases the first byte only. jank predicted: "ßa".
+  (is (= "SSa" (string/capitalize (identity "ßa")))))
+
+(deftest x18i-control-upper-case-with-a-simple-mapping
+  ; control: e-acute has a one-to-one mapping on both sides: "É".
+  (is (= "É" (string/upper-case (identity "é")))))
+
+;; vW2 (V75's cause through replace): string_native.cpp replace(regex, string) 218-224 -> std::regex_replace,
+;; whose regex_iterator steps one byte after an empty match (regex.tcc 556-584), so the replacement goes
+;; between the two bytes of e-acute. Clojure: Matcher.find steps one char.
+(deftest x19-replace-with-an-empty-pattern-keeps-characters
+  ; jank predicted: "-\xC3-\xA9-" (bytes 2D C3 2D A9 2D).
+  (is (= "-é-" (string/replace (identity "é") (re-pattern "") "-"))))
+
+(deftest x19b-replace-with-a-fn-and-an-empty-pattern-keeps-characters
+  ; replace(regex, fn) 226-250 walks a sregex_iterator: the same step. jank predicted: "-\xC3-\xA9-".
+  (is (= "-é-" (string/replace (identity "é") (re-pattern "") (fn [_] "-")))))
+
+; [literals] rem inlines to cpp/jank.runtime.rem; math.cpp rem 299-302 throws std::runtime_error
+; "Division by zero is not permitted." for a zero long divisor. jank predicted: uncaught
+; std::runtime_error (Clojure: ArithmeticException "Divide by zero").
+(deftest x20-rem-by-zero-throws-an-object
+  (is (thrown? (rem 1 0))))
+
+; [fn] the same through apply: rem's fn body, objects; math.cpp rem 299-302. jank predicted: uncaught
+; std::runtime_error.
+(deftest x20b-rem-by-zero-through-a-fn-throws-an-object
+  (is (thrown? (apply rem [1 0]))))
+
+; [literals] nth of a string past its end: seq.cpp nth 648-696 -> persistent_string.cpp nth 112-117
+; throws std::runtime_error "The index `1` is out of bounds for this `persistent_string`.".
+; jank predicted: uncaught std::runtime_error (Clojure: StringIndexOutOfBoundsException).
+(deftest x20c-nth-of-a-string-past-its-end-throws-an-object
+  (is (thrown? (nth (identity "a") 1))))
+
+; [literals] subs past the end: core.cpp subs 398-409 -> persistent_string.cpp substring 139-155
+; returns an error result; .expect_ok() (jtl/result.hpp 148-156 -> panic 41-68) throws an error_ref
+; (error.cpp throw_result_failure 775-780), neither an object nor a std::exception.
+; jank predicted: uncaught error_ref "end index 1 is less than start 2" (Clojure: StringIndexOutOfBoundsException).
+(deftest x20d-subs-past-the-end-throws-an-object
+  (is (thrown? (subs (identity "a") 2))))
+
+; Control (predicted to pass on jank): quot by zero throws a boxed string (math.cpp quot 331-335),
+; an object, which thrown? catches.
+(deftest x20e-control-quot-by-zero-throws-an-object
+  (is (thrown? (quot 1 0))))
+
+;; vH1 (extends V84: another pair, D12's map-seq cause). (seq {:a 1}) and [[:a 1]] are = in both
+;; languages, and Clojure hashes them alike. jank hashes the map seq with hash::unordered
+;; (base_persistent_map_sequence.cpp to_hash 86): 2767208205 against the vector's 1242899341.
+;; Both end in the 5 bits 13, so in a one-element set the map seq walks to [[:a 1]]'s data slot
+;; and immer's Equal (persistent_vector::equal -> sequence_equal) accepts it: found (the control).
+;; Adding a long whose hash also ends in 13 moves [[:a 1]] one level down (champ.hpp do_add ->
+;; make_merged, node.hpp 993-1019), where the map seq's next 5 bits (24) differ from the vector's
+;; (28): not found. Path: [fn] (values through id); hash-set, conj, contains?, get (CHAMP).
+;; jank: true (control), false, nil.  Clojure: true, true, :a.
+(deftest x21-control-alone-a-map-seq-finds-its-equal-vector
+  (let [e (id [[:a 1]]) ms (id (seq {:a 1}))]
+    (is (contains? (hash-set e) ms))))
+
+(deftest x21b-an-unrelated-element-hides-an-equal-map-seq
+  (let [e (id [[:a 1]]) ms (id (seq {:a 1})) p (id (pusher e))]
+    (is (contains? (conj (hash-set e) p) ms))))
+
+(deftest x21c-the-same-in-a-hash-map
+  (let [e (id [[:a 1]]) ms (id (seq {:a 1})) p (id (pusher e))]
+    (is (= :a (get (hash-map e :a p :b) ms)))))
+
+;; vH2 (extends D8 into hash sets; S10 named only pairs whose hashes differ at once). jank's = on
+;; BigDecimals is |a - b| < 2^-52 (big_decimal.cpp equal 146-155), so 1M and
+;; 1.0000000000000000023M are = in jank (Clojure: not =). Their jank hashes (cpp_dec_float::hash,
+;; big_decimal.cpp 177-180) are 3307139568 and 2623107792: different, but both end in the 5 bits 16,
+;; so the second walks to the first's data slot at CHAMP level 0 and immer's Equal accepts it:
+;; one element, and contains? finds it. S10's pair (1M, 1.0000000000000000001M) differs in those
+;; bits, so it stays apart, as in Clojure (the control). Path: [fn] (values through id); hash-set,
+;; count, contains? (persistent_hash_set.cpp 45-53, 186; champ.hpp get, do_add).
+;; jank: 2 (control), 1, true.  Clojure: 2, 2, false.
+(deftest x22-control-bigdecs-whose-hashes-differ-at-once-stay-apart
+  (is (= 2 (count (hash-set (id 1M) (id 1.0000000000000000001M))))))
+
+(deftest x22b-epsilon-equal-bigdecs-merge-in-a-hash-set
+  (is (= 2 (count (hash-set (id 1M) (id 1.0000000000000000023M))))))
+
+(deftest x22c-a-hash-set-finds-an-epsilon-equal-bigdec
+  (is (not (contains? (hash-set (id 1M)) (id 1.0000000000000000023M)))))
+
+;; vF1 (D7's own cause, without d07's printing). d07 asserts (str (bigdec 9007199254740993)), and jank's
+;; str of an integral BigDecimal appends ".0" (string_builder.cpp 240-248; no scale: R72/S5), so d07
+;; fails even with D7. compare sees the value only.
+(deftest x23-bigdec-of-a-long-compares-exactly
+  ; [fn] bigdec is a defn: the long arrives as an integer object -> math.cpp to_big_decimal 800-803
+  ; (through to_real(), a double). jank predicted: 1 (9007199254740992M), 0 with fixes/D7.diff.
+  (is (zero? (compare 9007199254740993M (bigdec (identity 9007199254740993))))))
+
+;; vF2, vF3 (v64's bool assertions, one each). R33a + R33b make a native bool a non-number in
+;; math.hpp, so both throw a string object (thrown? sees it).
+(deftest x24-a-native-bool-plus-one-throws
+  ; native
+  ; [literals] (nil? nil) inlines to is_nil: a C++ bool -> add(bool, int). jank predicted: 2 (no
+  ; exception); with R33a + R33b the object "Can't add a bool to int.".
+  (is (thrown? (+ (nil? nil) 1))))
+
+(deftest x24b-inc-of-a-native-bool-throws
+  ; native
+  ; [literals] (empty? []) inlines to is_empty: a C++ bool -> inc(bool). jank predicted: 2; with R33a +
+  ; R33b the object "Can't increment a bool.".
+  (is (thrown? (inc (empty? [])))))
+
+;; vF4 (v64's char assertion alone: not R33's cause). R33a keeps char a primitive_number, so this stays.
+(deftest x24c-a-native-char-plus-one-throws
+  ; native
+  ; [literals] aget of a char array returns char& (array.hpp 32-36) -> add(char, int). jank predicted:
+  ; 98, with or without R33a.
+  (is (thrown? (+ (aget (char-array "a") 0) 1))))
+
+;; vF5, vF6 (v79 split by cause). vF5 is R66's wrap (fixes/R66.diff); vF6 is design B (jank's characters
+;; are code points, so (char 128512) is the emoji), which no local fix changes.
+(deftest x25-char-of-a-negative-long-throws
+  ; [fn] char is a defn -> core.cpp to_char -> utf8.cpp to_char 170-194 (static_cast<wchar_t> keeps
+  ; the low 32 bits). jank predicted: \A; with R66 the object "Value out of range for char: -4294967231".
+  (is (thrown? (char (identity -4294967231)))))
+
+(deftest x25b-char-of-a-supplementary-code-point-throws
+  ; [fn] the same path; 128512 <= 0x10FFFF. jank predicted: the emoji character, with or without R66.
+  (is (thrown? (char (identity 128512)))))
+
+;; vF7, vF8 (v83 without V51). v83 compares (hash ...) with negative ints, and jank's hash is a u32
+;; (V51, core.cpp to_hash), so v83 can't pass with V83a + V83b alone. The low 32 bits are the same in
+;; both; bit-and reads them in each.
+(deftest x26-keyword-hash-bits
+  ; [literals] hash inlines to to_hash -> keyword.cpp to_hash 45-48 -> symbol.cpp to_hash 152-155 ->
+  ; hash.cpp combine 67-70. jank predicted: 1458033393; with V83a 2531775217.
+  (is (= 2531775217 (bit-and (hash (keyword (identity "c"))) 0xFFFFFFFF))))
+
+(deftest x26b-qualified-symbol-hash-bits
+  ; [literals] the same, with a namespace: symbol.cpp hashes "b" with Murmur3 where Symbol.hasheq takes
+  ; String.hashCode. jank predicted: 1685731265; with V83a + V83b 4172306842.
+  (is (= 4172306842 (bit-and (hash (symbol (identity "b") "c")) 0xFFFFFFFF))))
+
+;; vF9 (new; read while writing R4). A ratio's denominator is unsigned digits in Clojure (ratioPat
+;; ([-+]?[0-9]+)/([0-9]+)): "1/-2" is NumberFormatException "Invalid number: 1/-2". jank's lexer reads
+;; the denominator with next() (lex.cpp 885-930), which lexes "-2" as the integer -2: a ratio 1/-2.
+(deftest x27-a-ratio-with-a-signed-denominator-is-not-read
+  ; [fn] read-string at run time -> lex.cpp '/' branch. jank predicted: -1/2, no exception.
+  (is (thrown? (read-string (identity "1/-2")))))

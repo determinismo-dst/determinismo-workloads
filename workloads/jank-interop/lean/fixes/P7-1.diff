@@ -1,0 +1,35 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -995,7 +995,14 @@
+   {
+     if constexpr(detail::primitive_number<L>)
+     {
+-      if constexpr(std::is_integral_v<L>)
++      /* A char (a char array's element) is not a number to Clojure: throw an object, as
++       * Numbers.abs's cast to Number does. */
++      if constexpr(jtl::is_same<L, char>)
++      {
++        throw make_box("Can't abs a char.").erase();
++        return i64{};
++      }
++      else if constexpr(std::is_integral_v<L>)
+       {
+         return std::abs(static_cast<i64>(l));
+       }
+@@ -1341,8 +1348,15 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool is_zero(L const l)
+   {
+-    if constexpr(detail::primitive_number<L> && !jtl::is_same<L, bool>)
++    /* A char (a char array's element) is not a number to Clojure: throw an object, as
++     * Numbers.isZero's cast to Number does. */
++    if constexpr(jtl::is_same<L, char>)
+     {
++      throw make_box("Can't check if a char is zero.").erase();
++      return false;
++    }
++    else if constexpr(detail::primitive_number<L> && !jtl::is_same<L, bool>)
++    {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wfloat-equal"
+       return l == 0ll;

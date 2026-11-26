@@ -1,0 +1,73 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -488,6 +488,16 @@
+     }
+     /* Outside the range */
+     return false;
++  }
++
++  /* Character.isWhitespace, which LispReader's isWhitespace uses (with `,`): the ASCII controls
++   * 9-13 and 28-31, the space, and Unicode's space separators other than the no-break ones. It
++   * doesn't depend on the C locale, as std::isspace and std::iswspace do. */
++  static bool is_java_whitespace(char32_t const c)
++  {
++    return (c >= 0x09 && c <= 0x0D) || (c >= 0x1C && c <= 0x20) || c == 0x1680
++      || (c >= 0x2000 && c <= 0x2006) || (c >= 0x2008 && c <= 0x200A) || c == 0x2028
++      || c == 0x2029 || c == 0x205F || c == 0x3000;
+   }
+ 
+   static bool is_special_char(char32_t const c)
+@@ -498,7 +508,7 @@
+ 
+   static bool is_symbol_char(char32_t const c)
+   {
+-    return !std::iswspace(static_cast<wint_t>(c)) && !is_special_char(c)
++    return !is_java_whitespace(c) && !is_special_char(c)
+       && (std::iswalnum(static_cast<wint_t>(c)) != 0 || c == '_' || c == '-' || c == '/' || c == '?'
+           || c == '!' || c == '+' || c == '*' || c == '=' || c == '.' || c == '&' || c == '<'
+           || c == '>' || c == '#' || c == '%' || is_utf8_char(c));
+@@ -555,13 +565,24 @@
+         return ok(token{ pos, token_kind::eof });
+       }
+ 
+-      if(auto const c(file[pos.offset]); std::isspace(c) == 0 && c != ',')
++      /* A non-ASCII whitespace character (U+2003) is decoded to be seen. */
++      usize space_size{};
++      if(auto const c(static_cast<u8>(file[pos.offset])); c < 0x80)
+       {
++        space_size = (c == ',' || is_java_whitespace(c)) ? 1 : 0;
++      }
++      else if(auto const cp{ convert_to_codepoint(file.substr(pos.offset), pos) };
++              cp.is_ok() && is_java_whitespace(cp.expect_ok().character))
++      {
++        space_size = cp.expect_ok().len;
++      }
++      if(space_size == 0)
++      {
+         break;
+       }
+ 
+       found_space = true;
+-      ++pos;
++      pos += space_size;
+     }
+ 
+     /* Whether or not we've found the r in radix-specific integers such as 2r01010. */
+@@ -1227,7 +1248,7 @@
+ 
+           auto const oc(peek());
+ 
+-          if(oc.is_err() || std::iswspace(static_cast<wint_t>(oc.expect_ok().character))
++          if(oc.is_err() || is_java_whitespace(oc.expect_ok().character)
+              || is_special_char(oc.expect_ok().character))
+           {
+             ++pos;
+@@ -1245,7 +1266,7 @@
+ 
+             /* Invalid ":: " source found. */
+             if(after_dd_colon.is_err()
+-               || std::iswspace(static_cast<wint_t>(after_dd_colon.expect_ok().character))
++               || is_java_whitespace(after_dd_colon.expect_ok().character)
+                || is_special_char(after_dd_colon.expect_ok().character))
+             {
+               ++pos;

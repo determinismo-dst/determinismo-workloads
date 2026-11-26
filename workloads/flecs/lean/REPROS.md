@@ -205,6 +205,7 @@ cc -std=gnu99 -O1 -g -DNDEBUG -fsanitize=thread -I flecs/distr tests/flecs_lean/
 
 - [ ] **F55: the skip of a deleted table's order_by slice leaks a block, and with the default allocator corrupts the query's monitor allocator** (the next new monitor is a wild pointer: a SIGSEGV in debug and release builds). The skip plants a one-int dirty state in the freed table's zeroed slot (round 7's reading; the next table there resets it, so no write past it) and writes the freed monitor, whose first bytes are the allocator's free-list link. Story, code path and the docs it breaks: REPORT-8.md, F55.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: F46's patch fixes it whole, the crash in debug and release builds and the leak with OS-alloc and sanitize builds ([fixes/F55.diff](fixes/F55.diff) is [fixes/F46.diff](fixes/F46.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_skip_corrupts_monitor_allocator.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -220,6 +221,7 @@ cc -std=gnu99 -O1 -g -DFLECS_SANITIZE -I flecs/distr tests/flecs_lean/query_orde
 
 - [ ] **F56: a table deleted during an order_by iteration keeps its slice in later iterators; a new iterator uses it** (a table created later in the freed memory can be returned; a debug build aborts at the columns check first). The result sync resets `prev_match_count` (change_detection.c 632), so the next iterator's sort doesn't rebuild the slices. Story, code path and the docs it breaks: REPORT-8.md, F56.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the sort keeps its own count of when it last built the slices, so a later iterator rebuilds them after a table was deleted ([fixes/F56.diff](fixes/F56.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_stale_slice_next_iterator.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -229,6 +231,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_stale_slice_
 
 - [ ] **F58: instantiating a Parent-hierarchy prefab for an instance at depth 6 or more keeps its spawn table for good**: deleting the prefab afterwards aborts in a debug build ("tables are keeping it alive"), and a release build leaves the table behind. The spawner's temporary vector for depths past its cache (FLECS_TREE_SPAWNER_DEPTH_CACHE_SIZE, 6) keeps its tables and is freed without releasing them (tree_spawner.c 148, 348-350). Story, code path and the docs it breaks: REPORT-8.md, F58.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the tree spawner releases its temporary vector's tables at depth 6 or more ([fixes/F58.diff](fixes/F58.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_instantiate_depth_keeps_tables.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -585,6 +588,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_second_base_onset.c fle
 
 - [ ] **F48: adding or removing a DontFragment component on a base sends OnAdd and OnRemove to an instance that owns that component itself, and to its inheritors**; the ChildOf example of "Event Propagation" shows the same for OnSet (it reaches a grandchild through a child that owns the component). Story, code path and the docs it breaks: REPORT-7.md, F48.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: F42's patch: its per-entity check of DontFragment ownership covers OnAdd and OnRemove as well as OnSet ([fixes/F48.diff](fixes/F48.diff) is [fixes/F42.diff](fixes/F42.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/propagate_on_add_remove_dont_fragment_owner.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -595,6 +599,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/propagate_on_add_remove_don
 
 - [ ] **F49: OnAdd and OnRemove, propagated or forwarded, name a base that is not the entity's source; in a diamond the same event comes twice** (table storage too). Story, code path and the docs it breaks: REPORT-7.md, F49.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: OnAdd and OnRemove through IsA take one path (no duplicate in a diamond), and self|up observers get them only from the entity's actual source; up observers still get one per base that provides the component, as flecs's own tests require ([fixes/F49.diff](fixes/F49.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/propagate_on_add_remove_second_base.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -605,6 +610,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/propagate_on_add_remove_sec
 
 - [ ] **F50: no OnAdd or OnRemove is forwarded for an inherited DontFragment component**, through IsA and through the ChildOf example of "Event Forwarding". Story, code path and the docs it breaks: REPORT-7.md, F50.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: an inherited DontFragment component gets forwarded OnAdd and OnRemove through IsA, ChildOf and Parent, the entity's own inheritors and children included ([fixes/F50.diff](fixes/F50.diff); `parent_storage_dont_fragment_events.c` needs F48 and F50 together; verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/forward_on_add_remove_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -615,6 +621,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/forward_on_add_remove_dont_
 
 - [ ] **F51: when a variant gains a base or loses an override, its inheritors get OnAdd or OnRemove but no OnSet, though their value changed** ("OnSet and Inheritance"). Story, code path and the docs it breaks: REPORT-7.md, F51.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: inheritors get OnSet when a variant gains a base and when it loses an override, the base as source ([fixes/F51.diff](fixes/F51.diff); Sparse and DontFragment components with F41 and F50 too; verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/inheritor_onset_base_change.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -625,6 +632,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/inheritor_onset_base_change
 
 - [ ] **F52: instantiating a prefab whose Parent-storage child has an Inherit component aborts if that component has an on_set hook or is Sparse** (the ChildOf and auto-override controls work). The hook form stops at another internal assert than the replica's (`elem != NULL` in `flecs_new_entity`, not component_actions.c 679), an abort all the same. Story, code path and the docs it breaks: REPORT-7.md, F52.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: `flecs_instantiate_sparse` skips the components an instance child inherits instead of owning: nothing to copy, no hook to run ([fixes/F52.diff](fixes/F52.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_child_inherit_on_set_hook.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -639,6 +647,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_child_inherit
 
 - [ ] **F53: `ecs_iter_changed` and `ecs_iter_skip` abort inside a multi-threaded system once the world has worker threads** (a worker iterator; flecs.h states no such condition). Story, code path and the docs it breaks: REPORT-7.md, F53.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: `ecs_iter_changed` and `ecs_iter_skip` accept worker iterators: the pipeline computes each result's changed state on the main thread before the workers start, and the skip goes to the worker's query iterator; flecs.h's comments say so ([fixes/F53.diff](fixes/F53.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/iter_changed_multi_threaded_system.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -654,6 +663,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/iter_skip_multi_threaded_sy
 
 - [ ] **F54: the run callback of a single-threaded system over a trivially cached query gets `flecs_query_trivial_cached_next`, not `ecs_query_next` as system.h says, and `ecs_iter_skip` aborts there**. Story, code path and the docs it breaks: REPORT-7.md, F54.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+  Proposed fix: a run callback keeps `ecs_query_next`, which takes the trivial-cache path itself ([fixes/F54.diff](fixes/F54.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/system_run_trivial_cache_next.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -664,6 +674,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/system_run_trivial_cache_ne
 
 - [ ] **F57: re-parenting a Parent-storage child (`ecs_set(e, EcsParent, {p2})`) delivers no OnRemove**: not for `(ChildOf, p1)`, not for p1's components the child and its children lose; the same re-parent with ChildOf storage delivers both. The Parent component's OnSet is re-emitted as the OnAdd of `(ChildOf, p2)` only (observable.c 1160-1183). The Parent-storage forms of F48 and F50 show too (their test: parent_storage_dont_fragment_events.c). Story, code path and the docs it breaks: REPORT-8.md, F57.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the Parent component's replace hook emits OnRemove of `(ChildOf, old parent)` before the OnAdd of the new one ([fixes/F57.diff](fixes/F57.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it, in every build mode they need; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/parent_reparent_no_on_remove.c flecs/distr/flecs.c -lm -lpthread -o t && ./t

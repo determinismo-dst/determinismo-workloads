@@ -1,0 +1,21 @@
+diff --git a/src/addons/prefab/instantiate.c b/src/addons/prefab/instantiate.c
+index fe3b79f..fe6d53e 100644
+--- a/src/addons/prefab/instantiate.c
++++ b/src/addons/prefab/instantiate.c
+@@ -104,6 +104,16 @@ void flecs_instantiate_sparse(
+             continue;
+         }
+ 
++        /* The instance children don't own the component when they inherit
++         * it: a prefab with a Parent hierarchy is instantiated by its tree
++         * spawner, which leaves Inherit components out of the instance
++         * child's table, and the instance child inherits them through its
++         * (IsA, prefab child) pair. There is then no value of the instance
++         * child to copy, nor to pass to the component's hooks. */
++        if (!flecs_component_get_table(cr, instance_table)) {
++            continue;
++        }
++
+         ecs_id_t id = base_child_table->type.array[i];
+ 
+         for (int32_t j = 0; j < base_child_range->count; j ++) {

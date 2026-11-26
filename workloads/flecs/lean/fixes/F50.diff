@@ -1,0 +1,373 @@
+diff --git a/src/observable.c b/src/observable.c
+index 881bd08..56a1c3b 100644
+--- a/src/observable.c
++++ b/src/observable.c
+@@ -307,6 +307,196 @@ static void flecs_emit_propagate(
+     ecs_event_id_record_t **iders,
+     int32_t ider_count);
+ 
++/* Invoke observers for the entities of the iterated range that don't own a
++ * DontFragment component. Such a component is in no table type, so whether an
++ * entity owns it (overrides it) is decided per entity. */
++static void flecs_emit_invoke_not_owned(
++    ecs_world_t *world,
++    ecs_map_t *observers,
++    ecs_iter_t *it,
++    ecs_table_t *table,
++    ecs_entity_t trav,
++    ecs_component_record_t *cr)
++{
++    const ecs_entity_t *entities = it->entities;
++    int32_t offset = it->offset, count = it->count;
++    int32_t i = 0;
++    while (i < count) {
++        if (flecs_component_sparse_has(cr, entities[i])) {
++            i ++;
++            continue;
++        }
++
++        int32_t start = i;
++        while (i < count && !flecs_component_sparse_has(cr, entities[i])) {
++            i ++;
++        }
++
++        it->entities = &entities[start];
++        it->offset = offset + start;
++        it->count = i - start;
++        flecs_observers_invoke(world, observers, it, table, trav);
++    }
++
++    it->entities = entities;
++    it->offset = offset;
++    it->count = count;
++}
++
++/* Find the base that provides a component to the entities of a table through
++ * IsA, in the order that ecs_get uses (flecs_get_base_component): the table's
++ * IsA targets in type order, depth first. Returns the entity that owns the
++ * component (0 if there is none), and in direct_out the table's own IsA
++ * target it was found through. */
++static ecs_entity_t flecs_emit_isa_source(
++    ecs_world_t *world,
++    const ecs_table_t *table,
++    ecs_component_record_t *cr,
++    ecs_entity_t *direct_out,
++    int32_t depth)
++{
++    if (!(table->flags & EcsTableHasIsA) || (depth >= FLECS_DAG_DEPTH_MAX)) {
++        return 0;
++    }
++
++    const ecs_table_record_t *tr_isa = flecs_component_get_table(
++        world->cr_isa_wildcard, table);
++    if (!tr_isa) {
++        return 0;
++    }
++
++    const ecs_id_t *ids = table->type.array;
++    int32_t i = tr_isa->index, end = i + tr_isa->count;
++    for (; i < end; i ++) {
++        ecs_entity_t base = flecs_entities_get_alive(
++            world, ECS_PAIR_SECOND(ids[i]));
++        ecs_record_t *r = base ? flecs_entities_get(world, base) : NULL;
++        if (!r || !r->table) {
++            continue;
++        }
++
++        ecs_entity_t src = 0;
++        if (cr->flags & EcsIdDontFragment) {
++            if (flecs_component_sparse_has(cr, base)) {
++                src = base;
++            }
++        } else if (flecs_component_get_table(cr, r->table)) {
++            src = base;
++        }
++
++        if (!src) {
++            src = flecs_emit_isa_source(world, r->table, cr, NULL, depth + 1);
++        }
++
++        if (src) {
++            if (direct_out) {
++                *direct_out = base;
++            }
++            return src;
++        }
++    }
++
++    return 0;
++}
++
++
++/* Whether src is the source of a component for the entities of a table, the
++ * primary source of ObserversManual.md ("Adding an IsA pair"), reached
++ * through the table's IsA target tgt. An OnSet event that names another base
++ * reports a value that the entities don't have. */
++static bool flecs_emit_isa_is_source(
++    ecs_world_t *world,
++    const ecs_table_t *table,
++    ecs_component_record_t *cr,
++    ecs_entity_t src,
++    ecs_entity_t tgt)
++{
++    ecs_entity_t direct = 0;
++    ecs_entity_t owner = flecs_emit_isa_source(world, table, cr, &direct, 0);
++    return ((uint32_t)owner == (uint32_t)src) &&
++        ((uint32_t)direct == (uint32_t)tgt);
++}
++
++/* Whether the component of src reaches base's inheritors through base: base
++ * is src, or an IsA target of base reaches it, and no entity on the way owns
++ * the component (an override stops the propagation from src). */
++static bool flecs_emit_isa_reaches(
++    ecs_world_t *world,
++    ecs_entity_t base,
++    ecs_component_record_t *cr,
++    ecs_entity_t src,
++    int32_t depth)
++{
++    if ((uint32_t)base == (uint32_t)src) {
++        return true;
++    }
++
++    ecs_record_t *r = flecs_entities_get(world, base);
++    if (!r || !r->table || (depth >= FLECS_DAG_DEPTH_MAX)) {
++        return false;
++    }
++
++    if (cr->flags & EcsIdDontFragment) {
++        if (flecs_component_sparse_has(cr, base)) {
++            return false;
++        }
++    } else if (flecs_component_get_table(cr, r->table)) {
++        return false;
++    }
++
++    if (!(r->table->flags & EcsTableHasIsA)) {
++        return false;
++    }
++
++    const ecs_table_record_t *tr_isa = flecs_component_get_table(
++        world->cr_isa_wildcard, r->table);
++    if (!tr_isa) {
++        return false;
++    }
++
++    const ecs_id_t *ids = r->table->type.array;
++    int32_t i = tr_isa->index, end = i + tr_isa->count;
++    for (; i < end; i ++) {
++        ecs_entity_t b = flecs_entities_get_alive(
++            world, ECS_PAIR_SECOND(ids[i]));
++        if (b && flecs_emit_isa_reaches(world, b, cr, src, depth + 1)) {
++            return true;
++        }
++    }
++
++    return false;
++}
++
++/* Whether tgt is the first of a table's IsA targets, in type order, through
++ * which the component of src reaches the table's entities. An event from src
++ * can reach a table through several of its targets (a diamond); only this
++ * path notifies, once. */
++static bool flecs_emit_isa_is_first_path(
++    ecs_world_t *world,
++    const ecs_table_t *table,
++    ecs_component_record_t *cr,
++    ecs_entity_t src,
++    ecs_entity_t tgt)
++{
++    const ecs_table_record_t *tr_isa = flecs_component_get_table(
++        world->cr_isa_wildcard, table);
++    if (!tr_isa) {
++        return false;
++    }
++
++    const ecs_id_t *ids = table->type.array;
++    int32_t i = tr_isa->index, end = i + tr_isa->count;
++    for (; i < end; i ++) {
++        ecs_entity_t b = flecs_entities_get_alive(
++            world, ECS_PAIR_SECOND(ids[i]));
++        if (b && flecs_emit_isa_reaches(world, b, cr, src, 0)) {
++            return (uint32_t)b == (uint32_t)tgt;
++        }
++    }
++
++    return false;
++}
++
+ static void flecs_emit_propagate_id_for_range(
+     ecs_world_t *world,
+     ecs_iter_t *it,
+@@ -887,6 +1077,158 @@ static void flecs_emit_forward(
+     }
+ }
+ 
++/* Find the entity that provides a DontFragment component through a
++ * traversable relationship trav (not IsA) from tgt, as up traversal does: tgt
++ * itself, the IsA bases of tgt for a component with the Inherit trait, then
++ * the target of tgt for the same relationship. */
++static ecs_entity_t flecs_emit_dont_fragment_up_source(
++    ecs_world_t *world,
++    ecs_entity_t tgt,
++    ecs_entity_t trav,
++    ecs_component_record_t *cr,
++    int32_t depth)
++{
++    if (!tgt || (depth >= FLECS_DAG_DEPTH_MAX)) {
++        return 0;
++    }
++
++    if (flecs_component_sparse_has(cr, tgt)) {
++        return tgt;
++    }
++
++    ecs_record_t *r = flecs_entities_get(world, tgt);
++    if (!r || !r->table) {
++        return 0;
++    }
++
++    if (cr->flags & EcsIdOnInstantiateInherit) {
++        ecs_entity_t src = flecs_emit_isa_source(world, r->table, cr, NULL, 0);
++        if (src) {
++            return src;
++        }
++    }
++
++    if (trav == EcsIsA) {
++        return 0;
++    }
++
++    return flecs_emit_dont_fragment_up_source(world,
++        ecs_get_target(world, tgt, trav, 0), trav, cr, depth + 1);
++}
++
++/* Emit the OnAdd or OnRemove of a new or removed (trav, tgt) pair for the
++ * DontFragment components that the entities gain or lose through it, and
++ * propagate it to the entities' own inheritors and children. Such components
++ * are in no table type, so the reachable ids of the pair don't list them
++ * (flecs_reachable_cache_ensure). Through IsA only components with the
++ * Inherit trait are reachable. As for the table components of an IsA pair,
++ * up observers get the event when tgt provides the component (once, when the
++ * providing base is reachable through several of the entities' targets), and
++ * self|up observers only when tgt is the base that the entities get the
++ * component from (flecs_emit_forward). */
++static void flecs_emit_forward_dont_fragment(
++    ecs_world_t *world,
++    const ecs_event_record_t *er,
++    ecs_iter_t *it,
++    ecs_table_t *table,
++    ecs_component_record_t *pair_cr)
++{
++    ecs_entity_t trav = ECS_PAIR_FIRST(pair_cr->id);
++    ecs_entity_t tgt = flecs_entities_get_alive(
++        world, ECS_PAIR_SECOND(pair_cr->id));
++    if (!tgt) {
++        return;
++    }
++
++    ecs_entity_t old_src = it->sources[0];
++
++    ecs_component_record_t *cur = world->cr_non_fragmenting_head;
++    for (; cur; cur = cur->non_fragmenting.next) {
++        if (!cur->sparse || ecs_id_is_wildcard(cur->id)) {
++            continue;
++        }
++
++        if ((trav == EcsIsA) && !(cur->flags & EcsIdOnInstantiateInherit)) {
++            continue;
++        }
++
++        ecs_event_id_record_t *iders[5];
++        int32_t ider_i, ider_count = flecs_event_observers_get(
++            er, cur->id, iders);
++        if (!ider_count) {
++            continue;
++        }
++
++        ecs_entity_t src = flecs_emit_dont_fragment_up_source(
++            world, tgt, trav, cur, 0);
++        if (!src) {
++            continue;
++        }
++
++        bool self_up = true;
++        if (trav == EcsIsA) {
++            if (!flecs_emit_isa_is_first_path(world, table, cur, src, tgt)) {
++                continue;
++            }
++
++            self_up = flecs_emit_isa_is_source(world, table, cur, src, tgt);
++        }
++
++        ecs_table_record_t dummy_tr = {
++            .hdr.cr = cur,
++            .hdr.table = table,
++            .index = -1,
++            .column = -1,
++            .count = 0
++        };
++
++        it->ids[0] = cur->id;
++        it->event_id = cur->id;
++        it->sources[0] = src;
++        it->trs[0] = &dummy_tr;
++        ECS_CONST_CAST(int16_t*, it->columns)[0] = -1;
++        ECS_CONST_CAST(int32_t*, it->sizes)[0] =
++            cur->type_info ? cur->type_info->size : 0;
++        it->up_fields = 1;
++
++        for (ider_i = 0; ider_i < ider_count; ider_i ++) {
++            ecs_event_id_record_t *ider = iders[ider_i];
++            if (ider->observer_count == ider->up_notify_count) {
++                continue;
++            }
++
++            flecs_observers_invoke_skip_up_notify(
++                world, &ider->up, it, table, trav);
++
++            /* Owned takes precedence */
++            if (self_up) {
++                flecs_emit_invoke_not_owned(
++                    world, &ider->self_up, it, table, trav, cur);
++            }
++        }
++
++        it->up_fields = 0;
++
++        /* Propagate to the inheritors and children of the entities that gain
++         * or lose the component and don't own it, as for the table
++         * components of the pair. */
++        if (self_up && table->_->traversable_count) {
++            const ecs_entity_t *entities = it->entities;
++            int32_t e;
++            for (e = 0; e < it->count; e ++) {
++                if (!flecs_component_sparse_has(cur, entities[e])) {
++                    flecs_propagate_entities(world, it, cur, &entities[e], 1,
++                        src, iders, ider_count);
++                }
++            }
++        }
++
++        it->trs[0] = NULL;
++    }
++
++    it->sources[0] = old_src;
++}
++
+ static void flecs_emit_on_set_for_override_on_add(
+     ecs_world_t *world,
+     const ecs_event_record_t *er_onset,
+@@ -1236,6 +1578,12 @@ repeat_event:
+             /* Forward events for components from pair target */
+             flecs_emit_forward(world, er, er_fwd, ids, &it, table, cr);
+ 
++            if (((event == EcsOnAdd) || (event == EcsOnRemove)) && count &&
++                world->cr_non_fragmenting_head)
++            {
++                flecs_emit_forward_dont_fragment(world, er, &it, table, cr);
++            }
++
+             ecs_assert(it.event_cur == evtx, ECS_INTERNAL_ERROR, NULL);
+         }
+ 

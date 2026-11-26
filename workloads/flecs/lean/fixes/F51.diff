@@ -1,0 +1,49 @@
+diff --git a/src/observable.c b/src/observable.c
+index 881bd08..187f892 100644
+--- a/src/observable.c
++++ b/src/observable.c
+@@ -882,6 +882,26 @@ static void flecs_emit_forward(
+ 
+                 flecs_propagate_entities(world, it, rc_cr, it->entities,
+                     it->count, elem->src, iders, ider_count);
++
++                /* Adding an IsA pair changes the value that the inheritors
++                 * and children of the entities get through them as well:
++                 * propagate the OnSet of a newly inherited component that has
++                 * a value. */
++                if (er_onset && (ecs_table_type_to_column_index(
++                    r->table, tr->index) != -1))
++                {
++                    ecs_event_id_record_t *iders_set[5] = {0};
++                    int32_t ider_set_count = flecs_event_observers_get(
++                        er_onset, rc_cr->id, iders_set);
++                    if (ider_set_count) {
++                        ecs_entity_t event = it->event;
++                        it->event = EcsOnSet;
++                        flecs_propagate_entities(world, it, rc_cr,
++                            it->entities, it->count, elem->src, iders_set,
++                            ider_set_count);
++                        it->event = event;
++                    }
++                }
+             }
+         }
+     }
+@@ -999,6 +1019,17 @@ static void flecs_emit_on_set_for_override_on_remove(
+         flecs_observers_invoke(world, &ider->up, it, table, EcsIsA);
+         ecs_assert(it->event_cur == evtx, ECS_INTERNAL_ERROR, NULL);
+     }
++
++    /* The inheritors and children of the entities now get the base's value
++     * through them: propagate the OnSet, with the base as source. */
++    if (table->_->traversable_count) {
++        ecs_entity_t event = it->event;
++        it->event = EcsOnSet;
++        flecs_propagate_entities(world, it, cr, it->entities, it->count,
++            base, iders_set, ider_set_count);
++        it->event = event;
++        ecs_assert(it->event_cur == evtx, ECS_INTERNAL_ERROR, NULL);
++    }
+ }
+ 
+ /* The emit function is responsible for finding and invoking the observers 

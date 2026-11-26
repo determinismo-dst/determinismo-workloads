@@ -1,0 +1,17 @@
+diff --git a/src/addons/prefab/tree_spawner.c b/src/addons/prefab/tree_spawner.c
+index 126772c..970eb39 100644
+--- a/src/addons/prefab/tree_spawner.c
++++ b/src/addons/prefab/tree_spawner.c
+@@ -344,6 +344,12 @@ void flecs_spawner_instantiate(
+     }
+ 
+     if (vec == &tmp_vec) {
++        /* The depth is past the spawner's cache: release the tables that
++         * flecs_spawner_transpose_depth kept for this call. Nothing else
++         * releases them, and a kept table outlives the prefab child. */
++        for (i = 0; i < child_count; i ++) {
++            flecs_table_release(spawn_children[i].table);
++        }
+         ecs_vec_fini_t(NULL, vec, ecs_tree_spawner_child_t);
+     }
+ }

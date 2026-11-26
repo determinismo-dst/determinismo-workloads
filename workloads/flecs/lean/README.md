@@ -148,9 +148,11 @@ instead).
 
 [REPROS.md](REPROS.md) lists every confirmed finding by kind, each with its repro.
 
-Proposed fixes ([fixes/](fixes/README.md)): 30 of the 37 findings F1-F40 fixed by 27 patches,
-each one's test red on v4.2.0 and green with it, flecs's own suites unchanged; the other 7 are
-design or documentation questions.
+Proposed fixes ([fixes/](fixes/README.md)): 48 of the 55 findings F1-F58 (F10, F15 and F24 left
+to their upstream issue and PRs) fixed by 45 patches, two of them copies (F48's is F42's, F55's is
+F46's); each one's tests red on v4.2.0 and green with it in every build mode they need, flecs's
+own suites unchanged alone and all together; the other 7 are design or documentation questions.
+The fixes' scripts take the directory of the release and work trees from `FLECS_FIXES_ROOT`.
 
 ## Building and running
 

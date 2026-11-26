@@ -10,9 +10,11 @@ echo "== $N: $*"
 "$R/bin/check-apply.sh" "$D"
 python3 -I "$R/bin/apply2distr.py" "$D" "$R/orig/flecs-4.2.0" "$B/distr" > "$B/apply2distr.log" || echo "APPLY2DISTR FAILED"
 [ -f "$B/distr/flecs.h" ] || cp "$R/orig/flecs-4.2.0/distr/flecs.h" "$B/distr/"
-perl -e 'alarm shift; exec @ARGV' 900 cc -std=gnu99 -O1 -g -c -I "$B/distr" "$B/distr/flecs.c" -o "$B/flecs.o" 2> "$B/cc.log" || echo "COMPILE FAILED"
+"$R/bin/slot.sh" perl -e 'alarm shift; exec @ARGV' 900 cc -std=gnu99 -O1 -g -c -I "$B/distr" "$B/distr/flecs.c" -o "$B/flecs.o" 2> "$B/cc.log" || echo "COMPILE FAILED"
 echo "warnings: $(grep -c 'warning:' "$B/cc.log")"
 covered=" "; for f in "$@"; do covered="$covered$("$R/bin/tests-for.sh" $f) "; done
+# a test of two findings (the Parent forms of F48 and F50) is covered when both patches are in
+case " $* " in *" F48 "*) case " $* " in *" F50 "*) covered="$covered parent_storage_dont_fragment_events.c ";; esac;; esac
 echo "-- every test (covered = a patch in this build targets it)"
 for t in "$R"/tests/*.c; do n=$(basename $t)
   case "$covered" in *" $n "*) tag=covered;; *) tag=other;; esac

@@ -10,7 +10,7 @@ echo "== $F"
 python3 -I "$R/bin/apply2distr.py" "$R/fixes/$F.diff" "$R/orig/flecs-4.2.0" "$B/distr" > "$B/apply2distr.log" || echo "APPLY2DISTR FAILED"
 [ -f "$B/distr/flecs.h" ] || cp "$R/orig/flecs-4.2.0/distr/flecs.h" "$B/distr/"
 [ -f "$B/distr/flecs.c" ] || cp "$R/orig/flecs-4.2.0/distr/flecs.c" "$B/distr/"
-perl -e 'alarm shift; exec @ARGV' 900 cc -std=gnu99 -O1 -g -c -I "$B/distr" "$B/distr/flecs.c" -o "$B/flecs.o" 2> "$B/cc.log" || echo "COMPILE FAILED"
+"$R/bin/slot.sh" perl -e 'alarm shift; exec @ARGV' 900 cc -std=gnu99 -O1 -g -c -I "$B/distr" "$B/distr/flecs.c" -o "$B/flecs.o" 2> "$B/cc.log" || echo "COMPILE FAILED"
 echo "warnings: $(grep -c 'warning:' "$B/cc.log")"
 tests=(); for t in $("$R/bin/tests-for.sh" $F); do tests+=("$R/tests/$t"); done
 echo "-- tests, patched object"
@@ -18,7 +18,7 @@ echo "-- tests, patched object"
 echo "-- tests, one-step: cc -std=gnu99 -O1 -g -I distr <test>.c distr/flecs.c -lm -lpthread"
 mkdir -p "$B/one"
 for t in "${tests[@]}"; do n=$(basename $t .c)
-  perl -e 'alarm shift; exec @ARGV' 900 cc -std=gnu99 -O1 -g -I "$B/distr" "$t" "$B/distr/flecs.c" -lm -lpthread -o "$B/one/$n" 2>/dev/null || { echo "$n: COMPILE-ERROR"; continue; }
+  "$R/bin/slot.sh" perl -e 'alarm shift; exec @ARGV' 900 cc -std=gnu99 -O1 -g -I "$B/distr" "$t" "$B/distr/flecs.c" -lm -lpthread -o "$B/one/$n" 2>/dev/null || { echo "$n: COMPILE-ERROR"; continue; }
   (cd "$B/one" && perl -e 'alarm shift; exec @ARGV' 60 "./$n" > "$n.out" 2>&1); echo "$n: rc=$?"; rm -rf "$B/one/$n" "$B/one/$n.dSYM"
 done
 echo "-- suites"

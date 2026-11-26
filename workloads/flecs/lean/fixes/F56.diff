@@ -1,0 +1,47 @@
+diff --git a/src/query/cache/cache.c b/src/query/cache/cache.c
+index 53172f4..802a52f 100644
+--- a/src/query/cache/cache.c
++++ b/src/query/cache/cache.c
+@@ -848,6 +848,7 @@ ecs_query_cache_t* flecs_query_cache_init(
+     }
+ 
+     result->prev_match_count = -1;
++    result->sorted_match_count = -1;
+ 
+     if (ecs_should_log_1()) {
+         char *query_expr = ecs_query_str(result->query);
+diff --git a/src/query/cache/cache.h b/src/query/cache/cache.h
+index 9db0ebc..2bbdf29 100644
+--- a/src/query/cache/cache.h
++++ b/src/query/cache/cache.h
+@@ -103,7 +103,8 @@ struct ecs_query_cache_t {
+     int32_t cascade_by;              /* Identify cascade term */
+     int32_t parent_table_count;
+     int32_t match_count;             /* How often have tables been (un)matched */
+-    int32_t prev_match_count;        /* Track if sorting is needed */
++    int32_t prev_match_count;        /* match_count at the last iteration */
++    int32_t sorted_match_count;      /* match_count when table_slices was built */
+     
+     ecs_entity_t entity;             /* Entity associated with query */
+ 
+diff --git a/src/query/cache/order_by.c b/src/query/cache/order_by.c
+index 53596ce..bfa629a 100644
+--- a/src/query/cache/order_by.c
++++ b/src/query/cache/order_by.c
+@@ -312,9 +312,15 @@ void flecs_query_cache_sort_tables(
+         }
+     }
+ 
+-    if (tables_sorted || cache->match_count != cache->prev_match_count) {
++    /* Rebuild the slices when a table was matched or unmatched since they
++     * were built. prev_match_count can't tell: syncing a match monitor (as
++     * every ecs_query_next does for the previous result) resets it, so a
++     * table that left the cache during an iteration would keep its slice,
++     * which names the freed table, in every later iterator. */
++    if (tables_sorted || cache->match_count != cache->sorted_match_count) {
+         flecs_query_cache_build_sorted_tables(cache);
+         cache->match_count ++; /* Increase version if tables changed */
++        cache->sorted_match_count = cache->match_count;
+     }
+ }
+ 

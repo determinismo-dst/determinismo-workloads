@@ -1,0 +1,61 @@
+diff --git a/src/storage/non_fragmenting_childof.c b/src/storage/non_fragmenting_childof.c
+index 4c3895f..7cb4f42 100644
+--- a/src/storage/non_fragmenting_childof.c
++++ b/src/storage/non_fragmenting_childof.c
+@@ -110,6 +110,47 @@ static void flecs_on_reparent_update_name(
+     }
+ }
+ 
++/* Re-parenting a child with the Parent component removes (ChildOf, old
++ * parent) from it, as replacing a ChildOf pair does. Emit the OnRemove of
++ * that pair before the new parent is written: its observers, and observers of
++ * the old parent's components that the event forwards (Position(up)), see the
++ * child with its old parent. The OnSet of the new value is emitted as the
++ * OnAdd of (ChildOf, new parent) (flecs_emit). */
++static void flecs_on_reparent_emit_on_remove(
++    ecs_world_t *world,
++    const ecs_record_t *r,
++    ecs_entity_t old_parent)
++{
++    if (!old_parent || !flecs_entities_is_alive(world, old_parent)) {
++        return;
++    }
++
++    ecs_table_t *table = r->table;
++    ecs_component_record_t *cr = flecs_components_get(
++        world, ecs_id(EcsParent));
++    ecs_assert(cr != NULL, ECS_INTERNAL_ERROR, NULL);
++
++    /* Observers of (ChildOf, *), and up observers through ChildOf, are also
++     * registered for the Parent component (flecs_inc_observer_count). */
++    if (!(cr->flags & EcsIdHasOnRemove) &&
++        !((cr->flags & EcsIdHasUpNotify) &&
++            (table->flags & EcsTableHasTraversable)))
++    {
++        return;
++    }
++
++    ecs_id_t pair = ecs_childof(old_parent);
++    ecs_type_t ids = { .array = &pair, .count = 1 };
++    flecs_emit(world, world, &(ecs_event_desc_t){
++        .event = EcsOnRemove,
++        .ids = &ids,
++        .table = table,
++        .offset = ECS_RECORD_TO_ROW(r->row),
++        .count = 1,
++        .observable = world
++    });
++}
++
+ static void flecs_on_replace_parent(ecs_iter_t *it) {
+     ecs_world_t *world = it->world;
+     EcsParent *old = ecs_field(it, EcsParent, 0);
+@@ -151,6 +192,8 @@ static void flecs_on_replace_parent(ecs_iter_t *it) {
+         }
+     #endif
+ 
++        flecs_on_reparent_emit_on_remove(world, r, old_parent);
++
+         flecs_journal_begin(world, EcsJournalSetParent, e, &(ecs_type_t){
+             .count = 1, .array = &new_parent
+         }, NULL);

@@ -1,0 +1,112 @@
+diff --git a/src/query/cache/cache.h b/src/query/cache/cache.h
+index 9db0ebc..4cbf9db 100644
+--- a/src/query/cache/cache.h
++++ b/src/query/cache/cache.h
+@@ -131,6 +131,10 @@ void flecs_query_cache_sort_tables(
+ void flecs_query_cache_build_sorted_tables(
+     ecs_query_cache_t *cache);
+ 
++void flecs_query_cache_remove_table_slices(
++    ecs_query_cache_t *cache,
++    const ecs_table_t *table);
++
+ bool flecs_query_cache_is_trivial(
+     const ecs_query_cache_t *cache);
+ 
+diff --git a/src/query/cache/cache_iter.c b/src/query/cache/cache_iter.c
+index 8ad5b2e..ad854ac 100644
+--- a/src/query/cache/cache_iter.c
++++ b/src/query/cache/cache_iter.c
+@@ -77,8 +77,15 @@ static ecs_query_cache_match_t* flecs_query_cache_next(
+         ecs_query_cache_match_t *qm = 
+             ecs_vec_get_t(qit->tables, ecs_query_cache_match_t, qit->cur);
+ 
+-        /* Check if table is empty and whether we need to skip it */
++        /* Skip a sorted slice whose table left the cache since the iterator
++         * was created (flecs_query_cache_remove_table_slices). */
+         ecs_table_t *table = qm->base.table;
++        if (!table) {
++            qit->cur ++;
++            goto repeat;
++        }
++
++        /* Check if table is empty and whether we need to skip it */
+         if (!ecs_table_count(table)) {
+             if (!(always_match_empty || (it->flags & EcsIterMatchEmptyTables))) {
+                 if (ctx->query->pub.flags & EcsQueryHasChangeDetection) {
+diff --git a/src/query/cache/change_detection.c b/src/query/cache/change_detection.c
+index a91ce5c..f31285f 100644
+--- a/src/query/cache/change_detection.c
++++ b/src/query/cache/change_detection.c
+@@ -704,6 +704,11 @@ bool ecs_iter_changed(
+         ecs_query_cache_match_t *qm = 
+             (ecs_query_cache_match_t*)it->priv_.iter.query.elem;
+         ecs_check(qm != NULL, ECS_INVALID_PARAMETER, NULL);
++        if (!qm->base.table) {
++            /* Sorted slice of a table that left the cache during the
++             * iteration (flecs_query_cache_remove_table_slices) */
++            return true;
++        }
+         return flecs_query_check_match_monitor(impl, qm, it);
+     }
+ 
+diff --git a/src/query/cache/group.c b/src/query/cache/group.c
+index 4937749..4bea981 100644
+--- a/src/query/cache/group.c
++++ b/src/query/cache/group.c
+@@ -318,6 +318,10 @@ void flecs_query_cache_remove_table(
+     ecs_assert(match->base.table != NULL, ECS_INTERNAL_ERROR, NULL);
+     ecs_assert(match->base.table->id == table->id, ECS_INTERNAL_ERROR, NULL);
+ 
++    if (cache->order_by_callback) {
++        flecs_query_cache_remove_table_slices(cache, table);
++    }
++
+     flecs_query_cache_match_fini(cache, match);
+ 
+     flecs_query_cache_remove_table_from_group(cache, group, qt->index);
+diff --git a/src/query/cache/order_by.c b/src/query/cache/order_by.c
+index 53596ce..e1b9d18 100644
+--- a/src/query/cache/order_by.c
++++ b/src/query/cache/order_by.c
+@@ -213,6 +213,24 @@ done:
+     flecs_free_n(&world->allocator, sort_helper_t, table_count, helper);
+ }
+ 
++/* Clear the sorted slices of a table that leaves the cache. The slices are
++ * copies of the table's match, so they point at the table and at the match's
++ * arrays, which the cache frees, and a table created later can take the
++ * table's memory. The iterator skips a cleared slice. The slices are rebuilt
++ * when the next iterator is created (the cache's match_count changed). */
++void flecs_query_cache_remove_table_slices(
++    ecs_query_cache_t *cache,
++    const ecs_table_t *table)
++{
++    int32_t i, count = ecs_vec_count(&cache->table_slices);
++    ecs_query_cache_match_t *slices = ecs_vec_first(&cache->table_slices);
++    for (i = 0; i < count; i ++) {
++        if (slices[i].base.table == table) {
++            ecs_os_zeromem(&slices[i]);
++        }
++    }
++}
++
+ void flecs_query_cache_build_sorted_tables(
+     ecs_query_cache_t *cache)
+ {
+diff --git a/src/query/engine/eval_iter.c b/src/query/engine/eval_iter.c
+index a93c291..4c97925 100644
+--- a/src/query/engine/eval_iter.c
++++ b/src/query/engine/eval_iter.c
+@@ -223,7 +223,10 @@ static void flecs_query_change_detection(
+     if (!(it->flags & EcsIterSkip)) {
+         /* Mark table columns that are written to dirty */
+         flecs_query_mark_fields_dirty(impl, it);
+-        if (qit->elem) {
++
++        /* The table of a sorted slice can leave the cache while the slice is
++         * iterated, which clears the slice (no table, no monitor). */
++        if (qit->elem && qit->elem->base.table) {
+             if (impl->pub.flags & EcsQueryHasChangeDetection) {
+                 /* If this query uses change detection, synchronize the
+                  * monitor for the iterated table with the query */

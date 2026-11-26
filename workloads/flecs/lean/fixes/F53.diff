@@ -1,0 +1,279 @@
+diff --git a/include/flecs.h b/include/flecs.h
+index 9e39955..02a4547 100644
+--- a/include/flecs.h
++++ b/include/flecs.h
+@@ -4841,7 +4841,10 @@ const ecs_query_t* ecs_query_get(
+  * will not update the dirty flags of the table for its out fields.
+  *
+  * Only valid iterators must be provided (next() has to be called at least once
+- * and must return true), and the iterator must be a query iterator.
++ * and must return true), and the iterator must be a query iterator, or the
++ * worker iterator that a multithreaded system gets. Skip a result on every
++ * worker that gets rows of it: change detection works on whole tables, and
++ * ecs_iter_changed() returns the same state on every worker.
+  *
+  * @param it The iterator result to skip.
+  */
+@@ -5353,6 +5356,12 @@ uint64_t ecs_iter_get_group(
+  * Change detection works on a per-table basis. Changes to individual entities
+  * cannot be detected this way.
+  * 
++ * The iterator must be a query iterator, or the worker iterator that a
++ * multithreaded system gets. In a multithreaded op of the pipeline, the
++ * operation returns whether the result changed before the op started; skip
++ * (ecs_iter_skip()) the results that didn't change, so that changes that
++ * other systems of the op make while it runs are reported in the next frame.
++ * 
+  * @param it The iterator.
+  * @return True if the result changed, false if it didn't.
+  */
+diff --git a/src/addons/pipeline/pipeline.c b/src/addons/pipeline/pipeline.c
+index ec5abbc..97b2ee8 100644
+--- a/src/addons/pipeline/pipeline.c
++++ b/src/addons/pipeline/pipeline.c
+@@ -615,6 +615,22 @@ void flecs_run_pipeline(
+ 
+         pq->immediate = immediate;
+ 
++#ifdef FLECS_CACHED_QUERIES
++        if (op_multi_threaded) {
++            /* Compute the changed state of the results of the op's
++             * multithreaded systems for ecs_iter_changed, which the workers
++             * can't compute while they iterate the same results. */
++            ecs_system_t **systems = ecs_vec_first_t(
++                &pq->systems, ecs_system_t*);
++            int32_t s, end = pq->cur_op->offset + pq->cur_op->count;
++            for (s = pq->cur_i; s < end; s ++) {
++                if (systems[s]->multi_threaded) {
++                    flecs_query_changed_for_workers(systems[s]->query);
++                }
++            }
++        }
++#endif
++
+         if (!immediate) {
+             ecs_readonly_begin(world, multi_threaded);
+         } else {
+@@ -644,6 +660,17 @@ void flecs_run_pipeline(
+ 
+         if (op_multi_threaded) {
+             flecs_wait_for_sync(world);
++
++#ifdef FLECS_CACHED_QUERIES
++            ecs_system_t **systems = ecs_vec_first_t(
++                &pq->systems, ecs_system_t*);
++            int32_t s, end = pq->cur_op->offset + pq->cur_op->count;
++            for (s = pq->cur_i; s < end; s ++) {
++                if (systems[s]->multi_threaded) {
++                    flecs_query_changed_for_workers_fini(systems[s]->query);
++                }
++            }
++#endif
+         }
+ 
+         if (!immediate) {
+diff --git a/src/iter.c b/src/iter.c
+index 2d644bd..ab9e8a9 100644
+--- a/src/iter.c
++++ b/src/iter.c
+@@ -1077,6 +1077,14 @@ bool ecs_worker_next(
+                 return false;
+             }
+         }
++
++        if (!per_worker) {
++            /* The worker gets no rows of this result: leave the result's
++             * change detection (marking fields dirty, syncing its changed
++             * state) to the workers that iterate its rows, so that a result
++             * that all of them skip (ecs_iter_skip) keeps its state. */
++            chain_it->flags |= EcsIterSkip;
++        }
+     } while (!per_worker);
+ 
+     it->frame_offset += first;
+diff --git a/src/query/cache/cache.h b/src/query/cache/cache.h
+index 9db0ebc..f98f517 100644
+--- a/src/query/cache/cache.h
++++ b/src/query/cache/cache.h
+@@ -37,6 +37,7 @@ struct ecs_query_cache_match_t {
+     ecs_id_t *_ids;                   /* Resolved (component) ids for current table. */
+     ecs_entity_t *_sources;           /* Sources of ids. */
+     ecs_termset_t _up_fields;         /* Fields that are matched through traversal. */
++    bool _worker_changed;             /* Changed state computed for worker threads. */
+     int32_t *_monitor;                /* Used to monitor table for changes. */
+     ecs_vec_t *wildcard_matches;      /* Additional matches for table for wildcard queries. */
+ };
+@@ -134,6 +135,12 @@ void flecs_query_cache_build_sorted_tables(
+ bool flecs_query_cache_is_trivial(
+     const ecs_query_cache_t *cache);
+ 
++void flecs_query_changed_for_workers(
++    ecs_query_t *q);
++
++void flecs_query_changed_for_workers_fini(
++    ecs_query_t *q);
++
+ ecs_size_t flecs_query_cache_elem_size(
+     const ecs_query_cache_t *cache);
+ 
+diff --git a/src/query/cache/change_detection.c b/src/query/cache/change_detection.c
+index a91ce5c..abd2cdd 100644
+--- a/src/query/cache/change_detection.c
++++ b/src/query/cache/change_detection.c
+@@ -672,11 +672,126 @@ bool ecs_query_changed(
+     return false;
+ }
+ 
++static void flecs_query_match_changed_for_workers(
++    ecs_query_impl_t *impl,
++    ecs_query_cache_match_t *qm)
++{
++    qm->_worker_changed = flecs_query_check_match_monitor(impl, qm, NULL);
++
++    if (qm->wildcard_matches) {
++        ecs_query_cache_match_t *wc_qms = ecs_vec_first(qm->wildcard_matches);
++        int32_t i, count = ecs_vec_count(qm->wildcard_matches);
++        for (i = 0; i < count; i ++) {
++            wc_qms[i]._worker_changed = flecs_query_check_match_monitor(
++                impl, &wc_qms[i], NULL);
++        }
++    }
++}
++
++/* Compute the changed state of a query's results for the worker threads of a
++ * multithreaded pipeline op. The pipeline calls this on the main thread for
++ * the multithreaded systems of the op, before it signals the workers.
++ * Every worker iterates every result and syncs a result's monitor when it is
++ * done with its rows, while the other workers may still have to check it,
++ * and monitors and dirty states are allocated lazily, which isn't thread safe.
++ * ecs_iter_changed on a worker iterator returns the state computed here: the
++ * changes made before the op started. */
++void flecs_query_changed_for_workers(
++    ecs_query_t *q)
++{
++    ecs_query_impl_t *impl = flecs_query_impl(q);
++    ecs_query_cache_t *cache = impl->cache;
++
++    impl->worker_snapshot = false;
++    impl->worker_cache_snapshot = false;
++    impl->worker_fixed_changed = false;
++
++    if (q->read_fields & q->fixed_fields) {
++        impl->worker_fixed_changed = flecs_query_check_fixed_monitor(impl);
++        impl->worker_snapshot = true;
++    }
++
++    /* A query created with EcsQueryDetectChanges creates its monitors when
++     * it first checks for changes, which then happens here. */
++    if (cache && !flecs_query_cache_is_trivial(cache) &&
++        (q->flags & (EcsQueryHasChangeDetection|EcsQueryDetectChanges)))
++    {
++        const ecs_query_cache_group_t *cur = cache->first_group;
++        for (; cur; cur = cur->next) {
++            int32_t i, count = ecs_vec_count(&cur->tables);
++            ecs_query_cache_match_t *qms = ecs_vec_first(&cur->tables);
++            for (i = 0; i < count; i ++) {
++                flecs_query_match_changed_for_workers(impl, &qms[i]);
++            }
++        }
++
++        /* An order_by query iterates copies of its matches */
++        if (cache->order_by_callback) {
++            int32_t i, count = ecs_vec_count(&cache->table_slices);
++            ecs_query_cache_match_t *qms = ecs_vec_first(&cache->table_slices);
++            for (i = 0; i < count; i ++) {
++                if (qms[i].base.table) {
++                    /* A slice copies the monitor of its match */
++                    qms[i]._worker_changed = !qms[i]._monitor ||
++                        flecs_query_check_match_monitor(impl, &qms[i], NULL);
++                }
++            }
++        }
++
++        impl->worker_cache_snapshot = true;
++        impl->worker_snapshot = true;
++    }
++}
++
++/* Called by the pipeline after the workers of the op are done. */
++void flecs_query_changed_for_workers_fini(
++    ecs_query_t *q)
++{
++    ecs_query_impl_t *impl = flecs_query_impl(q);
++    impl->worker_snapshot = false;
++    impl->worker_cache_snapshot = false;
++    impl->worker_fixed_changed = false;
++}
++
+ /* Public API call to check if the currently iterated result has changed. */
+ bool ecs_iter_changed(
+     ecs_iter_t *it)
+ {
+     ecs_check(it != NULL, ECS_INVALID_PARAMETER, NULL);
++
++    if (it->next == ecs_worker_next) {
++        /* The iterator of a multithreaded system: its result is the current
++         * result of the chained query iterator, restricted to the worker's
++         * rows. Change detection works on whole tables. */
++        ecs_iter_t *chain_it = it->chain_it;
++        ecs_check(chain_it != NULL, ECS_INVALID_PARAMETER, NULL);
++        ecs_check(chain_it->next == ecs_query_next, ECS_UNSUPPORTED, NULL);
++        ecs_check(ECS_BIT_IS_SET(chain_it->flags, EcsIterIsValid),
++            ECS_INVALID_PARAMETER, NULL);
++
++        ecs_query_impl_t *impl = flecs_query_impl(chain_it->query);
++        if (impl->worker_snapshot) {
++            /* In a multithreaded pipeline op: the state computed before the
++             * workers started (flecs_query_changed_for_workers) */
++            if (impl->worker_fixed_changed) {
++                return true;
++            }
++
++            if (impl->worker_cache_snapshot) {
++                ecs_query_cache_match_t *qm = (ecs_query_cache_match_t*)
++                    chain_it->priv_.iter.query.elem;
++                ecs_check(qm != NULL, ECS_INVALID_PARAMETER, NULL);
++                return qm->_worker_changed;
++            }
++
++            if (!impl->cache) {
++                return false;
++            }
++        }
++
++        it = chain_it;
++    }
++
+     ecs_check(it->next == ecs_query_next, ECS_UNSUPPORTED, NULL);
+     ecs_check(ECS_BIT_IS_SET(it->flags, EcsIterIsValid),
+         ECS_INVALID_PARAMETER, NULL);
+@@ -715,6 +830,15 @@ error:
+ void ecs_iter_skip(
+     ecs_iter_t *it)
+ {
++    if (it->next == ecs_worker_next) {
++        /* Skip the result for this worker: its chained query iterator then
++         * neither marks the result's fields dirty nor syncs the result's
++         * changed state. Workers that iterate other rows of the same table
++         * and don't skip it still do. */
++        ecs_assert(it->chain_it != NULL, ECS_INVALID_PARAMETER, NULL);
++        it = it->chain_it;
++    }
++
+     ecs_assert(it->next == ecs_query_next, ECS_INVALID_PARAMETER, NULL);
+     ecs_assert(ECS_BIT_IS_SET(it->flags, EcsIterIsValid),
+         ECS_INVALID_PARAMETER, NULL);
+diff --git a/src/query/types.h b/src/query/types.h
+index 09c5af5..aa32024 100644
+--- a/src/query/types.h
++++ b/src/query/types.h
+@@ -508,6 +508,9 @@ struct ecs_query_impl_t {
+     int32_t tokens_len;           /* Length of tokens buffer */
+     char *tokens;                 /* Buffer with string tokens used by terms */
+     int32_t *monitor;             /* Change monitor for fields with fixed src */
++    bool worker_snapshot;         /* Changed state computed for worker threads */
++    bool worker_cache_snapshot;   /* ... for the results of the cache */
++    bool worker_fixed_changed;    /* ... for fields with a fixed source */
+     ecs_termset_t dont_fragment_fields; /* Fields with only DontFragment terms */
+ 
+ #ifdef FLECS_DEBUG

@@ -1,5 +1,5 @@
 diff --git a/include/flecs.h b/include/flecs.h
-index 9e39955..e7fec11 100644
+index 9e39955..737f45b 100644
 --- a/include/flecs.h
 +++ b/include/flecs.h
 @@ -1629,6 +1629,7 @@ typedef struct {
@@ -10,6 +10,31 @@ index 9e39955..e7fec11 100644
  } ecs_tree_spawner_child_t;
  
  /** Tree spawner data for a single hierarchy depth. */
+@@ -4841,7 +4842,10 @@ const ecs_query_t* ecs_query_get(
+  * will not update the dirty flags of the table for its out fields.
+  *
+  * Only valid iterators must be provided (next() has to be called at least once
+- * and must return true), and the iterator must be a query iterator.
++ * and must return true), and the iterator must be a query iterator, or the
++ * worker iterator that a multithreaded system gets. Skip a result on every
++ * worker that gets rows of it: change detection works on whole tables, and
++ * ecs_iter_changed() returns the same state on every worker.
+  *
+  * @param it The iterator result to skip.
+  */
+@@ -5353,6 +5357,12 @@ uint64_t ecs_iter_get_group(
+  * Change detection works on a per-table basis. Changes to individual entities
+  * cannot be detected this way.
+  * 
++ * The iterator must be a query iterator, or the worker iterator that a
++ * multithreaded system gets. In a multithreaded op of the pipeline, the
++ * operation returns whether the result changed before the op started; skip
++ * (ecs_iter_skip()) the results that didn't change, so that changes that
++ * other systems of the op make while it runs are reported in the next frame.
++ * 
+  * @param it The iterator.
+  * @return True if the result changed, false if it didn't.
+  */
 diff --git a/include/flecs/private/api_flags.h b/include/flecs/private/api_flags.h
 index f1d6f2d..beb2dde 100644
 --- a/include/flecs/private/api_flags.h
@@ -67,7 +92,7 @@ index cbf0f7d..73558ae 100644
      result.ptr = dst.ptr;
      result.world = world;
 diff --git a/src/addons/pipeline/pipeline.c b/src/addons/pipeline/pipeline.c
-index ec5abbc..0b12008 100644
+index ec5abbc..9f7ea62 100644
 --- a/src/addons/pipeline/pipeline.c
 +++ b/src/addons/pipeline/pipeline.c
 @@ -58,6 +58,39 @@ typedef struct ecs_write_state_t {
@@ -191,19 +216,25 @@ index ec5abbc..0b12008 100644
      bool rebuilt = flecs_pipeline_build(world, pq);
      if (start_of_frame) {
          pq->cur_op = ecs_vec_first_t(&pq->ops, ecs_pipeline_op_t);
-@@ -615,6 +690,19 @@ void flecs_run_pipeline(
+@@ -615,6 +690,25 @@ void flecs_run_pipeline(
  
          pq->immediate = immediate;
  
 +#ifdef FLECS_CACHED_QUERIES
 +        if (op_multi_threaded) {
 +            /* Sort the order_by queries of the op's systems now: the worker
-+             * threads can't sort the tables they iterate at the same time. */
++             * threads can't sort the tables they iterate at the same time.
++             * Then compute the changed state of the results of the op's
++             * multithreaded systems for ecs_iter_changed, which the workers
++             * can't compute while they iterate the same results. */
 +            ecs_system_t **systems = ecs_vec_first_t(
 +                &pq->systems, ecs_system_t*);
 +            int32_t s, end = pq->cur_op->offset + pq->cur_op->count;
 +            for (s = pq->cur_i; s < end; s ++) {
 +                flecs_query_sort_for_workers(world, systems[s]->query);
++                if (systems[s]->multi_threaded) {
++                    flecs_query_changed_for_workers(systems[s]->query);
++                }
 +            }
 +        }
 +#endif
@@ -211,6 +242,24 @@ index ec5abbc..0b12008 100644
          if (!immediate) {
              ecs_readonly_begin(world, multi_threaded);
          } else {
+@@ -644,6 +738,17 @@ void flecs_run_pipeline(
+ 
+         if (op_multi_threaded) {
+             flecs_wait_for_sync(world);
++
++#ifdef FLECS_CACHED_QUERIES
++            ecs_system_t **systems = ecs_vec_first_t(
++                &pq->systems, ecs_system_t*);
++            int32_t s, end = pq->cur_op->offset + pq->cur_op->count;
++            for (s = pq->cur_i; s < end; s ++) {
++                if (systems[s]->multi_threaded) {
++                    flecs_query_changed_for_workers_fini(systems[s]->query);
++                }
++            }
++#endif
+         }
+ 
+         if (!immediate) {
 diff --git a/src/addons/pipeline/worker.c b/src/addons/pipeline/worker.c
 index 111ab8a..259ce1e 100644
 --- a/src/addons/pipeline/worker.c
@@ -265,7 +314,7 @@ index 111ab8a..259ce1e 100644
      ecs_os_mutex_unlock(world->sync_mutex);
  }
 diff --git a/src/addons/prefab/instantiate.c b/src/addons/prefab/instantiate.c
-index fe3b79f..87b6272 100644
+index fe3b79f..2da74a8 100644
 --- a/src/addons/prefab/instantiate.c
 +++ b/src/addons/prefab/instantiate.c
 @@ -63,6 +63,20 @@ ecs_entity_t flecs_instantiate_alloc_child_id(
@@ -289,7 +338,24 @@ index fe3b79f..87b6272 100644
      flecs_entities_make_alive(world, instance_child);
      flecs_entities_ensure(world, instance_child);
      ecs_assert(ecs_is_alive(world, instance_child), ECS_INTERNAL_ERROR, NULL);
-@@ -196,6 +210,18 @@ static void flecs_instantiate_children(
+@@ -104,6 +118,16 @@ void flecs_instantiate_sparse(
+             continue;
+         }
+ 
++        /* The instance children don't own the component when they inherit
++         * it: a prefab with a Parent hierarchy is instantiated by its tree
++         * spawner, which leaves Inherit components out of the instance
++         * child's table, and the instance child inherits them through its
++         * (IsA, prefab child) pair. There is then no value of the instance
++         * child to copy, nor to pass to the component's hooks. */
++        if (!flecs_component_get_table(cr, instance_table)) {
++            continue;
++        }
++
+         ecs_id_t id = base_child_table->type.array[i];
+ 
+         for (int32_t j = 0; j < base_child_range->count; j ++) {
+@@ -196,6 +220,18 @@ static void flecs_instantiate_children(
           * that have already been added to the child table type. */
          if (ECS_HAS_ID_FLAG(id, AUTO_OVERRIDE)) {
              ecs_id_t concreteId = id & ~ECS_AUTO_OVERRIDE;
@@ -308,7 +374,7 @@ index fe3b79f..87b6272 100644
              int32_t insert_index = flecs_child_type_insert(
                  &diff.added, component_data, concreteId);
              if (childof_base_index != -1 && insert_index != -1 &&
-@@ -298,6 +324,52 @@ error:
+@@ -298,6 +334,52 @@ error:
      return;    
  }
  
@@ -361,7 +427,7 @@ index fe3b79f..87b6272 100644
  void flecs_instantiate_dont_fragment(
      ecs_world_t *world,
      ecs_entity_t base,
-@@ -367,27 +439,53 @@ void flecs_instantiate_dont_fragment(
+@@ -367,27 +449,53 @@ void flecs_instantiate_dont_fragment(
      }
  }
  
@@ -427,7 +493,7 @@ index fe3b79f..87b6272 100644
  }
  
  void flecs_instantiate(
-@@ -404,9 +502,9 @@ void flecs_instantiate(
+@@ -404,9 +512,9 @@ void flecs_instantiate(
          "likely cycle detected during instantiation of base %s",
          flecs_errstr(ecs_get_path(world, base)));
  
@@ -439,7 +505,7 @@ index fe3b79f..87b6272 100644
      }
  
      /* If base has non-fragmenting components, add to instance */
-@@ -425,55 +523,25 @@ void flecs_instantiate(
+@@ -425,55 +533,25 @@ void flecs_instantiate(
      if (cr) {
          ecs_os_perf_trace_push("flecs.instantiate");
  
@@ -550,7 +616,7 @@ index 11379d2..2e61d51 100644
  void flecs_tree_spawner_fini(
      ecs_world_t *world,
 diff --git a/src/addons/prefab/tree_spawner.c b/src/addons/prefab/tree_spawner.c
-index 126772c..1c2546c 100644
+index 126772c..9b6bc6b 100644
 --- a/src/addons/prefab/tree_spawner.c
 +++ b/src/addons/prefab/tree_spawner.c
 @@ -38,7 +38,19 @@ static ecs_type_t flecs_prefab_spawner_build_type(
@@ -632,7 +698,7 @@ index 126772c..1c2546c 100644
      ecs_record_t *r_instance = flecs_entities_get(world, instance);
      int32_t depth = flecs_relation_depth(world, EcsChildOf, r_instance->table);
      int32_t i, child_count = ecs_vec_count(&spawner->data[0].children);
-@@ -337,12 +378,59 @@ void flecs_spawner_instantiate(
+@@ -337,13 +378,66 @@ void flecs_spawner_instantiate(
          flecs_instantiate_sparse(world, &base_range, &base_child,
              r->table, &entity, ECS_RECORD_TO_ROW(r->row), true);
  
@@ -690,8 +756,37 @@ index 126772c..1c2546c 100644
 +    }
 +
      if (vec == &tmp_vec) {
++        /* The depth is past the spawner's cache: release the tables that
++         * flecs_spawner_transpose_depth kept for this call. Nothing else
++         * releases them, and a kept table outlives the prefab child. */
++        for (i = 0; i < child_count; i ++) {
++            flecs_table_release(spawn_children[i].table);
++        }
          ecs_vec_fini_t(NULL, vec, ecs_tree_spawner_child_t);
      }
+ }
+diff --git a/src/addons/system/system.c b/src/addons/system/system.c
+index c98ab9a..8c49b8e 100644
+--- a/src/addons/system/system.c
++++ b/src/addons/system/system.c
+@@ -115,11 +115,12 @@ ecs_entity_t flecs_run_system(
+             run(it);
+             ecs_iter_fini(&qit);
+         } else {
+-#ifdef FLECS_CACHED_QUERIES
+-            if (it == &qit && (qit.flags & EcsIterTrivialCached)) {
+-                it->next = flecs_query_trivial_cached_next;
+-            }
+-#endif
++            /* The run callback gets the iterator's own next. For a query
++             * iterator that is ecs_query_next, which the documentation of
++             * ecs_system_desc_t::run tells callbacks to test for, and which
++             * ecs_iter_skip and ecs_iter_changed require. ecs_query_next
++             * already takes the trivial cache path for a trivially cached
++             * query (flecs_query_trivial_cached_next). */
+             run(it);
+         }
+     } else {
 diff --git a/src/commands.c b/src/commands.c
 index 9f1a39e..c6be73e 100644
 --- a/src/commands.c
@@ -1140,7 +1235,7 @@ index 1af5f92..fd230d1 100644
  
      if (component < FLECS_HI_COMPONENT_ID) {
 diff --git a/src/iter.c b/src/iter.c
-index 2d644bd..a346833 100644
+index 2d644bd..2b6903f 100644
 --- a/src/iter.c
 +++ b/src/iter.c
 @@ -1053,6 +1053,14 @@ bool ecs_worker_next(
@@ -1158,11 +1253,26 @@ index 2d644bd..a346833 100644
          int32_t count = it->count;
          per_worker = count / res_count;
          first = per_worker * res_index;
+@@ -1077,6 +1085,14 @@ bool ecs_worker_next(
+                 return false;
+             }
+         }
++
++        if (!per_worker) {
++            /* The worker gets no rows of this result: leave the result's
++             * change detection (marking fields dirty, syncing its changed
++             * state) to the workers that iterate its rows, so that a result
++             * that all of them skip (ecs_iter_skip) keeps its state. */
++            chain_it->flags |= EcsIterSkip;
++        }
+     } while (!per_worker);
+ 
+     it->frame_offset += first;
 diff --git a/src/observable.c b/src/observable.c
-index 881bd08..147fa2d 100644
+index 881bd08..132fd6a 100644
 --- a/src/observable.c
 +++ b/src/observable.c
-@@ -307,6 +307,115 @@ static void flecs_emit_propagate(
+@@ -307,6 +307,195 @@ static void flecs_emit_propagate(
      ecs_event_id_record_t **iders,
      int32_t ider_count);
  
@@ -1275,10 +1385,100 @@ index 881bd08..147fa2d 100644
 +        ((uint32_t)direct == (uint32_t)tgt);
 +}
 +
++/* Whether the component of src reaches base's inheritors through base: base
++ * is src, or an IsA target of base reaches it, and no entity on the way owns
++ * the component (an override stops the propagation from src). */
++static bool flecs_emit_isa_reaches(
++    ecs_world_t *world,
++    ecs_entity_t base,
++    ecs_component_record_t *cr,
++    ecs_entity_t src,
++    int32_t depth)
++{
++    if ((uint32_t)base == (uint32_t)src) {
++        return true;
++    }
++
++    ecs_record_t *r = flecs_entities_get(world, base);
++    if (!r || !r->table || (depth >= FLECS_DAG_DEPTH_MAX)) {
++        return false;
++    }
++
++    if (cr->flags & EcsIdDontFragment) {
++        if (flecs_component_sparse_has(cr, base)) {
++            return false;
++        }
++    } else if (flecs_component_get_table(cr, r->table)) {
++        return false;
++    }
++
++    if (!(r->table->flags & EcsTableHasIsA)) {
++        return false;
++    }
++
++    const ecs_table_record_t *tr_isa = flecs_component_get_table(
++        world->cr_isa_wildcard, r->table);
++    if (!tr_isa) {
++        return false;
++    }
++
++    const ecs_id_t *ids = r->table->type.array;
++    int32_t i = tr_isa->index, end = i + tr_isa->count;
++    for (; i < end; i ++) {
++        ecs_entity_t b = flecs_entities_get_alive(
++            world, ECS_PAIR_SECOND(ids[i]));
++        if (b && flecs_emit_isa_reaches(world, b, cr, src, depth + 1)) {
++            return true;
++        }
++    }
++
++    return false;
++}
++
++/* Whether tgt is the first of a table's IsA targets, in type order, through
++ * which the component of src reaches the table's entities. An event from src
++ * can reach a table through several of its targets (a diamond); only this
++ * path notifies, once. */
++static bool flecs_emit_isa_is_first_path(
++    ecs_world_t *world,
++    const ecs_table_t *table,
++    ecs_component_record_t *cr,
++    ecs_entity_t src,
++    ecs_entity_t tgt)
++{
++    const ecs_table_record_t *tr_isa = flecs_component_get_table(
++        world->cr_isa_wildcard, table);
++    if (!tr_isa) {
++        return false;
++    }
++
++    const ecs_id_t *ids = table->type.array;
++    int32_t i = tr_isa->index, end = i + tr_isa->count;
++    for (; i < end; i ++) {
++        ecs_entity_t b = flecs_entities_get_alive(
++            world, ECS_PAIR_SECOND(ids[i]));
++        if (b && flecs_emit_isa_reaches(world, b, cr, src, 0)) {
++            return (uint32_t)b == (uint32_t)tgt;
++        }
++    }
++
++    return false;
++}
++
  static void flecs_emit_propagate_id_for_range(
      ecs_world_t *world,
      ecs_iter_t *it,
-@@ -323,15 +432,27 @@ static void flecs_emit_propagate_id_for_range(
+@@ -315,7 +504,8 @@ static void flecs_emit_propagate_id_for_range(
+     ecs_event_id_record_t **iders,
+     int32_t ider_count,
+     ecs_table_range_t *range,
+-    bool notify)
++    bool notify,
++    bool self_up)
+ {
+     ecs_table_t *table = range->table;
+     int32_t count = range->count;
+@@ -323,15 +513,27 @@ static void flecs_emit_propagate_id_for_range(
  
      bool owned = flecs_component_get_table(cr, table) != NULL;
  
@@ -1306,7 +1506,19 @@ index 881bd08..147fa2d 100644
      }
  
      if (notify) {
-@@ -346,7 +467,13 @@ static void flecs_emit_propagate_id_for_range(
+@@ -341,12 +543,25 @@ static void flecs_emit_propagate_id_for_range(
+     int32_t ider_i;
+     for (ider_i = 0; notify && ider_i < ider_count; ider_i ++) {
+         ecs_event_id_record_t *ider = iders[ider_i];
++        if (!self_up) {
++            if (count) {
++                flecs_observers_invoke(world, &ider->up, it, table, trav);
++            }
++            continue;
++        }
++
+         if (count) {
+             flecs_observers_invoke(world, &ider->up, it, table, trav);
  
              if (!owned) {
                  /* Owned takes precedence */
@@ -1321,7 +1533,14 @@ index 881bd08..147fa2d 100644
              }
          } else if (ider->up_notify_count) {
              flecs_observers_invoke_up_notify(world, &ider->up, it, table, trav);
-@@ -364,6 +491,10 @@ static void flecs_emit_propagate_id_for_range(
+@@ -358,12 +573,16 @@ static void flecs_emit_propagate_id_for_range(
+         }
+     }
+ 
+-    if (!table->_->traversable_count || owned) {
++    if (!table->_->traversable_count || owned || !self_up) {
+         return;
+     }
  
      const ecs_entity_t *entities = it->entities;
      for (e = 0; e < count; e ++) {
@@ -1332,31 +1551,69 @@ index 881bd08..147fa2d 100644
          ecs_component_record_t *cr_t = flecs_components_get(
              world, ecs_pair(EcsWildcard, entities[e]));
          if (cr_t) {
-@@ -421,9 +552,23 @@ static void flecs_emit_propagate_id(
+@@ -415,26 +634,67 @@ static void flecs_emit_propagate_id(
+                         .table = table,
+                         .offset = ECS_RECORD_TO_ROW(r->row),
+                         .count = 1
+-                    }, notify || !(table->flags & EcsTableHasParent));
++                    }, notify || !(table->flags & EcsTableHasParent), true);
+         }
+     } else {
          ecs_table_cache_iter_t idt;
          flecs_table_cache_iter(&cur->cache, &idt, EcsTableEmpty|EcsTableNotEmpty);
  
-+        /* An OnSet reaches entities through every base that provides the
-+         * component. Only notify through their source (another base can
-+         * provide the component first, or the same base can be reached
-+         * twice), and don't propagate further from the other paths: the
-+         * value of these entities, and of their inheritors, didn't change. */
-+        bool check_source = (trav == EcsIsA) && (it->event == EcsOnSet) &&
-+            it->sources[0];
++        /* An event from a base reaches entities through every IsA path to
++         * it. The change propagates from it->sources[0], or from
++         * it->sources[1] when that is set: an entity whose override of the
++         * component is removed propagates the OnSet of its base's value
++         * (flecs_emit_on_set_for_override_on_remove).
++         * - OnSet: only notify through the entities' source (another base can
++         *   provide the component first, or the same base can be reached
++         *   twice), and don't propagate further from the other paths: the
++         *   value of these entities, and of their inheritors, didn't change.
++         * - OnAdd and OnRemove: notify through one path (a diamond reaches
++         *   the same base twice). The entities gain or lose the component,
++         *   and self|up observers get the event, only when the base is their
++         *   source; up observers get an event for every base that provides
++         *   the component. Don't propagate further from entities that don't
++         *   gain or lose it. */
++        ecs_entity_t origin = it->sources[1] ? it->sources[1] : it->sources[0];
++        bool isa = (trav == EcsIsA) && origin;
++        bool check_onset = isa && (it->event == EcsOnSet);
++        bool check_add_remove = isa &&
++            ((it->event == EcsOnAdd) || (it->event == EcsOnRemove));
 +
          const ecs_table_cache_elem_t *elem;
          while ((elem = flecs_table_cache_next(&idt))) {
              ecs_table_t *table = elem->table;
-+            if (check_source && !flecs_emit_isa_is_source(world, table, cr,
-+                it->sources[0], ECS_PAIR_SECOND(cur->id)))
++            ecs_entity_t tgt = ECS_PAIR_SECOND(cur->id);
++            bool self_up = true;
++            if (check_onset && !flecs_emit_isa_is_source(world, table, cr,
++                origin, tgt))
 +            {
 +                continue;
++            }
++
++            if (check_add_remove) {
++                if (!flecs_emit_isa_is_first_path(
++                    world, table, cr, origin, tgt))
++                {
++                    continue;
++                }
++
++                self_up = flecs_emit_isa_is_source(
++                    world, table, cr, origin, tgt);
 +            }
 +
              flecs_emit_propagate_id_for_range(
                  world, it, cr, trav, iders, ider_count,
                      &(ecs_table_range_t){
-@@ -435,6 +580,7 @@ static void flecs_emit_propagate_id(
+                         .table = table,
+                         .count = ecs_table_count(table)
+-                    }, true);
++                    }, true, self_up);
+         }
+     }
  
      it->event_cur = event_cur;
      it->up_fields = 0;
@@ -1364,7 +1621,24 @@ index 881bd08..147fa2d 100644
  }
  
  static void flecs_emit_propagate(
-@@ -681,10 +827,16 @@ static void flecs_emit_forward_id(
+@@ -621,7 +881,8 @@ static void flecs_emit_forward_id(
+     ecs_entity_t tgt,
+     ecs_table_t *tgt_table,
+     int32_t column,
+-    ecs_entity_t trav)
++    ecs_entity_t trav,
++    bool self_up)
+ {
+     ecs_id_t id = cr->id;
+     ecs_entity_t event = er ? er->event : 0;
+@@ -675,16 +936,22 @@ static void flecs_emit_forward_id(
+             world, &ider->up, it, table, trav);
+ 
+         /* Owned takes precedence */
+-        if (!owned) {
++        if (!owned && self_up) {
+             flecs_observers_invoke_skip_up_notify(
+                 world, &ider->self_up, it, table, trav);
          }
      }
  
@@ -1383,66 +1657,217 @@ index 881bd08..147fa2d 100644
  
              for (ider_onset_i = 0; ider_onset_i < ider_onset_count; ider_onset_i ++) {
                  ecs_event_id_record_t *ider = iders_onset[ider_onset_i];
-@@ -828,7 +980,20 @@ static void flecs_emit_forward(
+@@ -815,6 +1082,8 @@ static void flecs_emit_forward(
+     ecs_reachable_elem_t *elems = ecs_vec_first_t(&rc->ids,
+         ecs_reachable_elem_t);
+     int32_t i, count = ecs_vec_count(&rc->ids);
++    bool check_source = (trav == EcsIsA) && er &&
++        ((it->event == EcsOnAdd) || (it->event == EcsOnRemove));
+     for (i = 0; i < count; i ++) {
+         ecs_reachable_elem_t *elem = &elems[i];
+         const ecs_table_record_t *tr = elem->tr;
+@@ -828,8 +1097,43 @@ static void flecs_emit_forward(
              ECS_INTERNAL_ERROR, NULL);
          ecs_dbg_assert(r->table == elem->table, ECS_INTERNAL_ERROR, NULL);
  
 -        flecs_emit_forward_id(world, er, er_onset, emit_ids, it, table,
-+        /* The reachable ids can hold the component once for every base that
-+         * provides it. Only emit the OnSet from the entities' source. */
+-            rc_cr, elem->src, r->table, tr->index, trav);
++        /* The reachable ids of an IsA pair hold the component once for every
++         * base that provides it, and a base can be reachable through the
++         * entities' other targets as well. Only emit the OnSet from the
++         * entities' source. Forward the OnAdd or OnRemove through one path,
++         * and to self|up observers only from the entities' source
++         * (flecs_emit_propagate_id). */
++        const ecs_event_record_t *elem_er = er;
 +        const ecs_event_record_t *elem_onset = er_onset;
-+        if (er_onset) {
-+            ecs_event_id_record_t *iders_onset[5];
-+            if (flecs_event_observers_get(er_onset, rc_cr->id, iders_onset) &&
-+                !flecs_emit_isa_is_source(world, table, rc_cr, elem->src,
-+                    ECS_PAIR_SECOND(cr->id)))
-+            {
-+                elem_onset = NULL;
++        bool self_up = true;
++        if (trav == EcsIsA) {
++            ecs_entity_t tgt = ECS_PAIR_SECOND(cr->id);
++            ecs_event_id_record_t *iders_chk[5];
++            bool chk_er = check_source &&
++                flecs_event_observers_get(er, rc_cr->id, iders_chk);
++            bool chk_onset =
++                flecs_event_observers_get(er_onset, rc_cr->id, iders_chk);
++            if (chk_er || chk_onset) {
++                bool is_source = flecs_emit_isa_is_source(
++                    world, table, rc_cr, elem->src, tgt);
++                if (chk_onset && !is_source) {
++                    elem_onset = NULL;
++                }
++
++                if (chk_er) {
++                    if (!flecs_emit_isa_is_first_path(
++                        world, table, rc_cr, elem->src, tgt))
++                    {
++                        elem_er = NULL;
++                    } else {
++                        self_up = is_source;
++                    }
++                }
 +            }
 +        }
 +
-+        flecs_emit_forward_id(world, er, elem_onset, emit_ids, it, table,
-             rc_cr, elem->src, r->table, tr->index, trav);
++        flecs_emit_forward_id(world, elem_er, elem_onset, emit_ids, it, table,
++            rc_cr, elem->src, r->table, tr->index, trav, self_up);
      }
  
-@@ -887,6 +1052,76 @@ static void flecs_emit_forward(
-     }
- }
+     /* Propagate events for new reachable ids downwards */
+@@ -870,6 +1174,29 @@ static void flecs_emit_forward(
+                 int32_t ider_count = flecs_event_observers_get(
+                     er, rc_cr->id, iders);
  
-+/* Emit OnSet events for the DontFragment components with the Inherit trait
-+ * that entities inherit through a new (IsA, tgt) pair. These components are
-+ * in no table type, so the reachable ids of the pair don't list them
-+ * (flecs_reachable_cache_ensure). */
++                /* Adding an IsA pair changes the value that the inheritors
++                 * and children of the entities get through them as well:
++                 * propagate the OnSet of a newly inherited component that has
++                 * a value (a column, or Sparse storage). */
++                ecs_event_id_record_t *iders_set[5] = {0};
++                int32_t ider_set_count = 0;
++                if (er_onset && ((ecs_table_type_to_column_index(
++                    r->table, tr->index) != -1) ||
++                        ((rc_cr->flags & EcsIdSparse) && rc_cr->type_info)))
++                {
++                    ider_set_count = flecs_event_observers_get(
++                        er_onset, rc_cr->id, iders_set);
++                }
++
++                /* Nor when the entities, and so their inheritors and
++                 * children, don't get the component from this base */
++                if (check_source && (ider_count || ider_set_count) &&
++                    !flecs_emit_isa_is_source(world, table, rc_cr, elem->src,
++                        ECS_PAIR_SECOND(cr->id)))
++                {
++                    continue;
++                }
++
+                 it->ids[0] = rc_cr->id;
+                 it->event_id = rc_cr->id;
+                 it->trs[0] = tr;
+@@ -882,9 +1209,208 @@ static void flecs_emit_forward(
+ 
+                 flecs_propagate_entities(world, it, rc_cr, it->entities,
+                     it->count, elem->src, iders, ider_count);
++
++                if (ider_set_count) {
++                    ecs_entity_t event = it->event;
++                    it->event = EcsOnSet;
++                    flecs_propagate_entities(world, it, rc_cr,
++                        it->entities, it->count, elem->src, iders_set,
++                        ider_set_count);
++                    it->event = event;
++                }
++            }
++        }
++    }
++}
++
++/* Find the entity that provides a DontFragment component through a
++ * traversable relationship trav (not IsA) from tgt, as up traversal does: tgt
++ * itself, the IsA bases of tgt for a component with the Inherit trait, then
++ * the target of tgt for the same relationship. */
++static ecs_entity_t flecs_emit_dont_fragment_up_source(
++    ecs_world_t *world,
++    ecs_entity_t tgt,
++    ecs_entity_t trav,
++    ecs_component_record_t *cr,
++    int32_t depth)
++{
++    if (!tgt || (depth >= FLECS_DAG_DEPTH_MAX)) {
++        return 0;
++    }
++
++    if (flecs_component_sparse_has(cr, tgt)) {
++        return tgt;
++    }
++
++    ecs_record_t *r = flecs_entities_get(world, tgt);
++    if (!r || !r->table) {
++        return 0;
++    }
++
++    if (cr->flags & EcsIdOnInstantiateInherit) {
++        ecs_entity_t src = flecs_emit_isa_source(world, r->table, cr, NULL, 0);
++        if (src) {
++            return src;
++        }
++    }
++
++    if (trav == EcsIsA) {
++        return 0;
++    }
++
++    return flecs_emit_dont_fragment_up_source(world,
++        ecs_get_target(world, tgt, trav, 0), trav, cr, depth + 1);
++}
++
++/* Forward the events of a new or removed (trav, tgt) pair for the DontFragment
++ * components that the entities gain or lose through it, and propagate them to
++ * the entities' own inheritors and children: the OnAdd or OnRemove (er), and
++ * when an IsA pair is added the OnSet of the newly inherited value
++ * (er_onset). Such components are in no table type, so the reachable ids of
++ * the pair don't list them (flecs_reachable_cache_ensure). Through IsA only
++ * components with the Inherit trait are reachable. As for the table
++ * components of an IsA pair, up observers get the OnAdd or OnRemove when tgt
++ * provides the component (once, when the providing base is reachable through
++ * several of the entities' targets), and self|up observers only when tgt is
++ * the base that the entities get the component from; the OnSet only comes
++ * from that base (flecs_emit_forward). */
 +static void flecs_emit_forward_dont_fragment(
 +    ecs_world_t *world,
++    const ecs_event_record_t *er,
 +    const ecs_event_record_t *er_onset,
 +    ecs_iter_t *it,
 +    ecs_table_t *table,
-+    ecs_entity_t tgt)
++    ecs_component_record_t *pair_cr)
 +{
++    ecs_entity_t trav = ECS_PAIR_FIRST(pair_cr->id);
++    ecs_entity_t tgt = flecs_entities_get_alive(
++        world, ECS_PAIR_SECOND(pair_cr->id));
++    if (!tgt) {
++        return;
++    }
++
 +    ecs_entity_t old_event = it->event;
 +    ecs_entity_t old_src = it->sources[0];
 +
 +    ecs_component_record_t *cur = world->cr_non_fragmenting_head;
 +    for (; cur; cur = cur->non_fragmenting.next) {
-+        if (!(cur->flags & EcsIdOnInstantiateInherit) || !cur->type_info ||
-+            !cur->sparse || ecs_id_is_wildcard(cur->id))
-+        {
++        if (!cur->sparse || ecs_id_is_wildcard(cur->id)) {
 +            continue;
 +        }
 +
-+        ecs_event_id_record_t *iders[5];
++        if ((trav == EcsIsA) && !(cur->flags & EcsIdOnInstantiateInherit)) {
++            continue;
++        }
++
++        ecs_event_id_record_t *iders[5], *iders_set[5];
 +        int32_t ider_i, ider_count = flecs_event_observers_get(
-+            er_onset, cur->id, iders);
-+        if (!ider_count) {
++            er, cur->id, iders);
++        int32_t ider_set_count = 0;
++        if (cur->type_info) {
++            ider_set_count = flecs_event_observers_get(
++                er_onset, cur->id, iders_set);
++        }
++
++        if (!ider_count && !ider_set_count) {
 +            continue;
 +        }
 +
-+        /* Only emit when tgt is the entities' source for the component */
-+        ecs_entity_t direct = 0;
-+        ecs_entity_t src = flecs_emit_isa_source(world, table, cur, &direct, 0);
-+        if (!src || ((uint32_t)direct != (uint32_t)tgt)) {
++        ecs_entity_t src = flecs_emit_dont_fragment_up_source(
++            world, tgt, trav, cur, 0);
++        if (!src) {
 +            continue;
++        }
++
++        bool self_up = true;
++        if (trav == EcsIsA) {
++            if (!flecs_emit_isa_is_first_path(world, table, cur, src, tgt)) {
++                continue;
++            }
++
++            self_up = flecs_emit_isa_is_source(world, table, cur, src, tgt);
++            if (!self_up) {
++                ider_set_count = 0;
++            }
 +        }
 +
 +        ecs_table_record_t dummy_tr = {
@@ -1453,42 +1878,137 @@ index 881bd08..147fa2d 100644
 +            .count = 0
 +        };
 +
-+        it->event = er_onset->event;
 +        it->ids[0] = cur->id;
 +        it->event_id = cur->id;
 +        it->sources[0] = src;
 +        it->trs[0] = &dummy_tr;
 +        ECS_CONST_CAST(int16_t*, it->columns)[0] = -1;
-+        ECS_CONST_CAST(int32_t*, it->sizes)[0] = cur->type_info->size;
++        ECS_CONST_CAST(int32_t*, it->sizes)[0] =
++            cur->type_info ? cur->type_info->size : 0;
 +        it->up_fields = 1;
 +
 +        for (ider_i = 0; ider_i < ider_count; ider_i ++) {
 +            ecs_event_id_record_t *ider = iders[ider_i];
-+            flecs_observers_invoke(world, &ider->up, it, table, EcsIsA);
++            if (ider->observer_count == ider->up_notify_count) {
++                continue;
++            }
++
++            flecs_observers_invoke_skip_up_notify(
++                world, &ider->up, it, table, trav);
 +
 +            /* Owned takes precedence */
-+            flecs_emit_invoke_not_owned(
-+                world, &ider->self_up, it, table, EcsIsA, cur);
++            if (self_up) {
++                flecs_emit_invoke_not_owned(
++                    world, &ider->self_up, it, table, trav, cur);
+             }
+         }
++
++        if (ider_set_count) {
++            it->event = er_onset->event;
++            for (ider_i = 0; ider_i < ider_set_count; ider_i ++) {
++                ecs_event_id_record_t *ider = iders_set[ider_i];
++                flecs_observers_invoke(world, &ider->up, it, table, trav);
++
++                /* Owned takes precedence */
++                flecs_emit_invoke_not_owned(
++                    world, &ider->self_up, it, table, trav, cur);
++            }
++            it->event = old_event;
++        }
++
++        it->up_fields = 0;
++
++        /* Propagate to the inheritors and children of the entities that gain
++         * or lose the component and don't own it, as for the table
++         * components of the pair. */
++        if (self_up && table->_->traversable_count) {
++            const ecs_entity_t *entities = it->entities;
++            int32_t e;
++            for (e = 0; e < it->count; e ++) {
++                if (flecs_component_sparse_has(cur, entities[e])) {
++                    continue;
++                }
++
++                if (ider_count) {
++                    flecs_propagate_entities(world, it, cur, &entities[e], 1,
++                        src, iders, ider_count);
++                }
++
++                if (ider_set_count) {
++                    it->event = er_onset->event;
++                    flecs_propagate_entities(world, it, cur, &entities[e], 1,
++                        src, iders_set, ider_set_count);
++                    it->event = old_event;
++                }
++            }
 +        }
 +
 +        it->trs[0] = NULL;
-+        it->up_fields = 0;
-+    }
+     }
 +
 +    it->event = old_event;
 +    it->sources[0] = old_src;
-+}
-+
+ }
+ 
  static void flecs_emit_on_set_for_override_on_add(
-     ecs_world_t *world,
-     const ecs_event_record_t *er_onset,
-@@ -1236,6 +1471,11 @@ repeat_event:
+@@ -999,6 +1525,25 @@ static void flecs_emit_on_set_for_override_on_remove(
+         flecs_observers_invoke(world, &ider->up, it, table, EcsIsA);
+         ecs_assert(it->event_cur == evtx, ECS_INTERNAL_ERROR, NULL);
+     }
++
++    /* The inheritors and children of the entities now get the base's value
++     * through them: propagate the OnSet, with the base as source. Each entity
++     * is the origin of its propagation (it->sources[1]): it still owns the
++     * component while the OnRemove is emitted. */
++    if (table->_->traversable_count) {
++        ecs_entity_t event = it->event;
++        const ecs_entity_t *entities = it->entities;
++        int32_t e, count = it->count;
++        it->event = EcsOnSet;
++        for (e = 0; e < count; e ++) {
++            it->sources[1] = entities[e];
++            flecs_propagate_entities(world, it, cr, &entities[e], 1,
++                base, iders_set, ider_set_count);
++        }
++        it->sources[1] = 0;
++        it->event = event;
++        ecs_assert(it->event_cur == evtx, ECS_INTERNAL_ERROR, NULL);
++    }
+ }
+ 
+ /* The emit function is responsible for finding and invoking the observers 
+@@ -1055,7 +1600,10 @@ void flecs_emit(
+     ecs_id_t ids_cache = 0;
+     ecs_size_t sizes_cache = 0;
+     const ecs_table_record_t* trs_cache = 0;
+-    ecs_entity_t sources_cache = 0;
++    /* sources[0] is the field's source. sources[1] isn't a field: it's the
++     * entity a propagated change comes from when that isn't the source (see
++     * flecs_emit_propagate_id). */
++    ecs_entity_t sources_cache[2] = {0, 0};
+     int16_t columns_cache = -1;
+ 
+     ecs_iter_t it = {
+@@ -1069,7 +1617,7 @@ void flecs_emit(
+         .sizes = &sizes_cache,
+         .trs = (const ecs_table_record_t**)&trs_cache,
+         .columns = &columns_cache,
+-        .sources = &sources_cache,
++        .sources = sources_cache,
+         .other_table = other_table,
+         .offset = offset,
+         .count = count,
+@@ -1236,6 +1784,15 @@ repeat_event:
              /* Forward events for components from pair target */
              flecs_emit_forward(world, er, er_fwd, ids, &it, table, cr);
  
-+            if (er_fwd && count && world->cr_non_fragmenting_head) {
-+                flecs_emit_forward_dont_fragment(
-+                    world, er_fwd, &it, table, ECS_PAIR_SECOND(id));
++            if (count && world->cr_non_fragmenting_head) {
++                const ecs_event_record_t *er_df =
++                    ((event == EcsOnAdd) || (event == EcsOnRemove)) ? er : NULL;
++                if (er_df || er_fwd) {
++                    flecs_emit_forward_dont_fragment(
++                        world, er_df, er_fwd, &it, table, cr);
++                }
 +            }
 +
              ecs_assert(it.event_cur == evtx, ECS_INTERNAL_ERROR, NULL);
@@ -1614,7 +2134,7 @@ index 8da069a..eb89f7b 100644
  }
  
 diff --git a/src/query/cache/cache.c b/src/query/cache/cache.c
-index 53172f4..0301e14 100644
+index 53172f4..fa671d7 100644
 --- a/src/query/cache/cache.c
 +++ b/src/query/cache/cache.c
 @@ -618,7 +618,7 @@ static void flecs_query_cache_allocators_init(
@@ -1626,11 +2146,37 @@ index 53172f4..0301e14 100644
          flecs_ballocator_init(&cache->allocators.columns,
              field_count * ECS_SIZEOF(int16_t));
      }
+@@ -848,6 +848,7 @@ ecs_query_cache_t* flecs_query_cache_init(
+     }
+ 
+     result->prev_match_count = -1;
++    result->sorted_match_count = -1;
+ 
+     if (ecs_should_log_1()) {
+         char *query_expr = ecs_query_str(result->query);
 diff --git a/src/query/cache/cache.h b/src/query/cache/cache.h
-index 9db0ebc..e9bba15 100644
+index 9db0ebc..000935b 100644
 --- a/src/query/cache/cache.h
 +++ b/src/query/cache/cache.h
-@@ -131,6 +131,14 @@ void flecs_query_cache_sort_tables(
+@@ -37,6 +37,7 @@ struct ecs_query_cache_match_t {
+     ecs_id_t *_ids;                   /* Resolved (component) ids for current table. */
+     ecs_entity_t *_sources;           /* Sources of ids. */
+     ecs_termset_t _up_fields;         /* Fields that are matched through traversal. */
++    bool _worker_changed;             /* Changed state computed for worker threads. */
+     int32_t *_monitor;                /* Used to monitor table for changes. */
+     ecs_vec_t *wildcard_matches;      /* Additional matches for table for wildcard queries. */
+ };
+@@ -103,7 +104,8 @@ struct ecs_query_cache_t {
+     int32_t cascade_by;              /* Identify cascade term */
+     int32_t parent_table_count;
+     int32_t match_count;             /* How often have tables been (un)matched */
+-    int32_t prev_match_count;        /* Track if sorting is needed */
++    int32_t prev_match_count;        /* match_count at the last iteration */
++    int32_t sorted_match_count;      /* match_count when table_slices was built */
+     
+     ecs_entity_t entity;             /* Entity associated with query */
+ 
+@@ -131,9 +133,23 @@ void flecs_query_cache_sort_tables(
  void flecs_query_cache_build_sorted_tables(
      ecs_query_cache_t *cache);
  
@@ -1645,8 +2191,17 @@ index 9db0ebc..e9bba15 100644
  bool flecs_query_cache_is_trivial(
      const ecs_query_cache_t *cache);
  
++void flecs_query_changed_for_workers(
++    ecs_query_t *q);
++
++void flecs_query_changed_for_workers_fini(
++    ecs_query_t *q);
++
+ ecs_size_t flecs_query_cache_elem_size(
+     const ecs_query_cache_t *cache);
+ 
 diff --git a/src/query/cache/cache_iter.c b/src/query/cache/cache_iter.c
-index 8ad5b2e..c2a78ca 100644
+index 8ad5b2e..e75aec8 100644
 --- a/src/query/cache/cache_iter.c
 +++ b/src/query/cache/cache_iter.c
 @@ -26,16 +26,53 @@ void flecs_query_cache_iter_init(
@@ -1664,7 +2219,7 @@ index 8ad5b2e..c2a78ca 100644
 +        if (sort) {
 +            flecs_query_cache_sort_tables(it->world, impl);
 +        } else {
-+            ecs_assert(cache->match_count == cache->prev_match_count,
++            ecs_assert(cache->match_count == cache->sorted_match_count,
 +                ECS_UNSUPPORTED, "cannot sort query in multithreaded mode "
 +                "(only the queries of multithreaded systems are sorted "
 +                "before the workers start)");
@@ -1836,7 +2391,7 @@ index 9cf595c..8346865 100644
  bool flecs_query_is_cache_search(
      const ecs_query_run_ctx_t *ctx,
 diff --git a/src/query/cache/change_detection.c b/src/query/cache/change_detection.c
-index a91ce5c..4fcd27c 100644
+index a91ce5c..955de0a 100644
 --- a/src/query/cache/change_detection.c
 +++ b/src/query/cache/change_detection.c
 @@ -74,6 +74,15 @@ static void flecs_query_get_column_for_field(
@@ -1962,7 +2517,135 @@ index a91ce5c..4fcd27c 100644
          }
      }
  
-@@ -701,9 +733,13 @@ bool ecs_iter_changed(
+@@ -672,11 +704,127 @@ bool ecs_query_changed(
+     return false;
+ }
+ 
++static void flecs_query_match_changed_for_workers(
++    ecs_query_impl_t *impl,
++    ecs_query_cache_match_t *qm)
++{
++    qm->_worker_changed = flecs_query_check_match_monitor(impl, qm, NULL);
++
++    if (qm->wildcard_matches) {
++        ecs_query_cache_match_t *wc_qms = ecs_vec_first(qm->wildcard_matches);
++        int32_t i, count = ecs_vec_count(qm->wildcard_matches);
++        for (i = 0; i < count; i ++) {
++            wc_qms[i]._worker_changed = flecs_query_check_match_monitor(
++                impl, &wc_qms[i], NULL);
++        }
++    }
++}
++
++/* Compute the changed state of a query's results for the worker threads of a
++ * multithreaded pipeline op. The pipeline calls this on the main thread for
++ * the multithreaded systems of the op, before it signals the workers.
++ * Every worker iterates every result and syncs a result's monitor when it is
++ * done with its rows, while the other workers may still have to check it,
++ * and monitors and dirty states are allocated lazily, which isn't thread safe.
++ * ecs_iter_changed on a worker iterator returns the state computed here: the
++ * changes made before the op started. */
++void flecs_query_changed_for_workers(
++    ecs_query_t *q)
++{
++    ecs_query_impl_t *impl = flecs_query_impl(q);
++    ecs_query_cache_t *cache = impl->cache;
++
++    impl->worker_snapshot = false;
++    impl->worker_cache_snapshot = false;
++    impl->worker_fixed_changed = false;
++
++    if (q->read_fields & q->fixed_fields) {
++        impl->worker_fixed_changed = flecs_query_check_fixed_monitor(impl);
++        impl->worker_snapshot = true;
++    }
++
++    /* A query created with EcsQueryDetectChanges creates its monitors when
++     * it first checks for changes, which then happens here. */
++    if (cache && !flecs_query_cache_is_trivial(cache) &&
++        (q->flags & (EcsQueryHasChangeDetection|EcsQueryDetectChanges)))
++    {
++        const ecs_query_cache_group_t *cur = cache->first_group;
++        for (; cur; cur = cur->next) {
++            int32_t i, count = ecs_vec_count(&cur->tables);
++            ecs_query_cache_match_t *qms = ecs_vec_first(&cur->tables);
++            for (i = 0; i < count; i ++) {
++                flecs_query_match_changed_for_workers(impl, &qms[i]);
++            }
++        }
++
++        /* An order_by query iterates copies of its matches */
++        if (cache->order_by_callback) {
++            int32_t i, count = ecs_vec_count(&cache->table_slices);
++            ecs_query_cache_match_t *qms = ecs_vec_first(&cache->table_slices);
++            for (i = 0; i < count; i ++) {
++                if (qms[i].base.table) {
++                    /* A slice copies the monitor of its match */
++                    qms[i]._worker_changed = !qms[i]._monitor ||
++                        flecs_query_check_match_monitor(impl, &qms[i], NULL);
++                }
++            }
++        }
++
++        impl->worker_cache_snapshot = true;
++        impl->worker_snapshot = true;
++    }
++}
++
++/* Called by the pipeline after the workers of the op are done. */
++void flecs_query_changed_for_workers_fini(
++    ecs_query_t *q)
++{
++    ecs_query_impl_t *impl = flecs_query_impl(q);
++    impl->worker_snapshot = false;
++    impl->worker_cache_snapshot = false;
++    impl->worker_fixed_changed = false;
++}
++
+ /* Public API call to check if the currently iterated result has changed. */
+ bool ecs_iter_changed(
+     ecs_iter_t *it)
+ {
+     ecs_check(it != NULL, ECS_INVALID_PARAMETER, NULL);
++
++    if (it->next == ecs_worker_next) {
++        /* The iterator of a multithreaded system: its result is the current
++         * result of the chained query iterator, restricted to the worker's
++         * rows. Change detection works on whole tables. */
++        ecs_iter_t *chain_it = it->chain_it;
++        ecs_check(chain_it != NULL, ECS_INVALID_PARAMETER, NULL);
++        ecs_check(chain_it->next == ecs_query_next, ECS_UNSUPPORTED, NULL);
++        ecs_check(ECS_BIT_IS_SET(chain_it->flags, EcsIterIsValid),
++            ECS_INVALID_PARAMETER, NULL);
++
++        ecs_query_impl_t *impl = flecs_query_impl(chain_it->query);
++        if (impl->worker_snapshot) {
++            /* In a multithreaded pipeline op: the state computed before the
++             * workers started (flecs_query_changed_for_workers) */
++            if (impl->worker_fixed_changed) {
++                return true;
++            }
++
++            if (impl->worker_cache_snapshot) {
++                ecs_check(chain_it->priv_.iter.query.elem != NULL,
++                    ECS_INVALID_PARAMETER, NULL);
++                ecs_query_cache_match_t *qm =
++                    flecs_query_cache_iter_elem(chain_it);
++                return !qm || qm->_worker_changed;
++            }
++
++            if (!impl->cache) {
++                return false;
++            }
++        }
++
++        it = chain_it;
++    }
++
+     ecs_check(it->next == ecs_query_next, ECS_UNSUPPORTED, NULL);
+     ecs_check(ECS_BIT_IS_SET(it->flags, EcsIterIsValid),
+         ECS_INVALID_PARAMETER, NULL);
+@@ -701,9 +849,13 @@ bool ecs_iter_changed(
  
      /* If query has a cache, check for changes in current matched result */
      if (impl->cache) {
@@ -1979,6 +2662,22 @@ index a91ce5c..4fcd27c 100644
          return flecs_query_check_match_monitor(impl, qm, it);
      }
  
+@@ -715,6 +867,15 @@ error:
+ void ecs_iter_skip(
+     ecs_iter_t *it)
+ {
++    if (it->next == ecs_worker_next) {
++        /* Skip the result for this worker: its chained query iterator then
++         * neither marks the result's fields dirty nor syncs the result's
++         * changed state. Only the chained iterator of worker 0 does change
++         * detection (ecs_worker_next), so its skip decides for the table. */
++        ecs_assert(it->chain_it != NULL, ECS_INVALID_PARAMETER, NULL);
++        it = it->chain_it;
++    }
++
+     ecs_assert(it->next == ecs_query_next, ECS_INVALID_PARAMETER, NULL);
+     ecs_assert(ECS_BIT_IS_SET(it->flags, EcsIterIsValid),
+         ECS_INVALID_PARAMETER, NULL);
 diff --git a/src/query/cache/change_detection.h b/src/query/cache/change_detection.h
 index 909653f..e5317a0 100644
 --- a/src/query/cache/change_detection.h
@@ -2017,7 +2716,7 @@ index 4937749..4bea981 100644
  
      flecs_query_cache_remove_table_from_group(cache, group, qt->index);
 diff --git a/src/query/cache/order_by.c b/src/query/cache/order_by.c
-index 53596ce..22e2758 100644
+index 53596ce..46a4c87 100644
 --- a/src/query/cache/order_by.c
 +++ b/src/query/cache/order_by.c
 @@ -213,6 +213,24 @@ done:
@@ -2076,6 +2775,23 @@ index 53596ce..22e2758 100644
  void flecs_query_cache_sort_tables(
      ecs_world_t *world,
      ecs_query_impl_t *impl)
+@@ -312,9 +354,15 @@ void flecs_query_cache_sort_tables(
+         }
+     }
+ 
+-    if (tables_sorted || cache->match_count != cache->prev_match_count) {
++    /* Rebuild the slices when a table was matched or unmatched since they
++     * were built. prev_match_count can't tell: syncing a match monitor (as
++     * every ecs_query_next does for the previous result) resets it, so a
++     * table that left the cache during an iteration would keep its slice,
++     * which names the freed table, in every later iterator. */
++    if (tables_sorted || cache->match_count != cache->sorted_match_count) {
+         flecs_query_cache_build_sorted_tables(cache);
+         cache->match_count ++; /* Increase version if tables changed */
++        cache->sorted_match_count = cache->match_count;
+     }
+ }
+ 
 diff --git a/src/query/engine/eval_iter.c b/src/query/engine/eval_iter.c
 index a93c291..d03d95a 100644
 --- a/src/query/engine/eval_iter.c
@@ -2135,7 +2851,7 @@ index a93c291..d03d95a 100644
  #endif
  
 diff --git a/src/query/types.h b/src/query/types.h
-index 09c5af5..c6e306e 100644
+index 09c5af5..db9d764 100644
 --- a/src/query/types.h
 +++ b/src/query/types.h
 @@ -480,6 +480,13 @@ typedef struct {
@@ -2152,12 +2868,15 @@ index 09c5af5..c6e306e 100644
  struct ecs_query_impl_t {
      ecs_query_t pub;              /* Public query data */
  
-@@ -507,7 +514,7 @@ struct ecs_query_impl_t {
+@@ -507,7 +514,10 @@ struct ecs_query_impl_t {
      /* Misc */
      int32_t tokens_len;           /* Length of tokens buffer */
      char *tokens;                 /* Buffer with string tokens used by terms */
 -    int32_t *monitor;             /* Change monitor for fields with fixed src */
 +    ecs_query_fixed_monitor_t *monitor; /* Change monitor for fields with fixed src */
++    bool worker_snapshot;         /* Changed state computed for worker threads */
++    bool worker_cache_snapshot;   /* ... for the results of the cache */
++    bool worker_fixed_changed;    /* ... for fields with a fixed source */
      ecs_termset_t dont_fragment_fields; /* Fields with only DontFragment terms */
  
  #ifdef FLECS_DEBUG
@@ -2212,6 +2931,67 @@ index 836a570..40203cf 100644
      }
  
      return -1;
+diff --git a/src/storage/non_fragmenting_childof.c b/src/storage/non_fragmenting_childof.c
+index 4c3895f..7cb4f42 100644
+--- a/src/storage/non_fragmenting_childof.c
++++ b/src/storage/non_fragmenting_childof.c
+@@ -110,6 +110,47 @@ static void flecs_on_reparent_update_name(
+     }
+ }
+ 
++/* Re-parenting a child with the Parent component removes (ChildOf, old
++ * parent) from it, as replacing a ChildOf pair does. Emit the OnRemove of
++ * that pair before the new parent is written: its observers, and observers of
++ * the old parent's components that the event forwards (Position(up)), see the
++ * child with its old parent. The OnSet of the new value is emitted as the
++ * OnAdd of (ChildOf, new parent) (flecs_emit). */
++static void flecs_on_reparent_emit_on_remove(
++    ecs_world_t *world,
++    const ecs_record_t *r,
++    ecs_entity_t old_parent)
++{
++    if (!old_parent || !flecs_entities_is_alive(world, old_parent)) {
++        return;
++    }
++
++    ecs_table_t *table = r->table;
++    ecs_component_record_t *cr = flecs_components_get(
++        world, ecs_id(EcsParent));
++    ecs_assert(cr != NULL, ECS_INTERNAL_ERROR, NULL);
++
++    /* Observers of (ChildOf, *), and up observers through ChildOf, are also
++     * registered for the Parent component (flecs_inc_observer_count). */
++    if (!(cr->flags & EcsIdHasOnRemove) &&
++        !((cr->flags & EcsIdHasUpNotify) &&
++            (table->flags & EcsTableHasTraversable)))
++    {
++        return;
++    }
++
++    ecs_id_t pair = ecs_childof(old_parent);
++    ecs_type_t ids = { .array = &pair, .count = 1 };
++    flecs_emit(world, world, &(ecs_event_desc_t){
++        .event = EcsOnRemove,
++        .ids = &ids,
++        .table = table,
++        .offset = ECS_RECORD_TO_ROW(r->row),
++        .count = 1,
++        .observable = world
++    });
++}
++
+ static void flecs_on_replace_parent(ecs_iter_t *it) {
+     ecs_world_t *world = it->world;
+     EcsParent *old = ecs_field(it, EcsParent, 0);
+@@ -151,6 +192,8 @@ static void flecs_on_replace_parent(ecs_iter_t *it) {
+         }
+     #endif
+ 
++        flecs_on_reparent_emit_on_remove(world, r, old_parent);
++
+         flecs_journal_begin(world, EcsJournalSetParent, e, &(ecs_type_t){
+             .count = 1, .array = &new_parent
+         }, NULL);
 diff --git a/src/world.c b/src/world.c
 index 387f3f9..abe6460 100644
 --- a/src/world.c

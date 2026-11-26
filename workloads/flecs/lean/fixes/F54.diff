@@ -1,0 +1,22 @@
+diff --git a/src/addons/system/system.c b/src/addons/system/system.c
+index c98ab9a..8c49b8e 100644
+--- a/src/addons/system/system.c
++++ b/src/addons/system/system.c
+@@ -115,11 +115,12 @@ ecs_entity_t flecs_run_system(
+             run(it);
+             ecs_iter_fini(&qit);
+         } else {
+-#ifdef FLECS_CACHED_QUERIES
+-            if (it == &qit && (qit.flags & EcsIterTrivialCached)) {
+-                it->next = flecs_query_trivial_cached_next;
+-            }
+-#endif
++            /* The run callback gets the iterator's own next. For a query
++             * iterator that is ecs_query_next, which the documentation of
++             * ecs_system_desc_t::run tells callbacks to test for, and which
++             * ecs_iter_skip and ecs_iter_changed require. ecs_query_next
++             * already takes the trivial cache path for a trivially cached
++             * query (flecs_query_trivial_cached_next). */
+             run(it);
+         }
+     } else {

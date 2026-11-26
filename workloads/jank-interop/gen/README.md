@@ -47,6 +47,15 @@ LazySeq's printing). Its first run failed every test at load: one expected value
 `#:k{:v 3}`, the namespaced map syntax jank's reader refuses (jankifier's R17, known); maps are
 now printed whole.
 
+Seed 3 (2026-11-26, grammar 2): 39 of 50 tests differ; 64 suspect forms, 74 minimal cases, 24
+signatures in [results/gen-3-groups.md](results/gen-3-groups.md), none new. Most are jank's
+unported `unchecked-*` (jankifier's LU74) and strings indexed by bytes (`count`, `subs`, `get`,
+`nth`, `compare`, `rest`: R53's and LG3's design). The rest: LG1 (`max` and `/` against `count`'s
+unsigned result), D2 and D4b (`/` without ratios, `quot` of doubles a long), R68 (doubles printed in
+C++'s form), and R5: the literal `-9223372036854775808` reads as a BigInt, which also explains
+`abs` of it and the first report's BigInt results under LG2 (corrected in jankifier). `max` of
+-0.0 and 0 returning -0.0 (Clojure: 0) is a tie, not filed.
+
 The harness: a thrown string is its own message (`ev`). `ex-message` of a non-exception throws in
 jank (jankifier's LU62), and an overflowing `inc` throws a string, so such a case ended its whole
 test with no verdict (seed 1's g0000, seed 2's g0032 and g0042).

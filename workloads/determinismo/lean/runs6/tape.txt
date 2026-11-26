@@ -1,0 +1,103 @@
+== tape property: a timeline replayed from its tape has its recorded history
+   source: README_AI.md: "every timeline replays bit-identically"; ARCHITECTURE.md M3: "Record → replay matches all checkpoints"; vm.zig:3730 (egress): "a replay's history is the run's"
+search exhaust [a timeline replayed from its tape has its recorded history / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (278 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (4308 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4662 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / serve's replies]: complete, 65536 timelines, none broke it (334 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / a fork's index]: complete, 65536 timelines, none broke it (369 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / replays perturbed by a kernel line or a changed event]: stopped at 1000000 timelines, none broke it (3723 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / guest events and kernel lines, a table of two checkpoints every two events]: complete, 16384 timelines, none broke it (65 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / ingress polls (each answer on the tape), a table of 4 overrides]: complete, 65536 timelines, none broke it (252 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / plain pulls with strategy answers, a table of 2 reasons]: complete, 65536 timelines, none broke it (278 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / ingress polls and plain pulls with strategy answers, a cap of 2 overrides]: stopped at 1000000 timelines, none broke it (3799 ms)
+search exhaust [a timeline replayed from its tape has its recorded history / egress, ingress and serve answers, a fork's index, a cap of 3 overrides]: stopped at 1000000 timelines, none broke it (4272 ms)
+== tape property: on replay the n-th pull gets the n-th answer
+   source: ARCHITECTURE.md §7: "On replay the n-th pull gets the n-th answer"; "Replay reads the tape and never asks the decider again"
+search exhaust [on replay the n-th pull gets the n-th answer / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (271 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (4216 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4540 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / serve's replies]: complete, 65536 timelines, none broke it (326 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / a fork's index]: complete, 65536 timelines, none broke it (359 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / replays perturbed by a kernel line or a changed event]: stopped at 1000000 timelines, none broke it (3681 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / guest events and kernel lines, a table of two checkpoints every two events]: complete, 16384 timelines, none broke it (61 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / ingress polls (each answer on the tape), a table of 4 overrides]: complete, 65536 timelines, none broke it (253 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / plain pulls with strategy answers, a table of 2 reasons]: complete, 65536 timelines, none broke it (273 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / ingress polls and plain pulls with strategy answers, a cap of 2 overrides]: stopped at 1000000 timelines, none broke it (3765 ms)
+search exhaust [on replay the n-th pull gets the n-th answer / egress, ingress and serve answers, a fork's index, a cap of 3 overrides]: stopped at 1000000 timelines, none broke it (4223 ms)
+== tape property: a replay that parts from its tape stops at its next checkpoint
+   source: README_AI.md: "tapes with checkpoints (a replay stops where it diverges)"; ARCHITECTURE.md §7: "Checkpoints ... for divergence detection"
+search exhaust [a replay that parts from its tape stops at its next checkpoint / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (278 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (4328 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4670 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / serve's replies]: complete, 65536 timelines, none broke it (336 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / a fork's index]: complete, 65536 timelines, none broke it (370 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / replays perturbed by a kernel line or a changed event]: FOUND after 17 timelines (8 ms): a replay that parts from its tape stops at its next checkpoint: histories part at event 8; the tape's checkpoint at 8 passed, the replay ran to its end (10 events) unstopped (shrunk to 13 decisions from 13)
+--- counterexample [a replay that parts from its tape stops at its next checkpoint / replays perturbed by a kernel line or a changed event]: a replay that parts from its tape stops at its next checkpoint
+detail: histories part at event 8; the tape's checkpoint at 8 passed, the replay ran to its end (10 events) unstopped
+values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 7]
+tape:
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.step","options":3,"value":0}
+{"name":"world.fork_index","options":2,"value":0}
+{"name":"world.outside","options":2,"value":0}
+{"name":"world.perturb","options":3,"value":1}
+{"name":"world.perturb_at","options":9,"value":7}
+story:
+  guest steps: [Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event,
+ Replica.Tape.Step.event]
+  advice: []
+  replay perturbed: Replica.Tape.Perturb.consoleBefore 7
+  tape: [Replica.Tape.Line.checkpoint 4 7070822073620762547, Replica.Tape.Line.checkpoint 8 17602781909634984879]
+  recorded 1: guest 0 saw []
+  recorded 2: guest 1 saw []
+  recorded 3: guest 2 saw []
+  recorded 4: guest 3 saw []
+  recorded 5: guest 4 saw []
+  recorded 6: guest 5 saw []
+  recorded 7: guest 6 saw []
+  recorded 8: guest 7 saw []
+  recorded 9: guest 8 saw []
+  replayed 1: guest 0 saw []
+  replayed 2: guest 1 saw []
+  replayed 3: guest 2 saw []
+  replayed 4: guest 3 saw []
+  replayed 5: guest 4 saw []
+  replayed 6: guest 5 saw []
+  replayed 7: guest 6 saw []
+  replayed 8: kernel: an extra line
+  replayed 9: guest 7 saw []
+  replayed 10: guest 8 saw []
+  replay: error=none diverged=none
+---
+search exhaust [a replay that parts from its tape stops at its next checkpoint / guest events and kernel lines, a table of two checkpoints every two events]: complete, 16384 timelines, none broke it (64 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / ingress polls (each answer on the tape), a table of 4 overrides]: complete, 65536 timelines, none broke it (263 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / plain pulls with strategy answers, a table of 2 reasons]: complete, 65536 timelines, none broke it (276 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / ingress polls and plain pulls with strategy answers, a cap of 2 overrides]: stopped at 1000000 timelines, none broke it (3996 ms)
+search exhaust [a replay that parts from its tape stops at its next checkpoint / egress, ingress and serve answers, a fork's index, a cap of 3 overrides]: stopped at 1000000 timelines, none broke it (4587 ms)
+== tape property: a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there
+   source: vm.zig:3684-3687 (62e06e3): "there the tape says it is full (a replay stops at that pull, TapeFull) ... instead of a tape no replay can read"; tape.zig:139-141, 403-414; README_AI.md: "every timeline replays bit-identically"
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / plain pulls with strategy answers]: complete, 65536 timelines, none broke it (279 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / plain and drive pulls, explore_here]: stopped at 1000000 timelines, none broke it (4363 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / egress and ingress answers]: stopped at 1000000 timelines, none broke it (4710 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / serve's replies]: complete, 65536 timelines, none broke it (338 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / a fork's index]: complete, 65536 timelines, none broke it (372 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / replays perturbed by a kernel line or a changed event]: stopped at 1000000 timelines, none broke it (3715 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / guest events and kernel lines, a table of two checkpoints every two events]: complete, 16384 timelines, none broke it (66 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / ingress polls (each answer on the tape), a table of 4 overrides]: complete, 65536 timelines, none broke it (258 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / plain pulls with strategy answers, a table of 2 reasons]: complete, 65536 timelines, none broke it (280 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / ingress polls and plain pulls with strategy answers, a cap of 2 overrides]: stopped at 1000000 timelines, none broke it (3877 ms)
+search exhaust [a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there / egress, ingress and serve answers, a fork's index, a cap of 3 overrides]: stopped at 1000000 timelines, none broke it (4421 ms)

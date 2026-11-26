@@ -1,0 +1,141 @@
+1/6 tape.test.a session's steps on its timeline's tape parse back, with their moments...OK
+2/6 tape.test.a relayed session's polls, thousands of ingress answers, parse: their reason is their kind...OK
+3/6 tape.test.a session's 70,560 taped answers parse: a replay reads every tape its recorder wrote...OK
+4/6 tape.test.a session's REPL message of 96 KiB (a det:ask step of 131,072 bytes) is read back from its tape...FAIL (UnexpectedEndOfInput)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1313:13: 0x1006c6abf in skipWhitespaceCheckEnd (test)
+            return error.UnexpectedEndOfInput;
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1109:21: 0x1006e1447 in peekNextTokenType (test)
+                if (try self.skipWhitespaceCheckEnd()) return .end_of_document;
+                    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:134:23: 0x1006dd983 in nextAllocMax (test)
+        else => |err| return err,
+                      ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:163:25: 0x1006cf6d7 in handleCompleteValue__func_1073 (test)
+                switch (try source.nextAllocMax(allocator, .alloc_always, options.max_value_len.?)) {
+                        ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:90:28: 0x1006d019f in jsonParse__func_1072 (test)
+                    return try handleCompleteValue(&stack, allocator, source, Value{ .string = s }, options) orelse continue;
+                           ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:274:17: 0x1006ced43 in innerParse__func_1070 (test)
+                return T.jsonParse(allocator, source, options);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:150:19: 0x1006c6607 in parseFromTokenSourceLeaky__func_1068 (test)
+    const value = try innerParse(T, allocator, scanner_or_reader, resolved_options);
+                  ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:98:5: 0x1006c60db in parseFromSliceLeaky__func_1006 (test)
+    return parseFromTokenSourceLeaky(T, allocator, &scanner, options);
+    ^
+./scratch/zig6/tape/tape.zig:620:23: 0x1006bdd6b in parse (test)
+        const value = try std.json.parseFromSliceLeaky(Value, rest.allocator(), line, .{});
+                      ^
+./scratch/zig6/tape/tape.zig:1223:9: 0x1006f1393 in test.a session's REPL message of 96 KiB (a det:ask step of 131,072 bytes) is read back from its tape (test)
+    _ = try parse(source, scratch, overrides);
+        ^
+5/6 tape.test.a session's shell step of 40,000 quoted words is read back from its tape...FAIL (OutOfMemory)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:325:82: 0x10059c917 in allocBytesAligned__func_121 (test)
+    const byte_ptr = self.rawAlloc(byte_count, alignment, return_address) orelse return error.OutOfMemory;
+                                                                                 ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:311:5: 0x10059c7b7 in allocWithSizeAndAlignment__func_119 (test)
+    return self.allocBytesAligned(alignment, byte_count, return_address);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:299:55: 0x1006a75f7 in allocAdvancedWithRetAddr (test)
+    const ptr: [*]align(a.toByteUnits()) T = @ptrCast(try self.allocWithSizeAndAlignment(@sizeOf(T), a, n, return_address));
+                                                      ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:287:5: 0x1006a766b in alignedAlloc__func_931 (test)
+    return self.allocAdvancedWithRetAddr(T, alignment, n, @returnAddress());
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:484:36: 0x1006e37e7 in ensureTotalCapacityPrecise (test)
+                const new_memory = try self.allocator.alignedAlloc(T, alignment, new_capacity);
+                                   ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:460:13: 0x1006e350b in ensureTotalCapacity (test)
+            return self.ensureTotalCapacityPrecise(better_capacity);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:495:13: 0x1006e1c0f in ensureUnusedCapacity (test)
+            return self.ensureTotalCapacity(try addOrOom(self.items.len, additional_count));
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:334:13: 0x1006e0e67 in appendSlice (test)
+            try self.ensureUnusedCapacity(items.len);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1751:5: 0x1006e053f in appendSlice (test)
+    try list.appendSlice(buf);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:194:17: 0x1006e0d3b in allocNextIntoArrayListMax (test)
+                try appendSlice(value_list, slice, max_value_len);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:144:31: 0x1006ddae7 in nextAllocMax (test)
+                else => |err| return err,
+                              ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:88:21: 0x1006cfecb in jsonParse__func_1072 (test)
+            switch (try source.nextAllocMax(allocator, .alloc_always, options.max_value_len.?)) {
+                    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:274:17: 0x1006ced43 in innerParse__func_1070 (test)
+                return T.jsonParse(allocator, source, options);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:150:19: 0x1006c6607 in parseFromTokenSourceLeaky__func_1068 (test)
+    const value = try innerParse(T, allocator, scanner_or_reader, resolved_options);
+                  ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:98:5: 0x1006c60db in parseFromSliceLeaky__func_1006 (test)
+    return parseFromTokenSourceLeaky(T, allocator, &scanner, options);
+    ^
+./scratch/zig6/tape/tape.zig:620:23: 0x1006bdd6b in parse (test)
+        const value = try std.json.parseFromSliceLeaky(Value, rest.allocator(), line, .{});
+                      ^
+./scratch/zig6/tape/tape.zig:1245:9: 0x1006f09df in test.a session's shell step of 40,000 quoted words is read back from its tape (test)
+    _ = try parse(source, scratch, overrides);
+        ^
+6/6 tape.test.a session's REPL message of 33 KiB (a det:ask step of 45,000 bytes) is read back from its tape...FAIL (OutOfMemory)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:325:82: 0x10059c917 in allocBytesAligned__func_121 (test)
+    const byte_ptr = self.rawAlloc(byte_count, alignment, return_address) orelse return error.OutOfMemory;
+                                                                                 ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:311:5: 0x10059c7b7 in allocWithSizeAndAlignment__func_119 (test)
+    return self.allocBytesAligned(alignment, byte_count, return_address);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:299:55: 0x1006a75f7 in allocAdvancedWithRetAddr (test)
+    const ptr: [*]align(a.toByteUnits()) T = @ptrCast(try self.allocWithSizeAndAlignment(@sizeOf(T), a, n, return_address));
+                                                      ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:287:5: 0x1006a766b in alignedAlloc__func_931 (test)
+    return self.allocAdvancedWithRetAddr(T, alignment, n, @returnAddress());
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:484:36: 0x1006e37e7 in ensureTotalCapacityPrecise (test)
+                const new_memory = try self.allocator.alignedAlloc(T, alignment, new_capacity);
+                                   ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:460:13: 0x1006e350b in ensureTotalCapacity (test)
+            return self.ensureTotalCapacityPrecise(better_capacity);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:495:13: 0x1006e1c0f in ensureUnusedCapacity (test)
+            return self.ensureTotalCapacity(try addOrOom(self.items.len, additional_count));
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:334:13: 0x1006e0e67 in appendSlice (test)
+            try self.ensureUnusedCapacity(items.len);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1751:5: 0x1006e053f in appendSlice (test)
+    try list.appendSlice(buf);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:224:17: 0x1006e0ccb in allocNextIntoArrayListMax (test)
+                try appendSlice(value_list, slice, max_value_len);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:144:31: 0x1006ddae7 in nextAllocMax (test)
+                else => |err| return err,
+                              ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:88:21: 0x1006cfecb in jsonParse__func_1072 (test)
+            switch (try source.nextAllocMax(allocator, .alloc_always, options.max_value_len.?)) {
+                    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:274:17: 0x1006ced43 in innerParse__func_1070 (test)
+                return T.jsonParse(allocator, source, options);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:150:19: 0x1006c6607 in parseFromTokenSourceLeaky__func_1068 (test)
+    const value = try innerParse(T, allocator, scanner_or_reader, resolved_options);
+                  ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:98:5: 0x1006c60db in parseFromSliceLeaky__func_1006 (test)
+    return parseFromTokenSourceLeaky(T, allocator, &scanner, options);
+    ^
+./scratch/zig6/tape/tape.zig:620:23: 0x1006bdd6b in parse (test)
+        const value = try std.json.parseFromSliceLeaky(Value, rest.allocator(), line, .{});
+                      ^
+./scratch/zig6/tape/tape.zig:1266:9: 0x1006bebf3 in test.a session's REPL message of 33 KiB (a det:ask step of 45,000 bytes) is read back from its tape (test)
+    _ = try parse(source, scratch, overrides);
+        ^
+3 passed; 0 skipped; 3 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/0f930a064341c68ae9c8c0ffe1ce2e3b/test --seed=0xd743c3e7

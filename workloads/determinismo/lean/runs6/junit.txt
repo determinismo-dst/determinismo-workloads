@@ -1,0 +1,78 @@
+== junit property: a test fails exactly when its test case holds a failure or an error (skipped ones pass)
+   source: guest/runtime/junit.zig:2-6: "each `<testcase>`'s classname and name, whether it holds a `<failure>` or an `<error>` (skipped ones pass)"; assert_main.zig:7-10; docs/CI.md (Verdicts per test; `junit`)
+search exhaust [a test fails exactly when its test case holds a failure or an error (skipped ones pass) / two cases, failures, errors and skips]: complete, 169 timelines, none broke it (13 ms)
+search exhaust [a test fails exactly when its test case holds a failure or an error (skipped ones pass) / two cases, failures, skips and captured output (escaped or CDATA) that mentions an error element]: complete, 961 timelines, none broke it (49 ms)
+search exhaust [a test fails exactly when its test case holds a failure or an error (skipped ones pass) / two cases, attribute layouts (a space or a line break before name)]: complete, 196 timelines, none broke it (12 ms)
+search exhaust [a test fails exactly when its test case holds a failure or an error (skipped ones pass) / two cases, failures, skips and captured output in CDATA that prints a closing system-out or system-err tag]: complete, 961 timelines, none broke it (47 ms)
+search exhaust [a test fails exactly when its test case holds a failure or an error (skipped ones pass) / two cases, failures and captured output in CDATA that prints test cases of its own]: FOUND after 14 timelines (8 ms): a test fails exactly when its test case holds a failure or an error (skipped ones pass): tests.test_app::test_1: reported failing ([Replica.Junit.Child.outCdata
+   "<testsuite><testcase classname=\"printed\" name=\"ok\"></testcase><testcase classname=\"printed\" name=\"bad\"><failure message=\"x\"/></testcase></testsuite>",
+ Replica.Junit.Child.failure]), judged passing (shrunk to 4 decisions from 4)
+--- counterexample [a test fails exactly when its test case holds a failure or an error (skipped ones pass) / two cases, failures and captured output in CDATA that prints test cases of its own]: a test fails exactly when its test case holds a failure or an error (skipped ones pass)
+detail: tests.test_app::test_1: reported failing ([Replica.Junit.Child.outCdata
+   "<testsuite><testcase classname=\"printed\" name=\"ok\"></testcase><testcase classname=\"printed\" name=\"bad\"><failure message=\"x\"/></testcase></testsuite>",
+ Replica.Junit.Child.failure]), judged passing
+values: [0, 2, 2, 0]
+tape:
+{"name":"world.children","options":3,"value":0}
+{"name":"world.children","options":3,"value":2}
+{"name":"world.child","options":4,"value":2}
+{"name":"world.child","options":4,"value":0}
+story:
+  the report:
+  <?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="suite">
+  <testcase classname="tests.test_app" name="test_0" time="0.1" />
+  <testcase classname="tests.test_app" name="test_1" time="0.1"><system-out><![CDATA[<testsuite><testcase classname="printed" name="ok"></testcase><testcase classname="printed" name="bad"><failure message="x"/></testcase></testsuite>]]></system-out><failure message="assert 1 == 2">x</failure></testcase>
+  </testsuite></testsuites>
+  det-assert junit states:
+    always(true) "test passes: tests.test_app::test_0"
+    always(true) "test passes: tests.test_app::test_1"
+    always(false) "test passes: printed::bad"
+---
+== junit property: every test case of the report is a test of its own
+   source: docs/CI.md (Verdicts per test): "each test is a property of its own in each timeline (`det-assert junit`)"; junit.zig:2: "each `<testcase>`'s classname and name"
+search exhaust [every test case of the report is a test of its own / two cases, failures, errors and skips]: complete, 169 timelines, none broke it (12 ms)
+search exhaust [every test case of the report is a test of its own / two cases, failures, skips and captured output (escaped or CDATA) that mentions an error element]: complete, 961 timelines, none broke it (49 ms)
+search exhaust [every test case of the report is a test of its own / two cases, attribute layouts (a space or a line break before name)]: complete, 196 timelines, none broke it (11 ms)
+search exhaust [every test case of the report is a test of its own / two cases, failures, skips and captured output in CDATA that prints a closing system-out or system-err tag]: complete, 961 timelines, none broke it (49 ms)
+search exhaust [every test case of the report is a test of its own / two cases, failures and captured output in CDATA that prints test cases of its own]: complete, 441 timelines, none broke it (27 ms)
+== junit property: the tests judged are the report's test cases, each with its own verdict
+   source: guest/runtime/junit.zig:2-6 ("each `<testcase>`'s classname and name"); a7fe05d's test name "captured output that prints its own closing tag never fails its test" (CE41's fix); docs/CI.md (Verdicts per test)
+search exhaust [the tests judged are the report's test cases, each with its own verdict / two cases, failures, errors and skips]: complete, 169 timelines, none broke it (11 ms)
+search exhaust [the tests judged are the report's test cases, each with its own verdict / two cases, failures, skips and captured output (escaped or CDATA) that mentions an error element]: complete, 961 timelines, none broke it (50 ms)
+search exhaust [the tests judged are the report's test cases, each with its own verdict / two cases, attribute layouts (a space or a line break before name)]: complete, 196 timelines, none broke it (12 ms)
+search exhaust [the tests judged are the report's test cases, each with its own verdict / two cases, failures, skips and captured output in CDATA that prints a closing system-out or system-err tag]: complete, 961 timelines, none broke it (49 ms)
+search exhaust [the tests judged are the report's test cases, each with its own verdict / two cases, failures and captured output in CDATA that prints test cases of its own]: FOUND after 4 timelines (7 ms): the tests judged are the report's test cases, each with its own verdict: "printed::bad" judged failing: no test case of the report has that name (the report's: [tests.test_app::test_0, tests.test_app::test_1]); it is text a test printed (shrunk to 3 decisions from 3)
+--- counterexample [the tests judged are the report's test cases, each with its own verdict / two cases, failures and captured output in CDATA that prints test cases of its own]: the tests judged are the report's test cases, each with its own verdict
+detail: "printed::bad" judged failing: no test case of the report has that name (the report's: [tests.test_app::test_0, tests.test_app::test_1]); it is text a test printed
+values: [0, 1, 2]
+tape:
+{"name":"world.children","options":3,"value":0}
+{"name":"world.children","options":3,"value":1}
+{"name":"world.child","options":4,"value":2}
+story:
+  the report:
+  <?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="suite">
+  <testcase classname="tests.test_app" name="test_0" time="0.1" />
+  <testcase classname="tests.test_app" name="test_1" time="0.1"><system-out><![CDATA[<testsuite><testcase classname="printed" name="ok"></testcase><testcase classname="printed" name="bad"><failure message="x"/></testcase></testsuite>]]></system-out></testcase>
+  </testsuite></testsuites>
+  det-assert junit states:
+    always(true) "test passes: tests.test_app::test_0"
+    always(true) "test passes: tests.test_app::test_1"
+    always(false) "test passes: printed::bad"
+---
+== ci property: every test of a shard is judged in the shard's timelines
+   source: docs/CI.md (`junit`): "each test gets its own verdict across its shard's timelines"; (`run`): "`{tests}` (the shard's names, as arguments: its part of the list ...)"
+search exhaust [every test of a shard is judged in the shard's timelines / up to four tests, names of 5 to 20 bytes, an xargs buffer of 48 bytes]: FOUND after 9 timelines (7 ms): every test of a shard is judged in the shard's timelines: 2 tests in the shard, 2 runs of the runner (xargs's buffer 48 bytes): 1 never judged: [t0_xxxxxxxxx] (shrunk to 3 decisions from 3)
+--- counterexample [every test of a shard is judged in the shard's timelines / up to four tests, names of 5 to 20 bytes, an xargs buffer of 48 bytes]: every test of a shard is judged in the shard's timelines
+detail: 2 tests in the shard, 2 runs of the runner (xargs's buffer 48 bytes): 1 never judged: [t0_xxxxxxxxx]
+values: [1, 1, 2]
+tape:
+{"name":"world.tests","options":4,"value":1}
+{"name":"world.name_length","options":3,"value":1}
+{"name":"world.name_length","options":3,"value":2}
+story:
+  the shard's names: [t0_xxxxxxxxx, t1_xxxxxxxxxxxxxxxxx]
+  run 1 of the runner: [t0_xxxxxxxxx] (its report written at the junit path)
+  run 2 of the runner: [t1_xxxxxxxxxxxxxxxxx] (its report written at the junit path)
+  det-assert junit reads the last: [t1_xxxxxxxxxxxxxxxxx]
+---

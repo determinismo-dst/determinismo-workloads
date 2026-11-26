@@ -83,10 +83,26 @@ structure Case where
 def startsAt (a : Array Char) (i : Nat) (prefix_ : String) : Bool :=
   a.extract i (i + prefix_.length) == arr prefix_
 
+/-- junit.zig:92-103 (a7fe05d) `captured_end`: the captured element's closing tag past `from`, a
+CDATA section before it skipped whole (CE41's fix). -/
+def capturedEnd (body : Array Char) (from_ : Nat) (closing : String) : Option Nat := Id.run do
+  let mut at_ := from_
+  for _ in [0:body.size + 1] do
+    let some close := findFrom body (arr closing) at_ | return none
+    match findFrom body (arr "<![CDATA[") at_ with
+    | some cdata =>
+      if cdata < close then
+        let some e := findFrom body (arr "]]>") cdata | return none
+        at_ := e + 3
+      else return some close
+    | none => return some close
+  return none
+
 /-- junit.zig:58-87 (62e06e3) `element_index`: where a case's body opens `opening`, outside its
 `<system-out>`/`<system-err>` (each skipped to the first `</system-out>`/`</system-err>` after its
-tag, whatever lies between) and any CDATA section (skipped to its first `]]>`). -/
-def elementIndex (body : Array Char) (opening : String) : Option Nat := Id.run do
+tag, whatever lies between) and any CDATA section (skipped to its first `]]>`). a7fe05d
+(junit.zig:72-81): the closing tag found past any CDATA section (`captured_end`, CE41). -/
+def elementIndex (body : Array Char) (opening : String) (ver : Ver := .va7fe05d) : Option Nat := Id.run do
   let mut at_ := 0
   for _ in [0:body.size + 1] do
     let some next := findChar body '<' at_ | return none
@@ -102,7 +118,8 @@ def elementIndex (body : Array Char) (opening : String) : Option Nat := Id.run d
           at_ := tagEnd + 1
         else
           let close := "</" ++ captured ++ ">"
-          let some e := findFrom body (arr close) tagEnd | return none
+          let found := if ver.sinceA7 then capturedEnd body tagEnd close else findFrom body (arr close) tagEnd
+          let some e := found | return none
           at_ := e + close.length
         skipped := true
     if skipped then continue
@@ -112,7 +129,7 @@ def elementIndex (body : Array Char) (opening : String) : Option Nat := Id.run d
 
 /-- junit.zig:11-55 `cases` (names and verdicts; the message left out). At 3939448 a case failed
 when its body held the text `<failure` or `<error` anywhere (CE16); at 62e06e3 by `elementIndex`. -/
-def cases (report : String) (ver : Ver := .v62e06e3) : List Case := Id.run do
+def cases (report : String) (ver : Ver := .va7fe05d) : List Case := Id.run do
   let r := arr report
   let mut out : Array Case := #[]
   let mut pos := 0
@@ -135,12 +152,12 @@ def cases (report : String) (ver : Ver := .v62e06e3) : List Case := Id.run do
     let full := if cls.size > 0 then str cls ++ "::" ++ str name else str name
     let failure := if ver == .v3939448 then
         (findFrom body (arr "<failure") 0).isSome || (findFrom body (arr "<error") 0).isSome
-      else (elementIndex body "<failure").isSome || (elementIndex body "<error").isSome
+      else (elementIndex body "<failure" ver).isSome || (elementIndex body "<error" ver).isSome
     out := out.push { name := unescape full, failed := failure }
   return out.toList
 
 /-- assert_main.zig:43-51: each case an `always` named "test passes: <name>", true unless failed. -/
-def assertions (report : String) (ver : Ver := .v62e06e3) : List (String × Bool) :=
+def assertions (report : String) (ver : Ver := .va7fe05d) : List (String × Bool) :=
   (cases report ver).map fun c => ("test passes: " ++ c.name, !c.failed)
 
 /-! ## A test runner's report, drawn: what each test did, then its XML -/
@@ -241,7 +258,17 @@ def everyCaseATest : JProp :=
       | some c => some s!"{c.cls}::{c.name} is in the report and no test ({if c.newlineBeforeName then "a line break before its name attribute" else "?"}); tests judged: {said}"
       | none => none }
 
-def allJProps : List JProp := [verdictsAsReported, everyCaseATest]
+/-- Round 6: nothing but the report's test cases is judged (no test made of a case's output). -/
+def onlyItsCases : JProp :=
+  { name := "the tests judged are the report's test cases, each with its own verdict"
+    source := "guest/runtime/junit.zig:2-6 (\"each `<testcase>`'s classname and name\"); a7fe05d's test name \"captured output that prints its own closing tag never fails its test\" (CE41's fix); docs/CI.md (Verdicts per test)"
+    check := fun cs =>
+      let real := cs.map fun c => c.cls ++ "::" ++ c.name
+      match (cases (render cs)).find? fun s => !real.contains s.name with
+      | some s => some s!"\"{s.name}\" judged {if s.failed then "failing" else "passing"}: no test case of the report has that name (the report's: {real}); it is text a test printed"
+      | none => none }
+
+def allJProps : List JProp := [verdictsAsReported, everyCaseATest, onlyItsCases]
 
 def judgeJ (p : JProp) (wd : JWorld) (source : Source) : Ended :=
   match (drawReport wd).run { decisions := { source } } with
@@ -266,7 +293,13 @@ def jworlds : List JWorld :=
     -- its own element (a test printing JUnit XML: a reporter's or a CI tool's own tests).
     { label := "two cases, failures, skips and captured output in CDATA that prints a closing system-out or system-err tag",
       childMenu := [.failure, .skipped, .outCdata "<error code=\"503\"/>",
-                    .outCdata "</system-out><error code=\"503\"/>", .errCdata "</system-err><failure message=\"x\"/>"] } ]
+                    .outCdata "</system-out><error code=\"503\"/>", .errCdata "</system-err><failure message=\"x\"/>"] },
+    -- Round 6 (a7fe05d's captured_end): captured output in CDATA that prints a whole JUnit
+    -- report (a test of a JUnit writer): its `</testcase>` and `<testcase`.
+    { label := "two cases, failures and captured output in CDATA that prints test cases of its own",
+      childMenu := [.failure, .outCdata "plain output",
+                    .outCdata "<testsuite><testcase classname=\"printed\" name=\"ok\"></testcase><testcase classname=\"printed\" name=\"bad\"><failure message=\"x\"/></testcase></testsuite>",
+                    .errCdata "</testcase>"] } ]
 
 /-! ## The shard's run command through xargs (ci.zig:226-233) -/
 

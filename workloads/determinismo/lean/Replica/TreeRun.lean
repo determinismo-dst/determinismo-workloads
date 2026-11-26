@@ -107,6 +107,9 @@ structure Config where
   /-- The judgment's draws from the generation's seed (main.zig:6386: `generation_seed`), not the
   search's: two runs judging the same generation draw the same. -/
   seededJudgment : Bool := false
+  /-- Round 6: main.zig as at a7fe05d (`plan_adopt_ran`, 6399-6410, 6490: a judged timeline's
+  plan takes the seed it ran with) unless a theorem about 3939448 says so. -/
+  ver : Ver := .va7fe05d
   deriving Inhabited
 
 def branchSeed (base index : Nat) : Nat := mix (base * 1000003 + 77) (index + 1)
@@ -316,6 +319,8 @@ def judge : RM Unit := do
     let parentRan? := inBatch <|> (s.ran.toList.find? (·.planned.index == back.branch))
     let some parentRan := parentRan? | continue
     let parent := match inBatch with | some r => r.planned | none => earlierPlan.getD parentRan.planned
+    -- a7fe05d: the plan has the seed its timeline ran with (CE23's fix).
+    let parent := if cfg.ver.sinceA7 then { parent with seed := parentRan.seed } else parent
     if inBatch.isNone && earlierPlan.isNone then continue
     let holding := match cfg.strategy with | some strat => !strat.decides | none => true
     let holder ← if holding && inBatch.isSome then do pure ((← below "node.holder" 2) == 0) else pure false
@@ -332,8 +337,14 @@ def judge : RM Unit := do
   let mut planned := 0
   for mk in made do
     let parent := match done.find? (·.planned.index == mk.parent) with
-      | some r => r.planned
-      | none => (lookup st.planned mk.parent).getD default
+      | some r => if cfg.ver.sinceA7 then { r.planned with seed := r.seed } else r.planned
+      | none =>
+        let p := (lookup st.planned mk.parent).getD default
+        if cfg.ver.sinceA7 then
+          match s.ran.toList.find? (fun (r : Ran) => r.planned.index == mk.parent) with
+          | some r => { p with seed := r.seed }
+          | none => p
+        else p
     let path := parent.path ++ [{ branch := parent.index, seed := parent.seed, vtime := mk.moment }]
     for _ in [0:(mk.back.branches.getD cfg.children)] do
       let s ← get

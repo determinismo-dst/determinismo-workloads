@@ -56,6 +56,16 @@ structure Named where
 
 structure S where
   decisions : Decisions := {}
+  /-- Round 6: nodes.zig as at a7fe05d (the drain) unless a theorem about 62e06e3 says so. -/
+  ver : Ver := .va7fe05d
+  /-- Round 6: whether pidfd_open may fail in the heal (a decision), the drain's fallback. -/
+  pidfdMayFail : Bool := false
+  /-- Faults whose tracer said it failed (`disk_reads_trace_failed`: "drain", "rmdir"). -/
+  said : List (Nat × String) := []
+  /-- A reader left running past its heal (no pidfd: never waited for nor killed): its fault. -/
+  stray : Option Nat := none
+  /-- The heal's end marker in the instance, not yet read (the stray's way out). -/
+  markerPending : Bool := false
   /-- The fault under way (its number), if any. -/
   active : Option Nat := none
   faults : Nat := 0
@@ -82,6 +92,10 @@ def note (line : String) : DM Unit := modify fun s => { s with log := s.log.push
 pipe opened, the reader started, then the table. -/
 def fail : DM Unit := do
   if (← get).active.isSome then return
+  -- a7fe05d (nodes.zig:2199-2205): an instance left behind (its removal failed) is cleared.
+  if (← get).ver.sinceA7 && (← get).instance_ then
+    note s!"corrupt_reads #{(← get).faults} begins: the instance is there (mkdir EEXIST): its trace cleared ({(← get).buffer.length} lines{if (← get).markerPending then ", the end marker among them" else ""})"
+    modify fun s => { s with buffer := [], markerPending := false }
   modify fun s => { s with active := some s.faults, faults := s.faults + 1, instance_ := true, reader := some s.faults }
   note s!"corrupt_reads #{(← get).faults - 1} begins: the reader starts on the instance ({(← get).buffer.length} lines already in it)"
 
@@ -97,14 +111,26 @@ def read : DM Unit := do
 /-- The reader scheduled: it takes every buffered line and names each (disk_reads_read). -/
 def readerRuns : DM Unit := do
   let s ← get
-  let some f := s.reader | return
+  -- A stray reader (round 6: its heal never waited for it) shares the pipe: whichever the
+  -- scheduler runs takes what is buffered.
+  let f ← match s.reader, s.stray with
+    | some r, some t => do pure (if (← below "world.which_reader" 2) == 0 then r else t)
+    | some r, none => pure r
+    | none, some t => pure t
+    | none, none => return
+  if s.stray == some f && s.markerPending then
+    -- It reaches the heal's end marker: names what is before it and exits.
+    modify fun s => { s with named := s.named ++ s.buffer.map fun l => { read := l.read, fault := f },
+                             buffer := [], stray := none, markerPending := false }
+    note s!"the stray reader of fault #{f} runs: names {s.buffer.map (·.read)}, reaches the end marker and exits"
+    return
   if s.buffer.isEmpty then return
   modify fun s => { s with named := s.named ++ s.buffer.map fun l => { read := l.read, fault := f }, buffer := [] }
   note s!"the reader of fault #{f} runs: names {s.buffer.map (·.read)}"
 
 /-- disk_heal (nodes.zig:2412-2415): the table back, the reader killed, the instance removed
 unless the killed reader still holds its pipe (a decision: has it exited yet?). -/
-def heal : DM Unit := do
+def heal62 : DM Unit := do
   let s ← get
   let some f := s.active | return
   let exited := (← below "world.reader_exited_before_rmdir" 2) == 1
@@ -114,6 +140,40 @@ def heal : DM Unit := do
     note s!"fault #{f} heals: its reader killed; the instance removed, {s.buffer.length} unread lines gone with it"
   else
     note s!"fault #{f} heals: its reader killed; rmdir refused (its pipe still open: EBUSY): the instance stays with {s.buffer.length} unread lines"
+
+/-- disk_heal at a7fe05d (nodes.zig:2450-2461, 2329-2364): the table back; then
+`disk_reads_trace_stop`: the event disabled (no read traced from here), the end marker written
+after the buffered lines, the reader waited for 2 s (its pidfd): it names every line before the
+marker and exits, unless it is not scheduled within them (a decision); then killed ("drain"
+said), its unread lines lost, waited for 2 s more; `tracing_on` 0; the instance removed, refused
+while a killed reader still holds the pipe ("rmdir" said). With `pidfdMayFail`, pidfd_open may
+fail: no wait and no kill, rmdir at once (refused: the reader holds the pipe), the reader left
+running on the instance. -/
+def healA7 : DM Unit := do
+  let s ← get
+  let some f := s.active | return
+  modify fun s => { s with active := none }
+  let watched ← if s.pidfdMayFail then do pure ((← below "world.pidfd_open_fails" 2) == 0) else pure true
+  if !watched then
+    modify fun s => { s with reader := none, stray := some f, markerPending := true, said := s.said ++ [(f, "rmdir")] }
+    note s!"fault #{f} heals: the marker written; pidfd_open failed: no wait, no kill; rmdir refused (the reader holds its pipe): the instance stays, its reader running with {s.buffer.length} lines unread"
+    return
+  let drained := (← below "world.reader_runs_within_2s" 2) == 1
+  if drained then
+    modify fun s => { s with named := s.named ++ s.buffer.map fun l => { read := l.read, fault := f },
+                             buffer := [], reader := none, instance_ := false }
+    note s!"fault #{f} heals: the marker written; its reader names {s.buffer.map (·.read)} up to it and exits; the instance removed"
+  else
+    let exited := (← below "world.killed_reader_exited_within_2s" 2) == 1
+    modify fun s => { s with reader := none, said := s.said ++ [(f, "drain")] ++ (if exited then [] else [(f, "rmdir")]) }
+    if exited then
+      modify fun s => { s with instance_ := false, buffer := [] }
+      note s!"fault #{f} heals: its reader not scheduled within 2 s: killed (\"drain\" said), {s.buffer.length} lines never named; the instance removed"
+    else
+      note s!"fault #{f} heals: its reader not scheduled within 2 s: killed (\"drain\" said) and not exited 2 s later: rmdir refused (\"rmdir\" said), the instance stays with {s.buffer.length} lines"
+
+def heal : DM Unit := do
+  if (← get).ver.sinceA7 then healA7 else heal62
 
 def timeline (steps : Nat) : DM Unit := do
   for _ in [0:steps] do
@@ -128,14 +188,19 @@ def everyReadNamedSource : String := "sdk/zig/schema.zig:520-524 (62e06e3): \"Ev
 
 def namedRight : String := "a disk_corrupt_read names a read under the fault that corrupted it (its byte that fault's)"
 
-def judgeWith (prop : String) (steps : Nat) (src : Source) : Ended :=
-  match (timeline steps).run { decisions := { source := src } } with
+/-- Round 6: every corrupted read named in its own fault, or that fault said its tracer failed
+(`disk_reads_trace_failed`, as a judge would read it: those reads unnamed). -/
+def everyReadNamedOrSaid : String := "every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)"
+
+def judgeWith (prop : String) (steps : Nat) (src : Source) (ver : Ver := .va7fe05d) (pidfdMayFail : Bool := false) : Ended :=
+  match (timeline steps).run { decisions := { source := src }, ver, pidfdMayFail } with
   | .ok _ s =>
-    let v := if prop == everyReadNamed then
+    let v := if prop == everyReadNamed || prop == everyReadNamedOrSaid then
         -- Judged once the faults ended (the last one healed): each corrupted read named in its own fault.
         if s.active.isSome then none
-        else match s.corrupted.find? fun l => !s.named.contains { read := l.read, fault := l.fault } with
-          | some l => some s!"read {l.read}, corrupted by fault #{l.fault}, is never named in it{if s.named.any (·.read == l.read) then s!" (named later, under fault #{(s.named.find? (·.read == l.read)).get!.fault})" else ""}"
+        else match s.corrupted.find? fun l => !s.named.contains { read := l.read, fault := l.fault } &&
+                (prop == everyReadNamed || !s.said.any (·.1 == l.fault)) with
+          | some l => some s!"read {l.read}, corrupted by fault #{l.fault}, is never named in it{if s.named.any (·.read == l.read) then s!" (named later, under fault #{(s.named.find? (·.read == l.read)).get!.fault})" else ""}{if s.said.any (·.1 == l.fault) then s!" (the fault said {(s.said.filter (·.1 == l.fault)).map (·.2)})" else ""}"
           | none => none
       else match s.named.find? fun n => !s.corrupted.contains { read := n.read, fault := n.fault } with
         | some n => some s!"read {n.read} named under fault #{n.fault}, which did not corrupt it (its byte is another fault's)"
@@ -143,19 +208,22 @@ def judgeWith (prop : String) (steps : Nat) (src : Source) : Ended :=
     { taken := s.decisions.taken, violation := v.map (prop, ·) }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
-def storyD (steps : Nat) (src : Source) : List String :=
-  match (timeline steps).run { decisions := { source := src } } with
+def storyD (steps : Nat) (src : Source) (ver : Ver := .va7fe05d) (pidfdMayFail : Bool := false) : List String :=
+  match (timeline steps).run { decisions := { source := src }, ver, pidfdMayFail } with
   | .ok _ s => s.log.toList ++ [s!"named: {reprStr s.named}"]
   | .error _ s => s.log.toList
 
 def searchAll (exhaustRuns seeds : Nat) : IO Unit := do
-  for (prop, src) in [(everyReadNamed, everyReadNamedSource), (namedRight, "nodes.zig:2244-2252 (62e06e3: the event's byte, `sector * 512 + corrupt_byte - 1`, the fault's own corrupt_byte)")] do
+  for (prop, src) in [(everyReadNamed, everyReadNamedSource),
+                      (everyReadNamedOrSaid, everyReadNamedSource ++ "; nodes.zig:2340-2356 (a7fe05d: the drain, \"disk_reads_trace_failed\" when it is cut)"),
+                      (namedRight, "nodes.zig:2262-2280 (a7fe05d: the event's byte, `sector * 512 + corrupt_byte - 1`, the fault's own corrupt_byte); 2199-2205 (an instance left behind cleared)")] do
     say s!"== disk property: {prop}"
     say s!"   source: {src}"
-    for steps in [4, 6, 8] do
-      if let some f ← exhaustSaid s!"{prop} / {steps} steps" (judgeWith prop steps) exhaustRuns then
-        printFound f (storyD steps)
-      if let some f ← exploreSaid s!"{prop} / {steps} steps" (judgeWith prop steps) seeds then
-        printFound f (storyD steps)
+    for (ver, pidfd, label) in [(Ver.va7fe05d, false, "a7fe05d"), (Ver.va7fe05d, true, "a7fe05d, pidfd_open may fail"), (Ver.v62e06e3, false, "62e06e3")] do
+      for steps in [4, 6, 8] do
+        if let some f ← exhaustSaid s!"{prop} / {label} / {steps} steps" (judgeWith prop steps · ver pidfd) exhaustRuns then
+          printFound f (storyD steps · ver pidfd)
+        if let some f ← exploreSaid s!"{prop} / {label} / {steps} steps" (judgeWith prop steps · ver pidfd) seeds then
+          printFound f (storyD steps · ver pidfd)
 
 end Replica.Disk5

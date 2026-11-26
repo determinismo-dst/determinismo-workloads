@@ -117,6 +117,12 @@ structure GW where
   sessions : Bool := false
   /-- The system's language instrumented (its coverage reported), or drawn. -/
   instrumented : Option Bool := none
+  /-- Round 6: serve.zig as at a7fe05d (`setup_covered`, `explored`) unless a theorem about
+  3939448 says so. -/
+  ver : Ver := .va7fe05d
+  /-- Round 6: the run starts from a snapshot or checkpoint its setup ran in (another run's: a
+  fast VM's explore-here, a checkpoint run, a moment's futures), or drawn. -/
+  fromSnapshot : Option Bool := some false
   deriving Inhabited
 
 structure Gate where
@@ -126,6 +132,7 @@ structure Gate where
   instrumented : Bool
   setupEdges : List Nat
   edgesRun : List (List Nat)
+  fromSnapshot : Bool := false
   deriving Inhabited
 
 /-- What a timeline reports: the edges it runs that no process of it ran before, its setup's
@@ -141,6 +148,13 @@ def drawGate (w : GW) : EStateM Stop RSt Gate := do
   let mut setupEdges := []
   for e in [0:w.edges] do
     if (← below "world.setup_edge" 2) == 1 then setupEdges := setupEdges ++ [e]
+  let fromSnapshot ← match w.fromSnapshot with
+    | some b => pure b
+    | none => do pure ((← below "world.from_snapshot" 2) == 1)
+  -- serve.zig:703-727 (a7fe05d) `setup_covered`: a coverage event in the run's own
+  -- events/setup.jsonl. A run from a snapshot opens that file and writes nothing to it (main.zig:
+  -- 2690-2703: its setup ran where the snapshot was made).
+  let setupCovered := w.ver.sinceA7 && instrumented && !fromSnapshot && !setupEdges.isEmpty
   let n := 1 + (← below "world.timelines" w.timelinesMax)
   let mut rows := []
   let mut edgesRun := []
@@ -158,11 +172,13 @@ def drawGate (w : GW) : EStateM Stop RSt Gate := do
     rows := rows ++ [(session, events)]
     edgesRun := edgesRun ++ [run]
     -- serve.zig:703-752 at this ingest: covered, done; else 4 rows of `timelines`: stopped.
-    if rows.any (·.2 > 0) then break
-    if rows.length ≥ 4 then
+    -- a7fe05d (750-755): or the setup covered; 4 rows of `explored` (sessions left out).
+    if rows.any (·.2 > 0) || setupCovered then break
+    let counted := if w.ver.sinceA7 then (rows.filter (!·.1)).length else rows.length
+    if counted ≥ 4 then
       stoppedAt := some i
       break
-  return { rows, stoppedAt, instrumented, setupEdges, edgesRun }
+  return { rows, stoppedAt, instrumented, setupEdges, edgesRun, fromSnapshot }
 
 def gateProp : String × String :=
   ("the coverage gate stops only runs without instrumentation",
@@ -177,7 +193,7 @@ def judgeGate (which : Nat) (w : GW) (source : Source) : Ended :=
   | .ok g s =>
     let v := if which == 0 then
         if g.stoppedAt.isSome && g.instrumented then
-          some (gateProp.1, s!"an instrumented system: its setup ran edges {g.setupEdges}, its first timelines ran {g.edgesRun}, each reporting none (all its setup's): stopped, \"its system runs without its language's instrumentation\"")
+          some (gateProp.1, s!"an instrumented system: its setup ran edges {g.setupEdges}{if g.fromSnapshot then " in the snapshot the run starts from (another run's setup: this run's events/setup.jsonl empty)" else ""}, its first timelines ran {g.edgesRun}, each reporting none (all its setup's): stopped, \"its system runs without its language's instrumentation\"")
         else none
       else
         let own := (g.rows.filter (!·.1)).length
@@ -247,10 +263,14 @@ def searchAll (exhaustRuns : Nat) : IO Unit := do
     say s!"   source: {p.2}"
     for w in [({ label := "an instrumented system, 3 edges, up to 5 timelines", instrumented := some true } : GW),
               { label := "3 edges, up to 5 timelines" },
-              { label := "3 edges, up to 5 timelines, sessions opened", sessions := true }] do
+              { label := "3 edges, up to 5 timelines, sessions opened", sessions := true },
+              -- Round 6: a run from a snapshot its setup ran in (another run's), or not.
+              { label := "an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not", instrumented := some true, fromSnapshot := none },
+              { label := "3939448: an instrumented system, 3 edges, up to 5 timelines", instrumented := some true, ver := .v3939448 },
+              { label := "3939448: 3 edges, up to 5 timelines, sessions opened", sessions := true, ver := .v3939448 }] do
       if let some f ← exhaustSaid s!"{p.1} / {w.label}" (judgeGate which w) exhaustRuns then
         printFound f (fun src => match (drawGate w).run { decisions := { source := src } } with
-          | .ok g _ => [s!"instrumented {g.instrumented}; setup edges {g.setupEdges}; timelines' edges {g.edgesRun}; rows (session, coverage events) {reprStr g.rows}; stopped at {reprStr g.stoppedAt}"]
+          | .ok g _ => [s!"instrumented {g.instrumented}; setup edges {g.setupEdges}{if g.fromSnapshot then " (in the snapshot the run starts from: its setup.jsonl empty)" else ""}; timelines' edges {g.edgesRun}; rows (session, coverage events) {reprStr g.rows}; stopped at {reprStr g.stoppedAt}"]
           | .error _ _ => [])
   say s!"== serve property: {sessionsProp.1}"
   say s!"   source: {sessionsProp.2}"

@@ -31,6 +31,9 @@ structure SCfg where
   total : Nat := 3
   hunks : Nat := 1
   budget : Bool := false
+  /-- Round 6: main.zig as at a7fe05d (every ended timeline counted, `change_count`) unless a
+  theorem about 3939448 says so. -/
+  ver : Ver := .va7fe05d
   deriving Inhabited
 
 structure SS where
@@ -86,6 +89,12 @@ def runOf (cfg : SCfg) : SM Targeted := do
     for t in ran.drop judged do
       counts := counts.zipIdx.map fun (c, h) => if t.contains h then c + 1 else c
     judged := judged + batch
+  -- a7fe05d (main.zig:4462-4464, 6426-6445; changed.zig:69-70): the batch's summaries no judgment
+  -- took counted at the end too, and "ran in n/N" divides by the timelines counted (CE39's fix).
+  if cfg.ver.sinceA7 then
+    for t in ran.drop judged do
+      counts := counts.zipIdx.map fun (c, h) => if t.contains h then c + 1 else c
+    return { ran, counts, timelines := ran.length, judged := ran.length }
   return { ran, counts, timelines := nextIndex, judged }
 
 def reportLine (t : Targeted) (h : Nat) : String :=
@@ -119,7 +128,8 @@ def sworlds : List SCfg :=
   [ { label := "generations of 2, 3 timelines, one hunk" },
     { label := "generations of 2, 4 timelines, one hunk, a budget", total := 4, budget := true },
     { label := "generations of 16, 20 timelines, one hunk", size := 16, total := 20 },
-    { label := "generations of 4, 8 timelines, two hunks", size := 4, total := 8, hunks := 2 } ]
+    { label := "generations of 4, 8 timelines, two hunks", size := 4, total := 8, hunks := 2 },
+    { label := "3939448: generations of 2, 3 timelines, one hunk", ver := .v3939448 } ]
 
 def searchAll (exhaustRuns seeds : Nat) : IO Unit := do
   say s!"== steering property: {property}"

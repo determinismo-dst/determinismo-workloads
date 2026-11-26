@@ -1,0 +1,22 @@
+1/9 ci.test.a shard whose tests hang in one timeline of three is flaky, failing in that one...OK
+2/9 ci.test.a shard's verdict line read...OK
+3/9 ci.test.the setup's key: the shards and run command reuse it, the setup and the guest do not...OK
+4/9 ci.test.faults: timing, none, or a list of det-faults' kinds with timing's three...OK
+5/9 ci.test.every test of a shard is in its JUnit report, however many runs xargs splits the list into...OK
+6/9 ci.test.a run line ending in exit still has every xargs run's report judged...OK
+7/9 ci.test.under set -e a failing xargs run's tests are judged...OK
+8/9 ci.test.a run line ending in a comment still has every xargs run's report judged...OK
+9/9 ci.test.a runner exiting 255 in one xargs run still has every test of the shard judged...expected 20000, found 5000
+FAIL (TestExpectedEqual)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:93:17: 0x1027c8eb3 in expectEqualInner__func_1007 (test)
+                return error.TestExpectedEqual;
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:57:5: 0x1027c902b in expectEqual (test)
+    return expectEqualInner(T, expected, actual);
+    ^
+./scratch/zig6/ci/ci.zig:723:5: 0x1027c90e7 in test.a runner exiting 255 in one xargs run still has every test of the shard judged (test)
+    try std.testing.expectEqual(@as(usize, 20_000), try shard_report_count(arena_state.allocator(), std.testing.io, runner_exits_255));
+    ^
+8 passed; 0 skipped; 1 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/933dac174bdc70933e06f5ebc2771fc8/test --seed=0x2973cf29

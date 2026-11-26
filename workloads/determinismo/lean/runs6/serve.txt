@@ -1,0 +1,163 @@
+== serve property: a resumed run's state is its timelines' verdict
+   source: serve.zig:5912 recorded_status ("A failing property fails the run, as explore exits"); serve.zig:5630-5633 run_resume ("Continues a run that ended before its end ...: its explorer again"); main.zig:242-244 usage ("--resume ... continue that run, its recorded timelines skipped")
+search exhaust [a resumed run's state is its timelines' verdict / 1 timelines]: FOUND after 4 timelines (8 ms): a resumed run's state is its timelines' verdict: timelines [{ alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]; 1 recorded before the stop; resumed, the explorer exits 0: serve says passed, its properties failing (shrunk to 3 decisions from 4)
+--- counterexample [a resumed run's state is its timelines' verdict / 1 timelines]: a resumed run's state is its timelines' verdict
+detail: timelines [{ alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]; 1 recorded before the stop; resumed, the explorer exits 0: serve says passed, its properties failing
+values: [1, 0, 1]
+tape:
+{"name":"world.always_false","options":2,"value":1}
+{"name":"world.sometimes_hit","options":2,"value":0}
+{"name":"world.recorded","options":2,"value":1}
+story:
+  timelines [{ alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]
+  stopped with 1 recorded; resumed: exit 0 (passed)
+  properties: failing
+---
+search exhaust [a resumed run's state is its timelines' verdict / 2 timelines]: FOUND after 6 timelines (7 ms): a resumed run's state is its timelines' verdict: timelines [{ alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]; 2 recorded before the stop; resumed, the explorer exits 0: serve says passed, its properties failing (shrunk to 5 decisions from 6)
+--- counterexample [a resumed run's state is its timelines' verdict / 2 timelines]: a resumed run's state is its timelines' verdict
+detail: timelines [{ alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]; 2 recorded before the stop; resumed, the explorer exits 0: serve says passed, its properties failing
+values: [0, 0, 1, 0, 2]
+tape:
+{"name":"world.always_false","options":2,"value":0}
+{"name":"world.sometimes_hit","options":2,"value":0}
+{"name":"world.always_false","options":2,"value":1}
+{"name":"world.sometimes_hit","options":2,"value":0}
+{"name":"world.recorded","options":3,"value":2}
+story:
+  timelines [{ alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]
+  stopped with 2 recorded; resumed: exit 0 (passed)
+  properties: failing
+---
+search exhaust [a resumed run's state is its timelines' verdict / 3 timelines]: FOUND after 8 timelines (7 ms): a resumed run's state is its timelines' verdict: timelines [{ alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]; 3 recorded before the stop; resumed, the explorer exits 0: serve says passed, its properties failing (shrunk to 7 decisions from 8)
+--- counterexample [a resumed run's state is its timelines' verdict / 3 timelines]: a resumed run's state is its timelines' verdict
+detail: timelines [{ alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]; 3 recorded before the stop; resumed, the explorer exits 0: serve says passed, its properties failing
+values: [0, 0, 0, 0, 1, 0, 3]
+tape:
+{"name":"world.always_false","options":2,"value":0}
+{"name":"world.sometimes_hit","options":2,"value":0}
+{"name":"world.always_false","options":2,"value":0}
+{"name":"world.sometimes_hit","options":2,"value":0}
+{"name":"world.always_false","options":2,"value":1}
+{"name":"world.sometimes_hit","options":2,"value":0}
+{"name":"world.recorded","options":4,"value":3}
+story:
+  timelines [{ alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := false, sometimesHit := false, sometimesTrue := false },
+ { alwaysFalse := true, sometimesHit := false, sometimesTrue := false }]
+  stopped with 3 recorded; resumed: exit 0 (passed)
+  properties: failing
+---
+== serve property: the coverage gate stops only runs without instrumentation
+   source: docs/SDKS.md:101-105 ("A run without coverage is explored blind, so serve does not let one go unnoticed"); serve.zig:689-700 ("A system without its language's instrumentation is explored blind") and 731-733, the stop's reason: "its system runs without its language's instrumentation (coverage always)"; docs/CI.md ("serve can tell a job that ran from one that did not")
+search exhaust [the coverage gate stops only runs without instrumentation / an instrumented system, 3 edges, up to 5 timelines]: complete, 320 timelines, none broke it (8 ms)
+search exhaust [the coverage gate stops only runs without instrumentation / 3 edges, up to 5 timelines]: complete, 70528 timelines, none broke it (122 ms)
+search exhaust [the coverage gate stops only runs without instrumentation / 3 edges, up to 5 timelines, sessions opened]: stopped at 1000000 timelines, none broke it (2062 ms)
+search exhaust [the coverage gate stops only runs without instrumentation / an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not]: FOUND after 170 timelines (7 ms): the coverage gate stops only runs without instrumentation: an instrumented system: its setup ran edges [2] in the snapshot the run starts from (another run's setup: this run's events/setup.jsonl empty), its first timelines ran [[2], [2], [2], [2]], each reporting none (all its setup's): stopped, "its system runs without its language's instrumentation" (shrunk to 17 decisions from 17)
+--- counterexample [the coverage gate stops only runs without instrumentation / an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not]: the coverage gate stops only runs without instrumentation
+detail: an instrumented system: its setup ran edges [2] in the snapshot the run starts from (another run's setup: this run's events/setup.jsonl empty), its first timelines ran [[2], [2], [2], [2]], each reporting none (all its setup's): stopped, "its system runs without its language's instrumentation"
+values: [0, 0, 1, 1, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]
+tape:
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":1}
+{"name":"world.from_snapshot","options":2,"value":1}
+{"name":"world.timelines","options":5,"value":3}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+story:
+  instrumented true; setup edges [2] (in the snapshot the run starts from: its setup.jsonl empty); timelines' edges [[2], [2], [2], [2]]; rows (session, coverage events) [(false, 0), (false, 0), (false, 0), (false, 0)]; stopped at some 3
+---
+search exhaust [the coverage gate stops only runs without instrumentation / 3939448: an instrumented system, 3 edges, up to 5 timelines]: FOUND after 90 timelines (7 ms): the coverage gate stops only runs without instrumentation: an instrumented system: its setup ran edges [2], its first timelines ran [[2], [2], [2], [2]], each reporting none (all its setup's): stopped, "its system runs without its language's instrumentation" (shrunk to 16 decisions from 16)
+--- counterexample [the coverage gate stops only runs without instrumentation / 3939448: an instrumented system, 3 edges, up to 5 timelines]: the coverage gate stops only runs without instrumentation
+detail: an instrumented system: its setup ran edges [2], its first timelines ran [[2], [2], [2], [2]], each reporting none (all its setup's): stopped, "its system runs without its language's instrumentation"
+values: [0, 0, 1, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]
+tape:
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":1}
+{"name":"world.timelines","options":5,"value":3}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":1}
+story:
+  instrumented true; setup edges [2]; timelines' edges [[2], [2], [2], [2]]; rows (session, coverage events) [(false, 0), (false, 0), (false, 0), (false, 0)]; stopped at some 3
+---
+search exhaust [the coverage gate stops only runs without instrumentation / 3939448: 3 edges, up to 5 timelines, sessions opened]: stopped at 1000000 timelines, none broke it (1713 ms)
+== serve property: the coverage gate judges the run's own first 4 timelines
+   source: docs/SDKS.md:101-102 ("a run whose first 4 ended timelines report none is stopped"); store.zig:676-680 (sessions are not what the run explored)
+search exhaust [the coverage gate judges the run's own first 4 timelines / an instrumented system, 3 edges, up to 5 timelines]: complete, 320 timelines, none broke it (7 ms)
+search exhaust [the coverage gate judges the run's own first 4 timelines / 3 edges, up to 5 timelines]: complete, 70528 timelines, none broke it (124 ms)
+search exhaust [the coverage gate judges the run's own first 4 timelines / 3 edges, up to 5 timelines, sessions opened]: stopped at 1000000 timelines, none broke it (2100 ms)
+search exhaust [the coverage gate judges the run's own first 4 timelines / an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not]: complete, 13093 timelines, none broke it (31 ms)
+search exhaust [the coverage gate judges the run's own first 4 timelines / 3939448: an instrumented system, 3 edges, up to 5 timelines]: complete, 12773 timelines, none broke it (29 ms)
+search exhaust [the coverage gate judges the run's own first 4 timelines / 3939448: 3 edges, up to 5 timelines, sessions opened]: FOUND after 8457 timelines (18 ms): the coverage gate judges the run's own first 4 timelines: stopped after 1 of the run's timelines and 3 session(s): rows [(false, 0), (true, 0), (true, 0), (true, 0)] (shrunk to 20 decisions from 20)
+--- counterexample [the coverage gate judges the run's own first 4 timelines / 3939448: 3 edges, up to 5 timelines, sessions opened]: the coverage gate judges the run's own first 4 timelines
+detail: stopped after 1 of the run's timelines and 3 session(s): rows [(false, 0), (true, 0), (true, 0), (true, 0)]
+values: [0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"world.instrumented","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.setup_edge","options":2,"value":0}
+{"name":"world.timelines","options":5,"value":3}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.session","options":4,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.session","options":4,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.session","options":4,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+{"name":"world.edge","options":2,"value":0}
+story:
+  instrumented false; setup edges []; timelines' edges [[0], [0], [0], [0]]; rows (session, coverage events) [(false, 0), (true, 0), (true, 0), (true, 0)]; stopped at some 3
+---
+== serve property: a session's evaluations never change a property's status
+   source: store.zig:676-679 ("What a run found is judged over these (its properties, findings, statistics, logged errors): a crash someone caused at a REPL is in its own timeline's events ..., never among the run's findings"); docs/AGENTS.md, Sessions
+search exhaust [a session's evaluations never change a property's status / always, 1 timelines]: complete, 10 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / always, 2 timelines]: complete, 100 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / always, 3 timelines]: complete, 1000 timelines, none broke it (8 ms)
+search exhaust [a session's evaluations never change a property's status / sometimes, 1 timelines]: complete, 10 timelines, none broke it (8 ms)
+search exhaust [a session's evaluations never change a property's status / sometimes, 2 timelines]: complete, 100 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / sometimes, 3 timelines]: complete, 1000 timelines, none broke it (8 ms)
+search exhaust [a session's evaluations never change a property's status / reachable, 1 timelines]: complete, 10 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / reachable, 2 timelines]: complete, 100 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / reachable, 3 timelines]: complete, 1000 timelines, none broke it (8 ms)
+search exhaust [a session's evaluations never change a property's status / always_or_unreachable, 1 timelines]: complete, 10 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / always_or_unreachable, 2 timelines]: complete, 100 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / always_or_unreachable, 3 timelines]: complete, 1000 timelines, none broke it (9 ms)
+search exhaust [a session's evaluations never change a property's status / unreachable, 1 timelines]: complete, 10 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / unreachable, 2 timelines]: complete, 100 timelines, none broke it (7 ms)
+search exhaust [a session's evaluations never change a property's status / unreachable, 3 timelines]: complete, 1000 timelines, none broke it (8 ms)

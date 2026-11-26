@@ -1,0 +1,36 @@
+== disk property: a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named
+   source: sdk/zig/schema.zig (a7fe05d) corrupt_reads: "Every read it corrupts is named (`disk_corrupt_read`: node, file, sectors, the byte ...), so a durability judge excludes those pages, or flags a loss inside one, without guessing"; guest/runtime/nodes.zig:2278 (".byte = read.sector * 512 + corrupt_byte - 1, // The device's byte the fault changed.")
+search exhaust [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 3 blocks on a device of 6]: FOUND after 83 timelines (8 ms): a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named: the file's blocks [none, none, some 1] at the fault's start (aimed extents [(1, 1)]), [none, some 0, some 1] once a hole was written; a read of blocks 0..1: dm splits it, the bytes changed at the starts of blocks [1]; the event names the byte at block some 0 (shrunk to 8 decisions from 8)
+--- counterexample [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 3 blocks on a device of 6]: a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named
+detail: the file's blocks [none, none, some 1] at the fault's start (aimed extents [(1, 1)]), [none, some 0, some 1] once a hole was written; a read of blocks 0..1: dm splits it, the bytes changed at the starts of blocks [1]; the event names the byte at block some 0
+values: [0, 0, 1, 1, 0, 1, 1, 1]
+tape:
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":1}
+{"name":"file.block_at","options":6,"value":1}
+{"name":"system.writes_the_hole","options":2,"value":0}
+{"name":"system.writes_the_hole","options":2,"value":1}
+{"name":"read.first_block","options":3,"value":1}
+{"name":"read.blocks","options":2,"value":1}
+story:
+---
+census [a file of 3 blocks on a device of 6]: 100000 timelines, 44824 reads of the file, 37102 through an aimed extent, 2483 named with the wrong byte or a byte unnamed
+search exhaust [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 4 blocks on a device of 8]: FOUND after 259 timelines (7 ms): a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named: the file's blocks [none, none, none, some 1] at the fault's start (aimed extents [(1, 1)]), [none, none, some 0, some 1] once a hole was written; a read of blocks 0..1: dm splits it, the bytes changed at the starts of blocks [1]; the event names the byte at block some 0 (shrunk to 10 decisions from 10)
+--- counterexample [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 4 blocks on a device of 8]: a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named
+detail: the file's blocks [none, none, none, some 1] at the fault's start (aimed extents [(1, 1)]), [none, none, some 0, some 1] once a hole was written; a read of blocks 0..1: dm splits it, the bytes changed at the starts of blocks [1]; the event names the byte at block some 0
+values: [0, 0, 0, 1, 1, 0, 0, 1, 2, 1]
+tape:
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":1}
+{"name":"file.block_at","options":8,"value":1}
+{"name":"system.writes_the_hole","options":2,"value":0}
+{"name":"system.writes_the_hole","options":2,"value":0}
+{"name":"system.writes_the_hole","options":2,"value":1}
+{"name":"read.first_block","options":4,"value":2}
+{"name":"read.blocks","options":2,"value":1}
+story:
+---
+census [a file of 4 blocks on a device of 8]: 100000 timelines, 39094 reads of the file, 31930 through an aimed extent, 2167 named with the wrong byte or a byte unnamed

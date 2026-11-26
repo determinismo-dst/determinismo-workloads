@@ -171,14 +171,14 @@ def multiverse (ts : List Timeline) : Except String (Array Aggregate) := do
 /-- report.zig:125 `Catalog`: by message (first kind), reached anywhere (3939448); by kind and
 message at 62e06e3 (report.zig:143-166, CE18 and CE22's fix). -/
 def catalogNote (cat : List (String × AKind × Bool)) (kind : AKind) (name : String) (reached : Bool)
-    (ver : Ver := .v62e06e3) : List (String × AKind × Bool) :=
+    (ver : Ver := .va7fe05d) : List (String × AKind × Bool) :=
   let same := fun (n : String) (k : AKind) => n == name && (ver == .v3939448 || k == kind)
   match cat.find? (fun (n, k, _) => same n k) with
   | some _ => cat.map fun (n, k, r) => if same n k then (n, k, r || reached) else (n, k, r)
   | none => cat ++ [(name, kind, reached)]
 
 /-- report.zig:752-765 `catalog_reached` (by identity). -/
-def catalogReached (cat : List (String × AKind × Bool)) (aggs : Array Aggregate) (ver : Ver := .v62e06e3) :
+def catalogReached (cat : List (String × AKind × Bool)) (aggs : Array Aggregate) (ver : Ver := .va7fe05d) :
     List (String × AKind × Bool) :=
   aggs.foldl (fun cat a =>
     let reached := a.branchesHit > 0 && !propertyFailing a.property.kind a.branchesHit a.branchesTrue 0
@@ -186,7 +186,7 @@ def catalogReached (cat : List (String × AKind × Bool)) (aggs : Array Aggregat
 
 /-- report.zig:140-145 `made_true`: the entry by identity, whatever its kind (3939448); the
 `sometimes` entry at 62e06e3 (report.zig:167-173; main.zig:1152). -/
-def catalogMadeTrue (cat : List (String × AKind × Bool)) (identity : String) (ver : Ver := .v62e06e3) : Bool :=
+def catalogMadeTrue (cat : List (String × AKind × Bool)) (identity : String) (ver : Ver := .va7fe05d) : Bool :=
   match cat.find? (fun (n, k, _) => n == identity && (ver == .v3939448 || k == .sometimes)) with
   | some (_, _, r) => r
   | none => false
@@ -198,7 +198,7 @@ def catalogJudge (cat : List (String × AKind × Bool)) (everyScenario : Bool) :
 /-- main.zig:1097-1157: the exploration's exit status (3: some property failed), or the error
 that ended it. `scenarios`: the scenarios explored, each its timelines in the order they ended;
 `all`: how many scenarios the program has. -/
-def explorerExit (scenarios : List (List Timeline)) (all : Nat) (ver : Ver := .v62e06e3) : Except String Nat := do
+def explorerExit (scenarios : List (List Timeline)) (all : Nat) (ver : Ver := .va7fe05d) : Except String Nat := do
   let mut failingScenarios := 0
   let mut cat : List (String × AKind × Bool) := []
   let mut unmet : List (List String) := []

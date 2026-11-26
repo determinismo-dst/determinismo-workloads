@@ -57,7 +57,7 @@ structure Cfg where
   flakyPasses : Bool := false
   sessions : Bool := false
   /-- Round 5: ci.zig as at 62e06e3 unless a theorem about 3939448 says so. -/
-  ver : Ver := .v62e06e3
+  ver : Ver := .va7fe05d
   deriving Inhabited
 
 structure CS where
@@ -125,7 +125,7 @@ def drawJob (cfg : Cfg) : CM Job := do
 
 /-- ci.zig:273-275 `shard_sql` over `timeline_events` (sessions' timelines included) at 3939448;
 over `explored_timeline_events` (sessions left out) at 62e06e3 (ci.zig:340-342, CE28's fix). -/
-def shardRow (j : Job) (shard : Nat) (ver : Ver := .v62e06e3) : Nat × Nat :=
+def shardRow (j : Job) (shard : Nat) (ver : Ver := .va7fe05d) : Nat × Nat :=
   let rows := j.stated.filter fun s => s.shard == shard && s.shardCondition.isSome && (ver == .v3939448 || !s.session)
   ((rows.filter (·.shardCondition == some false)).length, rows.length)
 
@@ -160,7 +160,7 @@ a timeline that never stated its shard's property failed it), `tests_judge` (483
 reports) and `unreported_sql` (305-308: the run's timelines that stated their shard's property
 and no test, each; "error" only for one whose shard passed). -/
 def verdictOf (cfg : Cfg) (j : Job) : Verdict := Id.run do
-  if cfg.ver == .v62e06e3 then
+  if cfg.ver.since62 then
     let mut verdict := "pass"
     let mut shards := []
     for number in [1:j.shardCount + 1] do

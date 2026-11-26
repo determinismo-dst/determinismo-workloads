@@ -66,7 +66,7 @@ instance : Chaotic PS where
 /-- nodes.zig:916-955 `partial_file`: the pages written back, in the order written. At 62e06e3
 (nodes.zig:828-830, 859-864, 945-954) a file with no extent written yet (`fresh`: no allocated
 page) is written back from its first range, the range still drawn (CE17's fix). -/
-def partialFile (file : List Page) (ver : Ver := .v62e06e3) : EStateM Stop PS (List Nat) := do
+def partialFile (file : List Page) (ver : Ver := .va7fe05d) : EStateM Stop PS (List Nat) := do
   let pages := file.length
   if pages == 0 then return []
   let ranges := unallocated file
@@ -82,7 +82,7 @@ def partialFile (file : List Page) (ver : Ver := .v62e06e3) : EStateM Stop PS (L
     let mut left := 1 + (← below "partial.left" total)
     let drawn ← below "partial.range" ranges.length
     let freshFile := !file.any fun p => p == .allocClean || p == .allocDirty
-    let mut range := if ver == .v62e06e3 && freshFile then 0 else drawn
+    let mut range := if ver.since62 && freshFile then 0 else drawn
     for _ in [0:ranges.length + 1] do
       if left == 0 then break
       let (first, count) := ranges[range]!

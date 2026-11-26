@@ -113,3 +113,15 @@ searches against the fixed code, where the counterexample should be gone.
 CE20, CE21 and CE29 partly, with remainders numbered anew; CE23-CE26, CE30, CE32-CE34, CE38, CE39
 still there), and CE40-CE48. CE40, CE41 and CE48 fail as Zig tests on copies of 62e06e3's ci.zig,
 junit.zig and tape.zig; the rest are the model's, each with its regression test in tests/.
+
+## Round 6
+
+[REPORT-6.md](REPORT-6.md): CE1-CE48 rechecked at next a7fe05d (CE40, CE42, CE43, CE46-CE48
+fixed; CE41 partly, its remainder CE49; CE45 still there, and with CE47 fixed a complete resume
+now reads "passed"), and CE49-CE55: captured JUnit output that prints `</testcase>` makes tests of
+its own and hides failures (CE49), the coverage gate stopping an instrumented run started from a
+snapshot (CE50), a command-line run's analyses booting other inputs than its tapes' (CE51), a
+session step over about 41 KiB making its tape unreadable (CE52), returns past a full tape's marker
+(CE53), an aimed corrupt_reads naming a byte its read never had changed (CE54), and a test runner
+exiting 255 stopping xargs before the shard's later tests (CE55). CE49, CE52 and CE55 fail as Zig
+tests on copies of a7fe05d's junit.zig, tape.zig and ci.zig; each has its regression test in tests/.

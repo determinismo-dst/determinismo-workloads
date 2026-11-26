@@ -78,7 +78,7 @@ structure DS where
   each replaced or disarmed by its own kind alone. -/
   armedStall : Option Mode := none
   armedCrash : Option Mode := none
-  ver : Ver := .v62e06e3
+  ver : Ver := .va7fe05d
   /-- nodes_faulted's two layers: the process layer's and the condition layer's. -/
   process : Option Fault := none
   condition : Option Fault := none
@@ -153,7 +153,7 @@ def sync (at_ : Nat) : DM Unit := do
       return
 
 /-- A timeline: `steps` moments, at each a fault begins or ends, or the node syncs. -/
-def timeline (steps overlapEighths : Nat) (ver : Ver := .v62e06e3) : DM Unit := do
+def timeline (steps overlapEighths : Nat) (ver : Ver := .va7fe05d) : DM Unit := do
   modify fun s => { s with ver }
   for t in [0:steps] do
     match (← below "step" 5) with
@@ -166,12 +166,12 @@ def timeline (steps overlapEighths : Nat) (ver : Ver := .v62e06e3) : DM Unit := 
 def durableProperty : String := "while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision"
 def durableSource : String := "ARCHITECTURE.md:360-368 (\"While a `sync_stall` or `durable_crash` fault lasts, each of its syncs is a decision (one randomness pull), and one in a few is picked\"); docs/ANTITHESIS.md:57 (Durability points); faults.zig:53-60 (\"while the fault lasts, the guest module makes each of the node's fsyncs and sync writes a decision\")"
 
-def judgeD (steps overlapEighths : Nat) (source : Source) (ver : Ver := .v62e06e3) : Ended :=
+def judgeD (steps overlapEighths : Nat) (source : Source) (ver : Ver := .va7fe05d) : Ended :=
   match (timeline steps overlapEighths ver).run { decisions := { source } } with
   | .ok _ s => { taken := s.decisions.taken, violation := s.violation.map fun d => (durableProperty, d) }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
-def storyD (steps overlapEighths : Nat) (source : Source) (ver : Ver := .v62e06e3) : List String :=
+def storyD (steps overlapEighths : Nat) (source : Source) (ver : Ver := .va7fe05d) : List String :=
   match (timeline steps overlapEighths ver).run { decisions := { source } } with
   | .ok _ s => s.log.toList
   | .error _ s => s.log.toList

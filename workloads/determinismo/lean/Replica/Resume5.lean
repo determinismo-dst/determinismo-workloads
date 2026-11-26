@@ -74,6 +74,9 @@ def resumedExit (ver : Ver) (ts : List Timeline) (recorded room : Nat) : Except 
   if ver == .v3939448 then
     if rest.isEmpty then return 0
     return ← explorerExit [rest] 1
+  -- a7fe05d (report.zig:51-78, 551-588): a record line of any size written whole, every
+  -- property it evaluated in it (CE46's fix): no room.
+  let room := if ver.sinceA7 then 1000000 else room
   let mut aggs ← recordedAggs (ts.take recorded) room
   if rest.isEmpty then
     return if aggs.any (·.failing) then 3 else 0
@@ -90,18 +93,37 @@ instance : Chaotic S where
   decisions s := s.decisions
   setDecisions _ d := { decisions := d }
 
+/-- Round 6: a run whose numbers a session's timeline took one of (tape.claim_next: a session on
+a running run takes the next free number; the explorer passes it over, main.zig:3539-3542,
+4658-4664). `resume_read` (main.zig:2196-2199) skips a line that extends a timeline, so that
+number is never `done`, and the run is never "complete" (2241-2243): resumed, it goes the
+explorer's way, passes the number over again, runs what is left of its own (possibly nothing),
+and judges the catalog of the aggregates it has: the recorded ones (main.zig:2865) and the
+timelines it ran. -/
+def resumedExitWithSession (ver : Ver) (ts : List Timeline) (recorded room : Nat) (session : Bool) : Except String Nat := do
+  if !session || ver == .v3939448 then return ← resumedExit ver ts recorded room
+  let room := if ver.sinceA7 then 1000000 else room
+  let mut aggs ← recordedAggs (ts.take recorded) room
+  for t in ts.drop recorded do
+    let props ← timelineProps t
+    for p in props do aggs := merge aggs p
+  return exitOfAggs aggs
+
 structure World where
   label : String
   menu : List AEvent
   timelines : Nat := 2
   lines : Nat := 2
   rooms : List Nat := [1000]
-  ver : Ver := .v62e06e3
+  ver : Ver := .va7fe05d
+  /-- Round 6: a session's timeline may take one of the run's numbers. -/
+  sessions : Bool := false
 
 structure Drawn where
   ts : List Timeline
   recorded : Nat
   room : Nat
+  session : Bool := false
   deriving Inhabited
 
 def draw (w : World) : EStateM Stop S Drawn := do
@@ -112,7 +134,8 @@ def draw (w : World) : EStateM Stop S Drawn := do
     ts := ts ++ [{ scenario := 0, events := evs : Timeline }]
   let recorded ← below "world.recorded" (w.timelines + 1)
   let room := w.rooms[(← below "world.room" w.rooms.length)]!
-  return { ts, recorded, room }
+  let session ← if w.sessions then do pure ((← below "world.session_takes_a_number" 2) == 1) else pure false
+  return { ts, recorded, room, session }
 
 def property : String := "a resumed run's verdict is the run's: its timelines' and its catalog's, as it would have ended uninterrupted"
 def source : String := "src/main.zig:2023-2025 (62e06e3, Resumed.recorded: \"counted in the resumed run's verdict as its own timelines' are\"), 2828 (\"A resumed run's recorded timelines count in its verdict as its own do (CE29)\"), 2213-2215 (\"Judged from its record, as the run that recorded it would have been\"); serve.zig:5630-5633 (run_resume: \"Continues a run that ended before its end\"); README_AI.md (a run's exit status)"
@@ -121,10 +144,10 @@ def judge (w : World) (src : Source) : Ended :=
   match (draw w).run { decisions := { source := src } } with
   | .ok d s =>
     let whole := explorerExit [d.ts] 1
-    let resumed := resumedExit w.ver d.ts d.recorded d.room
+    let resumed := resumedExitWithSession w.ver d.ts d.recorded d.room d.session
     let v := match whole, resumed with
       | .ok a, .ok b => if a == b then none else
-          some (property, s!"timelines {reprStr (d.ts.map (·.events))}; stopped after {d.recorded} record lines (a line's room: {d.room} properties); uninterrupted the run exits {a}, resumed {b}")
+          some (property, s!"timelines {reprStr (d.ts.map (·.events))}{if d.session then ", a session's timeline holding one of the run's numbers" else ""}; stopped after {d.recorded} record lines (a line's room: {d.room} properties); uninterrupted the run exits {a}, resumed {b}")
       | _, _ => none
     { taken := s.decisions.taken, violation := v }
   | .error _ s => { taken := s.decisions.taken, violation := none }
@@ -138,7 +161,7 @@ def story (w : World) (src : Source) : List String :=
         | .error e => e
       s!"timeline {i}: {reprStr t.events}; {if i < d.recorded then kept else "not recorded: run again on resume"}") ++
     [s!"uninterrupted: exit {reprStr (explorerExit [d.ts] 1)}",
-     s!"resumed ({if d.recorded == d.ts.length then "complete: judged from the record alone" else "the rest explored"}): exit {reprStr (resumedExit w.ver d.ts d.recorded d.room)}"]
+     s!"resumed ({if d.recorded == d.ts.length && !d.session then "complete: judged from the record alone" else if d.recorded == d.ts.length then "not complete (the session's number is no record line of the run's): explored, nothing left to run, the recorded aggregates judged" else "the rest explored"}): exit {reprStr (resumedExitWithSession w.ver d.ts d.recorded d.room d.session)}"]
   | .error _ _ => []
 
 def worlds : List World :=
@@ -149,14 +172,23 @@ def worlds : List World :=
     { label := "two timelines, two always each evaluated, a record line's room of 1 or 1,000 properties",
       menu := [.eval .always "a" true, .eval .always "b" true, .eval .always "b" false], rooms := [1, 1000] },
     { label := "3939448: two timelines, an always evaluated, a sometimes evaluated", ver := .v3939448,
-      menu := [.eval .always "a" true, .eval .always "a" false, .eval .sometimes "s" true, .eval .sometimes "s" false] } ]
+      menu := [.eval .always "a" true, .eval .always "a" false, .eval .sometimes "s" true, .eval .sometimes "s" false] },
+    { label := "62e06e3: two timelines, two always each evaluated, a record line's room of 1 or 1,000 properties", ver := .v62e06e3,
+      menu := [.eval .always "a" true, .eval .always "b" true, .eval .always "b" false], rooms := [1, 1000] },
+    -- Round 6: a session's timeline holding one of the run's numbers.
+    { label := "two timelines, a reachable declared and reached or not, an always; a session may hold a number",
+      menu := [.declare .reachable "r", .eval .reachable "r" true, .eval .always "a" true, .eval .always "a" false],
+      sessions := true } ]
 
 /-- serve.zig:5803-5818 `runs_adopt` (62e06e3) for a command-line resume whose explorer ended
 before serve's watcher looked: its `exit` deleted, the record's summary read. The record's
 summaries: the interrupted run's (when it wrote one before its stop) and the resumed explorer's
 (written when it explored the rest: report.zig `record_summary`, its multiverse's `failing`
 flags, no catalog); a complete resume writes none. -/
-def adoptedStatus (ts : List Timeline) (recorded : Nat) (summaryBeforeStop : Bool) : Except String Nat := do
+def adoptedStatus (ts : List Timeline) (recorded : Nat) (summaryBeforeStop : Bool) (ver : Ver := .va7fe05d) : Except String Nat := do
+  -- a7fe05d (serve.zig:5836-5851; main.zig:1293-1297): the resumed explorer removed its last
+  -- end's `exit` as it began, runs_adopt keeps the one it wrote: ended_status reads it (CE47's fix).
+  if ver.sinceA7 then return ← resumedExit ver ts recorded 1000000
   let rest := ts.drop recorded
   if rest.isEmpty then
     -- The record's last summary: the interrupted run's, if any (serve.zig:5939-5951; 255 none).

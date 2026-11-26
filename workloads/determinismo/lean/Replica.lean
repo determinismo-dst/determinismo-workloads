@@ -27,3 +27,12 @@ import Replica.Steer4
 import Replica.Clock4
 import Replica.Holders4
 import Replica.Theorems4
+import Replica.Ci5
+import Replica.Resume5
+import Replica.Clock5
+import Replica.Disk5
+import Replica.Theorems5
+import Replica.Request6
+import Replica.Tape6
+import Replica.Aimed6
+import Replica.Theorems6

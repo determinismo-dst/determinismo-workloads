@@ -111,7 +111,7 @@ structure Consts where
   reasonMax : Nat := 1000000
   /-- Round 5: tape.zig and vm.zig as at 62e06e3 unless a theorem about 3939448 says so. At
   62e06e3 `overrideMax` (override_count_max, 1,048,576) bounds the recorder too. -/
-  ver : Ver := .v62e06e3
+  ver : Ver := .va7fe05d
   deriving Repr, Inhabited
 
 /-- tape.zig:603 `checkpoint_kept`. -/
@@ -138,9 +138,14 @@ def parse (c : Consts) (lines : List Line) : Except String Overrides := do
   let mut o : Overrides := {}
   -- tape.zig:592-593 (62e06e3): the table sized from the tape's own count of overrides, at most
   -- override_count_max (`reserve`, 180-187).
-  if c.ver == .v62e06e3 then
+  if c.ver.since62 then
     let count := (lines.filter fun | .override .. => true | _ => false).length
     if count > c.overrideMax then throw "TapeTooLong (override_count_max)"
+  -- tape.zig:605 (a7fe05d): the reason table sized from the tape's own count of lines with a
+  -- reason (`,"reason":"`), as the overrides' (CE48's fix); before, reason_count_max.
+  let reasonTable := if c.ver.sinceA7 then
+      (lines.filter fun | .override _ _ r => !r.isEmpty | _ => false).length
+    else c.reasonMax
   for l in lines do
     match l with
     | .checkpoint e h => o ← checkpointKeep c o (e, h)
@@ -151,7 +156,7 @@ def parse (c : Consts) (lines : List Line) : Except String Overrides := do
       let kind := kindOf reason
       o := { o with entries := o.entries.push { pull, value, kind } }
       if !reason.isEmpty && kind == .decision then
-        if o.reasons.size == c.reasonMax then throw "TapeTooLong (reason_count_max)"
+        if o.reasons.size == reasonTable then throw "TapeTooLong (reason_count_max)"
         o := { o with reasons := o.reasons.push (pull, reason) }
   return o
 
@@ -341,7 +346,7 @@ def decideRandom (vm : VM) (label : Label) : Except String (Nat × VM) := do
         let (t, vm1) ← overrideApply vm pull
         taped := t
         vm := vm1
-      else if label == .ingressStatus && vm.consts.ver == .v62e06e3 then
+      else if label == .ingressStatus && vm.consts.ver.since62 then
         -- vm.zig:3806-3815 (62e06e3): an idle poll's nothing is never taped, so a replay answers
         -- a status pull its tape lacks with it, unless the tape's next answer is for an earlier
         -- pull (it passed it: diverged).
@@ -352,7 +357,7 @@ def decideRandom (vm : VM) (label : Label) : Except String (Nat × VM) := do
     | none =>
       value := vm.outside
       -- vm.zig:3837 (62e06e3): an idle poll's nothing (1 here) is not taped.
-      if !(label == .ingressStatus && vm.consts.ver == .v62e06e3 && value == 1) then
+      if !(label == .ingressStatus && vm.consts.ver.since62 && value == 1) then
         vm := writeOverride vm pull value reason
     match label with
     | .egressStatus => vm := decisionEvent vm pull reason -- vm.zig:3730: answered or replayed

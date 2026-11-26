@@ -198,7 +198,7 @@ def closingTagReport : String :=
 `</system-out>` then an `<error` element: judged failing (junit.zig:69-81 skips to the first
 `</system-out>`, the one inside the CDATA). -/
 theorem ce41_closing_tag_fails_a_passing_test :
-    (Junit.cases closingTagReport == [{ name := "junit.ReportTest::renders_an_error", failed := true }]) = true := by
+    (Junit.cases closingTagReport .v62e06e3 == [{ name := "junit.ReportTest::renders_an_error", failed := true }]) = true := by
   native_decide
 
 /-! ## CE44: the wall clock's jump against a token's hour, over the whole timeline -/
@@ -246,7 +246,7 @@ theorem ce47_adopted_resume_reads_its_record :
     code (Resume5.resumedExit .v62e06e3 [{ scenario := 0, events := [.declare .reachable "r"] },
                                          { scenario := 0, events := [.declare .reachable "r"] }] 1 1000) = some 3 ∧
     code (Resume5.adoptedStatus [{ scenario := 0, events := [.declare .reachable "r"] },
-                                 { scenario := 0, events := [.declare .reachable "r"] }] 1 false) = some 0 := by
+                                 { scenario := 0, events := [.declare .reachable "r"] }] 1 false .v62e06e3) = some 0 := by
   native_decide
 
 /-! ## CE42: a second driver phase's stop -/
@@ -255,7 +255,7 @@ theorem ce47_adopted_resume_reads_its_record :
 second phase asked at 30 ms, its stop at 330 ms (composer.zig:797); its drivers start at 300 and
 310 ms, past the timeline's half (300). -/
 theorem ce42_second_phase_starts_past_half :
-    violates Composer.noStartPastHalfLimit 17 #[0, 0, 0, 1, 1, 0, 1] = true := by
+    violatesAt .v62e06e3 Composer.noStartPastHalfLimit 17 #[0, 0, 0, 1, 1, 0, 1] = true := by
   native_decide
 
 /-! ## CE43: corrupt_reads's reads unnamed at the heal, or named under the next fault -/
@@ -263,8 +263,8 @@ theorem ce42_second_phase_starts_past_half :
 /-- (by computation) A read during the fault, the heal before the reader ran: never named; the
 instance kept (rmdir refused), the next fault's reader names it under that fault. -/
 theorem ce43_read_before_the_heal_unnamed :
-    ((Disk5.judgeWith Disk5.everyReadNamed 4 (Source.path #[0, 0, 1, 3, 0])).violation.isSome) = true ∧
-    ((Disk5.judgeWith Disk5.namedRight 6 (Source.path #[0, 0, 1, 3, 0, 0, 2])).violation.isSome) = true := by
+    ((Disk5.judgeWith Disk5.everyReadNamed 4 (Source.path #[0, 0, 1, 3, 0]) .v62e06e3).violation.isSome) = true ∧
+    ((Disk5.judgeWith Disk5.namedRight 6 (Source.path #[0, 0, 1, 3, 0, 0, 2]) .v62e06e3).violation.isSome) = true := by
   native_decide
 
 /-! ## CE48: the tape's reason table (CE20's other table) -/
@@ -273,7 +273,7 @@ theorem ce43_read_before_the_heal_unnamed :
 Zig): the recorder tapes all three (no marker: the override cap is not reached), and the replay's
 parse refuses the tape. -/
 def threeReasons : Tape.VM × Tape.VM :=
-  Tape.recordReplay { label := "", consts := { reasonMax := 2 } }
+  Tape.recordReplay { label := "", consts := { reasonMax := 2, ver := .v62e06e3 } }
     { steps := List.replicate 3 (.pull .plain), advice := [(0, 0, "r", true), (1, 0, "r", true), (2, 0, "r", true)],
       forkIndex := 0, outsideRecord := 0, outsideReplay := 1, perturb := .none }
 

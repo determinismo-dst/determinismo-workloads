@@ -130,7 +130,7 @@ theorem ce37_unreported_missed :
 /-- (by computation) docs/CI.md's own Jest config (8 shards of 3): its timelines' first four ended
 one look each, serve stops the run, every shard "error", exit 1. -/
 theorem ce38_jest_job_errors :
-    ((Ci4.judgeG { label := "", shards := 8, timelines := 3, runners := [.jest] } (Source.path #[0, 0, 0, 0])).violation.isSome) = true := by
+    ((Ci4.judgeG { label := "", shards := 8, timelines := 3, runners := [.jest], ver := .v62e06e3 } (Source.path #[0, 0, 0, 0])).violation.isSome) = true := by
   native_decide
 
 /-- (by computation) The same job when all 24 timelines end before the gate's first look: pass. -/
@@ -143,7 +143,7 @@ theorem ce38_same_job_passes_on_a_bigger_host :
 /-- (by computation) Generations of 2, 3 timelines: the third ran the hunk and is never judged:
 "NEVER RAN". -/
 theorem ce39_never_ran :
-    ((Steer4.judgeS (Steer4.sworlds[0]!) (Source.path #[0, 0, 1])).violation.isSome) = true := by
+    ((Steer4.judgeS { Steer4.sworlds[0]! with ver := .v3939448 } (Source.path #[0, 0, 1])).violation.isSome) = true := by
   native_decide
 
 end Replica.Theorems4

@@ -56,7 +56,7 @@ def shardsIndependent : CProp :=
     source := "docs/CI.md (\"Each timeline runs its shard's tests ... A shard failing in every timeline fails, in some is flaky\"; \"Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky\")"
     check := fun cfg j => Id.run do
       -- 3939448's count (round 4); 62e06e3 counts per timeline (unreportedCounted judges it).
-      if cfg.ver == .v62e06e3 then return none
+      if cfg.ver.since62 then return none
       if !cfg.junit || j.shardCount < 2 then return none
       -- Shard 1 passing in every timeline: its tests reported everywhere. The job without it
       -- (its timelines' statements dropped): the other shards' verdicts alone.
@@ -126,6 +126,9 @@ structure GCfg where
   shards : Nat := 2
   timelines : Nat := 3
   runners : List Runner := [.python312, .python311, .jdk24, .jdk21, .jdk21Aot, .jest, .goPlain]
+  /-- Round 6: serve.zig as at a7fe05d (a CI job never stopped by the gate, 765-769) unless a
+  theorem about 3939448 or 62e06e3 says so. -/
+  ver : Ver := .va7fe05d
   deriving Inhabited
 
 structure Gate where
@@ -153,7 +156,7 @@ def gateRun (cfg : GCfg) : CM Gate := do
     ended := ended + n
     batches := batches ++ [n]
     let going := ended < total
-    if !runner.covered && going && ended ≥ 4 then
+    if !runner.covered && going && ended ≥ 4 && !cfg.ver.sinceA7 then
       stoppedAt := some ended
       break
   -- The timelines that ended, in index order of their ends (all of them pass): shard t % S + 1.
@@ -207,7 +210,8 @@ def searchAll (exhaustRuns seeds : Nat) : IO Unit := do
   say s!"   source: {gateSource}"
   for cfg in [({ label := "two shards of 3 timelines, every runner" } : GCfg),
               { label := "docs/CI.md's example shape: 8 shards of 3 timelines, Jest", shards := 8, timelines := 3, runners := [.jest] },
-              { label := "examples/ci-demo's shape: 3 shards of 12 timelines, Python 3.12", shards := 3, timelines := 12, runners := [.python312] }] do
+              { label := "examples/ci-demo's shape: 3 shards of 12 timelines, Python 3.12", shards := 3, timelines := 12, runners := [.python312] },
+              { label := "62e06e3: docs/CI.md's example shape: 8 shards of 3 timelines, Jest", shards := 8, timelines := 3, runners := [.jest], ver := .v62e06e3 }] do
     if let some f ← exhaustSaid s!"{gateProperty} / {cfg.label}" (judgeG cfg) exhaustRuns then
       printFound f (storyG cfg)
     if let some f ← exploreSaid s!"{gateProperty} / {cfg.label}" (judgeG cfg) seeds then

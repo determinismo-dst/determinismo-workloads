@@ -132,7 +132,7 @@ structure Consts where
   /-- Loop steps before a timeline is cut (an end, not a failure). -/
   fuel : Nat := 200000
   /-- Round 5: the platform's code modeled, 62e06e3 unless a theorem about 3939448 says so. -/
-  ver : Ver := .v62e06e3
+  ver : Ver := .va7fe05d
   deriving Repr, Inhabited
 
 /-- Tiny worlds: one start's run and end fixed unless a command says, four starts without the
@@ -449,7 +449,7 @@ A child that had exited already (a zombie) keeps its exit; at 3939448 it is reap
 the same. At 62e06e3 (composer.zig:401-412) what ended on its own is reaped first, judged by its
 own status (`while (running_count > 0 and reap(false, false)) {}`), then the rest killed. -/
 def killAll : M Unit := do
-  if (← get).consts.ver == .v62e06e3 then
+  if (← get).consts.ver.since62 then
     for _ in [0:(← get).consts.fuel] do
       tick
       if (← get).running.size == 0 then break
@@ -590,8 +590,10 @@ def driverStartBy (kinds : List Kind) (parallelism : Nat) (deadline : Option Nat
   | _ => panic "unreachable (composer.zig:829)"
   pause (← below "random_below" (← get).consts.pauseMax)
 
-/-- composer.zig:700 `run_drivers`: when the timeline's length ends, if it has one. -/
-def runDrivers (driveMsMax : Option Nat) (parallelMax : Option Nat) : M (Option Nat) := do
+/-- composer.zig:700 `run_drivers`: when the timeline's length ends, if it has one. a7fe05d
+(composer.zig:767, 801-804) takes the drivers' start: every phase's stop is half the limit since
+the drivers began; 62e06e3 drew it from the phase's own start (CE42). -/
+def runDrivers (driveStart : Nat) (driveMsMax : Option Nat) (parallelMax : Option Nat) : M (Option Nat) := do
   let w ← get
   let timelineMs ← match w.cmdline.timelineMs with
     | some l => pure (some l)
@@ -620,7 +622,8 @@ def runDrivers (driveMsMax : Option Nat) (parallelMax : Option Nat) : M (Option 
       driverStartBy kinds load.parallelism (some endT)
     throw .limit
   | none =>
-    let stop := w.cmdline.timelineLimitMs.map fun limit => w.now + limit / 2
+    let stop := w.cmdline.timelineLimitMs.map fun limit =>
+      if w.consts.ver.sinceA7 then driveStart + limit / 2 else w.now + limit / 2
     for started in [0:starts] do
       -- composer.zig:795-803 (3939448): the stop checked after a quiet stretch too.
       for _ in [0:w.consts.fuel] do
@@ -636,7 +639,7 @@ def runDrivers (driveMsMax : Option Nat) (parallelMax : Option Nat) : M (Option 
           break
       -- composer.zig:809-813 (62e06e3): the slot waited for until the stop at most; a serial
       -- driver started runs to its end (no length bounds it here). 3939448: no deadline.
-      if w.consts.ver == .v62e06e3 then driverStartBy kinds load.parallelism stop (runUntil := none)
+      if w.consts.ver.since62 then driverStartBy kinds load.parallelism stop (runUntil := none)
       else driverStartBy kinds load.parallelism none
     return none
 
@@ -742,7 +745,7 @@ def main : M Unit := do
       let (low, high) := clockStartBand maxMs band
       let ms := low + (← below "random_below" (high - low + 1))
       note s!"clock_start {ms} {maxMs}"
-  if w.consts.ver == .v62e06e3 then note "composer_start"
+  if w.consts.ver.since62 then note "composer_start"
   if w.consts.irrelevantDraws && w.cmdline.driversCpuWeight.isNone && !w.cmdline.swarmOff then
     let _ ← below "composer.drivers_cpu" 3
   if kindCount (← get) .first > 0 then runToCompletion (← pick .first)
@@ -772,10 +775,10 @@ def main : M Unit := do
   else if singletonTimeline then
     lengthEnd ← runSingleton
   else
-    lengthEnd ← runDrivers driveMax sc.parallelMax
+    lengthEnd ← runDrivers driveStart driveMax sc.parallelMax
     for _ in [0:4] do
       if !(← driveAgain driveStart) then break
-      lengthEnd ← runDrivers driveMax sc.parallelMax
+      lengthEnd ← runDrivers driveStart driveMax sc.parallelMax
   modify fun w => { w with lengthEnd }
   let ending ← endingPick
   if ending == .eventually then

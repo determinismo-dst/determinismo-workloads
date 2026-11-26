@@ -66,7 +66,7 @@ theorem finishing_order_other_tree :
 /-! ## CE23: a strategy's seed lost to the tree's returns -/
 
 def sameSeedWorld : Tree.Config :=
-  { label := "same_seed.py", total := 12, strategy := some { seed := some 66 } }
+  { label := "same_seed.py", total := 12, strategy := some { seed := some 66 }, ver := .v3939448 }
 
 /-- (by computation) With same_seed.py, a returned timeline's tape replays another timeline. -/
 theorem strategy_seed_tape_replays_another :
@@ -172,7 +172,7 @@ open Replica.Serve3 in
 /-- (by computation) An instrumented system whose setup ran edge 2 and whose first 4 timelines
 run edge 2 again: none reports a coverage event, the gate stops it. -/
 theorem instrumented_run_stopped :
-    (match (drawGate { label := "", instrumented := some true }).run
+    (match (drawGate { label := "", instrumented := some true, ver := .v3939448 }).run
         { decisions := { source := Source.path #[0, 0, 1, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1] } } with
      | .ok g _ => g.instrumented && g.stoppedAt.isSome && g.rows.all (·.2 == 0)
      | .error _ _ => false) = true := by

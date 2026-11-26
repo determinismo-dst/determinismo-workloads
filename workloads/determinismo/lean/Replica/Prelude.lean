@@ -40,12 +40,23 @@ def below (name : String) (options : Nat) : EStateM Stop σ Nat := do
 def ended (taken : Array Taken) (violation : Option (String × String)) : Ended :=
   { taken, violation }
 
-/-- Which platform commit a model's code is (round 5): 3939448 (rounds 2 to 4, `upstream/`) or
-62e06e3 (`upstream-62e06e3/`, the fixes of rounds 2 to 4's findings). Models default to 62e06e3;
-a theorem about 3939448's code says so. -/
+/-- Which platform commit a model's code is: 3939448 (rounds 2 to 4, `upstream/`), 62e06e3
+(round 5, `upstream-62e06e3/`, the fixes of rounds 2 to 4's findings) or a7fe05d (round 6,
+`upstream-a7fe05d/`, the fixes of round 5's). Models default to a7fe05d; a theorem about an older
+commit's code says so. -/
 inductive Ver where
-  | v3939448 | v62e06e3
+  | v3939448 | v62e06e3 | va7fe05d
   deriving BEq, Repr, Inhabited, DecidableEq
+
+/-- 62e06e3 or later: what round 5's fixes brought, kept at a7fe05d unless a7fe05d changed it. -/
+def Ver.since62 : Ver → Bool
+  | .v3939448 => false
+  | _ => true
+
+/-- a7fe05d: round 5's findings' fixes. -/
+def Ver.sinceA7 : Ver → Bool
+  | .va7fe05d => true
+  | _ => false
 
 /-- Swap-remove, as the Zig's `running[index] = running[count - 1]; count -= 1`. -/
 def swapRemove {α : Type} [Inhabited α] (a : Array α) (i : Nat) : Array α :=

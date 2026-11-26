@@ -9,10 +9,11 @@
   "The form's value, realized, or [:jank-gen/threw what] for any throw jank's handlers can
    see (an object, a native exception or a jank::error_ref): every form gets its own
    verdict. An object's message only: printing an ex-info makes jank crash as it exits
-   (jankifier's S1)."
+   (jankifier's S1). A thrown string is its own message: ex-message of one throws in jank
+   (jankifier's LU62), which ended the test with no verdict (an overflowing inc throws one)."
   [s]
   (try (let [v (eval (read-string s))] (pr-str v) v)
-       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (ex-message e)])
+       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (if (string? e) e (ex-message e))])
        (catch cpp/std.exception e [:jank-gen/threw (str (.what e))])
        (catch cpp/jank.error_ref e [:jank-gen/threw (str (.-message (cpp/* e)))])))
 

@@ -40,18 +40,10 @@
 ;; jank:    "-è"
 ```
 
-## `let`: no verdict (crash or hang) (2)
+## `count`: jank returns another value (2)
 
 ```clojure
-(let [x (dec -3)] (* x (quot (max (inc 9223372036854775807) 3) 1)))
-;; Clojure: "java.lang.ArithmeticException"
-;; jank:    :unknown
-```
-
-## `count`: jank returns another value (1)
-
-```clojure
-(count (clojure.string/upper-case "é"))
+(count "é")
 ;; Clojure: 1
 ;; jank:    2
 ```

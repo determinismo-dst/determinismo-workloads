@@ -33,11 +33,25 @@ clojure -M gen.clj group 1 s1.json            # results/gen-1-groups.md: minimal
 - The same seed gives the same files.
 
 Seed 1 on jank main 7135b7708 (2026-11-25, each test in its own process, run directly in podman):
-20 of 50 tests differ from Clojure 1.12; the shrink stage's 44 suspect forms gave 26 failing
+20 of 50 tests differ from Clojure 1.12; the shrink stage's 44 suspect forms gave 25 failing
 subform tests, grouped in [results/gen-1-groups.md](results/gen-1-groups.md). New findings, filed in
 jankifier's specs/repros.md: LG1 (`<`, `>`, `min`, `max` treat `count`'s result as unsigned against a
 negative number), LG2 (long overflow wraps or promotes where Clojure throws), LG3 (`subs` indexes
-bytes). The rest are known (R53, R96) or Clojure's own printing of a LazySeq.
+bytes). The rest are known (R53, R96) or Clojure's own printing of a LazySeq. Regrouped 2026-11-26
+after the harness fix below: its two "no verdict" cases were the harness's, and now pass or join
+LG2.
 
-Next: the grammar steered toward jank code the coverage build reports unreached (an agent
-rewriting the generator from the uncovered lines, ephyra's loop).
+Seed 2 (2026-11-26, same jank): 13 of 50 tests differ; 32 suspect forms, 14 failing subform tests,
+8 signatures in [results/gen-2-groups.md](results/gen-2-groups.md), all known (LG2, LG3, a
+LazySeq's printing). Its first run failed every test at load: one expected value printed as
+`#:k{:v 3}`, the namespaced map syntax jank's reader refuses (jankifier's R17, known); maps are
+now printed whole.
+
+The harness: a thrown string is its own message (`ev`). `ex-message` of a non-exception throws in
+jank (jankifier's LU62), and an overflowing `inc` throws a string, so such a case ended its whole
+test with no verdict (seed 1's g0000, seed 2's g0032 and g0042).
+
+Grammars: seeds 1 and 2 are grammar 1 (they regenerate byte for byte). From seed 3 on, grammar 2
+adds what the first seeds showed the blind replica missed: bit and unchecked arithmetic, the
+primed (promoting) operators, ratios, doubles' special values, and strings past ASCII (two-byte
+letters, surrogate pairs, combining marks) through the functions that index or compare them.

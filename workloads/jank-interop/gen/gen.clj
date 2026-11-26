@@ -26,6 +26,15 @@
 (defn- pick [xs] (nth xs (below (count xs))))
 (defn- chance [p] (< (.nextDouble *rng*) p))
 
+;; The grammar's version: 1 draws seeds 1 and 2 as they were written (the same seed, the same
+;; files); 2 adds what seeds 1 and 2 found the replica missed around: bit and unchecked
+;; arithmetic, the primed (promoting) operators, ratios, doubles' special values, and strings
+;; past ASCII (two-byte letters and surrogate pairs) through every function that indexes them.
+(def ^:dynamic *grammar* 2)
+(defn- g2? [] (>= *grammar* 2))
+(def strs-2 ["ü" "a😀b" "😀" "日本語" "e\u0301"])
+(def shifts [0 1 31 32 63 64 65 -1])
+
 ;; Leaves, by type, with the edge values bugs sit at.
 (def int-leaves [0 1 -1 2 3 -3 7 10 127 128 255 256 -128 1000 Long/MAX_VALUE Long/MIN_VALUE])
 (def double-leaves [0.0 -0.0 1.5 -2.25 0.1 1e10 1e-5 3.0])
@@ -38,7 +47,7 @@
 (defn- gen-int [d]
   (if (or (<= d 0) (chance 0.4))
     (pick int-leaves)
-    (let [k (below 10)]
+    (let [k (below (if (g2?) 16 10))]
       (case k
         0 (list (pick '[+ - *]) (gen-int (dec d)) (gen-int (dec d)))
         1 (list (pick '[inc dec]) (gen-int (dec d)))
@@ -49,10 +58,24 @@
         6 (list 'first (list 'vector (gen-int (dec d))))
         7 (list 'count (gen-str (dec d)))
         8 (list 'nth (list 'vector (gen-int (dec d)) (gen-int (dec d))) (below 2))
-        9 (list 'compare (gen-int (dec d)) (gen-int (dec d)))))))
+        9 (list 'compare (gen-int (dec d)) (gen-int (dec d)))
+        10 (list (pick '[bit-and bit-or bit-xor bit-and-not]) (gen-int (dec d)) (gen-int (dec d)))
+        11 (list (pick '[bit-shift-left bit-shift-right unsigned-bit-shift-right]) (gen-int (dec d)) (pick shifts))
+        12 (list (pick '[unchecked-add unchecked-subtract unchecked-multiply]) (gen-int (dec d)) (gen-int (dec d)))
+        13 (list (pick '[+' -' *']) (gen-int (dec d)) (gen-int (dec d)))
+        14 (list (pick '[inc' dec' abs unchecked-inc unchecked-dec unchecked-negate -]) (gen-int (dec d)))
+        15 (list 'compare (gen-str (dec d)) (gen-str (dec d)))))))
 
 (defn- gen-num [d]
-  (if (chance 0.3) (pick double-leaves) (gen-int d)))
+  (if (and (g2?) (chance 0.25))
+    (case (below 6)
+      0 (pick '[##Inf ##-Inf 1/3 -2/7 1.0E308 4.9E-324])
+      1 (list '/ (gen-int (dec d)) (pick [3 7 -2 4]))
+      2 (list (pick '[double float long int]) (pick '[1/3 2.5 -2.5 1e10 9.999]))
+      3 (list (pick '[== < <= compare]) (pick [1 0 -1 2]) (pick [1.0 0.0 -0.0 2.5]))
+      4 (list (pick '[quot rem mod]) (pick [7.5 -7.5 1/3 10]) (pick [2 -2 0.5]))
+      5 (list (pick '[min max]) (pick [1 1.0 -0.0 0]) (pick [1.0 1 0.0 0])))
+    (if (chance 0.3) (pick double-leaves) (gen-int d))))
 
 ;; What str and pr-str may print: never a map or a set, whose element order Clojure leaves
 ;; unspecified (an order jank may rightly choose differently).
@@ -62,19 +85,26 @@
 
 (defn- gen-str [d]
   (if (or (<= d 0) (chance 0.4))
-    (pick strs)
-    (case (below 7)
+    (if (and (g2?) (chance 0.4)) (pick strs-2) (pick strs))
+    (case (below (if (g2?) 11 7))
       0 (list 'str (gen-printable (dec d)) (gen-printable (dec d)))
       1 (list (pick '[clojure.string/upper-case clojure.string/lower-case clojure.string/trim clojure.string/reverse]) (gen-str (dec d)))
       2 (list 'clojure.string/join (pick ["" "," "-"]) (gen-coll (dec d)))
       3 (list 'subs (pick ["abcdef" "hello" "é-è"]) (below 3))
       4 (list 'name (pick kws))
       5 (list 'pr-str (gen-printable (dec d)))
-      6 (list 'clojure.string/replace (gen-str (dec d)) (pick ["a" "b" " "]) (pick ["" "X"])))))
+      6 (list 'clojure.string/replace (gen-str (dec d)) (pick ["a" "b" " "]) (pick ["" "X"]))
+      7 (list 'subs (pick strs-2) (below 3) (+ 1 (below 3)))
+      8 (list 'str (list (pick '[clojure.string/index-of clojure.string/last-index-of]) (gen-str (dec d)) (pick ["a" "😀" "b" "語"])))
+      9 (list 'apply 'str (list (pick '[reverse seq rest butlast]) (pick strs-2)))
+      10 (list 'str (list (pick '[nth get]) (pick strs-2) (below 3)) (list (pick '[clojure.string/capitalize clojure.string/upper-case]) (pick strs-2))))))
 
 (defn- gen-pred []
-  (pick '[odd? even? pos? neg? zero? nil? some? number? string? keyword? vector? map? set? seq? coll?
-          (fn [x] (and (number? x) (> x 2)))]))
+  (if (and (g2?) (chance 0.2))
+    (pick '[ratio? integer? double? rational? float? int? nat-int? pos-int? char? NaN? infinite?
+            (fn [x] (and (string? x) (clojure.string/blank? x)))])
+    (pick '[odd? even? pos? neg? zero? nil? some? number? string? keyword? vector? map? set? seq? coll?
+            (fn [x] (and (number? x) (> x 2)))])))
 
 (defn- gen-fn1 []
   (pick '[inc dec str identity (fn [x] (* x 2)) (fn [x] [x x]) keyword? (fn [x] (if (odd? x) :odd :even))]))
@@ -156,10 +186,11 @@
        "  \"The form's value, realized, or [:jank-gen/threw what] for any throw jank's handlers can\n"
        "   see (an object, a native exception or a jank::error_ref): every form gets its own\n"
        "   verdict. An object's message only: printing an ex-info makes jank crash as it exits\n"
-       "   (jankifier's S1).\"\n"
+       "   (jankifier's S1). A thrown string is its own message: ex-message of one throws in jank\n"
+       "   (jankifier's LU62), which ended the test with no verdict (an overflowing inc throws one).\"\n"
        "  [s]\n"
        "  (try (let [v (eval (read-string s))] (pr-str v) v)\n"
-       "       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (ex-message e)])\n"
+       "       (catch cpp/jank.runtime.object_ref e [:jank-gen/threw (if (string? e) e (ex-message e))])\n"
        "       (catch cpp/std.exception e [:jank-gen/threw (str (.what e))])\n"
        "       (catch cpp/jank.error_ref e [:jank-gen/threw (str (.-message (cpp/* e)))])))\n\n"
        "(defn- threw? [v] (and (vector? v) (= :jank-gen/threw (first v))))\n\n"
@@ -304,7 +335,11 @@
   ;; holding one expected value of it (seed 2, 2026-11-26).
   (binding [*print-namespace-maps* false]
   (case mode
-    "gen" (let [[seed n] args] (generate (Long/parseLong seed) (Long/parseLong n) "."))
+    "gen" (let [[seed n] args
+                seed (Long/parseLong seed)]
+            ;; Seeds 1 and 2 were drawn by grammar 1: kept so, the same seed the same files.
+            (binding [*grammar* (if (<= seed 2) 1 2)]
+              (generate seed (Long/parseLong n) ".")))
     "shrink" (let [[seed failures] args] (shrink (Long/parseLong seed) failures "."))
     "group" (let [[seed failures] args] (group (Long/parseLong seed) failures "."))
     (println "clojure -M gen.clj gen <seed> <forms> | shrink <seed> <failures.json> | group <seed> <failures.json>")))

@@ -1,0 +1,500 @@
+{:form (into #{} (into (list) (sort-by identity (sort-by str (keys {}))))), :outcome [:value #{}], :test "g0000", :i 0}
+{:form (into #{} (sort-by str (keys (merge (merge {} {:a 1, :b 2}) {:a 1})))), :outcome [:value #{:b :a}], :test "g0000", :i 1}
+{:form (get (frequencies (list 1 2)) :x), :outcome [:value nil], :test "g0000", :i 2}
+{:form (let [x 9223372036854775807] (max x (dec -3))), :outcome [:value 9223372036854775807], :test "g0000", :i 3}
+{:form (get {:a 1} :a), :outcome [:value 1], :test "g0000", :i 4}
+{:form (zipmap [:a] (map (fn [x] (* x 2)) [0 1 2 3 4])), :outcome [:value {:a 0}], :test "g0000", :i 5}
+{:form (get {:a 1, :b 2} :a), :outcome [:value 1], :test "g0000", :i 6}
+{:form (frequencies (filter odd? (rest (remove pos? [3 1 2])))), :outcome [:value {}], :test "g0000", :i 7}
+{:form (into #{} [3 1 2]), :outcome [:value #{1 3 2}], :test "g0000", :i 8}
+{:form (pr-str [0 -1 7 7]), :outcome [:value "[0 -1 7 7]"], :test "g0000", :i 9}
+{:form (pos? (vector? 10)), :outcome [:throws "java.lang.ClassCastException"], :test "g0001", :i 0}
+{:form (merge (dissoc (assoc (dissoc {:a 1, :b 2} :c) :x -9223372036854775808) :x) (merge (zipmap [:a :b :c] [1 2 3]) (frequencies [3 1 2]))), :outcome [:value {:a 1, :b 2, :c 3, 3 1, 1 1, 2 1}], :test "g0001", :i 1}
+{:form (NaN? :k/v), :outcome [:throws "java.lang.ClassCastException"], :test "g0001", :i 2}
+{:form (odd? 1.0E10), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0001", :i 3}
+{:form (rest (partition 1 (list 1 2))), :outcome [:value ((2))], :test "g0001", :i 4}
+{:form (let [x 10] (+ x 128)), :outcome [:value 138], :test "g0001", :i 5}
+{:form (zero? (zero? "ü")), :outcome [:throws "java.lang.ClassCastException"], :test "g0001", :i 6}
+{:form (set? nil), :outcome [:value false], :test "g0001", :i 7}
+{:form (some even? (sort-by str (keys (frequencies (partition 1 [0 1 2 3 4]))))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0001", :i 8}
+{:form (into #{} (map (fn [x] (* x 2)) [3 1 2])), :outcome [:value #{4 6 2}], :test "g0001", :i 9}
+{:form (zero? (if (double? (merge (dissoc {:a 1, :b 2} :x) (merge {} {}))) false (if (zero? (some odd? (list 1 2))) (coll? (get {:a 1} :a)) " t "))), :outcome [:throws "java.lang.ClassCastException"], :test "g0002", :i 0}
+{:form (into #{} [(compare (name :b) (subs "日本語" 0 3)) (compare 9223372036854775807 10) 0]), :outcome [:value #{0 1 -25987}], :test "g0002", :i 1}
+{:form (max (*' (compare "abc" " t ") 0) -1), :outcome [:value 0], :test "g0002", :i 2}
+{:form (float? (sort-by str (keys {:a 1}))), :outcome [:value false], :test "g0002", :i 3}
+{:form (let [x 10] (max x (count (butlast [3 1 2])))), :outcome [:value 10], :test "g0002", :i 4}
+{:form (let [x (reduce + 0 (list 1 2))] (* x (compare (subs "hello" 0) (subs "😀" 0 2)))), :outcome [:value -165759], :test "g0002", :i 5}
+{:form (some even? (drop 2 (sort-by str (keys {:a 1})))), :outcome [:value nil], :test "g0002", :i 6}
+{:form (compare (compare (pr-str "ü") "日本語") 128), :outcome [:value -1], :test "g0002", :i 7}
+{:form ((fn [x] (and (number? x) (> x 2))) (bit-shift-right 256 -1)), :outcome [:value false], :test "g0002", :i 8}
+{:form (get (group-by pos? (conj (map (fn [x] (* x 2)) []) 2)) :x), :outcome [:value nil], :test "g0002", :i 9}
+{:form (let [x -3] (* x (compare (unsigned-bit-shift-right (compare "日本語" "é") 64) (- (abs 3) (count "a b"))))), :outcome [:value -3], :test "g0003", :i 0}
+{:form (some even? (mapv (fn [x] [x x]) [1 2 3])), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0003", :i 1}
+{:form (mod (rem 2 -2) 1), :outcome [:value 0], :test "g0003", :i 2}
+{:form (mod 1000 2), :outcome [:value 0], :test "g0003", :i 3}
+{:form (group-by pos? (filter pos? (map inc [128]))), :outcome [:value {true [129]}], :test "g0003", :i 4}
+{:form (zipmap [:a :b :c] (sort-by str (keys (zipmap [:a :b] [3 1 2])))), :outcome [:value {:a :a, :b :b}], :test "g0003", :i 5}
+{:form (let [x (nth (vector (count "日本語") (unchecked-dec (reduce + 0 []))) 0)] (max x (unchecked-multiply (reduce + 0 (partition-all 2 [3 1 2])) 128))), :outcome [:throws "java.lang.ClassCastException"], :test "g0003", :i 6}
+{:form (let [x (+' (+' 9223372036854775807 (first (vector 2))) (* (compare 2 128) 1000))] (* x (reduce + 0 [1 2 3]))), :outcome [:value 55340232221128648854N], :test "g0003", :i 7}
+{:form (into #{} [(count (subs "é-è" 2)) (inc' 127)]), :outcome [:value #{128 1}], :test "g0003", :i 8}
+{:form (get (dissoc (zipmap [:a] [0 -1 7 7]) :k/v) :b), :outcome [:value nil], :test "g0003", :i 9}
+{:form (let [x (unchecked-inc -9223372036854775808)] (max x (count (map inc (filter even? [3 1 2]))))), :outcome [:value 1], :test "g0004", :i 0}
+{:form (pos? -128), :outcome [:value false], :test "g0004", :i 1}
+{:form (bit-or (max 9223372036854775807 (compare (subs "hello" 0) (subs "ü" 0 2))) (dec (count (str (get "日本語" 2) (clojure.string/capitalize "é"))))), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0004", :i 2}
+{:form (let [x (bit-shift-right (bit-shift-left 2 65) 64)] (+ x -3)), :outcome [:value 1], :test "g0004", :i 3}
+{:form (set? (let [x 255] (max x (quot (compare 1000 255) 7)))), :outcome [:value false], :test "g0004", :i 4}
+{:form (pr-str (interleave (remove odd? (conj (list 1 2) 10)) (filter zero? (filter pos? (list 1 2))))), :outcome [:value "()"], :test "g0004", :i 5}
+{:form (pos? \z), :outcome [:throws "java.lang.ClassCastException"], :test "g0004", :i 6}
+{:form (let [x (compare "日本語" "")] (* x (bit-or (nth (vector 3 (count "a")) 1) 3))), :outcome [:value 9], :test "g0004", :i 7}
+{:form (select-keys (frequencies []) []), :outcome [:value {}], :test "g0004", :i 8}
+{:form (into #{} (sort-by identity (concat (sort-by str (keys {:k/v "x", :a [1]})) (mapv dec [0 1 2 3 4])))), :outcome [:throws "java.lang.ClassCastException"], :test "g0004", :i 9}
+{:form (nat-int? "😀"), :outcome [:value false], :test "g0005", :i 0}
+{:form (zero? {:a 1, :b 2}), :outcome [:throws "java.lang.ClassCastException"], :test "g0005", :i 1}
+{:form (if (some? (get (zipmap [:a] [1 1 1]) :b)) (if (odd? (let [x (-' 10 9223372036854775807)] (+ x (mod 2 7)))) (every? pos? (sort-by - [0 -1 7 7])) nil) (== 1 1.0)), :outcome [:value true], :test "g0005", :i 2}
+{:form (if (vector? 256) (coll? [0 1 2 3 4]) (let [x (reduce + 0 (into [] (list 1 2)))] (* x 3))), :outcome [:value 9], :test "g0005", :i 3}
+{:form (* -128 9223372036854775807), :outcome [:throws "java.lang.ArithmeticException"], :test "g0005", :i 4}
+{:form (sort-by str (keys (merge (frequencies []) (group-by even? (map (fn [x] (* x 2)) [0 1 2 3 4]))))), :outcome [:value (true)], :test "g0005", :i 5}
+{:form (pr-str 1.0E-5), :outcome [:value "1.0E-5"], :test "g0005", :i 6}
+{:form (str "x,y,z" "日本語"), :outcome [:value "x,y,z日本語"], :test "g0005", :i 7}
+{:form (get {} :a), :outcome [:value nil], :test "g0005", :i 8}
+{:form (into #{} (mapv (fn [x] (* x 2)) [1 1 1])), :outcome [:value #{2}], :test "g0005", :i 9}
+{:form (sort-by - [0 -1 7 7]), :outcome [:value (7 7 0 -1)], :test "g0006", :i 0}
+{:form (clojure.string/upper-case (clojure.string/join "" (drop 0 (sort-by - [3 1 2])))), :outcome [:value "321"], :test "g0006", :i 1}
+{:form (let [x (bit-shift-left (unchecked-dec 255) 32)] (+ x (first (vector 7)))), :outcome [:value 1090921693191], :test "g0006", :i 2}
+{:form (string? (get {:a 1, :b 2} :a)), :outcome [:value false], :test "g0006", :i 3}
+{:form (get (group-by even? (filter even? [1 1 1])) :c), :outcome [:value nil], :test "g0006", :i 4}
+{:form (clojure.string/join "-" (sort-by str (keys {:a 1}))), :outcome [:value ":a"], :test "g0006", :i 5}
+{:form (float 1.0E10), :outcome [:value 1.0E10], :test "g0006", :i 6}
+{:form (into #{} (list 1 2)), :outcome [:value #{1 2}], :test "g0006", :i 7}
+{:form (coll? (number? (bit-or (count "a") 7))), :outcome [:value false], :test "g0006", :i 8}
+{:form (get (merge {:a 1} (dissoc (group-by even? [0 1 2 3 4]) :x)) :b), :outcome [:value nil], :test "g0006", :i 9}
+{:form (into #{} (conj (list 1 2) (unchecked-dec (unsigned-bit-shift-right 128 63)))), :outcome [:value #{1 -1 2}], :test "g0007", :i 0}
+{:form (let [x (* -1 (unchecked-add (-' -3 255) 255))] (* x (unsigned-bit-shift-right (reduce + 0 (sort-by identity [0 -1 7 7])) 32))), :outcome [:value 0], :test "g0007", :i 1}
+{:form (into #{} (mapv keyword? (filter even? [1 2 3]))), :outcome [:value #{false}], :test "g0007", :i 2}
+{:form (dissoc {:k/v "x", :a [1]} :a), :outcome [:value {:k/v "x"}], :test "g0007", :i 3}
+{:form (get (assoc (group-by pos? (remove even? [1 2 3])) :b 0) :c), :outcome [:value nil], :test "g0007", :i 4}
+{:form (select-keys (dissoc (frequencies (list 1 2)) :b) []), :outcome [:value {}], :test "g0007", :i 5}
+{:form (let [x (compare (name :k/v) (str (nth "é" 2) (clojure.string/capitalize "日本語")))] (max x (- 0 (unchecked-negate (count [1 1 1]))))), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0007", :i 6}
+{:form (get (select-keys (assoc {:a 1} :a 128) []) :x), :outcome [:value nil], :test "g0007", :i 7}
+{:form ((fn [x] (and (number? x) (> x 2))) 3), :outcome [:value true], :test "g0007", :i 8}
+{:form (let [x (compare (subs "😀" 0 2) "abc")] (* x (*' (first (vector 128)) 128))), :outcome [:value 905379840], :test "g0007", :i 9}
+{:form (if (integer? (if (number? (rational? :k/v)) "a😀b" (if (odd? "a😀b") (get {:a 1} :b) (some? :b)))) (every? pos? [1 1 1]) true), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0008", :i 0}
+{:form (get {:k/v "x", :a [1]} :x), :outcome [:value nil], :test "g0008", :i 1}
+{:form (into #{} [1 1 1]), :outcome [:value #{1}], :test "g0008", :i 2}
+{:form (if ((fn [x] (and (string? x) (clojure.string/blank? x))) 1.0E10) (let [x (count "x,y,z")] (max x 1000)) (clojure.string/join "-" (sort-by str (keys (frequencies [3 1 2]))))), :outcome [:value "1-2-3"], :test "g0008", :i 3}
+{:form (if (some? (if (neg? 2) (let [x 3] (* x (count "😀"))) (odd? (/ -9223372036854775808 7)))) (into #{} [0 -1 7 7]) (drop 2 [0 -1 7 7])), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0008", :i 4}
+{:form (get (dissoc (zipmap [:a :b :c] [0 -3 127]) :x) :x), :outcome [:value nil], :test "g0008", :i 5}
+{:form (unchecked-add (bit-and 1 -3) (bit-and 256 7)), :outcome [:value 1], :test "g0008", :i 6}
+{:form (pr-str 7), :outcome [:value "7"], :test "g0008", :i 7}
+{:form (apply str (reverse "ü")), :outcome [:value "ü"], :test "g0008", :i 8}
+{:form (if (set? (keyword? false)) (clojure.string/upper-case (str (nth "ü" 1) (clojure.string/capitalize "😀"))) (into #{} (sort-by - (distinct [0 1 2 3 4])))), :outcome [:value #{0 1 4 3 2}], :test "g0008", :i 9}
+{:form (sort-by str (keys (assoc (dissoc (zipmap [:a] []) :k/v) :x (count (concat [0 -1 7 7] [0 1 2 3 4]))))), :outcome [:value (:x)], :test "g0009", :i 0}
+{:form (if (pos? [1 1 1]) sym ((fn [x] (and (number? x) (> x 2))) (reverse (filter zero? [])))), :outcome [:throws "clojure.lang.Compiler$CompilerException"], :test "g0009", :i 1}
+{:form (zero? (quot 1/3 0.5)), :outcome [:value true], :test "g0009", :i 2}
+{:form (every? even? [127 -128 (mod (bit-shift-left 9223372036854775807 63) 7)]), :outcome [:value false], :test "g0009", :i 3}
+{:form (every? odd? (conj (sort-by - [1 2 3]) 255)), :outcome [:value false], :test "g0009", :i 4}
+{:form (some even? (mapv keyword? (partition 3 [1 1 1]))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0009", :i 5}
+{:form (into #{} (seq (sort-by str (keys (group-by odd? []))))), :outcome [:value #{}], :test "g0009", :i 6}
+{:form (double 9.999), :outcome [:value 9.999], :test "g0009", :i 7}
+{:form (if (some? [1 1 1]) (let [x (nth (vector (count "é") -3) 1)] (* x 10)) 9223372036854775807), :outcome [:value -30], :test "g0009", :i 8}
+{:form (if (neg? -9223372036854775808) (filter neg? (conj [0 -1 7 7] 9223372036854775807)) (get (dissoc {:a 1, :b 2} :b) :b)), :outcome [:value (-1)], :test "g0009", :i 9}
+{:form (group-by odd? (map dec (map dec [0 -1 7 7]))), :outcome [:value {false [-2], true [-3 5 5]}], :test "g0010", :i 0}
+{:form (map? (if (integer? "ü") 128 (if (even? (let [x 128] (+ x 0))) (get {:a 1, :b 2} :a) (mapv dec [3 1 2])))), :outcome [:value false], :test "g0010", :i 1}
+{:form (mod 1/3 -2), :outcome [:value -5/3], :test "g0010", :i 2}
+{:form (str (get "日本語" 2) (clojure.string/capitalize "a😀b")), :outcome [:value "語A😀b"], :test "g0010", :i 3}
+{:form (pr-str (list 1 2)), :outcome [:value "(1 2)"], :test "g0010", :i 4}
+{:form (unchecked-multiply (first (vector -128)) 10), :outcome [:value -1280], :test "g0010", :i 5}
+{:form (get (group-by even? (partition-all 1 (into (list) [1 2 3]))) :k/v), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0010", :i 6}
+{:form (let [x (reduce + 0 (sort-by - (filter neg? [0 1 2 3 4])))] (* x (nth (vector (*' (count "日本語") (compare "abc" "é")) -3) 1))), :outcome [:value 0], :test "g0010", :i 7}
+{:form (if (odd? -3) (some odd? (map dec (sort-by str (keys {:a 1})))) (get (select-keys {:k/v "x", :a [1]} []) :k/v)), :outcome [:throws "java.lang.ClassCastException"], :test "g0010", :i 8}
+{:form (abs 1000), :outcome [:value 1000], :test "g0010", :i 9}
+{:form (some? :c), :outcome [:value true], :test "g0011", :i 0}
+{:form (let [x (bit-or (bit-xor (bit-and -128 -9223372036854775808) (+ 1 127)) (count (filter pos? [0 1 2 3 4])))] (max x (compare 9223372036854775807 (unchecked-inc 9223372036854775807)))), :outcome [:value 1], :test "g0011", :i 1}
+{:form (let [x (nth (vector (count (pr-str (list 1 2))) 128) 0)] (max x 127)), :outcome [:value 127], :test "g0011", :i 2}
+{:form (unsigned-bit-shift-right 1 65), :outcome [:value 0], :test "g0011", :i 3}
+{:form (some odd? (conj (conj (into (list) [3 1 2]) -3) (dec 127))), :outcome [:value true], :test "g0011", :i 4}
+{:form (count (take 3 (drop 2 (sort-by str (keys {:k/v "x", :a [1]}))))), :outcome [:value 0], :test "g0011", :i 5}
+{:form (into #{} (butlast (seq (take 2 [0 -1 7 7])))), :outcome [:value #{0}], :test "g0011", :i 6}
+{:form (max -0.0 0), :outcome [:value 0], :test "g0011", :i 7}
+{:form (some pos? (sort-by identity (vec (concat [0 1 2 3 4] [3 1 2])))), :outcome [:value true], :test "g0011", :i 8}
+{:form (into #{} []), :outcome [:value #{}], :test "g0011", :i 9}
+{:form (get {:k/v "x", :a [1]} :x), :outcome [:value nil], :test "g0012", :i 0}
+{:form (remove odd? (interleave (map dec (drop 0 [1 1 1])) (interleave (map inc []) []))), :outcome [:value ()], :test "g0012", :i 1}
+{:form (select-keys {:a 1} [:a]), :outcome [:value {:a 1}], :test "g0012", :i 2}
+{:form (name :x), :outcome [:value "x"], :test "g0012", :i 3}
+{:form (frequencies [3 (dec 1000) 256]), :outcome [:value {3 1, 999 1, 256 1}], :test "g0012", :i 4}
+{:form (into #{} (into (list) (conj [] (bit-shift-left -128 32)))), :outcome [:value #{-549755813888}], :test "g0012", :i 5}
+{:form (if (even? (every? even? (reverse (into [] (list 1 2))))) (let [x (bit-shift-right -1 0)] (+ x (-' -128 1))) (if (pos? -9223372036854775808) (into #{} [0 -1 7 7]) (if (map? (map? [])) (let [x -128] (* x 2)) (quot 7.5 2)))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0012", :i 6}
+{:form (if (pos? (compare (bit-xor (quot -9223372036854775808 3) 1) -9223372036854775808)) (* 128 1) \a), :outcome [:value 128], :test "g0012", :i 7}
+{:form (some even? [3 1 2]), :outcome [:value true], :test "g0012", :i 8}
+{:form (get (assoc (merge (frequencies [0 1 2 3 4]) {:a 1}) :x (bit-shift-right 1 64)) :c), :outcome [:value nil], :test "g0012", :i 9}
+{:form (if (some? (str (nth "ü" 0) (clojure.string/capitalize "日本語"))) (if (keyword? (nth (vector (compare -128 127) (bit-and-not 2 -128)) 1)) (* (max 127 9223372036854775807) 127) (number? nil)) (get (assoc {:a 1, :b 2} :x (nth (vector -9223372036854775808 0) 0)) :a)), :outcome [:value false], :test "g0013", :i 0}
+{:form (interleave (sort-by str (keys (merge {:a 1, :b 2} {}))) [1 2 3]), :outcome [:value (:a 1 :b 2)], :test "g0013", :i 1}
+{:form (let [x (unsigned-bit-shift-right (compare (name :c) (clojure.string/reverse "😀")) 0)] (* x (dec' -9223372036854775808))), :outcome [:value 509665092012521201653722N], :test "g0013", :i 2}
+{:form (some even? [1 2 3]), :outcome [:value true], :test "g0013", :i 3}
+{:form (subs "abcdef" 2), :outcome [:value "cdef"], :test "g0013", :i 4}
+{:form (let [x (- (count (sort-by - (list 1 2))))] (* x (dec (max (max -9223372036854775808 -128) 255)))), :outcome [:value -508], :test "g0013", :i 5}
+{:form (every? even? [1 1 1]), :outcome [:value false], :test "g0013", :i 6}
+{:form (subs "a😀b" 2 2), :outcome [:value ""], :test "g0013", :i 7}
+{:form (vector? (get (zipmap [:a :b] (remove pos? [0 -1 7 7])) :x)), :outcome [:value false], :test "g0013", :i 8}
+{:form (assoc (frequencies [3 1 2]) :a (quot -3 2)), :outcome [:value {3 1, 1 1, 2 1, :a -1}], :test "g0013", :i 9}
+{:form (min -3 -3), :outcome [:value -3], :test "g0014", :i 0}
+{:form (if (char? (clojure.string/lower-case (clojure.string/replace (str (clojure.string/index-of "a b" "😀")) "a" "X"))) (compare "a" "a😀b") []), :outcome [:value []], :test "g0014", :i 1}
+{:form (unchecked-subtract (dec (unchecked-subtract 127 (-' 127 -1))) (bit-and (first (vector 127)) 127)), :outcome [:value -129], :test "g0014", :i 2}
+{:form (assoc (frequencies (mapv (fn [x] (if (odd? x) :odd :even)) (interleave [0 1 2 3 4] [0 -1 7 7]))) :c (bit-and-not 3 -3)), :outcome [:value {:even 3, :odd 5, :c 2}], :test "g0014", :i 3}
+{:form (every? odd? [0 1 2 3 4]), :outcome [:value false], :test "g0014", :i 4}
+{:form (let [x (* (reduce + 0 [0 1 2 3 4]) (nth (vector (mod 255 2) (unchecked-dec 255)) 0))] (* x (reduce + 0 (filter zero? (mapv str (list 1 2)))))), :outcome [:throws "java.lang.ClassCastException"], :test "g0014", :i 5}
+{:form (let [x 256] (* x -1)), :outcome [:value -256], :test "g0014", :i 6}
+{:form (quot 7.5 -2), :outcome [:value -3.0], :test "g0014", :i 7}
+{:form (even? (assoc (select-keys {} [:a :b]) :a (unchecked-add (nth (vector 1 -128) 0) (unchecked-add 255 128)))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0014", :i 8}
+{:form (if (double? (into #{} (concat [3 1 2] (concat [0 1 2 3 4] [0 1 2 3 4])))) \z 1.0E10), :outcome [:value 1.0E10], :test "g0014", :i 9}
+{:form (some? (zero? (subs "é-è" 2))), :outcome [:throws "java.lang.ClassCastException"], :test "g0015", :i 0}
+{:form (map? (get {} :a)), :outcome [:value false], :test "g0015", :i 1}
+{:form (assoc {} :c (compare (clojure.string/replace (clojure.string/join "," [1 1 1]) " " "") (str (nth "😀" 1) (clojure.string/upper-case "日本語")))), :outcome [:value {:c -56783}], :test "g0015", :i 2}
+{:form (mapv (fn [x] [x x]) (list 1 2)), :outcome [:value [[1 1] [2 2]]], :test "g0015", :i 3}
+{:form (some odd? (sort-by identity (sort-by - (partition 3 [])))), :outcome [:value nil], :test "g0015", :i 4}
+{:form (every? pos? (conj (into (list) (list 1 2)) (compare -3 128))), :outcome [:value false], :test "g0015", :i 5}
+{:form (string? []), :outcome [:value false], :test "g0015", :i 6}
+{:form (str (clojure.string/index-of (str (min 1.0 1.0) nil) "😀")), :outcome [:value ""], :test "g0015", :i 7}
+{:form (number? (if (string? (inc (count [1 1 1]))) (/ (*' -9223372036854775808 3) -2) (into #{} [128 7 255]))), :outcome [:value false], :test "g0015", :i 8}
+{:form (str false (list 1 2)), :outcome [:value "false(1 2)"], :test "g0015", :i 9}
+{:form (/ (dec (inc (bit-and -1 256))) 7), :outcome [:value 256/7], :test "g0016", :i 0}
+{:form (if (number? (if (neg? :k/v) (count (remove odd? (list 1 2))) nil)) false [3 1 2]), :outcome [:throws "java.lang.ClassCastException"], :test "g0016", :i 1}
+{:form (quot (unchecked-subtract 3 (dec' (max -3 128))) -2), :outcome [:value 62], :test "g0016", :i 2}
+{:form (if (NaN? (some pos? (remove odd? (mapv str [0 1 2 3 4])))) (select-keys (dissoc (merge {:a 1} {:a 1}) :c) []) (if (some? (let [x (compare 256 -1)] (+ x (reduce + 0 [1 2 3])))) (into #{} (sort-by str (keys {}))) "é")), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0016", :i 3}
+{:form (unsigned-bit-shift-right (count (map (fn [x] (* x 2)) (mapv (fn [x] (* x 2)) [0 1 2 3 4]))) -1), :outcome [:value 0], :test "g0016", :i 4}
+{:form (get {:a 1} :a), :outcome [:value 1], :test "g0016", :i 5}
+{:form (into #{} (mapv str (conj (list 1 2) (first (vector 3))))), :outcome [:value #{"3" "1" "2"}], :test "g0016", :i 6}
+{:form (rational? " t "), :outcome [:value false], :test "g0016", :i 7}
+{:form (get (dissoc (frequencies (remove odd? [0 -1 7 7])) :b) :a), :outcome [:value nil], :test "g0016", :i 8}
+{:form (if (float? (get (merge (dissoc {} :c) (group-by odd? [1 1 1])) :c)) 1.0E10 (clojure.string/upper-case "a😀b")), :outcome [:value "A😀B"], :test "g0016", :i 9}
+{:form (-' (+ (compare (name :a) "é") (unchecked-multiply 10 10)) -3), :outcome [:value 99], :test "g0017", :i 0}
+{:form (subs "😀" 2 2), :outcome [:value ""], :test "g0017", :i 1}
+{:form (remove pos? []), :outcome [:value ()], :test "g0017", :i 2}
+{:form (into #{} (seq (map dec [127 256]))), :outcome [:value #{255 126}], :test "g0017", :i 3}
+{:form (if (ratio? (into #{} (sort-by str (keys {:a 1})))) true (into #{} (drop 3 (distinct [0 1 2 3 4])))), :outcome [:value #{4 3}], :test "g0017", :i 4}
+{:form (clojure.string/lower-case "a😀b"), :outcome [:value "a😀b"], :test "g0017", :i 5}
+{:form (select-keys {} []), :outcome [:value {}], :test "g0017", :i 6}
+{:form (group-by even? [0 1 2 3 4]), :outcome [:value {true [0 2 4], false [1 3]}], :test "g0017", :i 7}
+{:form (every? odd? [1 2 3]), :outcome [:value false], :test "g0017", :i 8}
+{:form (pr-str nil), :outcome [:value "nil"], :test "g0017", :i 9}
+{:form (float? {:k/v "x", :a [1]}), :outcome [:value false], :test "g0018", :i 0}
+{:form (into #{} (interleave (concat (concat [0 -1 7 7] (list 1 2)) [1 1 1]) (sort-by - [-9223372036854775808 1]))), :outcome [:throws "java.lang.ArithmeticException"], :test "g0018", :i 1}
+{:form (if (even? (get (assoc (dissoc {:k/v "x", :a [1]} :b) :b (bit-shift-left 256 31)) :c)) (string? (neg? (into #{} []))) (pos? {:a 1})), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0018", :i 2}
+{:form (get {:k/v "x", :a [1]} :b), :outcome [:value nil], :test "g0018", :i 3}
+{:form (let [x 0] (+ x (inc 128))), :outcome [:value 129], :test "g0018", :i 4}
+{:form (into #{} []), :outcome [:value #{}], :test "g0018", :i 5}
+{:form (into #{} (concat (remove even? [0 1 2 3 4]) [3 1 2])), :outcome [:value #{1 3 2}], :test "g0018", :i 6}
+{:form (if (string? (every? even? (reverse (into (list) [1 1 1])))) (bit-xor 127 0) (into #{} (into [] (mapv (fn [x] (* x 2)) [])))), :outcome [:value #{}], :test "g0018", :i 7}
+{:form (if (infinite? 1) (get (group-by even? (sort-by str (keys {:a 1, :b 2}))) :x) (get {:a 1, :b 2} :k/v)), :outcome [:value nil], :test "g0018", :i 8}
+{:form (let [x 255] (* x (count (filter zero? (conj [3 1 2] -1))))), :outcome [:value 0], :test "g0018", :i 9}
+{:form (let [x 127] (+ x (count (subs "é" 1 2)))), :outcome [:value 128], :test "g0019", :i 0}
+{:form (ratio? (if (seq? (if (nat-int? nil) (some odd? [0 -1 7 7]) (-' -3 10))) (number? (let [x 255] (* x 255))) [(count "ü") (count "日本語") 255])), :outcome [:value false], :test "g0019", :i 1}
+{:form (select-keys (merge (merge (assoc {:a 1} :b 1) (zipmap [:a] [3 1 2])) (select-keys (select-keys {:k/v "x", :a [1]} [:a]) [:a :b])) [:a]), :outcome [:value {:a [1]}], :test "g0019", :i 2}
+{:form (let [x -1] (* x 0)), :outcome [:value 0], :test "g0019", :i 3}
+{:form (subs "abcdef" 1), :outcome [:value "bcdef"], :test "g0019", :i 4}
+{:form (some even? (filter zero? (filter pos? (sort-by str (keys {:k/v "x", :a [1]}))))), :outcome [:throws "java.lang.ClassCastException"], :test "g0019", :i 5}
+{:form (get (dissoc (dissoc (assoc {:a 1, :b 2} :k/v 2) :b) :c) :k/v), :outcome [:value 2], :test "g0019", :i 6}
+{:form (into #{} (map inc (list 1 2))), :outcome [:value #{3 2}], :test "g0019", :i 7}
+{:form (into #{} []), :outcome [:value #{}], :test "g0019", :i 8}
+{:form (inc (unchecked-subtract (bit-xor 256 (count "a b")) (compare (+' 255 -3) (compare 7 -128)))), :outcome [:value 259], :test "g0019", :i 9}
+{:form (get (zipmap [:a :b :c] []) :b), :outcome [:value nil], :test "g0020", :i 0}
+{:form (if (map? [(- (+ 128 1000) -1) -1]) (unchecked-subtract (reduce + 0 (conj (list 1 2) 127)) (count "x,y,z")) (let [x (inc (*' 255 128))] (+ x (dec' 3)))), :outcome [:value 32643], :test "g0020", :i 1}
+{:form (some odd? [0 1 2 3 4]), :outcome [:value true], :test "g0020", :i 2}
+{:form (str (clojure.string/last-index-of (apply str (reverse "日本語")) "😀")), :outcome [:value ""], :test "g0020", :i 3}
+{:form (into #{} (list 1 2)), :outcome [:value #{1 2}], :test "g0020", :i 4}
+{:form (let [x (nth (vector (reduce + 0 (conj [] 127)) (dec -3)) 0)] (max x (unsigned-bit-shift-right 255 0))), :outcome [:value 255], :test "g0020", :i 5}
+{:form (clojure.string/upper-case "😀"), :outcome [:value "😀"], :test "g0020", :i 6}
+{:form ((fn [x] (and (string? x) (clojure.string/blank? x))) \a), :outcome [:value false], :test "g0020", :i 7}
+{:form (count "é"), :outcome [:value 1], :test "g0020", :i 8}
+{:form (reduce + 0 (sort-by str (keys {}))), :outcome [:value 0], :test "g0020", :i 9}
+{:form (compare (pr-str :b) "Ab-C"), :outcome [:value -7], :test "g0021", :i 0}
+{:form (remove even? (list 1 2)), :outcome [:value (1)], :test "g0021", :i 1}
+{:form (get (frequencies (interleave (sort-by str (keys {:a 1})) (sort-by - (list 1 2)))) :k/v), :outcome [:value nil], :test "g0021", :i 2}
+{:form (/ (nth (vector (count (apply str (reverse "日本語"))) (compare (str (get "😀" 2) (clojure.string/upper-case "日本語")) (subs "😀" 0 3))) 0) 4), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0021", :i 3}
+{:form (get (dissoc (group-by odd? (map dec [1 2 3])) :a) :x), :outcome [:value nil], :test "g0021", :i 4}
+{:form (get (frequencies []) :c), :outcome [:value nil], :test "g0021", :i 5}
+{:form (let [x (nth (vector (count (partition 2 [3 1 2])) (bit-and-not 0 (nth (vector 10 7) 0))) 0)] (max x (reduce + 0 (remove even? [1 2 3])))), :outcome [:value 4], :test "g0021", :i 6}
+{:form (unchecked-subtract (+' (inc (reduce + 0 [1 1 1])) 128) (compare "a b" "é")), :outcome [:value 136], :test "g0021", :i 7}
+{:form (bit-shift-left (nth (vector (count "é") (*' -3 127)) 1) 65), :outcome [:value -762], :test "g0021", :i 8}
+{:form (get (dissoc {:a 1, :b 2} :a) :c), :outcome [:value nil], :test "g0021", :i 9}
+{:form (every? odd? (reverse [])), :outcome [:value true], :test "g0022", :i 0}
+{:form (rational? (partition 1 (interleave [] (sort-by str (keys {:a 1, :b 2}))))), :outcome [:value false], :test "g0022", :i 1}
+{:form (into #{} [1 1 1]), :outcome [:value #{1}], :test "g0022", :i 2}
+{:form (get (dissoc {:a 1, :b 2} :c) :k/v), :outcome [:value nil], :test "g0022", :i 3}
+{:form (pos? (double -2.5)), :outcome [:value false], :test "g0022", :i 4}
+{:form (min 0 0.0), :outcome [:value 0.0], :test "g0022", :i 5}
+{:form (let [x (-' 127 (+' (max 128 -128) -3))] (* x (compare (clojure.string/join "-" (drop 2 [0 -1 7 7])) "a"))), :outcome [:value -84], :test "g0022", :i 6}
+{:form (bit-or (+' 0 (*' (reduce + 0 [1 2 3]) (unchecked-multiply 7 256))) 1000), :outcome [:value 11240], :test "g0022", :i 7}
+{:form (into #{} (filter even? [1 2 3])), :outcome [:value #{2}], :test "g0022", :i 8}
+{:form (str (nth "é" 0) (clojure.string/upper-case "a😀b")), :outcome [:value "eA😀B"], :test "g0022", :i 9}
+{:form (let [x (unsigned-bit-shift-right (-' (count [0 -1 7 7]) 128) 63)] (+ x (quot (unchecked-inc 3) 1))), :outcome [:value 5], :test "g0023", :i 0}
+{:form (get {} :b), :outcome [:value nil], :test "g0023", :i 1}
+{:form (get {:a 1, :b 2} :k/v), :outcome [:value nil], :test "g0023", :i 2}
+{:form (into #{} (interleave [1 1 1] (filter even? [7 -9223372036854775808]))), :outcome [:value #{1 -9223372036854775808}], :test "g0023", :i 3}
+{:form (zero? (map dec (sort-by str (keys (select-keys {:a 1} []))))), :outcome [:throws "java.lang.ClassCastException"], :test "g0023", :i 4}
+{:form (every? odd? (partition-all 3 (filter neg? []))), :outcome [:value true], :test "g0023", :i 5}
+{:form (some odd? [1 1 1]), :outcome [:value true], :test "g0023", :i 6}
+{:form (every? odd? (map (fn [x] (* x 2)) (mapv (fn [x] [x x]) (partition-all 1 [0 -1 7 7])))), :outcome [:throws "java.lang.ClassCastException"], :test "g0023", :i 7}
+{:form (into #{} (into [] (sort-by - (sort-by identity [1 2 3])))), :outcome [:value #{1 3 2}], :test "g0023", :i 8}
+{:form (into #{} (conj [0 -1 7 7] (dec -1))), :outcome [:value #{0 7 -2 -1}], :test "g0023", :i 9}
+{:form (into #{} (into [] (interleave (drop 0 [3 1 2]) [0 1 2 3 4]))), :outcome [:value #{0 1 3 2}], :test "g0024", :i 0}
+{:form (string? :a), :outcome [:value false], :test "g0024", :i 1}
+{:form (merge (zipmap [:a :b :c] [3 1 2]) (group-by odd? (into (list) (filter neg? [3 1 2])))), :outcome [:value {:a 3, :b 1, :c 2}], :test "g0024", :i 2}
+{:form (into #{} (into [] (partition 1 [1 1 1]))), :outcome [:value #{(1)}], :test "g0024", :i 3}
+{:form (map? (zipmap [:a] (into (list) (filter pos? [0 1 2 3 4])))), :outcome [:value true], :test "g0024", :i 4}
+{:form (select-keys {:k/v "x", :a [1]} [:a]), :outcome [:value {:a [1]}], :test "g0024", :i 5}
+{:form (+ (nth (vector (min -9223372036854775808 3) -9223372036854775808) 1) (min -128 127)), :outcome [:throws "java.lang.ArithmeticException"], :test "g0024", :i 6}
+{:form (zipmap [:a :b] (sort-by identity (take 1 [0 -1 7 7]))), :outcome [:value {:a 0}], :test "g0024", :i 7}
+{:form (count (sort-by identity (conj [0 1 2 3 4] 127))), :outcome [:value 6], :test "g0024", :i 8}
+{:form (subs "é" 0 1), :outcome [:value "e"], :test "g0024", :i 9}
+{:form (keyword? (zipmap [:a :b] (rest (map (fn [x] (* x 2)) [1 1 1])))), :outcome [:value false], :test "g0025", :i 0}
+{:form (filter neg? (butlast [3 1 2])), :outcome [:value ()], :test "g0025", :i 1}
+{:form (pos? (pos? (into #{} [0 1 2 3 4]))), :outcome [:throws "java.lang.ClassCastException"], :test "g0025", :i 2}
+{:form (str :b -3), :outcome [:value ":b-3"], :test "g0025", :i 3}
+{:form (get (select-keys {:k/v "x", :a [1]} []) :c), :outcome [:value nil], :test "g0025", :i 4}
+{:form (zipmap [:a] []), :outcome [:value {}], :test "g0025", :i 5}
+{:form (into #{} (conj (take 2 (into (list) [1 2 3])) (count [0 -1 7 7]))), :outcome [:value #{4 3 2}], :test "g0025", :i 6}
+{:form (keyword? (string? :k/v)), :outcome [:value false], :test "g0025", :i 7}
+{:form (if (even? (let [x 0] (* x 3))) "x,y,z" (keyword? 255)), :outcome [:value "x,y,z"], :test "g0025", :i 8}
+{:form (zero? :k/v), :outcome [:throws "java.lang.ClassCastException"], :test "g0025", :i 9}
+{:form (map (fn [x] (* x 2)) [1 1 1]), :outcome [:value (2 2 2)], :test "g0026", :i 0}
+{:form (vector? :x), :outcome [:value false], :test "g0026", :i 1}
+{:form (if (set? (let [x 256] (* x (* 7 7)))) "Ab-C" (let [x 10] (max x (min -128 (count " t "))))), :outcome [:value 10], :test "g0026", :i 2}
+{:form (get {:a 1, :b 2} :c), :outcome [:value nil], :test "g0026", :i 3}
+{:form (+' 1000 (bit-and -128 (compare 7 (unchecked-add -1 256)))), :outcome [:value 872], :test "g0026", :i 4}
+{:form (let [x (count "")] (max x (bit-shift-right (first (vector 10)) -1))), :outcome [:value 0], :test "g0026", :i 5}
+{:form (some? (group-by pos? (into [] (interleave [3 1 2] [0 -1 7 7])))), :outcome [:value true], :test "g0026", :i 6}
+{:form (clojure.string/reverse (apply str (seq "😀"))), :outcome [:value "😀"], :test "g0026", :i 7}
+{:form (into #{} (mapv str [])), :outcome [:value #{}], :test "g0026", :i 8}
+{:form (nat-int? (let [x 3] (+ x 9223372036854775807))), :outcome [:throws "java.lang.ArithmeticException"], :test "g0026", :i 9}
+{:form (every? odd? (distinct [0 1 2 3 4])), :outcome [:value false], :test "g0027", :i 0}
+{:form (let [x 7] (* x (reduce + 0 [0 1 2 3 4]))), :outcome [:value 70], :test "g0027", :i 1}
+{:form (merge (merge (frequencies (partition-all 1 (list 1 2))) (assoc {:k/v "x", :a [1]} :b (reduce + 0 [1 2 3]))) (frequencies (partition 3 (filter neg? [0 -1 7 7])))), :outcome [:value {(1) 1, (2) 1, :k/v "x", :a [1], :b 6}], :test "g0027", :i 2}
+{:form (compare (mod (nth (vector (+' 255 -3) -1) 0) 2) -3), :outcome [:value 1], :test "g0027", :i 3}
+{:form (into (list) (butlast (remove odd? [0 -1 7 7]))), :outcome [:value ()], :test "g0027", :i 4}
+{:form (get {} :k/v), :outcome [:value nil], :test "g0027", :i 5}
+{:form (remove even? [3 1 2]), :outcome [:value (3 1)], :test "g0027", :i 6}
+{:form (long 2.5), :outcome [:value 2], :test "g0027", :i 7}
+{:form (bit-and-not (quot (bit-or 256 3) -2) (reduce + 0 (map dec [1 10]))), :outcome [:value -138], :test "g0027", :i 8}
+{:form (number? nil), :outcome [:value false], :test "g0027", :i 9}
+{:form (pr-str "a b"), :outcome [:value "\"a b\""], :test "g0028", :i 0}
+{:form (some odd? [0 -1 7 7]), :outcome [:value true], :test "g0028", :i 1}
+{:form (every? even? [0 -1 7 7]), :outcome [:value false], :test "g0028", :i 2}
+{:form (into (list) (filter pos? (take 1 [0 1 2 3 4]))), :outcome [:value ()], :test "g0028", :i 3}
+{:form (set? \z), :outcome [:value false], :test "g0028", :i 4}
+{:form (seq? (into #{} (partition-all 2 []))), :outcome [:value false], :test "g0028", :i 5}
+{:form (unsigned-bit-shift-right (first (vector 9223372036854775807)) 32), :outcome [:value 2147483647], :test "g0028", :i 6}
+{:form (if (float? (pos? (if (vector? {:k/v "x", :a [1]}) -2/7 (unchecked-inc -9223372036854775808)))) :c (select-keys (assoc (group-by pos? [0 1 2 3 4]) :a 1) [])), :outcome [:value {}], :test "g0028", :i 7}
+{:form (count (conj (sort-by - (partition 2 [0 -1 7 7])) (* (compare 128 7) (dec -3)))), :outcome [:throws "java.lang.ClassCastException"], :test "g0028", :i 8}
+{:form (first (vector (compare "x,y,z" "a"))), :outcome [:value 23], :test "g0028", :i 9}
+{:form (every? even? []), :outcome [:value true], :test "g0029", :i 0}
+{:form (keyword? (first (vector -3))), :outcome [:value false], :test "g0029", :i 1}
+{:form (get (group-by odd? (filter pos? (sort-by str (keys {:k/v "x", :a [1]})))) :c), :outcome [:throws "java.lang.ClassCastException"], :test "g0029", :i 2}
+{:form (every? odd? (drop 3 (into (list) [1 2 3]))), :outcome [:value true], :test "g0029", :i 3}
+{:form (count (subs "ü" 1 1)), :outcome [:value 0], :test "g0029", :i 4}
+{:form (every? pos? (into [] (concat [1 2 3] [0 1 2 3 4]))), :outcome [:value false], :test "g0029", :i 5}
+{:form (into #{} [0 1 2 3 4]), :outcome [:value #{0 1 4 3 2}], :test "g0029", :i 6}
+{:form (some odd? (mapv (fn [x] [x x]) (map inc [1 2 3]))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0029", :i 7}
+{:form (get (frequencies (partition 3 (take 1 (list 1 2)))) :x), :outcome [:value nil], :test "g0029", :i 8}
+{:form (let [x (rem (unchecked-multiply 256 (max 0 3)) 7)] (max x (mod (count (remove even? [1 2 3])) 2))), :outcome [:value 5], :test "g0029", :i 9}
+{:form (+ (bit-and (unchecked-add (count []) (bit-shift-right 0 1)) (unsigned-bit-shift-right 3 63)) (reduce + 0 [])), :outcome [:value 0], :test "g0030", :i 0}
+{:form (some even? (remove pos? [1 1 1])), :outcome [:value nil], :test "g0030", :i 1}
+{:form (get (assoc (merge {:a 1} {:k/v "x", :a [1]}) :k/v 10) :a), :outcome [:value [1]], :test "g0030", :i 2}
+{:form (every? pos? (seq [1 1 1])), :outcome [:value true], :test "g0030", :i 3}
+{:form (* (inc 2) (count (into [] (remove pos? [])))), :outcome [:value 0], :test "g0030", :i 4}
+{:form (some odd? (drop 2 (conj [1 2 3] (unsigned-bit-shift-right 1000 63)))), :outcome [:value true], :test "g0030", :i 5}
+{:form (every? pos? (mapv (fn [x] (if (odd? x) :odd :even)) (conj (partition 1 [3 1 2]) 255))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0030", :i 6}
+{:form (some even? (concat [0 -1 7 7] (sort-by - (partition 2 [])))), :outcome [:value true], :test "g0030", :i 7}
+{:form (partition-all 3 (list 1 2)), :outcome [:value ((1 2))], :test "g0030", :i 8}
+{:form (let [x 127] (+ x 0)), :outcome [:value 127], :test "g0030", :i 9}
+{:form (select-keys {:a 1, :b 2} []), :outcome [:value {}], :test "g0031", :i 0}
+{:form (every? even? (mapv identity (distinct [1 1 1]))), :outcome [:value false], :test "g0031", :i 1}
+{:form (let [x (count "a😀b")] (* x (max (compare (clojure.string/join "-" (list 1 2)) (subs "😀" 2 2)) 2))), :outcome [:value 12], :test "g0031", :i 2}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (into #{} (rest (sort-by - [3 1 2])))) (int? (let [x (max 255 7)] (* x 2))) 255), :outcome [:value 255], :test "g0031", :i 3}
+{:form (if (pos-int? (if (vector? (into #{} (list 1 2))) :k/v (get {:a 1, :b 2} :x))) (let [x 256] (max x -9223372036854775808)) (let [x (* -1 3)] (+ x (* (reduce + 0 [0 -1 7 7]) (dec 127))))), :outcome [:value 1635], :test "g0031", :i 4}
+{:form (list 1 2), :outcome [:value (1 2)], :test "g0031", :i 5}
+{:form (if (some? (let [x 256] (+ x (count (into (list) [0 1 2 3 4]))))) 1/3 (into #{} (interleave [0] (list 1 2)))), :outcome [:value 1/3], :test "g0031", :i 6}
+{:form (if (neg? (mapv (fn [x] (* x 2)) (remove odd? (sort-by str (keys {:k/v "x", :a [1]}))))) (let [x (unchecked-dec (* -3 10))] (max x (bit-and -1 (nth (vector -9223372036854775808 2) 0)))) (take 3 (interleave (sort-by str (keys {:a 1})) [1 1 1]))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0031", :i 7}
+{:form (get (dissoc (merge (group-by odd? (list 1 2)) (group-by pos? [])) :x) :c), :outcome [:value nil], :test "g0031", :i 8}
+{:form (let [x (unchecked-add (min (reduce + 0 (list 1 2)) (reduce + 0 [0 1 2 3 4])) (first (vector (count "日本語"))))] (+ x (bit-shift-left (count [0 1 2 3 4]) 64))), :outcome [:value 11], :test "g0031", :i 9}
+{:form (zero? (group-by pos? (take 0 [1000 255]))), :outcome [:throws "java.lang.ClassCastException"], :test "g0032", :i 0}
+{:form (let [x (count (name :k/v))] (* x -9223372036854775808)), :outcome [:value -9223372036854775808], :test "g0032", :i 1}
+{:form (name :x), :outcome [:value "x"], :test "g0032", :i 2}
+{:form (get (frequencies (filter even? [0 1 2 3 4])) :k/v), :outcome [:value nil], :test "g0032", :i 3}
+{:form (coll? :x), :outcome [:value false], :test "g0032", :i 4}
+{:form (get (frequencies [1 2 3]) :b), :outcome [:value nil], :test "g0032", :i 5}
+{:form (let [x (dec 1)] (max x (compare (reduce + 0 (list 1 2)) 128))), :outcome [:value 0], :test "g0032", :i 6}
+{:form (compare (pr-str (bit-and-not (min 1000 0) (- 1000 -1))) "a"), :outcome [:value -49], :test "g0032", :i 7}
+{:form (get (merge (zipmap [:a :b :c] (concat [] [0 1 2 3 4])) {:a 1}) :c), :outcome [:value 2], :test "g0032", :i 8}
+{:form (if (int? {:k/v "x", :a [1]}) -3 (get (assoc {} :b (unchecked-multiply 9223372036854775807 10)) :x)), :outcome [:value nil], :test "g0032", :i 9}
+{:form (into #{} (butlast (concat [1 1 1] [0 -1 7 7]))), :outcome [:value #{0 7 1 -1}], :test "g0033", :i 0}
+{:form (into #{} (mapv keyword? [1 2 3])), :outcome [:value #{false}], :test "g0033", :i 1}
+{:form (let [x -9223372036854775808] (+ x 2)), :outcome [:value -9223372036854775806], :test "g0033", :i 2}
+{:form (if (even? [0 1 2 3 4]) :b [0 1 2 3 4]), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0033", :i 3}
+{:form (unchecked-add 128 (*' (unchecked-multiply 3 1000) -3)), :outcome [:value -8872], :test "g0033", :i 4}
+{:form (unchecked-multiply (count (map dec (sort-by - (list 1 2)))) (rem (bit-and-not -3 1) 2)), :outcome [:value 0], :test "g0033", :i 5}
+{:form (let [x (compare (bit-and-not (nth (vector 10 1000) 1) 10) -1)] (+ x (- (inc (bit-and-not 2 127)) 128))), :outcome [:value -126], :test "g0033", :i 6}
+{:form (neg? (double 2.5)), :outcome [:value false], :test "g0033", :i 7}
+{:form (if (NaN? (into #{} [])) :k/v (get {:a 1} :k/v)), :outcome [:throws "java.lang.ClassCastException"], :test "g0033", :i 8}
+{:form (clojure.string/join "-" (interleave (conj (take 1 [0 1 2 3 4]) 128) (partition-all 1 (concat [1 1 1] [0 -1 7 7])))), :outcome [:value "128-clojure.lang.LazySeq@20-0-clojure.lang.LazySeq@20"], :test "g0033", :i 9}
+{:form (let [x 9223372036854775807] (* x (nth (vector 255 (count " t ")) 1))), :outcome [:throws "java.lang.ArithmeticException"], :test "g0034", :i 0}
+{:form (into (list) (interleave (interleave (mapv str [0 1 2 3 4]) [3 1 2]) [1 1 1])), :outcome [:value (1 "1" 1 3 1 "0")], :test "g0034", :i 1}
+{:form (name :x), :outcome [:value "x"], :test "g0034", :i 2}
+{:form (into #{} (partition 2 [0 1 2 3 4])), :outcome [:value #{(2 3) (0 1)}], :test "g0034", :i 3}
+{:form (into #{} (interleave (mapv identity (concat (list 1 2) [3 1 2])) (filter neg? (sort-by str (keys {:k/v "x", :a [1]}))))), :outcome [:throws "java.lang.ClassCastException"], :test "g0034", :i 4}
+{:form (let [x (- (count (subs "ü" 1 2)) -128)] (+ x (inc -9223372036854775808))), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0034", :i 5}
+{:form (into #{} [(unsigned-bit-shift-right 1 32)]), :outcome [:value #{0}], :test "g0034", :i 6}
+{:form (let [x 1000] (max x (bit-and-not (max (count "ü") (count [1 1 1])) 7))), :outcome [:value 1000], :test "g0034", :i 7}
+{:form (seq? :a), :outcome [:value false], :test "g0034", :i 8}
+{:form (str (clojure.string/index-of (pr-str [0 -1 7 7]) "a")), :outcome [:value ""], :test "g0034", :i 9}
+{:form (if (infinite? (get {:k/v "x", :a [1]} :a)) (let [x (first (vector (nth (vector 255 -9223372036854775808) 1)))] (* x (reduce + 0 (map (fn [x] (* x 2)) [0 -1 7 7])))) 0), :outcome [:throws "java.lang.ClassCastException"], :test "g0035", :i 0}
+{:form (into #{} (sort-by str (keys (frequencies (interleave (list 1 2) [0 -1 7 7]))))), :outcome [:value #{0 1 -1 2}], :test "g0035", :i 1}
+{:form (group-by even? (filter zero? (conj (remove even? []) 10))), :outcome [:value {}], :test "g0035", :i 2}
+{:form (let [x (count (apply str (reverse "a😀b")))] (max x (min (first (vector (- 3 1000))) 1))), :outcome [:value 4], :test "g0035", :i 3}
+{:form (sort (reverse (sort-by str (keys (assoc {:k/v "x", :a [1]} :b 255))))), :outcome [:value (:a :b :k/v)], :test "g0035", :i 4}
+{:form (some even? (take 0 (sort-by str (keys {:a 1})))), :outcome [:value nil], :test "g0035", :i 5}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (let [x (unchecked-multiply (first (vector 128)) 255)] (+ x (unchecked-multiply (count []) (* 3 2))))) (/ (count [0 1 2 3 4]) 3) "Ab-C"), :outcome [:value 5/3], :test "g0035", :i 6}
+{:form (name :c), :outcome [:value "c"], :test "g0035", :i 7}
+{:form (sort-by str (keys (frequencies (conj [] (count [3 1 2]))))), :outcome [:value (3)], :test "g0035", :i 8}
+{:form (merge (assoc {:k/v "x", :a [1]} :a (unchecked-add (inc 7) 10)) (group-by pos? (rest (into [] [])))), :outcome [:value {:k/v "x", :a 18}], :test "g0035", :i 9}
+{:form (let [x 1] (+ x (rem 127 2))), :outcome [:value 2], :test "g0036", :i 0}
+{:form (frequencies []), :outcome [:value {}], :test "g0036", :i 1}
+{:form (let [x (reduce + 0 [])] (+ x (inc (+' (* 127 7) 2)))), :outcome [:value 892], :test "g0036", :i 2}
+{:form (let [x 128] (+ x (-' (bit-xor (dec 128) 127) (bit-shift-right 128 63)))), :outcome [:value 128], :test "g0036", :i 3}
+{:form (get {:a 1, :b 2} :c), :outcome [:value nil], :test "g0036", :i 4}
+{:form (get {:a 1} :b), :outcome [:value nil], :test "g0036", :i 5}
+{:form (let [x 10] (* x (unchecked-inc 7))), :outcome [:value 80], :test "g0036", :i 6}
+{:form (if (set? (filter even? [0 1 2 3 4])) (get (select-keys (assoc {:a 1, :b 2} :b 128) [:a :b]) :b) :a), :outcome [:value :a], :test "g0036", :i 7}
+{:form (assoc {} :a (max (rem (max 1000 127) 2) 3)), :outcome [:value {:a 3}], :test "g0036", :i 8}
+{:form (count "ü"), :outcome [:value 1], :test "g0036", :i 9}
+{:form (max 1.0 0), :outcome [:value 1.0], :test "g0037", :i 0}
+{:form (into #{} (concat (mapv keyword? (map dec [1 2 3])) (mapv (fn [x] (* x 2)) (list 1 2)))), :outcome [:value #{4 2 false}], :test "g0037", :i 1}
+{:form (get (merge (select-keys (zipmap [:a :b] (list 1 2)) []) (dissoc (frequencies [0 1 2 3 4]) :k/v)) :c), :outcome [:value nil], :test "g0037", :i 2}
+{:form (mod 1 -2), :outcome [:value -1], :test "g0037", :i 3}
+{:form (if (set? (infinite? (let [x (mod 255 2)] (max x (compare 128 127))))) (get (select-keys (select-keys {:k/v "x", :a [1]} []) []) :x) (let [x 128] (max x (+ 1000 (dec 9223372036854775807))))), :outcome [:throws "java.lang.ArithmeticException"], :test "g0037", :i 4}
+{:form (into #{} (mapv str [1 1 1])), :outcome [:value #{"1"}], :test "g0037", :i 5}
+{:form (odd? (if (string? (let [x (reduce + 0 [1 1 1])] (max x 10))) (into #{} (map (fn [x] (* x 2)) [0 1 2 3 4])) (frequencies [3 1 2]))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0037", :i 6}
+{:form (conj (sort-by str (keys (assoc (zipmap [:a :b :c] []) :c (count "a😀b")))) (nth (vector (quot (nth (vector -3 256) 0) -2) (+ 0 -1)) 0)), :outcome [:value (1 :c)], :test "g0037", :i 7}
+{:form (name :a), :outcome [:value "a"], :test "g0037", :i 8}
+{:form (into #{} []), :outcome [:value #{}], :test "g0037", :i 9}
+{:form (compare (compare 1 (first (vector (unchecked-subtract 0 3)))) 2), :outcome [:value -1], :test "g0038", :i 0}
+{:form (let [x 1000] (+ x (compare (str (str (get "a😀b" 2) (clojure.string/capitalize "日本語")) :b) (clojure.string/lower-case (clojure.string/replace "a b" "a" ""))))), :outcome [:value 57800], :test "g0038", :i 1}
+{:form (dec (bit-or 1000 (compare " t " (apply str (rest "😀"))))), :outcome [:value -56345], :test "g0038", :i 2}
+{:form (if (some? (into #{} [1000 (count "x,y,z")])) :b (remove pos? (interleave (vec [1 1 1]) (sort-by str (keys {:k/v "x", :a [1]}))))), :outcome [:value :b], :test "g0038", :i 3}
+{:form (merge {:k/v "x", :a [1]} (group-by pos? [0 1 2 3 4])), :outcome [:value {:k/v "x", :a [1], false [0], true [1 2 3 4]}], :test "g0038", :i 4}
+{:form (get (zipmap [:a] (remove pos? (list 1 2))) :c), :outcome [:value nil], :test "g0038", :i 5}
+{:form (get (dissoc (select-keys (assoc {:k/v "x", :a [1]} :c -9223372036854775808) [:a]) :a) :k/v), :outcome [:value nil], :test "g0038", :i 6}
+{:form (get (frequencies (map (fn [x] (* x 2)) (map (fn [x] (* x 2)) [3 1 2]))) :x), :outcome [:value nil], :test "g0038", :i 7}
+{:form (get (zipmap [:a] (interleave [0 -1 7 7] [0 -1 7 7])) :a), :outcome [:value 0], :test "g0038", :i 8}
+{:form (get (merge (zipmap [:a :b] [1 2 3]) {}) :k/v), :outcome [:value nil], :test "g0038", :i 9}
+{:form (some odd? [0 1 2 3 4]), :outcome [:value true], :test "g0039", :i 0}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (into #{} (map (fn [x] (* x 2)) (list 1 2)))) 256 [3 1 2]), :outcome [:value [3 1 2]], :test "g0039", :i 1}
+{:form (sort-by - [3 1 2]), :outcome [:value (3 2 1)], :test "g0039", :i 2}
+{:form (bit-shift-right (max (count [0 1 2 3 4]) (mod (min 127 1) 3)) 64), :outcome [:value 5], :test "g0039", :i 3}
+{:form (let [x (mod 2 -2)] (max x (compare (subs "é" 2 1) "ü"))), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0039", :i 4}
+{:form (remove odd? [0 -1 7 7]), :outcome [:value (0)], :test "g0039", :i 5}
+{:form (get (group-by pos? (interleave (remove pos? [0 1 2 3 4]) (drop 1 [0 -1 7 7]))) :a), :outcome [:value nil], :test "g0039", :i 6}
+{:form (if (zero? (into #{} [])) 128 (some even? (vec (vec [0 1 2 3 4])))), :outcome [:throws "java.lang.ClassCastException"], :test "g0039", :i 7}
+{:form (get {:a 1, :b 2} :x), :outcome [:value nil], :test "g0039", :i 8}
+{:form (mod 7.5 -2), :outcome [:value -0.5], :test "g0039", :i 9}
+{:form (every? odd? [3 1 2]), :outcome [:value false], :test "g0040", :i 0}
+{:form (get {:a 1} :a), :outcome [:value 1], :test "g0040", :i 1}
+{:form (some pos? (sort-by str (keys (dissoc (merge {:a 1, :b 2} {:k/v "x", :a [1]}) :x)))), :outcome [:throws "java.lang.ClassCastException"], :test "g0040", :i 2}
+{:form (pos-int? (zero? (get (dissoc {} :a) :k/v))), :outcome [:throws "java.lang.NullPointerException"], :test "g0040", :i 3}
+{:form (pr-str (* (inc 255) (bit-xor 0 3))), :outcome [:value "768"], :test "g0040", :i 4}
+{:form (into #{} (partition 1 [(count [0 1 2 3 4])])), :outcome [:value #{(5)}], :test "g0040", :i 5}
+{:form (rem 10 2), :outcome [:value 0], :test "g0040", :i 6}
+{:form (if (nil? [(+' 256 (count [0 1 2 3 4])) (reduce + 0 (remove odd? [1 2 3]))]) (let [x (inc' 127)] (+ x 127)) (nth (vector -3 (dec' 0)) 1)), :outcome [:value -1], :test "g0040", :i 7}
+{:form (vector? "é"), :outcome [:value false], :test "g0040", :i 8}
+{:form (merge (assoc (frequencies (mapv (fn [x] [x x]) [0 1 2 3 4])) :a (compare (inc 1000) 7)) {:a 1, :b 2}), :outcome [:value {[0 0] 1, [1 1] 1, [2 2] 1, [3 3] 1, [4 4] 1, :a 1, :b 2}], :test "g0040", :i 9}
+{:form (into #{} [0 1 2 3 4]), :outcome [:value #{0 1 4 3 2}], :test "g0041", :i 0}
+{:form (some odd? (take 0 (partition 3 (take 0 [1 2 3])))), :outcome [:value nil], :test "g0041", :i 1}
+{:form (let [x 255] (+ x 9223372036854775807)), :outcome [:throws "java.lang.ArithmeticException"], :test "g0041", :i 2}
+{:form (zipmap [:a] [-128 (reduce + 0 (mapv (fn [x] (if (odd? x) :odd :even)) [1 1 1]))]), :outcome [:throws "java.lang.ClassCastException"], :test "g0041", :i 3}
+{:form (count (pr-str "é")), :outcome [:value 3], :test "g0041", :i 4}
+{:form (let [x -9223372036854775808] (max x (unchecked-negate -128))), :outcome [:value 128], :test "g0041", :i 5}
+{:form (keyword? (frequencies (sort-by str (keys {:a 1})))), :outcome [:value false], :test "g0041", :i 6}
+{:form (get (merge (select-keys {:a 1} [:a]) (dissoc {} :k/v)) :x), :outcome [:value nil], :test "g0041", :i 7}
+{:form (let [x (* (min 2 (dec' 9223372036854775807)) 128)] (+ x 9223372036854775807)), :outcome [:throws "java.lang.ArithmeticException"], :test "g0041", :i 8}
+{:form (odd? (subs "😀" 0 3)), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0041", :i 9}
+{:form (get (select-keys {:a 1, :b 2} []) :c), :outcome [:value nil], :test "g0042", :i 0}
+{:form (some? (into #{} [1 1 1])), :outcome [:value true], :test "g0042", :i 1}
+{:form (nil? (let [x 9223372036854775807] (* x 256))), :outcome [:throws "java.lang.ArithmeticException"], :test "g0042", :i 2}
+{:form ((fn [x] (and (number? x) (> x 2))) (if (some? (some even? [])) {:k/v "x", :a [1]} (every? even? []))), :outcome [:value false], :test "g0042", :i 3}
+{:form (get {:k/v "x", :a [1]} :c), :outcome [:value nil], :test "g0042", :i 4}
+{:form (bit-and-not (* (rem (inc 256) 3) (first (vector (unsigned-bit-shift-right 3 32)))) 7), :outcome [:value 0], :test "g0042", :i 5}
+{:form (subs "日本語" 2 2), :outcome [:value ""], :test "g0042", :i 6}
+{:form (count "é"), :outcome [:value 1], :test "g0042", :i 7}
+{:form (get {:k/v "x", :a [1]} :a), :outcome [:value [1]], :test "g0042", :i 8}
+{:form (let [x -1] (max x 1000)), :outcome [:value 1000], :test "g0042", :i 9}
+{:form (some even? [1 1 1]), :outcome [:value nil], :test "g0043", :i 0}
+{:form (some odd? (drop 2 [0 -1 7 7])), :outcome [:value true], :test "g0043", :i 1}
+{:form (get (frequencies (seq (list 1 2))) :x), :outcome [:value nil], :test "g0043", :i 2}
+{:form (conj (into (list) (mapv keyword? [-9223372036854775808 255])) (bit-and-not (* (count [1 1 1]) 0) (compare 7 3))), :outcome [:value (0 false false)], :test "g0043", :i 3}
+{:form (select-keys (zipmap [:a :b] (filter pos? (list 1 2))) []), :outcome [:value {}], :test "g0043", :i 4}
+{:form (into #{} (interleave [0 -1 7 7] [9223372036854775807 (min -1 10) (bit-shift-left 128 64)])), :outcome [:value #{0 128 7 -1 9223372036854775807}], :test "g0043", :i 5}
+{:form (zero? :k/v), :outcome [:throws "java.lang.ClassCastException"], :test "g0043", :i 6}
+{:form (if (odd? (keyword? (some? (take 3 [0 -1 7 7])))) true (group-by odd? (partition-all 3 (interleave [3 1 2] [])))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0043", :i 7}
+{:form (every? odd? [1 1 1]), :outcome [:value true], :test "g0043", :i 8}
+{:form (frequencies (interleave [1 2 3] (into (list) [3 1 2]))), :outcome [:value {1 2, 2 2, 3 2}], :test "g0043", :i 9}
+{:form (sort-by - (sort-by - (sort-by str (keys (frequencies (list 1 2)))))), :outcome [:value (2 1)], :test "g0044", :i 0}
+{:form (get (group-by odd? (take 0 (seq []))) :x), :outcome [:value nil], :test "g0044", :i 1}
+{:form (compare (clojure.string/join "," (interleave (conj [3 1 2] 256) (map inc [1 2 3]))) (subs "ü" 0 2)), :outcome [:throws "java.lang.StringIndexOutOfBoundsException"], :test "g0044", :i 2}
+{:form (into #{} (into (list) (concat [] (concat [0 -1 7 7] [])))), :outcome [:value #{0 7 -1}], :test "g0044", :i 3}
+{:form (dec (first (vector (reduce + 0 (sort-by str (keys {:k/v "x", :a [1]})))))), :outcome [:throws "java.lang.ClassCastException"], :test "g0044", :i 4}
+{:form (*' 2 -3), :outcome [:value -6], :test "g0044", :i 5}
+{:form (bit-and-not (* 7 (unchecked-dec (inc -1))) (bit-shift-left (quot -1 1) 0)), :outcome [:value 0], :test "g0044", :i 6}
+{:form (bit-shift-right -9223372036854775808 31), :outcome [:value -4294967296], :test "g0044", :i 7}
+{:form (assoc (frequencies (mapv str (reverse [1 2 3]))) :c 10), :outcome [:value {"3" 1, "2" 1, "1" 1, :c 10}], :test "g0044", :i 8}
+{:form (if (set? []) (set? (str (count " t ") \z)) (into #{} [1 2 3])), :outcome [:value #{1 3 2}], :test "g0044", :i 9}
+{:form ((fn [x] (and (string? x) (clojure.string/blank? x))) 256), :outcome [:value false], :test "g0045", :i 0}
+{:form (get (zipmap [:a] (list 1 2)) :x), :outcome [:value nil], :test "g0045", :i 1}
+{:form (get (frequencies (mapv keyword? [1 2 3])) :c), :outcome [:value nil], :test "g0045", :i 2}
+{:form (some odd? (partition-all 3 [1 1 1])), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0045", :i 3}
+{:form (seq? (infinite? 1.5)), :outcome [:value false], :test "g0045", :i 4}
+{:form (let [x -128] (max x -9223372036854775808)), :outcome [:value -128], :test "g0045", :i 5}
+{:form (concat (into [] (mapv (fn [x] [x x]) (list 1 2))) (mapv (fn [x] (* x 2)) [])), :outcome [:value ([1 1] [2 2])], :test "g0045", :i 6}
+{:form (let [x (rem (reduce + 0 [1 2 3]) 3)] (* x (bit-xor (bit-or (compare 9223372036854775807 2) (max 255 1)) (first (vector (*' 256 -1)))))), :outcome [:value 0], :test "g0045", :i 7}
+{:form (into #{} (concat (conj (mapv str []) (bit-shift-left -9223372036854775808 64)) (sort-by str (keys (group-by even? (list 1 2)))))), :outcome [:value #{-9223372036854775808 true false}], :test "g0045", :i 8}
+{:form (rem 255 7), :outcome [:value 3], :test "g0045", :i 9}
+{:form (every? even? (take 0 (map dec (take 1 [1 1 1])))), :outcome [:value true], :test "g0046", :i 0}
+{:form (min 1 0.0), :outcome [:value 0.0], :test "g0046", :i 1}
+{:form [(max (nth (vector (nth (vector 2 -3) 0) 9223372036854775807) 0) 0)], :outcome [:value [2]], :test "g0046", :i 2}
+{:form (double? (let [x (rem (nth (vector 256 10) 0) 2)] (* x (count "😀")))), :outcome [:value false], :test "g0046", :i 3}
+{:form (let [x 2] (* x 255)), :outcome [:value 510], :test "g0046", :i 4}
+{:form (into #{} (sort-by - (map (fn [x] (* x 2)) [1 2 3]))), :outcome [:value #{4 6 2}], :test "g0046", :i 5}
+{:form (every? even? (partition 1 (distinct (map inc [0 1 2 3 4])))), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0046", :i 6}
+{:form (if (string? (subs "日本語" 0 1)) (quot -7.5 0.5) (let [x (abs -9223372036854775808)] (max x 3))), :outcome [:value -15.0], :test "g0046", :i 7}
+{:form (neg? (get {:k/v "x", :a [1]} :c)), :outcome [:throws "java.lang.NullPointerException"], :test "g0046", :i 8}
+{:form (some even? [1 2 3]), :outcome [:value true], :test "g0046", :i 9}
+{:form (coll? nil), :outcome [:value false], :test "g0047", :i 0}
+{:form (some even? (remove odd? (map (fn [x] (* x 2)) (conj [1 1 1] 3)))), :outcome [:value true], :test "g0047", :i 1}
+{:form (drop 3 (map (fn [x] (* x 2)) (list 1 2))), :outcome [:value ()], :test "g0047", :i 2}
+{:form (if ((fn [x] (and (number? x) (> x 2))) (let [x (unchecked-add 255 (count "Ab-C"))] (+ x 128))) (let [x (unchecked-subtract (inc' -1) 7)] (max x 10)) (dec 3)), :outcome [:value 10], :test "g0047", :i 3}
+{:form (select-keys (group-by even? (into [] (interleave [3 1 2] [0 -1 7 7]))) [:a :b]), :outcome [:value {}], :test "g0047", :i 4}
+{:form (even? (if (some? (sort-by str (keys (dissoc {:k/v "x", :a [1]} :a)))) 1.5 nil)), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0047", :i 5}
+{:form (clojure.string/upper-case "日本語"), :outcome [:value "日本語"], :test "g0047", :i 6}
+{:form (let [x (nth (vector (- 128 1000) (reduce + 0 [0 -1 7 7])) 0)] (max x (reduce + 0 [1 1 1]))), :outcome [:value 3], :test "g0047", :i 7}
+{:form (str (clojure.string/index-of (clojure.string/join "-" (remove even? (sort-by str (keys {:a 1, :b 2})))) "語")), :outcome [:throws "java.lang.IllegalArgumentException"], :test "g0047", :i 8}
+{:form (compare "abc" "é"), :outcome [:value -4], :test "g0047", :i 9}
+{:form (get (select-keys {:a 1} []) :b), :outcome [:value nil], :test "g0048", :i 0}
+{:form (assoc {:a 1, :b 2} :c (- (count (remove pos? [1 2 3])))), :outcome [:value {:a 1, :b 2, :c 0}], :test "g0048", :i 1}
+{:form (keyword? 255), :outcome [:value false], :test "g0048", :i 2}
+{:form (into #{} [3 1 2]), :outcome [:value #{1 3 2}], :test "g0048", :i 3}
+{:form (into #{} (map (fn [x] (* x 2)) (map inc (list 1 2)))), :outcome [:value #{4 6}], :test "g0048", :i 4}
+{:form (every? even? (partition 3 [])), :outcome [:value true], :test "g0048", :i 5}
+{:form (into #{} (map inc (partition 2 (interleave [3 1 2] [])))), :outcome [:value #{}], :test "g0048", :i 6}
+{:form (count (partition-all 3 (remove pos? (partition 3 [1 2 3])))), :outcome [:throws "java.lang.ClassCastException"], :test "g0048", :i 7}
+{:form (every? odd? [1 2 3]), :outcome [:value false], :test "g0048", :i 8}
+{:form (str true (+ 3 (compare (str 1.5 [0 -1 7 7]) "é"))), :outcome [:value "true-181"], :test "g0048", :i 9}
+{:form (bit-and (first (vector -9223372036854775808)) 255), :outcome [:value 0], :test "g0049", :i 0}
+{:form (get (frequencies (take 2 (take 2 [0 1 2 3 4]))) :c), :outcome [:value nil], :test "g0049", :i 1}
+{:form (unchecked-multiply -3 (nth (vector -128 (+ (reduce + 0 []) (first (vector 256)))) 0)), :outcome [:value 384], :test "g0049", :i 2}
+{:form (get (zipmap [:a :b] (partition 2 (partition 3 [0 -1 7 7]))) :b), :outcome [:value nil], :test "g0049", :i 3}
+{:form (get (frequencies (butlast (list 1 2))) :a), :outcome [:value nil], :test "g0049", :i 4}
+{:form (into #{} [1 1 1]), :outcome [:value #{1}], :test "g0049", :i 5}
+{:form (group-by pos? []), :outcome [:value {}], :test "g0049", :i 6}
+{:form (get (merge (merge {:k/v "x", :a [1]} {:a 1}) (merge {} (frequencies [1 1 1]))) :b), :outcome [:value nil], :test "g0049", :i 7}
+{:form (zero? (coll? -2.25)), :outcome [:throws "java.lang.ClassCastException"], :test "g0049", :i 8}
+{:form (name :x), :outcome [:value "x"], :test "g0049", :i 9}

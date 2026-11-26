@@ -239,3 +239,22 @@ What a build must check first
 3. delay: delay.hpp gained members (exception_ptr, option<error_ref>, atomic<bool>); rebuild
    everything that includes it. multi_function.hpp is unchanged.
 4. Then the tests each report names, and jank's own suites (test/cpp, test/jank, test/bash).
+
+On a build (2026-11-26)
+-----------------------
+all.diff applied to jank main 7135b7708 (94d32623's compiler+runtime), built with ninja on Linux
+x86-64; every replica test (deviations_*_test.jank, the hangs files left out) and jank's 551
+pass- files, each in its own process, on the stock build and on this one:
+- Replica tests: 16 of 358 pass on stock, 182 with all.diff: 169 now pass.
+- Regressions to fix before the patch is whole:
+  - deviations_main_test no longer loads (its tests give no report): a `case` with the test
+    constant 2147483648 throws "Value out of range for int" while macroexpanding. core.jank's
+    `case` (prep-ints) calls `int` on every integer test, and `int` now checks its range as
+    Clojure's does; Clojure's case takes its hash mode for tests outside int's range.
+  - s02: (/ 6.0M 3.0M) gives 1.9999...M (120 digits) and (/ 3 6.0M) 0.4999...M, not 2.0M and 0.5M.
+  - jank's own suite: 549 of 551 pass on stock, 544 with all.diff. Now failing:
+    cpp/case/pass-common-native-type, cpp/case/pass-implicitly-compatible-native-type,
+    cpp/case/pass-implicitly-compatible-primitive-type, form/case/pass-big-integer and
+    cpp/loop/pass-native-binding-trait-convertible (the branch typing of R23/R26, R24's loop
+    locals, and `case` with the checked `int`).
+

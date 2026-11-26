@@ -138,3 +138,16 @@ returns on one moment (CE59), and a command-line run's injector reaching its ana
 kept copy's name (CE60). All five, and CE45's remaining paths, are fixed on the platform's next
 (7abcbbf, db50882, dbca564, 8ee80ba, 4af1750, c4f246e), each with a regression test that failed
 first.
+
+## Round 8
+
+[REPORT-8.md](REPORT-8.md): round 7's fixes rechecked at next c4f246e (each closes its
+counterexample on the paths it targets; Zig tests red on df8f08b and green on c4f246e), and six
+new, each with a test failing on c4f246e (`tests/r8_*.zig`): a drained run's catalog line taken
+as the verdict of a later resume (CE61), explain's control pull left to a draw that decides
+nothing, so a set value's variants are one history again (CE62), a `--scenario all` run's
+request rewritten with its first scenario and the explorer's own fields (CE63), `podman_cpuset`
+reading 512 bytes of the user manager's cpuset (CE64), a tree's declared lines written once per
+timeline instead of once per run (CE65), and a bundle that leaves the run's injectors on the
+recording host (CE66). CE62 and CE66 are fixed on the platform's next (7c5bc6f, c6c995e), each
+with a regression test that failed first; the others are in progress.

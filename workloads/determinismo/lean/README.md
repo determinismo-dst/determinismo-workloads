@@ -125,3 +125,16 @@ session step over about 41 KiB making its tape unreadable (CE52), returns past a
 (CE53), an aimed corrupt_reads naming a byte its read never had changed (CE54), and a test runner
 exiting 255 stopping xargs before the shard's later tests (CE55). CE49, CE52 and CE55 fail as Zig
 tests on copies of a7fe05d's junit.zig, tape.zig and ci.zig; each has its regression test in tests/.
+
+## Round 7
+
+[REPORT-7.md](REPORT-7.md): every counterexample rechecked at next df8f08b, with Zig tests
+(`tests/r7_*.zig`) red on a7fe05d and green on df8f08b for CE49, CE50, CE51, CE52, CE53, CE54,
+CE55, CE45 (a complete run resumed again) and the composer's `drivers_stopped`; CE25 and CE32-CE34
+closed. Five new, each with a test failing on df8f08b: the coverage gate's end label on a run from
+a snapshot (CE56), explain's `--draw <name>=<v>` counting one replay as m samples (CE57), returns
+past a full tape's marker from a cut timeline or a strategy (CE58), `returns_earlier` putting two
+returns on one moment (CE59), and a command-line run's injector reaching its analyses under its
+kept copy's name (CE60). All five, and CE45's remaining paths, are fixed on the platform's next
+(7abcbbf, db50882, dbca564, 8ee80ba, 4af1750, c4f246e), each with a regression test that failed
+first.

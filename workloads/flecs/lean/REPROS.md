@@ -1,10 +1,11 @@
 # flecs repros
 
-From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in three
-rounds (REPORT.md, REPORT-2.md, REPORT-3.md: each finding's minimal program, story, tape, code path
-and the documentation it breaks). Every entry below was reproduced on the real flecs v4.2.0: its C
-test (tests/flecs_lean) compiled against the release's single-file distribution with asserts on (a
-debug build: `FLECS_DEBUG` without `NDEBUG`), on macOS and on Linux (the `flecs-lean` workflow). A
+From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in six
+rounds (REPORT.md to REPORT-6.md: each finding's minimal program, story, tape, code path and the
+documentation it breaks). Every entry below was reproduced on the real flecs v4.2.0: its C test
+(tests/flecs_lean) compiled against the release's single-file distribution with asserts on (a
+debug build: `FLECS_DEBUG` without `NDEBUG`), on macOS, and rounds 1-5's on Linux too (the
+`flecs-lean` workflow); F47's race also in a release build (`NDEBUG`), as its entry says. A
 test returns 0 when flecs behaves as documented; the output shown is the real flecs's. Each entry's
 "Tracker" line says whether flecs's issues or PRs already have it (searched 2026-11-25).
 
@@ -143,6 +144,48 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_cache_stale_ref.c 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_spurious_wakeup.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
 # fatal: flecs.c: 64383: assert(world->workers_waiting == (stage_count - 1)) (INTERNAL_ERROR)
+```
+
+- [ ] **F45: `ecs_auto_override` of a DontFragment component on a prefab child aborts the instantiation** ("table type cannot contain DontFragment components"), with ChildOf and with Parent children; on the prefab itself it works. Story, code path and the docs it breaks: REPORT-6.md, F45.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26); related: #1334 added AUTO_OVERRIDE on prefab children (2024).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_child_auto_override_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# ChildOf child: instantiating
+# fatal: flecs.c: 41518: assert(!(id_cr->flags & EcsIdDontFragment)): table type cannot contain DontFragment components (INVALID_OPERATION)
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_child_auto_override_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# Parent child: instantiating
+# fatal: flecs.c: 41518: assert(!(id_cr->flags & EcsIdDontFragment)): ... (INVALID_OPERATION)
+```
+
+- [ ] **F46: during an order_by iteration, deleting a table and creating another lets the new table take the freed one's memory; the iterator returns its entities, which don't match the query, with the slice's freed arrays** (without a new table, skipping the slice still writes its freed monitor). Story, code path and the docs it breaks: REPORT-6.md, F46.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_reused_table_slot.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 85074: assert(columns[i] == expected): it->columns[0]=-27088 does not match expected 1 (tr=... src=0 ...)
+#   flecs_iter_assert_columns <- ecs_query_next <- main
+```
+
+- [ ] **F47: a multi-threaded system whose query has order_by**: in a debug build flecs aborts ("cannot sort query in multithreaded mode", UNSUPPORTED, src/query/cache/order_by.c:88), which no page says (Systems.md "Threading": staging "makes it safe for multiple threads to iterate the same world without taking locks"); in a release build (`NDEBUG`) the assert is gone and every worker sorts the same table in place and rebuilds its slices at once. Story, code path: REPORT-6.md, F47.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_order_by_sort_race.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 79891: assert(!(world->flags & EcsWorldMultiThreaded)): cannot sort query in multithreaded mode (UNSUPPORTED)
+```
+
+```sh
+# Release build: the race itself (3 of 3 runs), and ThreadSanitizer's 19 reports, most in the sort
+cc -std=gnu99 -O1 -g -DNDEBUG -I flecs/distr tests/flecs_lean/workers_order_by_sort_race.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# system runs: 2; compares during the frame: 895; two threads sorting at once: 1; table intact: 1
+# FAIL: two threads sorted the system's table in place at once
+cc -std=gnu99 -O1 -g -DNDEBUG -fsanitize=thread -I flecs/distr tests/flecs_lean/workers_order_by_sort_race.c flecs/distr/flecs.c -lm -lpthread -o t && TSAN_OPTIONS="halt_on_error=0" ./t
+# WARNING: ThreadSanitizer: data race (x19): flecs_query_cache_build_sorted_tables (18),
+#   flecs_query_cache_sort_tables, flecs_query_sync_match_monitor, flecs_run_system
 ```
 
 ## Panics where the docs say none, and none where they say one
@@ -339,6 +382,15 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_add_hook_view.c flecs/di
 # FAIL: ecs_get NULL inside on_add hook
 ```
 
+- [ ] **F44: a prefab with a ChildOf child and a Parent child gives instances no copy of the ChildOf child; a ChildOf child below a Parent child is dropped too** (HierarchiesManual.md: one parent can hold children of both storages, and instantiation works with both). Story, code path and the docs it breaks: REPORT-6.md, F44.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_mixed_children_instance.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# children: mixed 1 (copy of the ChildOf child: 0), two ChildOf 2, two Parent 2; nested: 1 child with 0 grandchild
+# FAIL: the instance has no child for a ChildOf prefab child next to or below a Parent child
+```
+
 ## Missed or extra events (observers, monitors, change detection, system activity)
 
 - [ ] **F37: A system whose commands reorder the phases makes the pipeline skip, in that frame, the systems now ordered before it (with or without ProgressTasks)**. Story, code path and the docs it breaks: REPORT-5.md, F37.
@@ -418,6 +470,37 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_is_true_consumes_chan
 # FAIL: after ecs_query_is_true, q1 no longer reports the set
 # FAIL: after ecs_query_is_true, q2 no longer reports the unmatched table
 # FAIL: after ecs_query_count, q2 no longer reports the unmatched table
+```
+
+- [ ] **F41: adding an IsA pair produces no OnSet for an inherited Sparse or DontFragment component with the Inherit trait**, at one or two levels (a table component gets it; ObserversManual.md "OnSet and Inheritance"). Story, code path and the docs it breaks: REPORT-6.md, F41.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_onset_sparse_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# OnSet events (one level, two levels): Position 1 1, Health (Sparse) 0 0, Defense (DontFragment) 0 0
+# FAIL: an IsA add produced no OnSet for an inherited Sparse or DontFragment component
+```
+
+- [ ] **F42: setting a DontFragment component on a base sends an OnSet, with the base's value, to an instance that overrides it** ("If the base entity has a component that the entity already had no event is generated"). Story, code path and the docs it breaks: REPORT-6.md, F42.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/set_base_onset_dont_fragment_override.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# OnSet events for inst after setting base: Position 0, Health 0, Defense 1; ecs_get(inst, Defense) = 7
+#   Defense event for inst: source base, value 60
+# FAIL: inst owns Defense (7) but got an OnSet for the base's value
+```
+
+- [ ] **F43: OnSet events name a base that is not the entity's source** (table components too): a second base that doesn't become the primary source, setting it, a variant with two bases (two events), a diamond (two events from one set). Story, code path and the docs it breaks: REPORT-6.md, F43.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_second_base_onset.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# 1. second base added: 1 event(s) for inst, 1 from b2
+# 2. second base set: 1 event(s) for inst (its Position: 1)
+# 3. variant with two bases: 2 event(s) for i3, 1 from b1 (its Position: 1)
+# control: b1 added after b2: 1 event(s) for inst2, 1 from b1
+# FAIL: OnSet events name a base that is not the entity's source for Position
 ```
 
 ## Predicted but not reproduced

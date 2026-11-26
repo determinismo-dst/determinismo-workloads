@@ -11,7 +11,11 @@ import FlecsLean.InhDF
 import FlecsLean.PipeQ
 import FlecsLean.WorkersCD
 import FlecsLean.OrVM
+import FlecsLean.OrVMFuel
 import FlecsLean.Spawner
+import FlecsLean.OnSetInh
+import FlecsLean.Slices
+import FlecsLean.WorkersSort
 
 open Flecs
 
@@ -170,6 +174,13 @@ def queryMain (args : List String) : IO UInt32 := do
     let g : TapeM QProg := genIterProg5
     let (st, done) := gexhaust g checkQ limit.toNat!
     greport s!"query iter5-exhaust limit={limit} complete={done}" st (some sh)
+  | ["iter6-desc-exhaust", limit] =>
+    let g : TapeM QProg := genIterProg5 true
+    let (st, done) := gexhaust g checkQ limit.toNat!
+    greport s!"query iter6-desc-exhaust limit={limit} complete={done}" st (some sh)
+  | ["iter6-desc-lib", mode, seed, n, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions QProg := genIterProg5 true
+    glib mode g checkQ prop n.toNat! seed.toNat! sh
   | ["iter5-lib", mode, seed, n, prop] =>
     let g : EStateM Determinismo.Stop Determinismo.Decisions QProg := genIterProg5
     glib mode g checkQ prop n.toNat! seed.toNat! sh
@@ -241,6 +252,11 @@ def orMain (args : List String) : IO UInt32 := do
     let (st2, _) := gexhaust g kinds limit.toNat!
     IO.println "  outcomes:"
     for (k, c) in st2.byProperty do IO.println s!"    {k}: {c}"
+  | ["agree", limit, ncomp, len, ntab] =>
+    -- round 6: the fuel-indexed VM against the partial one
+    let g : TapeM OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
+    let (st, done) := gexhaust g OrVM.agree limit.toNat!
+    greport s!"or agree ncomp={ncomp} len={len} ntab={ntab} limit={limit} complete={done}" st none
   | ["lib", mode, seed, n, ncomp, len, ntab, prop] =>
     let g : EStateM Determinismo.Stop Determinismo.Decisions OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
     glib mode g OrVM.check prop n.toNat! seed.toNat! sh
@@ -272,6 +288,19 @@ def spMain (args : List String) : IO UInt32 := do
     for (nm, p) in Spawn.cases do
       IO.println s!"== sp case {nm}"
       for (pr, d) in Spawn.check p do IO.println s!"  PROPERTY {pr}: {d}"
+  | ["six-exhaust", limit, n] =>
+    let g : TapeM Spawn6.Prog := Spawn6.genProg n.toNat!
+    let sh6 := fun (sig : String) (p : Spawn6.Prog) => gshrink Spawn6.shrink Spawn6.check sig p
+    let (st, done) := gexhaust g Spawn6.check limit.toNat!
+    greport s!"sp six-exhaust nodes={n} limit={limit} complete={done}" st (some sh6)
+  | ["six-lib", mode, seed, n, nodes, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Spawn6.Prog := Spawn6.genProg nodes.toNat!
+    glib mode g Spawn6.check prop n.toNat! seed.toNat! (fun sig p => gshrink Spawn6.shrink Spawn6.check sig p)
+  | ["six-cases"] =>
+    for (nm, p) in Spawn6.cases do
+      IO.println s!"== sp6 case {nm}: {repr p}"
+      IO.println s!"  instantiated nodes: {Spawn6.instantiated p}"
+      for (pr, d) in Spawn6.check p do IO.println s!"  PROPERTY {pr}: {d}"
   | _ => IO.println "usage: sp exhaust LIMIT NCOMP NCHILD LEN | lib MODE SEED N NCOMP NCHILD LEN PROP | cases"; return 1
   return 0
 
@@ -329,8 +358,10 @@ def wcdMain (args : List String) : IO UInt32 := do
   match args with
   | [mode, threads, tables, races, n, seed, filt] =>
     -- round 5: races "2" = no race reports, each table a new size class
+    -- round 6: races "4" = size classes on pages of 2 classes, no race reports
     let cfg : WCD.Cfg := { threads := threads.toNat!, tables := tables.toNat!, races := races == "1",
-                           sizeClasses := races == "2" || races == "3" }
+                           sizeClasses := races == "2" || races == "3" || races == "4",
+                           classesPerPage := if races == "4" then 2 else 0 }
     let cfg := if races == "3" then { cfg with races := true } else cfg
     let run := fun src =>
       let e := WCD.timeline cfg src
@@ -374,6 +405,72 @@ def workersMain (args : List String) : IO UInt32 := do
       IO.println (Determinismo.tape c'.taken)
     return 0
   | _ => IO.println "usage: workers explore|exhaust STAGES OPS FRAMES SPURIOUS N SEED FILTER"; return 1
+
+def osiMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : OSI.Prog) => gshrink OSI.shrink OSI.check sig p
+  match args with
+  | ["explore", seed, n, nents, len] =>
+    let g : TapeM OSI.Prog := OSI.genProg nents.toNat! len.toNat!
+    greport s!"osi explore seed={seed} n={n} nents={nents} len={len}" (gexplore g OSI.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, nents, len] =>
+    let g : TapeM OSI.Prog := OSI.genProg nents.toNat! len.toNat!
+    let (st, done) := gexhaust g OSI.check limit.toNat!
+    greport s!"osi exhaust nents={nents} len={len} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, nents, len, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions OSI.Prog := OSI.genProg nents.toNat! len.toNat!
+    glib mode g OSI.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in OSI.cases do
+      IO.println s!"== osi case {nm}: {repr p}"
+      IO.println s!"  events per call (entity, source): {OSI.trace p}"
+      for (pr, d) in OSI.check p do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: osi explore SEED N NENTS LEN | exhaust LIMIT NENTS LEN | lib MODE SEED N NENTS LEN PROP | cases"; return 1
+  return 0
+
+def slMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : Slices.Prog) => gshrink Slices.shrink Slices.check sig p
+  match args with
+  | ["explore", seed, n, ntags, ninit, ncalls] =>
+    let g : TapeM Slices.Prog := Slices.genProg ntags.toNat! ninit.toNat! ncalls.toNat!
+    greport s!"sl explore seed={seed} n={n} ntags={ntags} ninit={ninit} ncalls={ncalls}" (gexplore g Slices.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, ntags, ninit, ncalls] =>
+    let g : TapeM Slices.Prog := Slices.genProg ntags.toNat! ninit.toNat! ncalls.toNat!
+    let (st, done) := gexhaust g Slices.check limit.toNat!
+    greport s!"sl exhaust ntags={ntags} ninit={ninit} ncalls={ncalls} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, ntags, ninit, ncalls, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Slices.Prog := Slices.genProg ntags.toNat! ninit.toNat! ncalls.toNat!
+    glib mode g Slices.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in Slices.cases do
+      IO.println s!"== sl case {nm}: {repr p}"
+      let r := Slices.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: sl explore SEED N NTAGS NINIT NCALLS | exhaust LIMIT NTAGS NINIT NCALLS | lib MODE SEED N NTAGS NINIT NCALLS PROP | cases"; return 1
+  return 0
+
+def wsortMain (args : List String) : IO UInt32 := do
+  match args with
+  | [mode, threads, rows, races, n, seed, filt] =>
+    let cfg : WSort.Cfg := { threads := threads.toNat!, rows := rows.toNat!, races := races.toNat! }
+    let run := fun src =>
+      let e := WSort.timeline cfg src
+      match e.violation with
+      | some (p, d) => if filt == "all" || ((p ++ " " ++ d).splitOn filt).length > 1 then e
+                       else { e with violation := none }
+      | none => e
+    IO.println s!"== wsort {mode} threads={threads} rows={rows} races={races} filter={filt}"
+    match (← findWith mode run n.toNat! seed.toNat!) with
+    | none => IO.println "  no counterexample"
+    | some c =>
+      let c' := Determinismo.shrink run c
+      IO.println s!"  counterexample after {c.runs} timelines"
+      IO.println s!"  property: {c'.property}"
+      IO.println s!"  detail: {c'.detail}"
+      IO.println "  tape:"
+      IO.println (Determinismo.tape c'.taken)
+    return 0
+  | _ => IO.println "usage: wsort explore|exhaust THREADS ROWS RACES N SEED FILTER"; return 1
 
 def main (args : List String) : IO UInt32 := do
   match args with
@@ -513,6 +610,9 @@ def main (args : List String) : IO UInt32 := do
   | "wcd" :: rest => return (← wcdMain rest)
   | "or" :: rest => return (← orMain rest)
   | "sp" :: rest => return (← spMain rest)
+  | "osi" :: rest => return (← osiMain rest)
+  | "sl" :: rest => return (← slMain rest)
+  | "wsort" :: rest => return (← wsortMain rest)
   | _ =>
     IO.println "usage: flecs-search explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | ei-explore SEED N LEN | ei-exhaust LIMIT LEN"
     return 1

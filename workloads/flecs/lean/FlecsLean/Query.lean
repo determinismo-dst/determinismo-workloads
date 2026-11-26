@@ -154,7 +154,8 @@ def ensureGroup (q : QCache) (gid : UInt64) : M (QCache × Nat) := do
   let uid ← if gid == 0 then pure 0 else newVec
   let g : QGroup := { id := gid, uid }
   if q.cascade then
-    let pos := (q.groups.findIdx? (fun h => h.id > gid)).getD q.groups.size
+    -- round 6: descending order (group.c 41-48) for EcsDesc
+    let pos := (q.groups.findIdx? (fun h => if q.cascadeDesc then h.id < gid else h.id > gid)).getD q.groups.size
     return ({ q with groups := (q.groups.extract 0 pos).push g ++ q.groups.extract pos q.groups.size }, pos)
   return ({ q with groups := #[g] ++ q.groups }, 0)
 
@@ -933,6 +934,14 @@ partial def cursorNext (qi : Nat) (c : QCursor) (fuel : Nat := 1000) : M (QCurso
       -- 1205; the store keeps the memory, 1333-1336), so the slice is
       -- skipped (the model does not follow a reuse of the slot)
       let x := (← get).tables.getD t default
+      -- round 6 (model error corrected): an order_by query has change
+      -- detection from its first sort on (flecs_query_check_table_monitor
+      -- creates the monitors and sets EcsQueryHasChangeDetection,
+      -- change_detection.c 79-138), so the skip first syncs the slice's
+      -- monitor (cache_iter.c 84-87): for a freed table that is the block
+      -- flecs_query_cache_match_fini freed (match.c 41-43)
+      if !x.live then
+        noteViol s!"P1 use after free: the iterator skips a slice of table {t}, which was freed during the iteration, after syncing the slice's copy of its monitor (cache_iter.c 84-87, change_detection.c 581-633), a block flecs_query_cache_match_fini freed (match.c 41-43)"
       if !x.live || x.count == 0 then return (← cursorNext qi { c with cur := c.cur + 1 } (fuel - 1))
       let c := { c with cur := c.cur + 1, lastT := some t, lastEnts := x.ents.extract off (off + cnt), elem := none }
       return (c, some (t, 0, some (off, cnt)))

@@ -260,6 +260,9 @@ structure QCache where
       517-553), kept in ascending order (`EcsQueryGroupByOrdered`,
       group.c 37-54) -/
   cascade : Bool := false
+  /-- round 6: `EcsCascade|EcsDesc` (cache.c 869-871: `EcsQueryGroupByDesc`):
+      groups in descending order (group.c 41-48) -/
+  cascadeDesc : Bool := false
   /-- groups in list order (`first_group`, `next`) -/
   groups : Array QGroup := #[]
   matchCount : Int := 0

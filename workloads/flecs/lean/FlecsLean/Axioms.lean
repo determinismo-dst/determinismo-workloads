@@ -3,6 +3,7 @@ import FlecsLean.TheoremsPipe
 import FlecsLean.TheoremsInh
 import FlecsLean.TheoremsR4
 import FlecsLean.TheoremsR5
+import FlecsLean.TheoremsR6
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -54,3 +55,10 @@ import FlecsLean.TheoremsR5
 #print axioms Flecs.R5.spawner_stale_type
 #print axioms Flecs.R5.reorder_resume_past_end
 #print axioms Flecs.R5.pushMatch_full_reallocates
+#print axioms Flecs.R6.reach_dontFragment_nil
+#print axioms Flecs.R6.isa_onset_needs_column
+#print axioms Flecs.R6.onset_cases
+#print axioms Flecs.R6.spawner_only_parent
+#print axioms Flecs.R6.spawner_cases
+#print axioms Flecs.R6.reused_slot_case
+#print axioms Flecs.R6.or_after_chain_iterate

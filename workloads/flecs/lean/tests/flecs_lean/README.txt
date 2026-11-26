@@ -1,8 +1,8 @@
 C tests for the predictions in ../../REPORT.md (round 1, F1-F14),
 ../../REPORT-2.md (round 2, F2 corrected and F15-F23), ../../REPORT-3.md
 (round 3, F24-F28), ../../REPORT-4.md (round 4, F29-F33, and the
-corrected F16, F17 and F26 tests) and ../../REPORT-5.md (round 5,
-F34-F40), against flecs v4.2.0.
+corrected F16, F17 and F26 tests), ../../REPORT-5.md (round 5,
+F34-F40) and ../../REPORT-6.md (round 6, F41-F47), against flecs v4.2.0.
 
 Each file is one program.  main() returns 0 when flecs behaves as its
 documentation says; a non-zero return or an abort confirms the prediction.
@@ -85,3 +85,21 @@ Round 5 (all use ecs_mini(); none was run in round 5):
                   tree_spawner_stale_sparse_assert.c (an abort confirms:
                   the handler prints FAIL and exits 1)
   F40             query_order_by_stale_rows.c
+
+Round 6 (all use ecs_mini() except the threaded test; none was run in
+round 6):
+  F41             isa_onset_sparse_dont_fragment.c (OnSet on an IsA add,
+                  one and two levels; a table component is the control)
+  F42             set_base_onset_dont_fragment_override.c
+  F43             isa_second_base_onset.c
+  F44             prefab_mixed_children_instance.c
+  F45             prefab_child_auto_override_dont_fragment.c (ChildOf child),
+                  prefab_parent_child_auto_override_dont_fragment.c (Parent
+                  child; it includes the first file with
+                  FLECS_LEAN_PARENT_CHILD set). An abort confirms: the
+                  handler prints FAIL and exits 1.
+  F46             query_order_by_reused_table_slot.c
+  F47             workers_order_by_sort_race.c (needs threads: link with
+                  -lpthread; ecs_init(); the order_by callback is a
+                  rendezvous that detects two threads sorting at once; a
+                  crash or an abort also confirms)

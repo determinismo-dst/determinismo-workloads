@@ -43,6 +43,9 @@ inductive Loc
   /-- round 5: the world allocator's size-class set (`a->sizes`, a sparse
       set: its count, dense array and page slots) -/
   | sizesCount | sizesDense (i : Nat) | sizesSlot (c : Nat)
+  /-- round 6: the page array of that sparse set (`sparse->pages`, an
+      ecs_vec of page structs) and one page's pointers -/
+  | sizesPages | sizesPage (pg : Nat)
   deriving Repr, BEq, Inhabited
 
 def Loc.show : Loc → String
@@ -54,6 +57,8 @@ def Loc.show : Loc → String
   | .sizesCount => "world->allocator.sizes.count"
   | .sizesDense i => s!"world->allocator.sizes.dense[{i}]"
   | .sizesSlot c => s!"world->allocator.sizes page slot of size class {c}"
+  | .sizesPages => "world->allocator.sizes.pages (the vector of pages)"
+  | .sizesPage pg => s!"world->allocator.sizes.pages[{pg}] (its sparse and data arrays)"
 
 /-- Program counter of a worker: table `t`, step `s`, and a register. -/
 structure PC where
@@ -82,6 +87,15 @@ structure Mem where
   sizesCount : Nat := 1
   sizesDense : Array Nat := #[]
   sizesSlot : Array Nat := #[]
+  /-- round 6: the pages of the size-class set (FLECS_SPARSE_PAGE_SIZE
+      classes each; a class is size / 16, so classes of 1024 bytes and more
+      are past page 0): the page count and each page's identity (0 =
+      none) -/
+  pagesCount : Nat := 0
+  pages : Array Nat := #[]
+  nextPage : Nat := 1
+  /-- `pages` mode: size class `t` is on page `t / classesPerPage` -/
+  classesPerPage : Nat := 0
   deriving Inhabited
 
 abbrev WM := ProcessM Mem PC
@@ -141,9 +155,29 @@ def step (races sizeClasses : Bool) (th : Nat) (pc : PC) : WM (StepResult PC) :=
   -- round 5: flecs_allocator_get for the dirty state's size (10-13), then
   -- the class's free list (5-7)
   | 10 =>
+    -- round 6: flecs_sparse_get / flecs_sparse_ensure_fast first find the
+    -- class's page (sparse.c 77-102): a missing page is created
+    -- (flecs_sparse_page_new, 11-54: the pages vector grows with
+    -- ecs_vec_set_count, then the page's arrays are calloc'ed)
+    if m.classesPerPage != 0 then
+      let pg := t / m.classesPerPage
+      acc (.sizesPage pg) false
+      if m.pages.getD pg 0 == 0 then return .ran { pc with s := 14 }
     acc (.sizesSlot t) false
     let d := m.sizesSlot.getD t 0
     if d != 0 && d < m.sizesCount then return .ran { pc with s := 5 }
+    return .ran { pc with s := 11 }
+  | 14 =>
+    acc .sizesPages false
+    return .ran { pc with s := 15, reg := m.pagesCount }
+  | 15 =>
+    let pg := t / m.classesPerPage
+    acc .sizesPages true
+    acc (.sizesPage pg) true
+    let old := m.pages.getD pg 0
+    if old != 0 then
+      violate "PW4 no lost allocation" s!"thread {th} creates page {pg} of world->allocator.sizes over page {old}, which another thread created after both found it missing (sparse.c 16-24, 39-49: ecs_vec_set_count of the pages vector, then the calloc'ed arrays stored in pages[{pg}]): the first page's arrays leak, and the size classes it held are lost"
+    modMem fun m => { m with pagesCount := max m.pagesCount (pg + 1), pages := m.pages.set! pg m.nextPage, nextPage := m.nextPage + 1 }
     return .ran { pc with s := 11 }
   | 11 => acc .sizesCount false; return .ran { pc with s := 12, reg := m.sizesCount }
   | 12 =>
@@ -184,6 +218,9 @@ structure Cfg where
   races : Bool := true
   /-- round 5: each table's dirty state is a new size class -/
   sizeClasses : Bool := false
+  /-- round 6: size classes per page of the size-class set (0: pages not
+      modelled) -/
+  classesPerPage : Nat := 0
   maxSteps : Nat := 200
   deriving Repr, Inhabited
 
@@ -191,7 +228,8 @@ def timeline (cfg : Cfg) (src : Source) : Ended := Id.run do
   let start : Process Mem PC :=
     { memory := { ntables := cfg.tables, monHead := 1, dirtyHead := 1,
                   monitor := Array.replicate cfg.tables 0, dirty := Array.replicate cfg.tables 0,
-                  sizesDense := Array.replicate (cfg.tables + 2) 0, sizesSlot := Array.replicate cfg.tables 0 },
+                  sizesDense := Array.replicate (cfg.tables + 2) 0, sizesSlot := Array.replicate cfg.tables 0,
+                  classesPerPage := cfg.classesPerPage, pages := Array.replicate (cfg.tables + 1) 0 },
       threads := Array.replicate cfg.threads (some {}) }
   let body : WM Unit := interleave { step := step cfg.races cfg.sizeClasses } cfg.maxSteps
   let (r, p) := runProcess start body src

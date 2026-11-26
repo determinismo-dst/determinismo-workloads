@@ -491,9 +491,10 @@ def genIterProg : m QProg := do
     C0 + (Delete, e0); nothing); optionally `ecs_query_changed` (which turns
     change detection on); then one iteration with a call after result k:
     reparent, unparent, delete, or add C1/tag. -/
-def genIterProg5 : m QProg := do
-  let shape ← Pick.pick "it5.query" 5
-  let casc : QCache := { terms := #[{ id := C0, io := .in_ }, { id := C0, src := .up, oper := .optional, io := .in_ }], cascade := true }
+def genIterProg5 (desc : Bool := false) : m QProg := do
+  -- round 6: with `desc`, only the cascade shapes, in descending order
+  let shape ← Pick.pick "it5.query" (if desc then 2 else 5)
+  let casc : QCache := { terms := #[{ id := C0, io := .in_ }, { id := C0, src := .up, oper := .optional, io := .in_ }], cascade := true, cascadeDesc := desc }
   let q : QCache := match shape with
     | 0 => casc
     | 1 => { casc with detect := true }

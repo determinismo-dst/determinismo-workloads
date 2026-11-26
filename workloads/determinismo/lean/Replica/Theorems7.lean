@@ -9,7 +9,8 @@ import Replica.ComposerSearch
 As before: general ones for every input, and "(by computation)" ones that evaluate a minimal case
 with `native_decide` (trusting Lean's compiler, as the searches do). The models default to
 df8f08b since round 7; round 6's theorems about a7fe05d's code are pinned to `.va7fe05d`
-(Theorems6, Theorems4, Theorems3).
+(Theorems6, Theorems4, Theorems3). Round 8: the models c4f246e changed default to it, and this
+file's theorems about df8f08b's code of them are pinned to `.vdf8f08b`.
 
 First the recheck: each counterexample round 6 found, on df8f08b's code (closed, or what the
 change leaves). Then the earlier ones df8f08b's commits touched (CE25, CE26, CE32 to CE34, the
@@ -66,8 +67,8 @@ theorem replay_before_the_marker (at_ m : Nat) (h : m ≤ at_) : Tape6.replayTo 
 /-- (by computation) Round 6's draws at df8f08b: the judgment's moment is drawn before the
 marker (pull 2); the child replays. -/
 theorem ce53_closed :
-    ((Tape6.judgeFull (Tape6.fullWorlds[0]!) (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = false ∧
-    ((Tape6.judgeFull (Tape6.fullWorlds[0]!) (Source.path #[0, 1, 1, 2, 0])).violation.isSome) = false := by
+    ((Tape6.judgeFull { Tape6.fullWorlds[0]! with ver := .vdf8f08b } (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = false ∧
+    ((Tape6.judgeFull { Tape6.fullWorlds[0]! with ver := .vdf8f08b } (Source.path #[0, 1, 1, 2, 0])).violation.isSome) = false := by
   native_decide
 
 /-! ## CE54: closed (nodes.zig:2269-2285, 2293-2318 `read_corrupted_parts`) -/
@@ -165,7 +166,7 @@ never stopped. Its four timelines run to the run's end, none reporting coverage 
 setup's): the end's `uncovered` file says its system runs without its language's
 instrumentation (762-772): CE56. -/
 theorem ce50_closed_ce56_said :
-    (match (Serve3.drawGate { label := "", instrumented := some true, fromSnapshot := some true }).run
+    (match (Serve3.drawGate { label := "", instrumented := some true, fromSnapshot := some true, ver := .vdf8f08b }).run
         { decisions := { source := Source.path #[0, 0, 1, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1] } } with
      | .ok g _ => g.stoppedAt.isNone && g.labeled && g.rows.all (·.2 == 0)
      | .error _ _ => false) = true := by
@@ -178,12 +179,12 @@ its tapes were recorded with. -/
 theorem ce51_closed (a : Request6.Asked) (h : a.injectors = []) :
     Request6.inputs (Request6.analysisOfCommandLine .vdf8f08b a) = Request6.inputs a := by
   cases a
-  simp_all [Request6.analysisOfCommandLine, Ver.sinceDf]
+  simp_all [Request6.analysisOfCommandLine, Ver.sinceDf, Ver.sinceC4]
 
 /-- (by computation) CE60: with `--injector ./chaos`, the request holds the kept copy
 (`<hash>-chaos`): the analysis's system disk has another injector name, its inputs differ. -/
 theorem ce60_injector_by_another_name :
-    Request6.inputs (Request6.analysisOfCommandLine .vdf8f08b { injectors := ["chaos"] }) ≠ Request6.inputs { injectors := ["chaos"] } := by
+    Request6.inputs (Request6.analysisOfCommandLine .vdf8f08b { injectors := [["chaos"]] }) ≠ Request6.inputs { injectors := [["chaos"]] } := by
   native_decide
 
 /-! ## The composer's stop (composer.zig:820-827, df8f08b) -/
@@ -226,7 +227,7 @@ theorem ce25_ce26_closed :
 /-- (by computation) The same draws as `ce50_closed_ce56_said`, read as the property: an
 instrumented system, said to run without its instrumentation. -/
 theorem ce56_snapshot_run_said_uninstrumented :
-    ((Serve3.judgeGate 2 { label := "", instrumented := some true, fromSnapshot := some true }
+    ((Serve3.judgeGate 2 { label := "", instrumented := some true, fromSnapshot := some true, ver := .vdf8f08b }
         (Source.path #[0, 0, 1, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1])).violation.isSome) = true := by
   native_decide
 
@@ -242,7 +243,7 @@ theorem ce57_verdicts :
 named draw's value: the control's 6 histories, 5 failing; the value set to 0, one history (its
 tape replayed 6 times), not failing: "needed". -/
 theorem ce57_one_history_needed :
-    ((Explain7.judge 6 (some 0) (Source.path #[1, 1, 1, 1, 1, 0, 0])).violation.isSome) = true := by
+    ((Explain7.judge 6 (some 0) (Source.path #[1, 1, 1, 1, 1, 0, 0]) .vdf8f08b).violation.isSome) = true := by
   native_decide
 
 /-! ## CE59: two returns at one moment through returns_earlier (CE26's remainder) -/
@@ -251,7 +252,7 @@ theorem ce57_one_history_needed :
 archive returns #0@23 and #0@8 are distinct; returns_earlier moves the first 15 µs earlier: both
 at #0@8. -/
 theorem ce59_offsets_meet :
-    ((Tree.judgeT Tree.distinctMoments (Tree.tworlds[0]!) (Source.seeded 20)).violation.isSome) = true := by
+    ((Tree.judgeT Tree.distinctMoments { Tree.tworlds[0]! with ver := .vdf8f08b } (Source.seeded 20)).violation.isSome) = true := by
   native_decide
 
 /-- (by computation) What two returns at one moment do to a resume at df8f08b: two `planned`
@@ -269,8 +270,8 @@ theorem ce59_one_key_two_plans_on_resume :
 start and end alone (main.zig:7625-7631). Either returns to moment 3, past the marker at pull 2:
 the child's chain stops there. -/
 theorem ce58_cut_or_strategy_past_the_marker :
-    ((Tape6.judgeFull (Tape6.fullWorlds[3]!) (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = true ∧
-    ((Tape6.judgeFull (Tape6.fullWorlds[4]!) (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = true := by
+    ((Tape6.judgeFull { Tape6.fullWorlds[3]! with ver := .vdf8f08b } (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = true ∧
+    ((Tape6.judgeFull { Tape6.fullWorlds[4]! with ver := .vdf8f08b } (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = true := by
   native_decide
 
 /-! ## corrupt_reads: a reader that dies during its fault (round 6's list) -/

@@ -108,8 +108,9 @@ structure Config where
   search's: two runs judging the same generation draw the same. -/
   seededJudgment : Bool := false
   /-- Round 6: main.zig as at a7fe05d (`plan_adopt_ran`, 6399-6410, 6490: a judged timeline's
-  plan takes the seed it ran with) unless a theorem about 3939448 says so. -/
-  ver : Ver := .vdf8f08b
+  plan takes the seed it ran with) unless a theorem about 3939448 says so. Round 8: c4f246e
+  (`returns_earlier`'s landing check, CE59's fix). -/
+  ver : Ver := .vc4f246e
   deriving Inhabited
 
 def branchSeed (base index : Nat) : Nat := mix (base * 1000003 + 77) (index + 1)
@@ -314,7 +315,7 @@ def judge : RM Unit := do
     st := st2
     returns := r
   let returnsAt := returns
-  returns ← draw (returnsEarlier cfg.offsets returns)
+  returns ← draw (returnsEarlier cfg.offsets returns cfg.ver)
   for sm in summaries do
     for b in sm.behaviors do st := { st with visits := bump st.visits b.hash }
   -- The nodes (6440-6531): the parent in this generation's plan, else an earlier one's.

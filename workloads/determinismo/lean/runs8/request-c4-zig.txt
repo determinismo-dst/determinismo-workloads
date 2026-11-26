@@ -1,0 +1,32 @@
+1/4 request.test.round 7, CE51: a command-line run's analyses are given every input flag of its command line and machine...OK
+2/4 request.test.round 7, CE60: an injector reaches the analysis under the name the run's system disk has...
+the run's injector: chaos; the analysis's: chaos
+OK
+3/4 request.test.round 7, CE51's control: --clock-start-max is given again (a7fe05d's own fix)...OK
+4/4 request.test.round 8, CE63: a run of several scenarios keeps the request it was asked...
+the request asked: scenario all, return_branches 2, a CI job's; after the first scenario began: scenario transfer, return_branches null, ci gone
+
+====== expected this output: =========
+all␃
+
+======== instead found this: =========
+transfer␃
+
+======================================
+First difference occurs on line 1:
+expected:
+all
+^ ('\x61')
+found:
+transfer
+^ ('\x74')
+FAIL (TestExpectedEqual)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:696:9: 0x104c0b61f in expectEqualStrings (test)
+        return error.TestExpectedEqual;
+        ^
+scratch/zig8/c4/request/request.zig:692:5: 0x104c0c723 in test.round 8, CE63: a run of several scenarios keeps the request it was asked (test)
+    try std.testing.expectEqualStrings("all", asked.scenario.?);
+    ^
+3 passed; 0 skipped; 1 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/970aac178f60270caf21a14efca9ac30/test --seed=0x350cf37

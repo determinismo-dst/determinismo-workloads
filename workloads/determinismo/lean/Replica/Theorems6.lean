@@ -206,7 +206,7 @@ theorem ce51_analysis_boots_other_inputs :
     Request6.inputs (Request6.analysisOfCommandLine .va7fe05d { swarm := false }) ≠ Request6.inputs { swarm := false } ∧
     Request6.inputs (Request6.analysisOfCommandLine .va7fe05d { epoch := some 1893456000 }) ≠ Request6.inputs { epoch := some 1893456000 } ∧
     Request6.inputs (Request6.analysisOfCommandLine .va7fe05d { timerSlackUs := 50 }) ≠ Request6.inputs { timerSlackUs := 50 } ∧
-    Request6.inputs (Request6.analysisOfCommandLine .va7fe05d { injectors := ["./chaos"] }) ≠ Request6.inputs { injectors := ["./chaos"] } ∧
+    Request6.inputs (Request6.analysisOfCommandLine .va7fe05d { injectors := [[".", "chaos"]] }) ≠ Request6.inputs { injectors := [[".", "chaos"]] } ∧
     Request6.inputs (Request6.analysisOfCommandLine .v62e06e3 { clockStartMaxMs := some 0 }) ≠ Request6.inputs { clockStartMaxMs := some 0 } := by
   native_decide
 

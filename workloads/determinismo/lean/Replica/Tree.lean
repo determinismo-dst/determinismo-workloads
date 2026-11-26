@@ -183,7 +183,7 @@ structure TreeState where
   generation : Nat := 0
   /-- Round 7: the code's version (df8f08b: `archive_add_judged`'s repeats, CE25's fix;
   `archive_returns`' moments taken once, CE26's fix). -/
-  ver : Ver := .vdf8f08b
+  ver : Ver := .vc4f246e
   deriving Inhabited
 
 def lookup {α : Type} (xs : List (Nat × α)) (k : Nat) : Option α := (xs.find? (·.1 == k)).map (·.2)
@@ -430,17 +430,24 @@ def treeReturns (st : TreeState) (answer : Option Answer) (chosen : List Candida
                        earliest := if !extend && c.moment.isSome then some (s.startNs + after) else none }]
   return (st, list, fillFresh)
 
-/-- main.zig:6893-6918 `returns_earlier`. -/
-def returnsEarlier (offsets : List Nat) (returns : List TreeReturn) : JM (List TreeReturn) := do
+/-- main.zig:6893-6918 `returns_earlier`. Round 8, c4f246e (main.zig:7262-7290, CE59's fix):
+never onto a moment another return of the generation has (`moved`, as moved so far: the earlier
+ones at their new moments, the later ones at their own). -/
+def returnsEarlier (offsets : List Nat) (returns : List TreeReturn) (ver : Ver := .vc4f246e) : JM (List TreeReturn) := do
   if offsets.isEmpty then return returns
-  let mut out := []
-  for back in returns do
+  let mut moved := returns.toArray
+  for i in [0:moved.size] do
+    let back := moved[i]!
     match back.earliest with
-    | none => out := out ++ [back]
+    | none => pure ()
     | some earliest =>
       let offset := offsets[(← below "return.offset" offsets.length)]!
-      if offset == 0 || back.vtime < earliest + offset then out := out ++ [back]
-      else out := out ++ [{ back with vtime := back.vtime - offset, why := back.why ++ s!" Landed {offset} µs before that moment instead." }]
-  return out
+      if offset == 0 || back.vtime < earliest + offset then pure ()
+      else
+        let landing := back.vtime - offset
+        let taken := ver.sinceC4 && (moved.toList.zipIdx.any fun (other, j) => j != i && other.branch == back.branch && other.vtime == landing)
+        if !taken then
+          moved := moved.set! i { back with vtime := landing, why := back.why ++ s!" Landed {offset} µs before that moment instead." }
+  return moved.toList
 
 end Replica.Tree

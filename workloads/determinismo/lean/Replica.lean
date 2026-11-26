@@ -40,3 +40,4 @@ import Replica.Explain7
 import Replica.Disk7
 
 import Replica.Theorems7
+import Replica.Theorems8

@@ -118,8 +118,8 @@ structure GW where
   /-- The system's language instrumented (its coverage reported), or drawn. -/
   instrumented : Option Bool := none
   /-- Round 6: serve.zig as at a7fe05d (`setup_covered`, `explored`) unless a theorem about
-  3939448 says so. -/
-  ver : Ver := .vdf8f08b
+  3939448 says so. Round 8: c4f246e by default (CE56's fix, serve.zig:766-770). -/
+  ver : Ver := .vc4f246e
   /-- Round 6: the run starts from a snapshot or checkpoint its setup ran in (another run's: a
   fast VM's explore-here, a checkpoint run, a moment's futures), or drawn. -/
   fromSnapshot : Option Bool := some false
@@ -184,7 +184,9 @@ def drawGate (w : GW) : EStateM Stop RSt Gate := do
     if counted ≥ 4 && !(w.ver.sinceDf && fromSnapshot) then
       stoppedAt := some i
       break
-  let labeled := stoppedAt.isNone && !(rows.any (·.2 > 0) || setupCovered)
+  -- c4f246e (serve.zig:766-770, CE56's fix): the end's label is not written for a run from a
+  -- machine's checkpoint or a fork's snapshot either.
+  let labeled := stoppedAt.isNone && !(rows.any (·.2 > 0) || setupCovered) && !(w.ver.sinceC4 && fromSnapshot)
   return { rows, stoppedAt, instrumented, setupEdges, edgesRun, fromSnapshot, labeled }
 
 def gateProp : String × String :=
@@ -196,6 +198,12 @@ def gateSays : String × String :=
   ("the coverage gate says a run's system runs without its language's instrumentation only when it does",
    "docs/SDKS.md:101-105; serve.zig:756-757 (df8f08b): the remedy \"its system runs without its language's instrumentation (coverage always); build its workload with it\", in the stop's reason and in the `uncovered` file of a run that ended (762-772); serve.zig:779-783 (df8f08b, CE50's fix): a run from a checkpoint or a fork's snapshot is \"judged at its end, never stopped as uninstrumented\"")
 
+/-- Round 8: the other direction, as serve.zig's own comments say it: an uninstrumented run
+that ended unstopped is said so at its end. -/
+def gateSaysUninstrumented : String × String :=
+  ("a run of an uninstrumented system that ends unstopped is said uncovered at its end",
+   "serve.zig:686-690 (c4f246e: \"One that ended by itself before the gate looked keeps its verdict and gets an `uncovered` file saying the same\"), 783-787 (CE50's exemption: a run from a checkpoint or a fork's snapshot is \"Judged at its end, never stopped as uninstrumented\"); docs/SDKS.md:101-105 (\"A run without coverage is explored blind, so serve does not let one go unnoticed\")")
+
 def gateCounts : String × String :=
   ("the coverage gate judges the run's own first 4 timelines",
    "docs/SDKS.md:101-102 (\"a run whose first 4 ended timelines report none is stopped\"); store.zig:676-680 (sessions are not what the run explored)")
@@ -203,7 +211,11 @@ def gateCounts : String × String :=
 def judgeGate (which : Nat) (w : GW) (source : Source) : Ended :=
   match (drawGate w).run { decisions := { source } } with
   | .ok g s =>
-    let v := if which == 2 then
+    let v := if which == 3 then
+        if !g.instrumented && g.stoppedAt.isNone && !g.labeled && g.rows.length > 0 then
+          some (gateSaysUninstrumented.1, s!"an uninstrumented system{if g.fromSnapshot then " run from a machine's checkpoint or a fork's snapshot" else ""}: its {g.rows.length} timelines reported no coverage; never stopped, and its end writes no `uncovered` file: nothing says it ran blind")
+        else none
+      else if which == 2 then
         if g.labeled && g.instrumented then
           some (gateSays.1, s!"an instrumented system: its setup ran edges {g.setupEdges}{if g.fromSnapshot then " in the snapshot the run starts from (a machine's checkpoint or a fork's: this run's events/setup.jsonl empty)" else ""}, its {g.rows.length} timelines ran {g.edgesRun}, each reporting none (all the setup's): never stopped, but its end writes `uncovered`: \"its system runs without its language's instrumentation ... build its workload with it\"")
         else none
@@ -274,7 +286,7 @@ def searchAll (exhaustRuns : Nat) : IO Unit := do
       printFound f (fun src => match (drawResume w).run { decisions := { source := src } } with
         | .ok r _ => [s!"timelines {reprStr r.timelines}", s!"stopped with {r.recorded} recorded; resumed: exit {r.status} ({state r.status})", s!"properties: {if runFailing r.timelines then "failing" else "passing"}"]
         | .error _ _ => [])
-  for (which, p) in [(0, gateProp), (1, gateCounts), (2, gateSays)] do
+  for (which, p) in [(0, gateProp), (1, gateCounts), (2, gateSays), (3, gateSaysUninstrumented)] do
     say s!"== serve property: {p.1}"
     say s!"   source: {p.2}"
     for w in [({ label := "an instrumented system, 3 edges, up to 5 timelines", instrumented := some true } : GW),
@@ -284,6 +296,9 @@ def searchAll (exhaustRuns : Nat) : IO Unit := do
               { label := "an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not", instrumented := some true, fromSnapshot := none },
               -- Round 7: the same at a7fe05d (CE50 found again).
               { label := "a7fe05d: an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not", instrumented := some true, fromSnapshot := none, ver := .va7fe05d },
+              -- Round 8: df8f08b's (CE56 found again), and either system from a snapshot or not.
+              { label := "df8f08b: an instrumented system, 3 edges, up to 5 timelines, from a snapshot or not", instrumented := some true, fromSnapshot := none, ver := .vdf8f08b },
+              { label := "3 edges, up to 5 timelines, from a snapshot or not", fromSnapshot := none },
               { label := "3939448: an instrumented system, 3 edges, up to 5 timelines", instrumented := some true, ver := .v3939448 },
               { label := "3939448: 3 edges, up to 5 timelines, sessions opened", sessions := true, ver := .v3939448 }] do
       if let some f ← exhaustSaid s!"{p.1} / {w.label}" (judgeGate which w) exhaustRuns then

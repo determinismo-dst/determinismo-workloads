@@ -1,0 +1,112 @@
+== tape property: a session's timeline replays from its tape: every step and override the recorder wrote is read back
+   source: README_AI.md ("every timeline replays bit-identically"); src/core/vm.zig:2202-2203 (a7fe05d: "A step the moment runs, on the timeline's own tape at the moment it ran: a replay of the timeline runs it there again"), 3684-3687 ("instead of a tape no replay can read")
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a buffer of 16 bytes, steps of 4 or 20 bytes, overrides, 3 items]: complete, 27 timelines, none broke it (1 ms)
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a parse scratch of 8 bytes, a buffer of 100, steps of 4 or 12 bytes, overrides, 3 items]: complete, 27 timelines, none broke it (2 ms)
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a step table of 2 steps and 10 bytes, steps of 4 bytes, 4 items]: complete, 16 timelines, none broke it (1 ms)
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a7fe05d: a buffer of 16 bytes, steps of 4 or 20 bytes, overrides, 3 items]: FOUND after 3 timelines (2 ms): a session's timeline replays from its tape: every step and override the recorder wrote is read back: the session ran [Replica.Tape6.Item.override 1, Replica.Tape6.Item.override 2, Replica.Tape6.Item.step 20 0]; its tape: [Replica.Tape6.Piece.line (Replica.Tape6.Item.override 1),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.override 2),
+ Replica.Tape6.Piece.head (Replica.Tape6.Item.step 20 0)]; the replay's parse: the parse's JSON error (a line begun by an unfinished step's head: [Replica.Tape6.Piece.head (Replica.Tape6.Item.step 20 0)]) (shrunk to 3 decisions from 3)
+--- counterexample [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a7fe05d: a buffer of 16 bytes, steps of 4 or 20 bytes, overrides, 3 items]: a session's timeline replays from its tape: every step and override the recorder wrote is read back
+detail: the session ran [Replica.Tape6.Item.override 1, Replica.Tape6.Item.override 2, Replica.Tape6.Item.step 20 0]; its tape: [Replica.Tape6.Piece.line (Replica.Tape6.Item.override 1),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.override 2),
+ Replica.Tape6.Piece.head (Replica.Tape6.Item.step 20 0)]; the replay's parse: the parse's JSON error (a line begun by an unfinished step's head: [Replica.Tape6.Piece.head (Replica.Tape6.Item.step 20 0)])
+values: [0, 0, 2]
+tape:
+{"name":"world.item","options":3,"value":0}
+{"name":"world.item","options":3,"value":0}
+{"name":"world.item","options":3,"value":2}
+story:
+---
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a7fe05d: a parse scratch of 8 bytes, a buffer of 100, steps of 4 or 12 bytes, overrides, 3 items]: FOUND after 3 timelines (1 ms): a session's timeline replays from its tape: every step and override the recorder wrote is read back: the session ran [Replica.Tape6.Item.override 1, Replica.Tape6.Item.override 2, Replica.Tape6.Item.step 12 0]; its tape: [Replica.Tape6.Piece.line (Replica.Tape6.Item.override 1),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.override 2),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 12 0)]; the replay's parse: OutOfMemory (a step of 12 bytes, 0 escaped, in the line parse's 64 KiB scratch) (shrunk to 3 decisions from 3)
+--- counterexample [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a7fe05d: a parse scratch of 8 bytes, a buffer of 100, steps of 4 or 12 bytes, overrides, 3 items]: a session's timeline replays from its tape: every step and override the recorder wrote is read back
+detail: the session ran [Replica.Tape6.Item.override 1, Replica.Tape6.Item.override 2, Replica.Tape6.Item.step 12 0]; its tape: [Replica.Tape6.Piece.line (Replica.Tape6.Item.override 1),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.override 2),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 12 0)]; the replay's parse: OutOfMemory (a step of 12 bytes, 0 escaped, in the line parse's 64 KiB scratch)
+values: [0, 0, 2]
+tape:
+{"name":"world.item","options":3,"value":0}
+{"name":"world.item","options":3,"value":0}
+{"name":"world.item","options":3,"value":2}
+story:
+---
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a7fe05d: a step table of 2 steps and 10 bytes, steps of 4 bytes, 4 items]: FOUND after 8 timelines (2 ms): a session's timeline replays from its tape: every step and override the recorder wrote is read back: the session ran [Replica.Tape6.Item.override 1, Replica.Tape6.Item.step 4 0, Replica.Tape6.Item.step 4 0, Replica.Tape6.Item.step 4 0]; its tape: [Replica.Tape6.Piece.line (Replica.Tape6.Item.override 1),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 4 0),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 4 0),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 4 0)]; the replay's parse: TapeTooLong (steps_max, step_text_max) (shrunk to 4 decisions from 4)
+--- counterexample [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a7fe05d: a step table of 2 steps and 10 bytes, steps of 4 bytes, 4 items]: a session's timeline replays from its tape: every step and override the recorder wrote is read back
+detail: the session ran [Replica.Tape6.Item.override 1, Replica.Tape6.Item.step 4 0, Replica.Tape6.Item.step 4 0, Replica.Tape6.Item.step 4 0]; its tape: [Replica.Tape6.Piece.line (Replica.Tape6.Item.override 1),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 4 0),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 4 0),
+ Replica.Tape6.Piece.line (Replica.Tape6.Item.step 4 0)]; the replay's parse: TapeTooLong (steps_max, step_text_max)
+values: [0, 1, 1, 1]
+tape:
+{"name":"world.item","options":2,"value":0}
+{"name":"world.item","options":2,"value":1}
+{"name":"world.item","options":2,"value":1}
+{"name":"world.item","options":2,"value":1}
+story:
+---
+search exhaust [a session's timeline replays from its tape: every step and override the recorder wrote is read back / a step table of 3 steps and 20 bytes, steps of 4 or 9 bytes, 5 items]: complete, 243 timelines, none broke it (2 ms)
+the Zig's buffer, a det:ask step of 131,072 bytes (a 96 KiB message in base64), then the session's end: Except.ok [Replica.Tape6.Item.step 131072 0, Replica.Tape6.Item.step 7 0]
+the Zig's scratch, a det:ask step of 42,236 bytes (a 31 KiB message in base64): Except.ok [Replica.Tape6.Item.step 42236 0, Replica.Tape6.Item.step 7 0]; of 42,235 bytes: true
+the Zig's buffer, a step of 70,000 bytes of Clojure with 61,072 quotes and line breaks: Except.ok [Replica.Tape6.Item.step 70000 61072]
+the Zig's table, 65,537 steps of 10 bytes: read
+== tape property: every timeline the tree makes replays alone from its tape and chain
+   source: README_AI.md ("every timeline replays bit-identically"); docs/ANTITHESIS.md (Branching: "every timeline's path in its record and tape (it replays alone)"); vm.zig:3684-3687 (a7fe05d: a replay stops at the marker)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls, holders]: complete, 52 timelines, none broke it (1 ms)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls, no holders (a deciding strategy)]: complete, 26 timelines, none broke it (2 ms)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a7fe05d: a cap of one override, a parent of 3 pulls, holders]: FOUND after 31 timelines (1 ms): every timeline the tree makes replays alone from its tape and chain: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2 (shrunk to 5 decisions from 5)
+--- counterexample [every timeline the tree makes replays alone from its tape and chain / a7fe05d: a cap of one override, a parent of 3 pulls, holders]: every timeline the tree makes replays alone from its tape and chain
+detail: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2
+values: [0, 1, 1, 3, 0]
+tape:
+{"name":"parent.override","options":2,"value":0}
+{"name":"parent.override","options":2,"value":1}
+{"name":"parent.override","options":2,"value":1}
+{"name":"judgment.moment","options":4,"value":3}
+{"name":"node.holder","options":2,"value":0}
+story:
+---
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls cut at its horizon, holders (the archive)]: complete, 52 timelines, none broke it (1 ms)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls, holders, a strategy's moment]: complete, 52 timelines, none broke it (2 ms)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / df8f08b: a cap of one override, a parent of 3 pulls cut at its horizon, holders (the archive)]: FOUND after 31 timelines (1 ms): every timeline the tree makes replays alone from its tape and chain: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2 (shrunk to 5 decisions from 5)
+--- counterexample [every timeline the tree makes replays alone from its tape and chain / df8f08b: a cap of one override, a parent of 3 pulls cut at its horizon, holders (the archive)]: every timeline the tree makes replays alone from its tape and chain
+detail: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2
+values: [0, 1, 1, 3, 0]
+tape:
+{"name":"parent.override","options":2,"value":0}
+{"name":"parent.override","options":2,"value":1}
+{"name":"parent.override","options":2,"value":1}
+{"name":"judgment.moment","options":4,"value":3}
+{"name":"node.holder","options":2,"value":0}
+story:
+---
+search exhaust [every timeline the tree makes replays alone from its tape and chain / df8f08b: a cap of one override, a parent of 3 pulls, holders, a strategy's moment]: FOUND after 31 timelines (2 ms): every timeline the tree makes replays alone from its tape and chain: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2 (shrunk to 5 decisions from 5)
+--- counterexample [every timeline the tree makes replays alone from its tape and chain / df8f08b: a cap of one override, a parent of 3 pulls, holders, a strategy's moment]: every timeline the tree makes replays alone from its tape and chain
+detail: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2
+values: [0, 1, 1, 3, 0]
+tape:
+{"name":"parent.override","options":2,"value":0}
+{"name":"parent.override","options":2,"value":1}
+{"name":"parent.override","options":2,"value":1}
+{"name":"judgment.moment","options":4,"value":3}
+{"name":"node.holder","options":2,"value":0}
+story:
+---
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls cut at its horizon, holders, a strategy's moment]: complete, 52 timelines, none broke it (1 ms)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls, holders, a strategy's moment in a timeline of an earlier generation]: FOUND after 31 timelines (2 ms): every timeline the tree makes replays alone from its tape and chain: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2 (shrunk to 5 decisions from 5)
+--- counterexample [every timeline the tree makes replays alone from its tape and chain / a cap of one override, a parent of 3 pulls, holders, a strategy's moment in a timeline of an earlier generation]: every timeline the tree makes replays alone from its tape and chain
+detail: the parent's pulls [draw, override, override], its tape full at pull 2 (a cap of 1); the tree returns to its moment 3 from a holder: the child runs; replayed alone, its chain through the parent stops: TapeFull at pull 2
+values: [0, 1, 1, 3, 0]
+tape:
+{"name":"parent.override","options":2,"value":0}
+{"name":"parent.override","options":2,"value":1}
+{"name":"parent.override","options":2,"value":1}
+{"name":"judgment.moment","options":4,"value":3}
+{"name":"node.holder","options":2,"value":0}
+story:
+---
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of two overrides, a parent of 5 pulls cut at its horizon, holders]: complete, 324 timelines, none broke it (1 ms)
+search exhaust [every timeline the tree makes replays alone from its tape and chain / a cap of two overrides, a parent of 5 pulls, holders]: complete, 324 timelines, none broke it (2 ms)

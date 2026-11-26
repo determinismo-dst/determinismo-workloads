@@ -221,13 +221,20 @@ structure FW where
   /-- Round 7: the code's version. df8f08b (main.zig:4083, 6552-6558 `returns_before_ns`): a judged
   timeline's `last_pull_ns` is also before its tape was full (VM.tape_full_ns), so the frontier's
   and the archive's moments land before the marker. -/
-  ver : Ver := .vdf8f08b
+  ver : Ver := .vc4f246e
   /-- Round 7: the parent was cut at its horizon (`--horizon`): `archive_add` (main.zig:7374)
-  takes a cut branch's moments to its end (`open = summary.cut or at < summary.last_pull_ns`). -/
+  takes a cut branch's moments to its end (`open = summary.cut or at < summary.last_pull_ns`).
+  Round 8, c4f246e (CE58's fix): `open_to_end` (main.zig:6603-6608) is `cut` and no full tape;
+  the archive (7502), the frontier (7065) and the extension (7801) read it. -/
   cut : Bool := false
   /-- Round 7: a strategy (a plugin) chooses the moment: `tree_returns` (main.zig:7625-7631)
-  bounds it by the timeline's start and end alone. -/
+  bounds it by the timeline's start and end alone. Round 8, c4f246e: offered and bounded by
+  `returns_end` (main.zig:6610-6614, 7737, 7760): the end, or the marker if the tape was full. -/
   strategy : Bool := false
+  /-- Round 8: the strategy returns to a timeline of an earlier generation (its own archive:
+  `planned`, not among this generation's candidates): main.zig:7753-7762 (c4f246e) checks such a
+  return against nothing (`else if (!planned.contains(back.branch)) continue;`). -/
+  earlier : Bool := false
   deriving Inhabited
 
 structure Return where
@@ -242,7 +249,11 @@ def drawReturn (w : FW) : EStateM Stop S Return := do
   -- The judgment's moment: any of the parent's (its returns drawn among them); at df8f08b, an
   -- uncut parent's explorer returns before its tape was full.
   let full := fullAt w.consts overrides
-  let bound := if w.ver.sinceDf && !w.cut && !w.strategy then (full.getD w.pulls) else w.pulls
+  -- c4f246e: a cut parent's places and a strategy's return to one of this generation's
+  -- timelines land before the marker too; a strategy's return to an earlier one is unbounded.
+  let bounded := if w.ver.sinceC4 then !(w.strategy && w.earlier)
+    else w.ver.sinceDf && !w.cut && !w.strategy
+  let bound := if bounded then (full.getD w.pulls) else w.pulls
   let moment ← below "judgment.moment" (bound + 1)
   let holder ← if w.holders then do pure ((← below "node.holder" 2) == 0) else pure false
   return { overrides, moment, holder }
@@ -271,6 +282,13 @@ def fullWorlds : List FW :=
     { label := "a7fe05d: a cap of one override, a parent of 3 pulls, holders", consts := { overrideMax := 1 }, ver := .va7fe05d },
     { label := "a cap of one override, a parent of 3 pulls cut at its horizon, holders (the archive)", consts := { overrideMax := 1 }, cut := true },
     { label := "a cap of one override, a parent of 3 pulls, holders, a strategy's moment", consts := { overrideMax := 1 }, strategy := true },
+    -- Round 8: df8f08b's cut and strategy worlds (CE58 found again there), and a strategy's
+    -- return to a timeline of an earlier generation at c4f246e.
+    { label := "df8f08b: a cap of one override, a parent of 3 pulls cut at its horizon, holders (the archive)", consts := { overrideMax := 1 }, cut := true, ver := .vdf8f08b },
+    { label := "df8f08b: a cap of one override, a parent of 3 pulls, holders, a strategy's moment", consts := { overrideMax := 1 }, strategy := true, ver := .vdf8f08b },
+    { label := "a cap of one override, a parent of 3 pulls cut at its horizon, holders, a strategy's moment", consts := { overrideMax := 1 }, cut := true, strategy := true },
+    { label := "a cap of one override, a parent of 3 pulls, holders, a strategy's moment in a timeline of an earlier generation", consts := { overrideMax := 1 }, strategy := true, earlier := true },
+    { label := "a cap of two overrides, a parent of 5 pulls cut at its horizon, holders", consts := { overrideMax := 2 }, pulls := 5, cut := true },
     { label := "a cap of two overrides, a parent of 5 pulls, holders", consts := { overrideMax := 2 }, pulls := 5 } ]
 
 def searchAll (exhaustRuns : Nat) : IO Unit := do

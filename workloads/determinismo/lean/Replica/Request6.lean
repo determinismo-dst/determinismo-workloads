@@ -44,8 +44,12 @@ structure Asked where
   epoch : Option Nat := none
   timerSlackUs : Nat := 1000
   timerLandingPermille : Nat := 0
-  injectors : List String := []
+  /-- Each injector's path, by its parts (`./chaos`: `[".", "chaos"]`). -/
+  injectors : List (List String) := []
   deriving Repr, BEq, Inhabited
+
+/-- A path's last part (std.fs.path.basename). -/
+def basename (path : List String) : String := path.getLastD ""
 
 /-- The machine's inputs (inputs_hash's parts): the command line's words, the timers, the epoch,
 the initramfs's injectors. -/
@@ -57,7 +61,9 @@ def inputs (a : Asked) : List String :=
   [s!"timer_slack_ns={a.timerSlackUs * 1000}"] ++
   (if a.timerLandingPermille == 0 then [] else [s!"timer_delay_permille={a.timerLandingPermille}"]) ++
   (match a.epoch with | some e => [s!"epoch_seconds={e}"] | none => []) ++
-  a.injectors.map (s!"initramfs injector {·}")
+  -- prepare.zig:196-200 (c4f246e): the system disk's hash takes each injector by its basename
+  -- and its content, in the order given (the content: the same file's here).
+  a.injectors.map (s!"initramfs injector {basename ·}")
 
 /-- What an analysis boots of a command-line run: its request (as `run_request_write` at `ver`
 wrote it) through `system_arguments`, its machine.json through `run_machine`. df8f08b
@@ -68,7 +74,10 @@ def analysisOfCommandLine (ver : Ver) (a : Asked) : Asked :=
   -- Round 7: the injectors in the request are the kept copies (runs.zig:217-219,
   -- `<hash>-<basename>`), which the run never booted: the system disk takes each by its
   -- basename (prepare.zig:195-199, 1464-1471), so the analysis's is another disk.
-  if ver.sinceDf then { a with injectors := a.injectors.map ("0123456789abcdef-" ++ ·) } else
+  -- Round 8, c4f246e (CE60's fix): `injectors_keep` (runs.zig:227-262) keeps each under its own
+  -- name, `<data>/artifacts/<hash>/<name>`.
+  if ver.sinceC4 then { a with injectors := a.injectors.map fun p => ["data", "artifacts", "0123456789abcdef", basename p] } else
+  if ver.sinceDf then { a with injectors := a.injectors.map fun p => ["data", "artifacts", "0123456789abcdef-" ++ basename p] } else
   { timelineLimitMs := 3600000          -- no `timeline_limit` in the request: the default hour
     swarm := true                        -- `swarm` written at its default
     clockStartMaxMs := if ver.sinceA7 then a.clockStartMaxMs else none   -- a7fe05d's fix
@@ -89,7 +98,7 @@ def menu : List (String × (Asked → Asked)) :=
     ("--epoch 2030-01-01", fun a => { a with epoch := some 1893456000 }),
     ("--timer-slack-us 50", fun a => { a with timerSlackUs := 50 }),
     ("--timer-landing-permille 500", fun a => { a with timerLandingPermille := 500 }),
-    ("--injector ./chaos", fun a => { a with injectors := ["./chaos"] }) ]
+    ("--injector ./chaos", fun a => { a with injectors := [[".", "chaos"]] }) ]
 
 structure S where
   decisions : Decisions := {}
@@ -104,7 +113,7 @@ structure World where
   /-- Who started the run: a command line (explore with a run directory) or serve. -/
   commandLine : Bool := true
   /-- The commit whose explorer wrote the request (a run recorded before a7fe05d), and serve's. -/
-  recordedBy : Ver := .vdf8f08b
+  recordedBy : Ver := .vc4f246e
   deriving Inhabited
 
 def draw : EStateM Stop S (List String × Asked) := do
@@ -127,12 +136,14 @@ def judge (w : World) (src : Source) : Ended :=
     let replayed := inputs booted
     { taken := s.decisions.taken,
       violation := if ran == replayed then none else
-        some (property, s!"a {if w.commandLine then "command-line" else "serve"} run{if w.recordedBy != .vdf8f08b then s!" recorded by {reprStr w.recordedBy}" else ""} given {given}: its tapes' inputs {ran}; its analyses boot {replayed}: TapeInputsDiffer, every tape refused") }
+        some (property, s!"a {if w.commandLine then "command-line" else "serve"} run{if w.recordedBy != .vc4f246e then s!" recorded by {reprStr w.recordedBy}" else ""} given {given}: its tapes' inputs {ran}; its analyses boot {replayed}: TapeInputsDiffer, every tape refused") }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
 def worlds : List World :=
-  [ { label := "a run started from a command line (df8f08b)" },
-    { label := "a run serve started (df8f08b)", commandLine := false },
+  [ { label := "a run started from a command line (c4f246e)" },
+    { label := "a run serve started (c4f246e)", commandLine := false },
+    -- Round 8: df8f08b's command-line runs (CE60 found again there).
+    { label := "a command-line run recorded by df8f08b's explorer", recordedBy := .vdf8f08b },
     { label := "a command-line run recorded by 62e06e3's explorer, analyzed by df8f08b's serve", recordedBy := .v62e06e3 },
     -- Round 7: a7fe05d's command-line runs (CE51 found again), and such a run recorded before
     -- df8f08b, analyzed by df8f08b's serve (its request has none of the new fields).
@@ -147,6 +158,6 @@ def searchAll (exhaustRuns : Nat) : IO Unit := do
   -- Each flag alone, a command-line run.
   for (flag, f) in menu do
     let a := f {}
-    say s!"a command-line run given only {flag}: its analyses boot its inputs: {inputs a == inputs (analysisOfCommandLine .vdf8f08b a)} (df8f08b), {inputs a == inputs (analysisOfCommandLine .va7fe05d a)} (a7fe05d), {inputs a == inputs (analysisOfCommandLine .v62e06e3 a)} (62e06e3)"
+    say s!"a command-line run given only {flag}: its analyses boot its inputs: {inputs a == inputs (analysisOfCommandLine .vc4f246e a)} (c4f246e), {inputs a == inputs (analysisOfCommandLine .vdf8f08b a)} (df8f08b), {inputs a == inputs (analysisOfCommandLine .va7fe05d a)} (a7fe05d), {inputs a == inputs (analysisOfCommandLine .v62e06e3 a)} (62e06e3)"
 
 end Replica.Request6

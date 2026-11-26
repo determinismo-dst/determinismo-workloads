@@ -10,6 +10,8 @@ import FlecsLean.Validator
 import FlecsLean.InhDF
 import FlecsLean.PipeQ
 import FlecsLean.WorkersCD
+import FlecsLean.OrVM
+import FlecsLean.Spawner
 
 open Flecs
 
@@ -106,6 +108,30 @@ def pipeMain (args : List String) : IO UInt32 := do
     let chk := fun (p : Pipe.Prog) => Pipe.check (Pipe.withBuiltin p (front == "1"))
     let (st, done) := gexhaust g chk limit.toNat!
     greport s!"pipe exhaust-frame with ProgressTasks front={front} nsys={nsys} limit={limit} complete={done}" st none
+  | ["phase-exhaust", limit, nsys, builtin] =>
+    let g : TapeM Pipe.Prog := Pipe.genProgPhase nsys.toNat!
+    let chk := fun (p : Pipe.Prog) => Pipe.check (if builtin == "1" then Pipe.withBuiltin p true else p)
+    let (st, done) := gexhaust g chk limit.toNat!
+    greport s!"pipe phase-exhaust nsys={nsys} builtin={builtin} limit={limit} complete={done}" st (some sh)
+  | ["phase-lib", mode, seed, n, nsys, builtin, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Pipe.Prog := Pipe.genProgPhase nsys.toNat!
+    let chk := fun (p : Pipe.Prog) => Pipe.check (if builtin == "1" then Pipe.withBuiltin p true else p)
+    glib mode g chk prop n.toNat! seed.toNat! (fun sig p => gshrink Pipe.shrinkCands chk sig p)
+  | ["phase-exhaust-noreorder", limit, nsys, builtin] =>
+    -- the frames without a phase reorder: phase disabling only
+    let g : TapeM Pipe.Prog := Pipe.genProgPhase nsys.toNat!
+    let chk := fun (p : Pipe.Prog) =>
+      if p.sys.any (fun s => match s.effect with | .reorder _ => true | _ => false) then []
+      else Pipe.check (if builtin == "1" then Pipe.withBuiltin p true else p)
+    let (st, done) := gexhaust g chk limit.toNat!
+    greport s!"pipe phase-exhaust-noreorder nsys={nsys} builtin={builtin} limit={limit} complete={done}" st (some sh)
+  | ["phase-cases"] =>
+    for (nm, p) in Pipe.phaseCases do
+      IO.println s!"== {nm}: {Pipe.showProg p}"
+      match Pipe.frameRuns p with
+      | .ok rs => IO.println s!"  ran {rs}"
+      | .error e => IO.println s!"  ASSERT {e}"
+      for (pr, d) in Pipe.check p do IO.println s!"  PROPERTY {pr}: {d}"
   | ["exhaust-frame", limit, nsys] =>
     let g : TapeM Pipe.Prog := Pipe.genProgFrame nsys.toNat!
     let (st, done) := gexhaust g Pipe.check limit.toNat!
@@ -136,6 +162,16 @@ def queryMain (args : List String) : IO UInt32 := do
     greport s!"query iter-exhaust limit={limit} complete={done}" st (some sh)
   | ["iter-lib", mode, seed, n, prop] =>
     let g : EStateM Determinismo.Stop Determinismo.Decisions QProg := genIterProg
+    glib mode g checkQ prop n.toNat! seed.toNat! sh
+  | ["iter5-explore", seed, n] =>
+    let g : TapeM QProg := genIterProg5
+    greport s!"query iter5-explore seed={seed} n={n}" (gexplore g checkQ seed.toNat! n.toNat!) (some sh)
+  | ["iter5-exhaust", limit] =>
+    let g : TapeM QProg := genIterProg5
+    let (st, done) := gexhaust g checkQ limit.toNat!
+    greport s!"query iter5-exhaust limit={limit} complete={done}" st (some sh)
+  | ["iter5-lib", mode, seed, n, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions QProg := genIterProg5
     glib mode g checkQ prop n.toNat! seed.toNat! sh
   | ["trace", name] =>
     for (nm, p) in qcases do
@@ -190,6 +226,55 @@ def valMain (args : List String) : IO UInt32 := do
   | _ => IO.println "usage: val explore SEED N NCOMP LEN | exhaust LIMIT NCOMP LEN | lib MODE SEED N NCOMP LEN PROP"; return 1
   return 0
 
+def orMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : OrVM.Prog) => gshrink OrVM.shrink OrVM.check sig p
+  match args with
+  | ["explore", seed, n, ncomp, len, ntab] =>
+    let g : TapeM OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
+    greport s!"or explore seed={seed} n={n} ncomp={ncomp} len={len} ntab={ntab}" (gexplore g OrVM.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, ncomp, len, ntab] =>
+    let g : TapeM OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
+    let (st, done) := gexhaust g OrVM.check limit.toNat!
+    greport s!"or exhaust ncomp={ncomp} len={len} ntab={ntab} limit={limit} complete={done}" st (some sh)
+    -- what the programs were: ran, skipped (F29, not partially cached), unmodelled
+    let kinds := fun (p : OrVM.Prog) => [(OrVM.outcomeKind p, "")]
+    let (st2, _) := gexhaust g kinds limit.toNat!
+    IO.println "  outcomes:"
+    for (k, c) in st2.byProperty do IO.println s!"    {k}: {c}"
+  | ["lib", mode, seed, n, ncomp, len, ntab, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
+    glib mode g OrVM.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in OrVM.cases do
+      IO.println s!"== or case {nm}"
+      match OrVM.run p with
+      | .ran ops got want oob marker =>
+        IO.println s!"  ops: {OrVM.showOps ops}"
+        IO.println s!"  yields tables {got}; the terms match tables {want}; marker reached {marker}"
+        for o in oob do IO.println s!"  out of bounds: {o}"
+      | .skipped w => IO.println s!"  skipped: {w}"
+      | .unmodelled u => IO.println s!"  unmodelled: {u}"
+      for (pr, d) in OrVM.check p do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: or explore SEED N NCOMP LEN NTAB | exhaust LIMIT NCOMP LEN NTAB | lib MODE SEED N NCOMP LEN NTAB PROP | cases"; return 1
+  return 0
+
+def spMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : Spawn.Prog) => gshrink Spawn.shrink Spawn.check sig p
+  match args with
+  | ["exhaust", limit, ncomp, nchild, len] =>
+    let g : TapeM Spawn.Prog := Spawn.genProg ncomp.toNat! nchild.toNat! len.toNat!
+    let (st, done) := gexhaust g Spawn.check limit.toNat!
+    greport s!"sp exhaust ncomp={ncomp} nchild={nchild} len={len} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, ncomp, nchild, len, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Spawn.Prog := Spawn.genProg ncomp.toNat! nchild.toNat! len.toNat!
+    glib mode g Spawn.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in Spawn.cases do
+      IO.println s!"== sp case {nm}"
+      for (pr, d) in Spawn.check p do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: sp exhaust LIMIT NCOMP NCHILD LEN | lib MODE SEED N NCOMP NCHILD LEN PROP | cases"; return 1
+  return 0
+
 def idfMain (args : List String) : IO UInt32 := do
   let sh := fun (sig : String) (p : IDF.Prog) => gshrink IDF.shrink IDF.check sig p
   match args with
@@ -202,6 +287,16 @@ def idfMain (args : List String) : IO UInt32 := do
     greport s!"idf exhaust ncomp={ncomp} nents={nents} len={len} limit={limit} complete={done}" st (some sh)
   | ["lib", mode, seed, n, ncomp, nents, len, prop] =>
     let g : EStateM Determinismo.Stop Determinismo.Decisions IDF.Prog := IDF.genProg ncomp.toNat! nents.toNat! len.toNat!
+    glib mode g IDF.check prop n.toNat! seed.toNat! sh
+  | ["auto-explore", seed, n, ncomp, nents, len] =>
+    let g : TapeM IDF.Prog := IDF.genProgAuto ncomp.toNat! nents.toNat! len.toNat!
+    greport s!"idf auto-explore seed={seed} n={n} ncomp={ncomp} nents={nents} len={len}" (gexplore g IDF.check seed.toNat! n.toNat!) (some sh)
+  | ["auto-exhaust", limit, ncomp, nents, len] =>
+    let g : TapeM IDF.Prog := IDF.genProgAuto ncomp.toNat! nents.toNat! len.toNat!
+    let (st, done) := gexhaust g IDF.check limit.toNat!
+    greport s!"idf auto-exhaust ncomp={ncomp} nents={nents} len={len} limit={limit} complete={done}" st (some sh)
+  | ["auto-lib", mode, seed, n, ncomp, nents, len, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions IDF.Prog := IDF.genProgAuto ncomp.toNat! nents.toNat! len.toNat!
     glib mode g IDF.check prop n.toNat! seed.toNat! sh
   | ["cases"] =>
     for (nm, p) in IDF.cases do
@@ -233,7 +328,10 @@ def pqMain (args : List String) : IO UInt32 := do
 def wcdMain (args : List String) : IO UInt32 := do
   match args with
   | [mode, threads, tables, races, n, seed, filt] =>
-    let cfg : WCD.Cfg := { threads := threads.toNat!, tables := tables.toNat!, races := races == "1" }
+    -- round 5: races "2" = no race reports, each table a new size class
+    let cfg : WCD.Cfg := { threads := threads.toNat!, tables := tables.toNat!, races := races == "1",
+                           sizeClasses := races == "2" || races == "3" }
+    let cfg := if races == "3" then { cfg with races := true } else cfg
     let run := fun src =>
       let e := WCD.timeline cfg src
       match e.violation with
@@ -413,6 +511,8 @@ def main (args : List String) : IO UInt32 := do
   | "idf" :: rest => return (← idfMain rest)
   | "pq" :: rest => return (← pqMain rest)
   | "wcd" :: rest => return (← wcdMain rest)
+  | "or" :: rest => return (← orMain rest)
+  | "sp" :: rest => return (← spMain rest)
   | _ =>
     IO.println "usage: flecs-search explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | ei-explore SEED N LEN | ei-exhaust LIMIT LEN"
     return 1

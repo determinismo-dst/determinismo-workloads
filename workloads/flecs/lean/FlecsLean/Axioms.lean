@@ -2,6 +2,7 @@ import FlecsLean.Theorems
 import FlecsLean.TheoremsPipe
 import FlecsLean.TheoremsInh
 import FlecsLean.TheoremsR4
+import FlecsLean.TheoremsR5
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -45,3 +46,11 @@ import FlecsLean.TheoremsR4
 #print axioms Flecs.R4.update_keeps_schedule
 #print axioms Flecs.R4.parent_disable_keeps_count
 #print axioms Flecs.R4.childof_disable_bumps_count
+#print axioms Flecs.R5.or_after_chain_compile
+#print axioms Flecs.R5.or_sparse_first_complete_block
+#print axioms Flecs.R5.auto_override_variant_inherits
+#print axioms Flecs.R5.auto_override_controls
+#print axioms Flecs.R5.autoVisit_direct_first
+#print axioms Flecs.R5.spawner_stale_type
+#print axioms Flecs.R5.reorder_resume_past_end
+#print axioms Flecs.R5.pushMatch_full_reallocates

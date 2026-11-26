@@ -62,6 +62,15 @@ inductive Effect
   | enable (k : Nat)
   /-- system `k` starts matching an entity (loses `EcsEmpty`) -/
   | activate (k : Nat)
+  /-- round 5: phase `ph` gets a DependsOn on the deepest phase, so it and
+      its systems move after every other phase (the pipeline query's
+      `Phase(cascade(DependsOn))` term groups systems by DependsOn depth,
+      pipeline.c 978-991, query/cache/cache.c 179-191) -/
+  | reorder (ph : Nat)
+  /-- round 5: `ecs_enable(phase, false)`: the phase's systems leave the
+      pipeline (`!Disabled(up(DependsOn))`, Systems.md "Disabling a
+      phase") -/
+  | disablePhase (ph : Nat)
   deriving Repr, BEq, Inhabited
 
 structure Sys where
@@ -71,6 +80,8 @@ structure Sys where
   mt : Bool := false
   immediate : Bool := false
   effect : Effect := .none
+  /-- round 5: the system's phase (index into `RunSt.depth`) -/
+  phase : Nat := 0
   deriving Repr, Inhabited
 
 /-- `flecs_term_finalize` (query/validator.c 1113-1126): a Not term and a
@@ -240,15 +251,32 @@ structure RunSt where
   ran : Array (Nat × Nat) := #[]
   /-- (op, stage count) of each executed op -/
   executed : Array Op := #[]
+  /-- round 5: DependsOn depth of each phase (phases 0 and 1 depend on
+      OnUpdate; phase 2 is PreUpdate, where ecs_init's ProgressTasks is;
+      phase 3 stands for PreUpdate when the program's systems are in OnLoad,
+      before it) -/
+  depth : Array Nat := #[1, 1, 0, 2]
+  phaseOff : Array Bool := #[false, false, false, false]
   deriving Inhabited
 
 def inPipeline (st : RunSt) : List Nat :=
-  (List.range st.sys.size).filter (fun k => (st.sys.getD k default).enabled)
+  (List.range st.sys.size).filter (fun k =>
+    let s := st.sys.getD k default
+    s.enabled && !st.phaseOff.getD s.phase false)
 
-/-- the pipeline query's results (enabled systems, by entity id = program
-    index), with each system's activity -/
+/-- the pipeline query's results (enabled systems in enabled phases), in
+    group order (phase depth), then by entity id = program index
+    (`flecs_entity_compare`, pipeline.c 824-826), with each system's
+    activity -/
 def queryResult (st : RunSt) : Array (Nat × Sys) :=
-  (inPipeline st).toArray.map (fun k => (k, st.sys.getD k default))
+  let key := fun (k : Nat) => (st.depth.getD (st.sys.getD k default).phase 0, k)
+  let le := fun (a b : Nat) => (key a).1 < (key b).1 || ((key a).1 == (key b).1 && a ≤ b)
+  -- an insertion sort (structural, so the kernel can evaluate it)
+  let ins := fun (xs : List Nat) (k : Nat) =>
+    let lo := xs.takeWhile (fun x => le x k)
+    lo ++ [k] ++ xs.drop lo.length
+  let ks := (inPipeline st).foldl ins []
+  ks.toArray.map (fun k => (k, st.sys.getD k default))
 
 def activeKey (st : RunSt) : List Nat :=
   (inPipeline st).filter (fun k => (st.sys.getD k default).active)
@@ -258,7 +286,10 @@ def activeKey (st : RunSt) : List Nat :=
     the new order that already ran this frame; if none did they keep their
     old values (an op index and a system index into the old schedule). -/
 def build (st : RunSt) : Except String (RunSt × Bool) := do
-  let key := (inPipeline st).map (fun k => (k, (st.sys.getD k default).active))
+  -- round 5: the key is the query's result in order, so a regroup (which
+  -- moves tables between groups and bumps match_count, group.c 157-170,
+  -- 176-181) rebuilds
+  let key := (queryResult st).toList.map (fun (k, s) => (k, s.active))
   let keyList := key.map (fun (k, a) => if a then k + 1000 else k)
   if st.builtFrom == some keyList then return (st, false)
   let sched ← buildOps (queryResult st)
@@ -311,7 +342,16 @@ def applyEffects (st : RunSt) (ks : List Nat) : RunSt := Id.run do
     | .disable j => sys := sys.modify j (fun s => { s with enabled := false })
     | .enable j => sys := sys.modify j (fun s => { s with enabled := true })
     | .activate j => sys := sys.modify j (fun s => { s with active := true })
-  return { st with sys }
+    | .reorder _ | .disablePhase _ => pure ()
+  let mut st := { st with sys }
+  for k in ks do
+    match (st.sys.getD k default).effect with
+    | .reorder ph =>
+      let mx := st.depth.foldl max 0
+      st := { st with depth := st.depth.set! ph (mx + 1) }
+    | .disablePhase ph => st := { st with phaseOff := st.phaseOff.set! ph true }
+    | _ => pure ()
+  return st
 
 /-- `flecs_run_pipeline` (pipeline.c 581-675) for one frame. -/
 def runFrame (st : RunSt) : Except String RunSt := do
@@ -431,6 +471,7 @@ def checkProg (u : List Id) (p : Prog) : List (String × String) := Id.run do
       match (p.sys.getD j default).effect with
       | .disable x => x == k
       | .disableSelf => j == k
+      | .disablePhase ph => (p.sys.getD k default).phase == ph
       | _ => false
     let stable := (List.range p.sys.size).filter fun k =>
       let s := p.sys.getD k default
@@ -518,7 +559,32 @@ def genProgFrame (n : Nat) : m Prog := do
   for _ in [0:n] do sys := sys.push (← genSysFrame n)
   return { sys }
 
+
+/-- Round 5: two phases; systems separated by sync points or immediate
+    mode, whose merged commands move a phase after the others, disable a
+    phase, or disable the system itself. -/
+def genSysPhase (n : Nat) : m Sys := do
+  let ts ← pickOf "pipe.frame.terms" #[([] : List Term),
+    [{ id := C0, src := .zero, inout := .out }],
+    [{ id := C0 }],
+    [{ id := C0 }, { id := C0, src := .zero, inout := .out }]]
+  let immediate := (← Pick.pick "pipe.immediate" 2) == 1
+  let phase ← Pick.pick "pipe.phase" 2
+  let effect ← match (← Pick.pick "pipe.peffect" 5) with
+    | 0 => pure Effect.none
+    | 1 => pure (Effect.reorder (← Pick.pick "pipe.peffect.ph" 2))
+    | 2 => pure (Effect.disablePhase (← Pick.pick "pipe.peffect.ph" 2))
+    | 3 => pure Effect.disableSelf
+    | _ => pure (Effect.disable (← Pick.pick "pipe.effect.sys" n))
+  return { terms := ts, immediate, phase, effect }
+
+def genProgPhase (n : Nat) : m Prog := do
+  let mut sys := #[]
+  for _ in [0:n] do sys := sys.push (← genSysPhase n)
+  return { sys }
+
 end
+
 
 /-! ### The id menu -/
 
@@ -585,8 +651,10 @@ def showSys (k : Nat) (s : Sys) : String :=
     (if s.mt then ["multi_threaded"] else []) ++ (if s.immediate then ["immediate"] else []) ++
     (match s.effect with
       | .none => [] | .disableSelf => ["disables itself"] | .disable j => [s!"disables S{j}"]
-      | .enable j => [s!"enables S{j}"] | .activate j => [s!"activates S{j}"])
-  s!"S{k}: [{ts}] {", ".intercalate fl}"
+      | .enable j => [s!"enables S{j}"] | .activate j => [s!"activates S{j}"]
+      | .reorder ph => [s!"moves phase {ph} after the others"]
+      | .disablePhase ph => [s!"disables phase {ph}"])
+  s!"S{k} (phase {s.phase}): [{ts}] {", ".intercalate fl}"
 
 def showProg (p : Prog) : String :=
   "; ".intercalate ((List.range p.sys.size).map (fun k => showSys k (p.sys.getD k default)))
@@ -604,7 +672,7 @@ without terms in `EcsPreUpdate`, so it is always active.  Systems in
 `EcsPostLoad` run before it (the cascade on DependsOn, pipeline.c 935-985).
 Round 2's frame model had only the program's systems. -/
 
-def progressTasks : Sys := { terms := [], immediate := true }
+def progressTasks : Sys := { terms := [], immediate := true, phase := 2 }
 
 def shiftEffect (d : Nat) : Effect → Effect
   | .disable j => .disable (j + d)
@@ -617,12 +685,23 @@ def shiftEffect (d : Nat) : Effect → Effect
     (OnLoad, PostLoad). -/
 def withBuiltin (p : Prog) (front : Bool) : Prog :=
   if front then { p with sys := #[progressTasks] ++ p.sys.map (fun s => { s with effect := shiftEffect 1 s.effect }) }
-  else { p with sys := p.sys.push progressTasks }
+  else { p with sys := p.sys.push { progressTasks with phase := 3 } }
 
 /-- The systems that ran in one frame, in order, or the assert. -/
 def frameRuns (p : Prog) : Except String (List Nat) := do
   let st0 : RunSt := { sys := p.sys, lastFrame := Array.replicate p.sys.size 0 }
   let st ← runFrame st0
   return st.ran.toList.map (·.1)
+
+/-- Round 5: the C test's program and the phase-disable variants. -/
+def phaseCases : List (String × Prog) :=
+  let reorderP : Prog := { sys := #[{ terms := [], phase := 0, effect := .reorder 0 },
+                                     { terms := [], phase := 1, immediate := true }] }
+  let disableP : Prog := { sys := #[{ terms := [], phase := 0, effect := .disablePhase 0 },
+                                     { terms := [], phase := 1, immediate := true }] }
+  [ ("pipeline_phase_reorder_skips: S1 (Pa) makes Pa depend on Pb; S2 (Pb) immediate; ecs_mini + FlecsPipeline", reorderP),
+    ("the same in an ecs_init world (ProgressTasks before both)", withBuiltin reorderP true),
+    ("S1 disables its own phase; S2 in the other phase, immediate; ecs_mini (F17's skip)", disableP),
+    ("the same with ProgressTasks before both: S2 runs", withBuiltin disableP true) ]
 
 end Flecs.Pipe

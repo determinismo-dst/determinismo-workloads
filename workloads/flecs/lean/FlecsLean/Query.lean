@@ -79,6 +79,11 @@ def evalMatch (q : QCache) (t : Nat) : M (Option QMatch) := do
       cols := cols.push (if has then (match colIndex x term.id with | some c => (c : Int) | none => -1) else -1)
       srcs := srcs.push 0
       sets := sets.push has
+    | .up, .optional =>
+      -- round 5: `?C(up)` (the cascade term of flecs's Cascade tests)
+      match (← upSrc t term.id) with
+      | none => cols := cols.push (-1); srcs := srcs.push 0; sets := sets.push false
+      | some p => cols := cols.push (-1); srcs := srcs.push p; sets := sets.push true
     | .up, _ =>
       match (← upSrc t term.id) with
       | none => return none
@@ -102,9 +107,26 @@ def freeVec (v : Nat) : M Unit := do
 
 /-! ### Groups (group.c) -/
 
+/-- The ChildOf depth of a table (`flecs_relation_depth`, search.c 517-553:
+    the `depth` of its `(ChildOf, P)` record, which is P's depth + 1,
+    component_index.c 1188-1231; 0 for a root). -/
+partial def childOfDepth (t : Nat) (fuel : Nat := 64) : M Nat := do
+  if fuel == 0 then fail .internalError "model" "ChildOf cycle"
+  let x ← tbl t
+  match x.type.find? (fun i => isPair i && pairFirst i == EcsChildOf) with
+  | none => return 0
+  | some pr =>
+    let p ← getAlive (pairSecond pr)
+    if p == 0 then return 0
+    match ((← getIx).recOf p).table with
+    | none => return 1
+    | some pt => return (← childOfDepth pt (fuel - 1)) + 1
+
 /-- default group_by action (cache.c 159-177): target of the first
-    (R, *) pair in the table type -/
+    (R, *) pair in the table type; round 5: the cascade action
+    (cache.c 179-191) -/
 def groupIdOf (q : QCache) (t : Nat) : M UInt64 := do
+  if q.cascade then return (← childOfDepth t).toUInt64
   match q.groupBy with
   | none => return 0
   | some r =>
@@ -122,31 +144,62 @@ def findTable (q : QCache) (t : Nat) : Option (Nat × Nat) := Id.run do
 
 /-- `flecs_query_cache_ensure_group` + `flecs_query_cache_group_insert`
     (group.c 37-82): a new group goes to the head of the list unless the
-    query is ordered (cascade only). -/
-def ensureGroup (q : QCache) (gid : UInt64) : QCache × Nat := Id.run do
+    query is ordered (cascade): then before the first group with a larger
+    id.  Round 5: a new non-default group is a new allocation (a new
+    identity); the default group is `&cache->default_group` (identity 0),
+    re-initialized and inserted again after it was removed (59-79). -/
+def ensureGroup (q : QCache) (gid : UInt64) : M (QCache × Nat) := do
   for gi in [0:q.groups.size] do
     if (q.groups.getD gi default).id == gid then return (q, gi)
-  return ({ q with groups := #[{ id := gid }] ++ q.groups }, 0)
+  let uid ← if gid == 0 then pure 0 else newVec
+  let g : QGroup := { id := gid, uid }
+  if q.cascade then
+    let pos := (q.groups.findIdx? (fun h => h.id > gid)).getD q.groups.size
+    return ({ q with groups := (q.groups.extract 0 pos).push g ++ q.groups.extract pos q.groups.size }, pos)
+  return ({ q with groups := #[g] ++ q.groups }, 0)
+
+def nextPow2 (n : Nat) : Nat := Id.run do
+  let mut k := 1
+  for _ in [0:40] do
+    if k ≥ n then return k
+    k := 2 * k
+  return k
+
+/-- `ecs_vec_append` on a group's `tables` (group.c 157-158; vec.c
+    366-379, 179-215): when the array is full it is reallocated
+    (`flecs_brealloc` frees the old chunk, block_allocator.c 287-326). -/
+def pushMatch (g : QGroup) (m : QMatch) : M QGroup := do
+  if g.tables.size == g.cap then
+    let cap := max 2 (nextPow2 (g.tables.size + 1))
+    freeVec g.arr
+    let arr ← newVec
+    return { g with tables := g.tables.push m, cap, arr }
+  return { g with tables := g.tables.push m }
 
 /-- `flecs_query_cache_add_table` (group.c 216-245) -/
 def addTable (qi : Nat) (m : QMatch) : M Unit := do
   let m ← if m.wildPairs.isEmpty then pure m else do pure { m with wildVec := (← newVec) }
   let q ← qGet qi
   let gid ← groupIdOf q m.table
-  let (q, gi) := ensureGroup q gid
-  let q := { q with groups := q.groups.modify gi (fun g => { g with tables := g.tables.push m }),
-                    matchCount := q.matchCount + 1 }
+  let (q, gi) ← ensureGroup q gid
+  let g ← pushMatch (q.groups.getD gi default) m
+  let q := { q with groups := q.groups.set! gi g, matchCount := q.matchCount + 1 }
   qSet qi q
 
 /-- `flecs_query_cache_remove_table_from_group` (group.c 176-213): the last
-    table moves into the hole (ecs_vec_remove); an empty group is removed. -/
-def removeFromGroup (q : QCache) (gi mi : Nat) : QCache :=
+    table moves into the hole (ecs_vec_remove); an empty group is removed
+    (`flecs_query_cache_remove_group`, 118-130: unlinked, its array freed
+    by ecs_vec_fini, and a non-default group freed by
+    ecs_map_remove_free). -/
+def removeFromGroup (q : QCache) (gi mi : Nat) : M QCache := do
   let q := { q with matchCount := q.matchCount + 1 }
   let g := q.groups.getD gi default
   let n := g.tables.size
   let ts := if mi + 1 == n then g.tables.pop else (g.tables.set! mi (g.tables.getD (n - 1) default)).pop
-  if ts.isEmpty then { q with groups := q.groups.eraseIdx! gi }
-  else { q with groups := q.groups.set! gi { g with tables := ts } }
+  if ts.isEmpty then
+    freeVec g.arr
+    return { q with groups := q.groups.eraseIdx! gi }
+  return { q with groups := q.groups.set! gi { g with tables := ts } }
 
 /-- `flecs_query_cache_remove_table` (group.c 302-329) -/
 def removeTable (qi : Nat) (t : Nat) : M Unit := do
@@ -156,7 +209,7 @@ def removeTable (qi : Nat) (t : Nat) : M Unit := do
   | some (gi, mi) =>
     -- flecs_query_cache_match_fini (match.c 48-67) frees wildcard_matches
     freeVec ((q.groups.getD gi default).tables.getD mi default).wildVec
-    qSet qi (removeFromGroup q gi mi)
+    qSet qi (← removeFromGroup q gi mi)
 
 /-- `flecs_query_cache_ensure_table` + rematch overwrite (group.c 277-299,
     match.c 212-286): the match keeps its monitor. -/
@@ -177,12 +230,14 @@ def rematchTable (qi : Nat) (m : QMatch) : M Unit := do
     if gid == (q.groups.getD gi default).id then
       qSet qi { q with groups := q.groups.modify gi (fun g => { g with tables := g.tables.set! mi m }) }
     else
-      -- flecs_query_cache_move_table_to_group (group.c 249-274)
-      let (q2, gdst) := ensureGroup q gid
-      let gsrc := if gdst == 0 && q2.groups.size > q.groups.size then gi + 1 else gi
-      let q2 := { q2 with groups := q2.groups.modify gdst (fun g => { g with tables := g.tables.push m }),
-                          matchCount := q2.matchCount + 1 }
-      qSet qi (removeFromGroup q2 gsrc mi)
+      -- flecs_query_cache_move_table_to_group (group.c 249-274): append to
+      -- the destination group, then remove from the source group
+      let srcUid := (q.groups.getD gi default).uid
+      let (q2, gdst) ← ensureGroup q gid
+      let g ← pushMatch (q2.groups.getD gdst default) m
+      let q2 := { q2 with groups := q2.groups.set! gdst g, matchCount := q2.matchCount + 1 }
+      let gsrc := (q2.groups.findIdx? (fun h => h.uid == srcUid && h.id == (q.groups.getD gi default).id)).getD gi
+      qSet qi (← removeFromGroup q2 gsrc mi)
 
 /-- `flecs_query_revalidate_table` (match.c 328-365) -/
 def revalidateTable (qi : Nat) (t : Nat) : M Unit := do
@@ -781,29 +836,38 @@ and `qit->elem` (the slot of the last result).  Calls may run between two
 `ecs_query_next`, so the vectors can change under the cursor. -/
 
 structure QCursor where
-  group : Option UInt64 := none
+  /-- `qit->group`: round 5, by identity (`QGroup.uid`) -/
+  group : Option Nat := none
   wildVec : Option Nat := none
   cur : Nat := 0
   allCur : Nat := 0
-  /-- `qit->elem`: (group id, slot) or (vector, index) of the last result -/
-  elem : Option (Option UInt64 × Option Nat × Nat) := none
+  /-- `qit->elem`: (group identity, slot, the group array's identity) or
+      (vector, index) of the last result -/
+  elem : Option (Option Nat × Option Nat × Nat × Nat) := none
   /-- the last result's table and entities (`it->table`, `it->entities`) -/
   lastT : Option Nat := none
   lastEnts : Array UInt64 := #[]
   done : Bool := false
+  /-- round 5: an order_by query iterates `cache->table_slices`
+      (cache_iter.c 27-34) -/
+  slice : Bool := false
   deriving Inhabited
 
 /-- `flecs_query_cache_iter_init` (cache_iter.c 11-37) -/
 def cursorInit (qi : Nat) : M QCursor := do
+  -- round 5: order_by: sort and build the slices first (cache_iter.c
+  -- 27-34, order_by.c 230-319)
+  if (← qGet qi).orderBy then sortTables qi
   let q ← qGet qi
   qSet qi { q with prevMatchCount := q.matchCount }
   -- the change oracle: a user iteration sees the cache's tables
   if !(← get).iterQuiet then
     let ts := q.groups.foldl (fun acc g => acc ++ g.tables.toList.map (·.table)) []
     modify fun w => { w with ouser := w.ouser.insert qi ts }
+  if q.orderBy then return { slice := true }
   match q.groups[0]? with
   | none => return { done := true }
-  | some g => return { group := some g.id }
+  | some g => return { group := some g.uid }
 
 /-- The match that owns a wildcard vector. -/
 def vecOwner (q : QCache) (v : Nat) : Option QMatch := Id.run do
@@ -815,9 +879,10 @@ def vecOwner (q : QCache) (v : Nat) : Option QMatch := Id.run do
 /-- Change detection on the previous result at the start of
     `ecs_query_next` (eval_iter.c 217-234, 492-500): through `qit->elem`,
     which is a pointer into the vector, so it is whatever match is at that
-    slot now. -/
+    slot now.  `qit->elem` is read only when the query has change detection
+    (`EcsQueryHasChangeDetection`, eval_iter.c 225-230). -/
 def cursorSyncElem (qi : Nat) (c : QCursor) : M Unit := do
-  let some (gid, vec, slot) := c.elem | return
+  let some (gid, vec, slot, arr) := c.elem | return
   -- flecs_query_mark_fields_dirty uses the iterator's own table and rows
   if let some t := c.lastT then
     if let some m ← getMatch qi t then markFieldsDirty qi t m c.lastEnts
@@ -826,19 +891,25 @@ def cursorSyncElem (qi : Nat) (c : QCursor) : M Unit := do
   match vec with
   | some v =>
     if (← get).vecFreed.contains v then
-      noteViol s!"P1 use after free: ecs_query_next syncs the monitor of a wildcard match (qit->elem) in the wildcard_matches vector {v}, which a rematch freed (match.c 247-258 / 48-67)"
+      if hasCD then
+        noteViol s!"P1 use after free: ecs_query_next syncs the monitor of a wildcard match (qit->elem) in the wildcard_matches vector {v}, which a rematch freed (match.c 247-258 / 48-67)"
     else if let some m := vecOwner q v then
       oracleSync qi m.table
   | none =>
-    match q.groups.findIdx? (fun g => some g.id == gid) with
-    | none =>
-      if gid != some 0 then
-        noteViol s!"P1 use after free: ecs_query_next syncs qit->elem in group {gid}, which was freed (group.c 109)"
+    -- round 5: the group's table array was reallocated or finalized; only
+    -- a query with change detection reads it (the change oracle still
+    -- records what the user was given)
+    if hasCD && (← get).vecFreed.contains arr then
+      noteViol s!"P1 use after free: ecs_query_next syncs the monitor of qit->elem (eval_iter.c 225-230, change_detection.c 581-633), a pointer into table array {arr} of group {gid}, which was freed: an ecs_vec_append that grew the array (group.c 157-158, vec.c 373-375, block_allocator.c 314) or ecs_vec_fini when the group was removed (group.c 103)"
+      return
+    match q.groups.findIdx? (fun g => some g.uid == gid) with
+    | none => pure ()
     | some gi =>
       let g := q.groups.getD gi default
       match g.tables[slot]? with
       | none =>
-        modify fun w => { w with staleReads := w.staleReads.push s!"qit->elem slot {slot} of group {gid} (count {g.tables.size})" }
+        if hasCD then
+          modify fun w => { w with staleReads := w.staleReads.push s!"qit->elem slot {slot} of group {gid} (count {g.tables.size})" }
       | some m =>
         if hasCD then syncMatchMonitor qi m.table
         oracleSync qi m.table
@@ -846,10 +917,25 @@ def cursorSyncElem (qi : Nat) (c : QCursor) : M Unit := do
 /-- `flecs_query_cache_next` (cache_iter.c 41-123), preceded by the change
     detection of the previous result.  Returns the table and the matched
     pair of the next result. -/
-partial def cursorNext (qi : Nat) (c : QCursor) (fuel : Nat := 1000) : M (QCursor × Option (Nat × Id)) := do
+partial def cursorNext (qi : Nat) (c : QCursor) (fuel : Nat := 1000) : M (QCursor × Option (Nat × Id × Option (Nat × Nat))) := do
   if fuel == 0 then fail .internalError "model" "cursor loop"
   if c.done then return (c, none)
   let q ← qGet qi
+  if c.slice then
+    -- round 5: a slice is a copy of a match with a row range (order_by.c
+    -- 195-209); the iterator returns that range (cache_iter.c 356-378 sets
+    -- the range of $this), skipping slices whose table is empty now (82-98)
+    match q.slices[c.cur]? with
+    | none => return ({ c with done := true }, none)
+    | some (t, off, cnt) =>
+      -- a table deleted during the iteration: its struct stays in the
+      -- table store with count 0 (flecs_table_fini_data, storage/table.c
+      -- 1205; the store keeps the memory, 1333-1336), so the slice is
+      -- skipped (the model does not follow a reuse of the slot)
+      let x := (← get).tables.getD t default
+      if !x.live || x.count == 0 then return (← cursorNext qi { c with cur := c.cur + 1 } (fuel - 1))
+      let c := { c with cur := c.cur + 1, lastT := some t, lastEnts := x.ents.extract off (off + cnt), elem := none }
+      return (c, some (t, 0, some (off, cnt)))
   match c.wildVec with
   | some v =>
     if (← get).vecFreed.contains v then
@@ -863,23 +949,23 @@ partial def cursorNext (qi : Nat) (c : QCursor) (fuel : Nat := 1000) : M (QCurso
       else
         let pair := owner.wildPairs.getD c.cur 0
         let x ← tbl owner.table
-        let c := { c with elem := some (none, some v, c.cur), cur := c.cur + 1,
+        let c := { c with elem := some (none, some v, c.cur, 0), cur := c.cur + 1,
                           lastT := some owner.table, lastEnts := x.ents.extract 0 x.count }
-        return (c, some (owner.table, pair))
+        return (c, some (owner.table, pair, none))
   | none =>
-    match q.groups.findIdx? (fun g => some g.id == c.group) with
+    match q.groups.findIdx? (fun g => some g.uid == c.group) with
     | none =>
       -- the group left the list: the default group's vector was finalized
       -- and its `next` cleared (group.c 117-130); another group was freed
       if c.group != some 0 then
-        noteViol s!"P1 use after free: the iterator's group {c.group} was freed while it was iterated (group.c 109, ecs_map_remove_free)"
+        noteViol s!"P1 use after free: the iterator's group (identity {c.group}) was freed while it was iterated: the next ecs_query_next reads its tables and next (cache_iter.c 49-62) after flecs_query_cache_remove_group freed it (group.c 118-130, 109 ecs_map_remove_free)"
       return ({ c with done := true }, none)
     | some gi =>
       let g := q.groups.getD gi default
       if c.cur ≥ g.tables.size then
         match q.groups[gi + 1]? with
         | none => return ({ c with done := true }, none)
-        | some g2 => cursorNext qi { c with group := some g2.id, cur := 0 } (fuel - 1)
+        | some g2 => cursorNext qi { c with group := some g2.uid, cur := 0 } (fuel - 1)
       else
         let m := g.tables.getD c.cur default
         let x ← tbl m.table
@@ -889,11 +975,11 @@ partial def cursorNext (qi : Nat) (c : QCursor) (fuel : Nat := 1000) : M (QCurso
             oracleSync qi m.table
           cursorNext qi { c with cur := c.cur + 1 } (fuel - 1)
         else
-          let elem := some (c.group, (none : Option Nat), c.cur)
+          let elem := some (c.group, (none : Option Nat), c.cur, g.arr)
           let c := { c with lastT := some m.table, lastEnts := x.ents.extract 0 x.count }
           let c := if m.wildVec != 0 then { c with wildVec := some m.wildVec, allCur := c.cur + 1, cur := 0, elem }
             else { c with cur := c.cur + 1, elem }
-          return (c, some (m.table, m.pair))
+          return (c, some (m.table, m.pair, none))
 
 /-- `ecs_query_init` with a cache (cache.c 700-911) -/
 def createQuery (q : QCache) : M Nat := do

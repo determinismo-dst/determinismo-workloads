@@ -1,7 +1,8 @@
 C tests for the predictions in ../../REPORT.md (round 1, F1-F14),
 ../../REPORT-2.md (round 2, F2 corrected and F15-F23), ../../REPORT-3.md
-(round 3, F24-F28) and ../../REPORT-4.md (round 4, F29-F33, and the
-corrected F16, F17 and F26 tests), against flecs v4.2.0.
+(round 3, F24-F28), ../../REPORT-4.md (round 4, F29-F33, and the
+corrected F16, F17 and F26 tests) and ../../REPORT-5.md (round 5,
+F34-F40), against flecs v4.2.0.
 
 Each file is one program.  main() returns 0 when flecs behaves as its
 documentation says; a non-zero return or an abort confirms the prediction.
@@ -67,3 +68,20 @@ test errors corrected"):
                   system that is the readonly assert of flecs_table_ensure).
   F26             workers_spurious_wakeup.c: the worker's stage id comes from
                   it->stage (it->world is the world on every thread).
+
+Round 5 (all use ecs_mini(); none was run in round 5):
+  F34             query_or_sparse_term_after_chain.c (wraps the OS API
+                  allocator with a zeroed guard before every block; a
+                  changed guard or the wrong entities confirm)
+  F35             query_cascade_table_twice.c,
+                  query_cascade_group_freed.c (the OS API free fills the
+                  block with 0xA5 and keeps it; a crash confirms)
+  F36             query_iter_table_array_realloc.c (the same free wrapper;
+                  a crash confirms)
+  F37             pipeline_phase_reorder_skips.c (ecs_mini() with
+                  FlecsPipeline: no builtin systems)
+  F38             auto_override_dont_fragment_variant.c
+  F39             tree_spawner_stale_child_type.c,
+                  tree_spawner_stale_sparse_assert.c (an abort confirms:
+                  the handler prints FAIL and exits 1)
+  F40             query_order_by_stale_rows.c

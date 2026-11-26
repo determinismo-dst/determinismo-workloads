@@ -238,6 +238,15 @@ structure QMatch where
 structure QGroup where
   id : UInt64
   tables : Array QMatch := #[]
+  /-- round 5: the group's identity (its memory: `&cache->default_group`
+      is 0; every group `ecs_map_insert_alloc_t` creates gets a new one,
+      group.c 64-66), the identity of its `tables` array (a realloc gives
+      a new one, a freed array's identity is in `World.vecFreed`) and the
+      array's capacity (ecs_vec_set_size, vec.c 179-215: powers of two,
+      at least 2) -/
+  uid : Nat := 0
+  arr : Nat := 0
+  cap : Nat := 0
   deriving Repr, Inhabited
 
 structure QCache where
@@ -246,6 +255,11 @@ structure QCache where
   orderBy : Bool := false
   /-- group_by with the default action on this relationship (cache.c 155-172) -/
   groupBy : Option UInt64 := none
+  /-- round 5: a cascade term (cache.c 866-875): groups are ChildOf depths
+      (`flecs_query_cache_group_by_cascade`, cache.c 179-191, search.c
+      517-553), kept in ascending order (`EcsQueryGroupByOrdered`,
+      group.c 37-54) -/
+  cascade : Bool := false
   /-- groups in list order (`first_group`, `next`) -/
   groups : Array QGroup := #[]
   matchCount : Int := 0

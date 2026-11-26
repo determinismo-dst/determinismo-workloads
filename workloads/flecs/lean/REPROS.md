@@ -16,6 +16,54 @@ curl -fsSL https://github.com/SanderMertens/flecs/archive/refs/tags/v4.2.0.tar.g
 
 ## Crashes: flecs's own internal or parameter asserts on documented use
 
+- [ ] **F34: A cached query whose Or chain starts with a table term and ends with a Sparse term, with a term after the chain, returns wrong entities, and compiling it writes 42 bytes before the op array**. Story, code path and the docs it breaks: REPORT-5.md, F34.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_sparse_term_after_chain.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# guard of a 384-byte block changed at offset 22 (42 bytes before the block)
+# uncached: 2 entities: e2 e3
+# cached: 1 entities: e1
+```
+
+- [ ] **F35: While a cascade query is iterated, a call that changes a parent's depth returns a table again, or frees the group being iterated (a read of freed memory)**. Story, code path and the docs it breaks: REPORT-5.md, F35.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_cascade_table_twice.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: c1 returned 2 times, c2 returned 1 times (expected 1 and 1); 4 results
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_cascade_group_freed.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# p1 is now a child of m; continuing the iteration
+# (SIGSEGV)
+```
+
+- [ ] **F36: With change detection on, a call during an iteration that adds a table to the iterated group reallocates the group's array, and the next ecs_query_next reads and writes the freed array**. Story, code path and the docs it breaks: REPORT-5.md, F36.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_iter_table_array_realloc.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# created the 33rd table; continuing the iteration
+# (SIGSEGV)
+```
+
+- [ ] **F39: With a Parent hierarchy, instances made after a prefab child changes copy the child's old type; a Sparse component added to it aborts the next instantiation**. Story, code path and the docs it breaks: REPORT-5.md, F39.
+  Tracker: not found (searched 2026-11-26); related, another symptom: #2284 (closed, adding a component to an instantiated prefab aborted).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/tree_spawner_stale_child_type.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# ChildOf: i2's child has Velocity: 1 (owned 1)
+# Parent: i2's child has Velocity: 0 (owned 0)
+# FAIL: with a Parent hierarchy, i2's child lacks the Velocity its prefab child has
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/tree_spawner_stale_sparse_assert.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 64655: assert(dst_ptr != NULL) (INTERNAL_ERROR)
+```
+
 - [ ] **F29: A cached query (or a system) whose Or chain ends with a Sparse component crashes when it is created**. Story, code path and the docs it breaks: REPORT-4.md, F29.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
 
@@ -116,6 +164,23 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/panic_target_order.c flecs/
 ```
 
 ## Wrong values, wrong entities, wrong ids
+
+- [ ] **F38: An instance of a prefab variant does not own a DontFragment component that the variant's base auto-overrides**. Story, code path and the docs it breaks: REPORT-5.md, F38.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/auto_override_dont_fragment_variant.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# inst owns Defense: 0; value 50
+# FAIL: the instance of the variant does not own Defense
+```
+
+- [ ] **F40: While an order_by query is iterated, deleting an entity from a table with a later slice makes the iterator return rows past that table's count**. Story, code path and the docs it breaks: REPORT-5.md, F40.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_stale_rows.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# FAIL: e3 returned 2 times (expected 1); a result extends past its table's count: 1
+```
 
 - [ ] **F16: No sync point between a wildcard or Any write annotation and an overlapping read**. Story, code path and the docs it breaks: REPORT-2.md, F16.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
@@ -275,6 +340,15 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_add_hook_view.c flecs/di
 ```
 
 ## Missed or extra events (observers, monitors, change detection, system activity)
+
+- [ ] **F37: A system whose commands reorder the phases makes the pipeline skip, in that frame, the systems now ordered before it (with or without ProgressTasks)**. Story, code path and the docs it breaks: REPORT-5.md, F37.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_phase_reorder_skips.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# frame 1: S1 1, S2 0; after frame 2: S1 2, S2 1
+# FAIL: S2 ran 0 times in the first frame (expected 1)
+```
 
 - [ ] **F31: The pipeline keeps a stale schedule when its query's match changes outside the cache (a system in a disabled module's Parent hierarchy keeps running; custom pipelines with a fixed-source or DontFragment term too)**. Story, code path and the docs it breaks: REPORT-4.md, F31.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).

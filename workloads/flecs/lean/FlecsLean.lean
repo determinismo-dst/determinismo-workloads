@@ -22,3 +22,6 @@ import FlecsLean.InhDF
 import FlecsLean.PipeQ
 import FlecsLean.WorkersCD
 import FlecsLean.TheoremsR4
+import FlecsLean.OrVM
+import FlecsLean.Spawner
+import FlecsLean.TheoremsR5

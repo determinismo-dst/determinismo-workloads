@@ -69,6 +69,13 @@ table removal, the pipeline's rebuild trigger, DontFragment overrides, workers' 
 F17 explained (ecs_init's ProgressTasks ran first) and three tests corrected. F29-F33, 7 new C
 tests (48 in all).
 
+## Round 5
+
+[REPORT-5.md](REPORT-5.md): the query compiler and VM for partly cached Or chains, cascade groups
+and order_by slices under iteration, phase reordering, auto overrides through variants, the tree
+spawner. F34-F40, 9 new C tests (57 in all), each confirmed on the real flecs v4.2.0 (2026-11-26):
+F35 and F36 segfault reading freed memory, F34 writes before its op array, F39 asserts.
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled

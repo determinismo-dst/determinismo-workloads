@@ -40,6 +40,9 @@ open Determinismo
 inductive Loc
   | monHead | dirtyHead | prevMatchCount
   | monitor (t : Nat) | dirty (t : Nat)
+  /-- round 5: the world allocator's size-class set (`a->sizes`, a sparse
+      set: its count, dense array and page slots) -/
+  | sizesCount | sizesDense (i : Nat) | sizesSlot (c : Nat)
   deriving Repr, BEq, Inhabited
 
 def Loc.show : Loc → String
@@ -48,6 +51,9 @@ def Loc.show : Loc → String
   | .prevMatchCount => "cache->prev_match_count"
   | .monitor t => s!"match(table {t})->_monitor"
   | .dirty t => s!"table {t}->dirty_state"
+  | .sizesCount => "world->allocator.sizes.count"
+  | .sizesDense i => s!"world->allocator.sizes.dense[{i}]"
+  | .sizesSlot c => s!"world->allocator.sizes page slot of size class {c}"
 
 /-- Program counter of a worker: table `t`, step `s`, and a register. -/
 structure PC where
@@ -67,6 +73,15 @@ structure Mem where
   given : Array (String × Nat × Nat × Nat) := #[]
   /-- accesses: (location, thread, write?) since the op began -/
   acc : Array (Loc × Nat × Bool) := #[]
+  /-- round 5: the size-class set of the world allocator
+      (`flecs_allocator_get`, datastructures/allocator.c 55-87, through
+      `flecs_sparse_ensure_fast`, sparse.c 322-351): `count` (dense index 0
+      is reserved), dense entries, and each class's page slot (its dense
+      index, 0 = absent); with `sizeClasses` every table's dirty state has
+      its own size (its column count differs) and no class exists yet -/
+  sizesCount : Nat := 1
+  sizesDense : Array Nat := #[]
+  sizesSlot : Array Nat := #[]
   deriving Inhabited
 
 abbrev WM := ProcessM Mem PC
@@ -95,7 +110,7 @@ def give (alloc : String) (chunk thread table : Nat) : WM Unit := do
     3 write match->_monitor; 4 read table->dirty_state; 5 read dirty head;
     6 write dirty head; 7 write table->dirty_state; 8 write
     prev_match_count. -/
-def step (races : Bool) (th : Nat) (pc : PC) : WM (StepResult PC) := do
+def step (races sizeClasses : Bool) (th : Nat) (pc : PC) : WM (StepResult PC) := do
   let m ← mem
   if pc.t ≥ m.ntables then return .done
   let t := pc.t
@@ -122,6 +137,28 @@ def step (races : Bool) (th : Nat) (pc : PC) : WM (StepResult PC) := do
   | 4 =>
     acc (.dirty t) false
     if m.dirty.getD t 0 != 0 then return .ran { pc with s := 8 }
+    return .ran { pc with s := if sizeClasses then 10 else 5 }
+  -- round 5: flecs_allocator_get for the dirty state's size (10-13), then
+  -- the class's free list (5-7)
+  | 10 =>
+    acc (.sizesSlot t) false
+    let d := m.sizesSlot.getD t 0
+    if d != 0 && d < m.sizesCount then return .ran { pc with s := 5 }
+    return .ran { pc with s := 11 }
+  | 11 => acc .sizesCount false; return .ran { pc with s := 12, reg := m.sizesCount }
+  | 12 =>
+    acc .sizesCount true
+    modMem fun m => { m with sizesCount := pc.reg + 1 }
+    return .ran { pc with s := 13 }
+  | 13 =>
+    acc (.sizesDense pc.reg) true
+    acc (.sizesSlot t) true
+    let old := m.sizesDense.getD pc.reg 0
+    if old != 0 && old != t + 1 then
+      violate "PW4 no lost allocation" s!"thread {th} writes size class {t} into world->allocator.sizes.dense[{pc.reg}] over size class {old - 1}, which another thread added after both read count {pc.reg} (sparse.c 337-347): class {old - 1} is no longer in the dense array, so flecs_allocator_fini (allocator.c 40-52) never finalizes it and its blocks leak"
+    if old == t + 1 then
+      violate "PW4 no lost allocation" s!"threads both found size class {t} missing and both initialize it (allocator.c 74-78: flecs_sparse_ensure_fast_t, then flecs_ballocator_init): the second initialization drops the block allocator state of the first, whose blocks leak"
+    modMem fun m => { m with sizesDense := m.sizesDense.set! pc.reg (t + 1), sizesSlot := m.sizesSlot.set! t pc.reg }
     return .ran { pc with s := 5 }
   | 5 => acc .dirtyHead false; return .ran { pc with s := 6, reg := m.dirtyHead }
   | 6 =>
@@ -145,15 +182,18 @@ structure Cfg where
   tables : Nat := 1
   /-- report data races (PW5); off: look only for PW3 and PW4 -/
   races : Bool := true
+  /-- round 5: each table's dirty state is a new size class -/
+  sizeClasses : Bool := false
   maxSteps : Nat := 200
   deriving Repr, Inhabited
 
 def timeline (cfg : Cfg) (src : Source) : Ended := Id.run do
   let start : Process Mem PC :=
     { memory := { ntables := cfg.tables, monHead := 1, dirtyHead := 1,
-                  monitor := Array.replicate cfg.tables 0, dirty := Array.replicate cfg.tables 0 },
+                  monitor := Array.replicate cfg.tables 0, dirty := Array.replicate cfg.tables 0,
+                  sizesDense := Array.replicate (cfg.tables + 2) 0, sizesSlot := Array.replicate cfg.tables 0 },
       threads := Array.replicate cfg.threads (some {}) }
-  let body : WM Unit := interleave { step := step cfg.races } cfg.maxSteps
+  let body : WM Unit := interleave { step := step cfg.races cfg.sizeClasses } cfg.maxSteps
   let (r, p) := runProcess start body src
   match r with
   | .error (.violation prop detail) =>

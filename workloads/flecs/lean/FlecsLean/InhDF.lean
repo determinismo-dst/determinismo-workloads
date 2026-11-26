@@ -47,6 +47,9 @@ structure Comp where
 structure Ent where
   isa : List Nat := []
   own : List (Nat × Nat) := []   -- (component, value)
+  /-- round 5: components with `ECS_AUTO_OVERRIDE | C` in the entity's
+      type (`ecs_auto_override`, entity.c 1444-1453) -/
+  auto : List Nat := []
   deriving Repr, Inhabited
 
 structure St where
@@ -112,7 +115,31 @@ inductive Op
   /-- `ecs_add_id(e, c)`: an override when e inherits c -/
   | add (e c : Nat)
   | remove (e c : Nat)
+  /-- round 5: `ecs_auto_override_id(e, c)` -/
+  | autoOverride (e c : Nat)
   deriving Repr, BEq, Inhabited
+
+/-- Round 5: `flecs_add_overrides_for_base` (storage/table_graph.c 718-791),
+    run when an entity gets `(IsA, b)`: the components that the base's type
+    and, recursively, the types of its own IsA targets auto-override, in
+    visit order, each with the entity that holds the flag.  For a fragmenting
+    component the id is added to the instance's type (749-768); for a
+    DontFragment one only the base's table is flagged
+    (`EcsTableOverrideDontFragment`, 739-746). -/
+def autoVisit (st : St) : Nat → Nat → List (Nat × Nat)
+  | 0, _ => []
+  | fuel + 1, b =>
+    let x := st.ents.getD b default
+    (x.auto.map (fun c => (c, b))) ++ x.isa.flatMap (fun bb => autoVisit st fuel bb)
+
+/-- The first entity, depth-first through the IsA targets of `e` (self
+    excluded), that owns `c`: where a fragmenting override takes its value
+    (the table's override copy; the documented value). -/
+def ownerUpF (st : St) (c : Nat) : Nat → Nat → Option Nat
+  | 0, _ => none
+  | fuel + 1, e =>
+    (st.ents.getD e default).isa.findSome? fun b =>
+      if (owns st b c).isSome then some b else ownerUpF st c fuel b
 
 /-- Run one call; returns the new state and the broken properties. -/
 def step (st : St) (op : Op) : St × List (String × String) := Id.run do
@@ -126,6 +153,14 @@ def step (st : St) (op : Op) : St × List (String × String) := Id.run do
     -- (table and Sparse: table_graph.c 718-790 through every base;
     -- DontFragment: instantiate.c 301-368, the components b owns)
     let mut st := st0
+    -- round 5: auto overrides of fragmenting components (the table graph)
+    let visit := autoVisit st0 17 b
+    for (c, _) in visit do
+      let comp := st.comps.getD c default
+      if comp.storage == .dontFragment || comp.trait == .dontInherit then continue
+      if (owns st e c).isSome then continue
+      let v := ((ownerUpF st0 c 17 e).bind (fun bb => owns st0 bb c)).getD 0
+      st := setOwn st e c v
     for c in [0:st.comps.size] do
       let comp := st.comps.getD c default
       if (owns st e c).isSome then continue
@@ -135,13 +170,41 @@ def step (st : St) (op : Op) : St × List (String × String) := Id.run do
           | some v => some v
           | none => (searchUp st0 b c).bind (fun bb => owns st0 bb c)
       if let some v := src then st := setOwn st e c v
-    return (st, [])
+    -- round 5: flecs_instantiate (addons/prefab/instantiate.c 393-415) for
+    -- the direct base b: `flecs_instantiate_override_dont_fragment`
+    -- (370-391) reads only b's own table: an `ecs_add_id` of each
+    -- DontFragment component b auto-overrides, which copies from the base
+    -- `ecs_search_relation` finds (sparse_storage.c 415-443) or constructs
+    let stA := st
+    for c in (stA.ents.getD b default).auto do
+      let comp := st.comps.getD c default
+      if comp.storage != .dontFragment then continue
+      if (owns st e c).isSome then continue
+      let v := match searchUp st e c with
+        | some bb => (owns st bb c).getD 0
+        | none => 0
+      st := setOwn st e c v
+    -- P-I3: an instance owns every component its base, or a base of its
+    -- base, auto-overrides (PrefabsManual.md "Auto Overriding", "Prefab
+    -- Variants"), as it does for table components
+    let mut out := []
+    for (c, holder) in visit do
+      let comp := st.comps.getD c default
+      if comp.trait == .dontInherit then continue
+      if (owns st e c).isNone then
+        out := out ++ [("P-I3 auto override is owned", s!"entity {e} (IsA {b}) does not own C{c}, which entity {holder} auto-overrides ({repr comp.storage}, {repr comp.trait}): flecs_instantiate_override_dont_fragment (instantiate.c 370-391) reads only the direct base's table, and the table graph only flags the base that holds AUTO_OVERRIDE (table_graph.c 739-746); ecs_get returns the inherited {repr (get st e c)}")]
+    return (st, out.eraseDups)
   | .set e c v =>
     if e ≥ st.ents.size then return (st, [])
     return (setOwn st e c v, [])
   | .remove e c =>
     if e ≥ st.ents.size then return (st, [])
     return ({ st with ents := st.ents.modify e (fun x => { x with own := x.own.filter (·.1 != c) }) }, [])
+  | .autoOverride e c =>
+    if e ≥ st.ents.size then return (st, [])
+    let x := st.ents.getD e default
+    if x.auto.contains c then return (st, [])
+    return ({ st with ents := st.ents.modify e (fun x => { x with auto := x.auto ++ [c] }) }, [])
   | .add e c =>
     if e ≥ st.ents.size then return (st, [])
     if (owns st e c).isSome then return (st, [])
@@ -195,6 +258,24 @@ def genOp (ncomp nents : Nat) : m Op := do
   | 3 => return .remove (← Pick.pick "idf.e" nents) (← Pick.pick "idf.c" ncomp)
   | _ => return .isa (← Pick.pick "idf.e" nents) (← Pick.pick "idf.b" nents)
 
+/-- Round 5: the call menu with `ecs_auto_override`. -/
+def genOpAuto (ncomp nents : Nat) : m Op := do
+  match (← Pick.pick "idf.call" 4) with
+  | 0 => return .isa (← Pick.pick "idf.e" nents) (← Pick.pick "idf.b" nents)
+  | 1 => return .set (← Pick.pick "idf.e" nents) (← Pick.pick "idf.c" ncomp) (← pickOf "idf.v" #[5, 7])
+  | 2 => return .autoOverride (← Pick.pick "idf.e" nents) (← Pick.pick "idf.c" ncomp)
+  | _ => return .add (← Pick.pick "idf.e" nents) (← Pick.pick "idf.c" ncomp)
+
+def genProgAuto (ncomp nents len : Nat) : m Prog := do
+  let mut cs := #[]
+  for _ in [0:ncomp] do
+    let s ← pickOf "idf.storage" #[Storage.table, .sparse, .dontFragment]
+    let t ← pickOf "idf.trait" #[Trait.copy, .inherit, .dontInherit]
+    cs := cs.push { storage := s, trait := t }
+  let mut ops := (List.range nents).map (fun _ => Op.new)
+  for _ in [0:len] do ops := ops ++ [← genOpAuto ncomp nents]
+  return { comps := cs, ops }
+
 /-- `ncomp` components with drawn storage and trait, `nents` entities,
     `len` calls. -/
 def genProg (ncomp nents len : Nat) : m Prog := do
@@ -228,6 +309,16 @@ def cases : List (String × Prog) := [
       ops := [.new, .new, .set 0 0 5, .isa 1 0, .add 1 0] }),
   ("two bases: the deeper base comes first, a direct base owns another value",
     { comps := #[{ storage := .dontFragment, trait := .inherit }],
-      ops := [.new, .new, .new, .new, .set 0 0 5, .set 2 0 7, .isa 1 0, .isa 3 1, .isa 3 2, .add 3 0] }) ]
+      ops := [.new, .new, .new, .new, .set 0 0 5, .set 2 0 7, .isa 1 0, .isa 3 1, .isa 3 2, .add 3 0] }),
+  -- round 5: auto_override_dont_fragment_variant.c
+  ("auto_override_dont_fragment_variant (DontFragment, Inherit)",
+    { comps := #[{ storage := .dontFragment, trait := .inherit }],
+      ops := [.new, .new, .new, .set 0 0 50, .autoOverride 0 0, .isa 1 0, .isa 2 1] }),
+  ("auto_override_dont_fragment_variant (table component control)",
+    { comps := #[{ storage := .table, trait := .inherit }],
+      ops := [.new, .new, .new, .set 0 0 50, .autoOverride 0 0, .isa 1 0, .isa 2 1] }),
+  ("auto_override_dont_fragment_variant (one level control)",
+    { comps := #[{ storage := .dontFragment, trait := .inherit }],
+      ops := [.new, .new, .set 0 0 50, .autoOverride 0 0, .isa 1 0] }) ]
 
 end Flecs.IDF

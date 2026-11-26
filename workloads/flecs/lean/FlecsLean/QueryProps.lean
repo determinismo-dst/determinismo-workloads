@@ -203,9 +203,9 @@ def runQProg (p : QProg) : QOutcome := Id.run do
             | _ => false
           if !isWorld then return
           if !(← W.allowed rs body) then return
-          -- the cursor transcribes the group/wildcard iteration only: no
-          -- order_by (table slices) and no fixed-source terms
-          if q.orderBy || q.terms.any (fun t => match t.src with | .fixed _ => true | _ => false) then return
+          -- the cursor transcribes the group/wildcard iteration and (round
+          -- 5) order_by slices; no fixed-source terms
+          if q.terms.any (fun t => match t.src with | .fixed _ => true | _ => false) then return
           -- a fixed source of another query stays alive (as for `.op`)
           if let .delete _ e := body then
             if p.queries.any (fun q => q.terms.any (fun t => t.src == .fixed e)) then return
@@ -225,9 +225,15 @@ def runQProg (p : QProg) : QOutcome := Id.run do
             c := c'
             match r with
             | none => break
-            | some (t, pair) =>
+            | some (t, pair, rng) =>
               let x ← W.tbl t
-              for i in [0:x.count] do got := got ++ [(x.ents.getD i 0, pair)]
+              match rng with
+              | none => for i in [0:x.count] do got := got ++ [(x.ents.getD i 0, pair)]
+              | some (off, cnt) =>
+                for i in [off:off + cnt] do
+                  got := got ++ [(x.ents.getD i 0, pair)]
+                  if i ≥ x.count then
+                    W.noteViol s!"P-IT2 rows within the table: query {qi} returned row {i} of table {t}, whose count is {x.count}: an order_by slice (order_by.c 195-209) built before the call covers rows the call removed (the entity id and values there are stale copies)"
               n := n + 1
               if n == k then
                 -- the body, with the iterated table locked
@@ -325,7 +331,7 @@ def traceQProg (p : QProg) : List String := Id.run do
             c := c'
             match r with
             | none => break
-            | some (t, pair) =>
+            | some (t, pair, _) =>
               n := n + 1
               msg := msg ++ s!" result {n}: table {t} pair {pair} ents {((← W.tbl t).ents.extract 0 (← W.tbl t).count)};"
               if n == k then
@@ -476,6 +482,52 @@ def genIterProg : m QProg := do
     | _ => Op.add .world tgt .c1
   return { nEnts := 4, queries := #[q], ops := ops ++ later ++ [.iterBody 0 k body] }
 
+/-- Round 5: iteration programs for cascade queries and table arrays that
+    grow during an iteration.  A query of four shapes (cascade
+    `C0, ?C0(cascade)` with and without change detection, `[in] C0` with
+    change detection, `[in] C0` grouped by the Delete relationship); five
+    entities, each built as one of seven kinds (C0 root; C0 + ChildOf a
+    lower entity; ChildOf a lower entity without C0; C0 + C1; C0 + tag;
+    C0 + (Delete, e0); nothing); optionally `ecs_query_changed` (which turns
+    change detection on); then one iteration with a call after result k:
+    reparent, unparent, delete, or add C1/tag. -/
+def genIterProg5 : m QProg := do
+  let shape ← Pick.pick "it5.query" 5
+  let casc : QCache := { terms := #[{ id := C0, io := .in_ }, { id := C0, src := .up, oper := .optional, io := .in_ }], cascade := true }
+  let q : QCache := match shape with
+    | 0 => casc
+    | 1 => { casc with detect := true }
+    | 2 => { terms := #[{ id := C0, io := .in_ }], detect := true }
+    | 3 => { terms := #[{ id := C0, io := .in_ }], groupBy := some 388, detect := true }
+    | _ => { terms := #[{ id := C0, io := .in_ }], orderBy := true }
+  let n := 5
+  let mut ops : List QOp := []
+  for e in [0:n] do
+    -- C0 is set with a value per entity, so order_by interleaves tables
+    let add := fun (x : IdS) => if x == .c0 then QOp.op (.set .world e .c0 ((e * 3) % 5 + 1)) else QOp.op (.add .world e x)
+    let k ← Pick.pick "it5.kind" (if e == 0 then 4 else 7)
+    let kinds : Array (List QOp) := if e == 0 then
+        #[[add .c0], [add .c1, add .c0], [add .tag, add .c0], []]
+      else #[[add .c0], [add .c1, add .c0], [add .tag, add .c0], [], [], [], []]
+    if e == 0 || k < 4 then
+      ops := ops ++ kinds.getD k []
+    else
+      let j ← Pick.pick "it5.parent" e
+      ops := ops ++ (match k with
+        | 4 => [add (.pair .childOf j), add .c0]
+        | 5 => [add (.pair .childOf j)]
+        | _ => [add (.pair .delete 0), add .c0])
+  if (← Pick.pick "it5.changed" 2) == 1 then ops := ops ++ [.changed 0]
+  let k := (← Pick.pick "it5.k" 4) + 1
+  let tgt ← Pick.pick "it5.target" n
+  let body ← match (← Pick.pick "it5.body" 5) with
+    | 0 => pure (Op.add .world tgt (.pair .childOf (← Pick.pick "it5.newparent" n)))
+    | 1 => pure (Op.remove .world tgt (.pair .childOf (← Pick.pick "it5.newparent" n)))
+    | 2 => pure (Op.delete .world tgt)
+    | 3 => pure (Op.add .world tgt .c1)
+    | _ => pure (Op.add .world tgt .tag)
+  return { nEnts := n, queries := #[q], ops := ops ++ [.iterBody 0 k body] }
+
 end
 
 /-! ### Cases (the C tests' programs) -/
@@ -582,7 +634,60 @@ def qcaseIterWildFreed : QProg :=
             .iterBody 0 1 (.remove .world 0 .c0)] }
 
 
+/-- Round 5 cases (the C tests' programs).  The cascade query is
+    `C0, ?C0(cascade)`, created before the entities. -/
+def qCascade (detect : Bool := false) : QCache :=
+  { terms := #[qIn C0, { id := C0, src := .up, oper := .optional, io := .in_ }], cascade := true, detect }
+
+/-- query_cascade_table_twice.c: p2 (e0) and p1 (e2) are roots, c2 (e1) a
+    child of p2, c1 (e3) a child of p1.  The iteration returns the roots,
+    then c2's table, then c1's table (group 1, last).  Then p1 becomes a
+    child of p2: c1's table moves to group 2, which comes after group 1. -/
+def qcaseCascadeTwice : QProg :=
+  { nEnts := 4, queries := #[qCascade],
+    ops := [wo (.add .world 0 .c0), wo (.add .world 1 (.pair .childOf 0)), wo (.add .world 1 .c0),
+            wo (.add .world 2 .c0), wo (.add .world 3 (.pair .childOf 2)), wo (.add .world 3 .c0),
+            .iterBody 0 3 (.add .world 2 (.pair .childOf 0))] }
+
+/-- query_cascade_group_freed.c: x (e0) a root without C0, m (e1) its child
+    without C0, p1 (e2) a root with C0, c1 (e3) its child, g (e4) a child
+    of m.  Groups: 0 [p1], 1 [c1's table], 2 [g's table].  After the
+    second result (c1), p1 becomes a child of m: p1 moves into g's table,
+    c1's table moves to the new group 3, and group 1, now empty, is freed
+    while the iterator is in it. -/
+def qcaseCascadeGroupFreed : QProg :=
+  { nEnts := 5, queries := #[qCascade],
+    ops := [wo (.add .world 1 (.pair .childOf 0)),
+            wo (.add .world 2 .c0), wo (.add .world 3 (.pair .childOf 2)), wo (.add .world 3 .c0),
+            wo (.add .world 4 (.pair .childOf 1)), wo (.add .world 4 .c0),
+            .iterBody 0 2 (.add .world 2 (.pair .childOf 1))] }
+
+/-- query_iter_table_array_realloc.c, in small: two tables fill the default
+    group's array (capacity 2); with change detection on, a call after the
+    first result gives C0 to an entity outside the cache (it has only the
+    tag), which creates a third matching table: the array is reallocated
+    under `qit->elem`. -/
+def qcaseIterRealloc : QProg :=
+  { nEnts := 3, queries := #[{ terms := #[qIn C0], detect := true }],
+    ops := [wo (.add .world 0 .c0), wo (.add .world 1 .c1), wo (.add .world 1 .c0), wo (.add .world 2 .tag),
+            .changed 0, .iterBody 0 1 (.add .world 2 .c0)] }
+
+/-- query_order_by_stale_rows.c: order_by on C0's value.  e0 (1), e2 (3),
+    e3 (4) in [C0]; e1 (2) in [C0, tag].  Slices: [C0] row 0, [C0, tag]
+    row 0, [C0] rows 1-2.  After the second result, e2 is deleted: e3 moves
+    to row 1, the table's count is 2, and the last slice still covers rows
+    1-2. -/
+def qcaseOrderByStale : QProg :=
+  { nEnts := 4, queries := #[{ terms := #[qIn C0], orderBy := true }],
+    ops := [wo (.set .world 0 .c0 1), wo (.add .world 1 .tag), wo (.set .world 1 .c0 2),
+            wo (.set .world 2 .c0 3), wo (.set .world 3 .c0 4),
+            .iterBody 0 2 (.delete .world 2)] }
+
 def qcases : List (String × QProg) := [
+  ("query_order_by_stale_rows", qcaseOrderByStale),
+  ("query_cascade_table_twice", qcaseCascadeTwice),
+  ("query_cascade_group_freed", qcaseCascadeGroupFreed),
+  ("query_iter_table_array_realloc (small)", qcaseIterRealloc),
   ("query_is_true_consumes_change (set)", qcaseIsTrueSet),
   ("query_is_true_consumes_change (unmatched)", qcaseIsTrueUnmatched),
   ("query_count_consumes_change (unmatched)", qcaseCountUnmatched),

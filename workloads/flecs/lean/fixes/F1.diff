@@ -1,0 +1,21 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..4352e59 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -1028,6 +1028,16 @@ static void flecs_cmd_batch_for_entity(
+                 return;
+             }
+ 
++            if (cmd->kind == EcsCmdRemove && ECS_IS_PAIR(id) &&
++                !flecs_entities_is_valid(world, ECS_PAIR_SECOND(id)))
++            {
++                /* The entity can't have a pair with a deleted target, so the
++                 * remove does nothing. The target's cleanup policy (Delete,
++                 * Panic) only applies to commands that add the pair. */
++                cmd->kind = EcsCmdSkip;
++                continue;
++            }
++
+             if (flecs_remove_invalid(world, id, &id)) {
+                 if (!id) {
+                     /* Entity should remain alive but id should not be added */

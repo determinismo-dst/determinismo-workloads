@@ -1,0 +1,126 @@
+diff --git a/src/addons/pipeline/pipeline.c b/src/addons/pipeline/pipeline.c
+index ec5abbc..ff761b7 100644
+--- a/src/addons/pipeline/pipeline.c
++++ b/src/addons/pipeline/pipeline.c
+@@ -387,6 +387,14 @@ static bool flecs_pipeline_build(
+ 
+     op = ecs_vec_first_t(&pq->ops, ecs_pipeline_op_t);
+ 
++    /* Resume position for a rebuild during a frame: the first system in the
++     * new schedule that has not run in this frame. Systems are not only
++     * added or removed by a merge, their order can change too. Systems that
++     * already ran are skipped (see skip_ran). */
++    pq->cur_op = NULL;
++    pq->cur_i = 0;
++    bool resume_found = false;
++
+     if (!op) {
+         ecs_dbg("#[green]pipeline#[reset] is empty");
+         return true;
+@@ -430,6 +438,14 @@ static bool flecs_pipeline_build(
+             ecs_assert(op[op_index].offset + ran_since_merge == i,
+                 ECS_INTERNAL_ERROR, NULL);
+ 
++            if (!resume_found &&
++                (sys->last_frame != (world->info.frame_count_total + 1)))
++            {
++                pq->cur_op = &op[op_index];
++                pq->cur_i = i - 1;
++                resume_found = true;
++            }
++
+             ran_since_merge ++;
+             if (ran_since_merge == op[op_index].count) {
+                 ecs_dbg("#[magenta]merge#[reset]");
+@@ -446,16 +462,6 @@ static bool flecs_pipeline_build(
+ 
+                 ecs_log_push_1();
+             }
+-
+-            if (sys->last_frame == (world->info.frame_count_total + 1)) {
+-                if (op_index < ecs_vec_count(&pq->ops)) {
+-                    pq->cur_op = &op[op_index];
+-                    pq->cur_i = i;
+-                } else {
+-                    pq->cur_op = NULL;
+-                    pq->cur_i = 0;
+-                }
+-            }
+         }
+ 
+         ecs_log_pop_1();
+@@ -511,7 +517,11 @@ static bool flecs_pipeline_update(
+     if (start_of_frame) {
+         pq->cur_op = ecs_vec_first_t(&pq->ops, ecs_pipeline_op_t);
+         pq->cur_i = 0;
++        pq->skip_ran = false;
+     } else {
++        if (rebuilt) {
++            pq->skip_ran = true;
++        }
+         flecs_pipeline_next_system(pq);
+     }
+ 
+@@ -562,11 +572,12 @@ int32_t flecs_run_pipeline_ops(
+     for (; i < end; i++) {
+         ecs_system_t* sys = systems[i];
+ 
+-        /* Keep track of the last frame for which the system has run, so we
+-         * know from where to resume the schedule in case the schedule
+-         * changes during a merge. */
+-        if (stage_index == 0) {
+-            sys->last_frame = world->info.frame_count_total + 1;
++        /* After a rebuild during the frame, systems that already ran in this
++         * frame can be after the resume position. */
++        if (pq->skip_ran &&
++            (sys->last_frame == (world->info.frame_count_total + 1)))
++        {
++            continue;
+         }
+ 
+         flecs_run_system(world, s, sys->query->entity, sys, stage_index,
+@@ -634,6 +645,7 @@ void flecs_run_pipeline(
+             ecs_time_measure(&st);
+         }
+ 
++        const int32_t first = pq->cur_i;
+         const int32_t i = flecs_run_pipeline_ops(
+             world, stage, stage_index, stage_count, delta_time);
+ 
+@@ -646,13 +658,22 @@ void flecs_run_pipeline(
+             flecs_wait_for_sync(world);
+         }
+ 
++        /* Keep track of the last frame for which the systems have run, so we
++         * know from where to resume the schedule in case the schedule
++         * changes during a merge. Done after the op, so that worker threads
++         * don't read it while it's written. */
++        ecs_system_t **systems = ecs_vec_first_t(&pq->systems, ecs_system_t*);
++        int32_t si;
++        for (si = first; si <= i; si ++) {
++            systems[si]->last_frame = world->info.frame_count_total + 1;
++        }
++
+         if (!immediate) {
+             ecs_time_t mt = { 0 };
+             if (measure_time) {
+                 ecs_time_measure(&mt);
+             }
+ 
+-            int32_t si;
+             for (si = 0; si < stage_count; si ++) {
+                 ecs_stage_t *s = world->stages[si];
+                 pq->cur_op->commands_enqueued += ecs_vec_count(&s->cmd->queue);
+diff --git a/src/addons/pipeline/pipeline.h b/src/addons/pipeline/pipeline.h
+index a68e4f9..5409159 100644
+--- a/src/addons/pipeline/pipeline.h
++++ b/src/addons/pipeline/pipeline.h
+@@ -33,6 +33,8 @@ struct ecs_pipeline_state_t {
+     int32_t cur_i;              /* Index in current result */
+     int32_t ran_since_merge;    /* Index in current op */
+     bool immediate;           /* Is pipeline in immediate mode */
++    bool skip_ran;              /* Skip systems that ran in this frame (set
++                                 * when the schedule was rebuilt mid-frame) */
+ };
+ 
+ typedef struct EcsPipeline {

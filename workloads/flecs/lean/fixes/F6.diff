@@ -1,0 +1,50 @@
+diff --git a/src/component_actions.c b/src/component_actions.c
+index b647ac0..0232296 100644
+--- a/src/component_actions.c
++++ b/src/component_actions.c
+@@ -654,8 +654,6 @@ void flecs_notify_on_set_w_cr(
+ 
+     ecs_assert(cr != NULL, ECS_INTERNAL_ERROR, NULL);
+     ecs_assert(cr->type_info != NULL, ECS_INTERNAL_ERROR, NULL);
+-    bool emit_on_set = (cr->flags & EcsIdDontFragment) != 0;
+-    emit_on_set |= flecs_on_set_emit_up_notify(table, id);
+     const ecs_type_info_t *ti = cr->type_info;
+ 
+     ecs_on_validate_t on_validate = ti->hooks.on_validate;
+@@ -682,11 +680,36 @@ void flecs_notify_on_set_w_cr(
+                 column = elem->column;
+             }
+ 
++            ecs_entity_t entity = entities[0];
+             flecs_invoke_hook(world, table, cr, column, 1, row,
+                 entities, id, ti, EcsOnSet, on_set, ptr);
++
++            /* The hook may have moved the entity to another table or row, or
++             * deleted it. Emit OnSet for the entity where it is now. */
++            ecs_record_t *r = flecs_entities_try(world, entity);
++            if (!r || !r->table) {
++                return;
++            }
++
++            if (r->table != table || ECS_RECORD_TO_ROW(r->row) != row) {
++                table = r->table;
++                row = ECS_RECORD_TO_ROW(r->row);
++                if (!flecs_component_get_table(cr, table) &&
++                    !(cr->flags & EcsIdSparse))
++                {
++                    /* The hook removed the component */
++                    return;
++                }
++                if (ptr) {
++                    ptr = flecs_get_component(world, table, row, cr);
++                }
++            }
+         }
+     }
+ 
++    bool emit_on_set = (cr->flags & EcsIdDontFragment) != 0;
++    emit_on_set |= flecs_on_set_emit_up_notify(table, id);
++
+     if ((emit_on_set || table->flags & EcsTableHasOnSet)) {
+         ecs_type_t ids = { .array = &id, .count = 1 };
+         flecs_emit(world, world, &(ecs_event_desc_t) {

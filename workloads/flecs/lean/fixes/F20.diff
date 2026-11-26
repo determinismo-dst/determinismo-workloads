@@ -1,0 +1,60 @@
+diff --git a/include/flecs/private/api_flags.h b/include/flecs/private/api_flags.h
+index f1d6f2d..b561ba4 100644
+--- a/include/flecs/private/api_flags.h
++++ b/include/flecs/private/api_flags.h
+@@ -150,6 +150,7 @@ extern "C" {
+ #define EcsIterFixedInChanged          (1u << 17u) /* Fixed-in terms changed. */
+ #define EcsIterSkip                    (1u << 18u) /* Result was skipped for change detection. */
+ #define EcsIterCppEach                 (1u << 19u) /* Uses C++ 'each' iterator. */
++#define EcsIterPropagated              (1u << 23u) /* Event was propagated from it->sources[0] to entities that didn't change tables. */
+ #define EcsIterImmutableCacheData      (1u << 21u) /* Internally used by the engine to indicate immutable arrays from the cache. */
+ #define EcsIterOpCtxSplit              (1u << 22u) /* Query op contexts were allocated separately from other iterator data. */
+ 
+diff --git a/src/observable.c b/src/observable.c
+index 881bd08..2dd1879 100644
+--- a/src/observable.c
++++ b/src/observable.c
+@@ -329,6 +329,7 @@ static void flecs_emit_propagate_id_for_range(
+     it->offset = offset;
+     it->count = count;
+     it->up_fields = 1;
++    it->flags |= EcsIterPropagated;
+     ECS_CONST_CAST(int16_t*, it->columns)[0] = -1;
+     if (count) {
+         it->entities = &ecs_table_entities(table)[offset];
+@@ -435,6 +436,7 @@ static void flecs_emit_propagate_id(
+ 
+     it->event_cur = event_cur;
+     it->up_fields = 0;
++    it->flags &= ~EcsIterPropagated;
+ }
+ 
+ static void flecs_emit_propagate(
+diff --git a/src/observer.c b/src/observer.c
+index 0e21224..605f5f3 100644
+--- a/src/observer.c
++++ b/src/observer.c
+@@ -740,7 +740,22 @@ static void flecs_multi_observer_invoke(
+     if (match) {
+         /* Monitor observers only invoke when the query matches for the first
+          * time with an entity */
+-        if (impl->flags & EcsObserverIsMonitor) {
++        if ((impl->flags & EcsObserverIsMonitor) &&
++            (it->flags & EcsIterPropagated))
++        {
++            /* The event was propagated from a source up the hierarchy, and the
++             * entity's table didn't change. The entity matched before the event
++             * (OnAdd) or still matches after it (OnRemove) if the component
++             * can be reached through the source's own targets. */
++            if (ecs_search_relation_for_entity(world, it->sources[0],
++                it->event_id, ecs_pair(term->trav, EcsWildcard), false,
++                NULL, NULL, NULL, NULL) != -1)
++            {
++                user_it.flags |= EcsIterSkip; /* Prevent change detection on fini */
++                ecs_iter_fini(&user_it);
++                goto done;
++            }
++        } else if (impl->flags & EcsObserverIsMonitor) {
+             ecs_iter_t table_it;
+             ecs_table_range_t prev_range = { .table = prev_table };
+             if (flecs_observer_query_has_range(

@@ -1,0 +1,25 @@
+diff --git a/src/addons/prefab/instantiate.c b/src/addons/prefab/instantiate.c
+index fe3b79f..5095b03 100644
+--- a/src/addons/prefab/instantiate.c
++++ b/src/addons/prefab/instantiate.c
+@@ -63,6 +63,20 @@ ecs_entity_t flecs_instantiate_alloc_child_id(
+     }
+ 
+     instance_child = root_instance + prefab_offset;
++
++    /* If the id was used before, the entity index stores the generation it
++     * gets when it is recycled. Don't make the id alive with an older
++     * generation, as that would make a deleted entity handle alive again. */
++    ecs_record_t *r = flecs_entity_index_try_get_any(
++        ecs_eis(world), instance_child);
++    if (r) {
++        ecs_entity_t recycled = ecs_vec_get_t(
++            &ecs_eis(world)->dense, uint64_t, r->dense)[0];
++        if (ECS_GENERATION(recycled) > ECS_GENERATION(instance_child)) {
++            instance_child = recycled;
++        }
++    }
++
+     flecs_entities_make_alive(world, instance_child);
+     flecs_entities_ensure(world, instance_child);
+     ecs_assert(ecs_is_alive(world, instance_child), ECS_INTERNAL_ERROR, NULL);

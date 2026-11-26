@@ -1,0 +1,23 @@
+diff --git a/src/addons/entity_ranges.c b/src/addons/entity_ranges.c
+index 7cf8697..ce40ce0 100644
+--- a/src/addons/entity_ranges.c
++++ b/src/addons/entity_ranges.c
+@@ -49,6 +49,18 @@ void flecs_entity_ranges_on_ensure(
+     ecs_entity_range_t *range = flecs_entity_index_find_range(index, id);
+     if (range) {
+         range->cur = id > range->cur ? id : range->cur;
++
++        /* If the id was deleted while another range was active, it is in the
++         * recycled list of its range. It is alive now, so it must not be
++         * recycled again when the range is activated or used. */
++        int32_t i, count = ecs_vec_count(&range->recycled);
++        uint64_t *recycled = ecs_vec_first_t(&range->recycled, uint64_t);
++        for (i = 0; i < count; i ++) {
++            if ((uint32_t)recycled[i] == id) {
++                ecs_vec_remove_ordered_t(&range->recycled, uint64_t, i);
++                break;
++            }
++        }
+     }
+ }
+ 

@@ -1,0 +1,17 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..b3b2236 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -648,8 +648,10 @@ static FLECS_ALWAYS_INLINE void* flecs_defer_set_impl(
+     cmd->entity = entity;
+     cmd->id = id;
+ 
+-    if (copy && world->stage_count != 1) {
+-
++    if (copy) {
++        /* Don't write the value to the component storage: queued changes
++         * become visible when the stage is merged, and the component may be
++         * removed before then. */
+         ptr.ptr = NULL;
+     }
+ 

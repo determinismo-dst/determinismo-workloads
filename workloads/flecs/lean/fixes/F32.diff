@@ -1,0 +1,35 @@
+diff --git a/src/search.c b/src/search.c
+index 836a570..40203cf 100644
+--- a/src/search.c
++++ b/src/search.c
+@@ -223,17 +223,20 @@ static int32_t flecs_table_search_relation_for_tgt(
+             result = -2;
+             goto found;
+         }
+-    } else {
+-        ecs_table_t *tgt_table = r->table;
+-        if (!tgt_table) {
+-            return -1;
+-        }
++    }
+ 
+-        result = flecs_table_search_relation(world, r, tgt_table, 0, id, cr, 
+-            rel, cr_r, true, tgt_out, id_out, tr_out);
+-        if (result != -1) {
+-            goto found;
+-        }
++    /* Search the target's table. For a DontFragment component this only
++     * searches the target's own relationship targets, so that a component is
++     * found when it is inherited through more than one level. */
++    ecs_table_t *tgt_table = r->table;
++    if (!tgt_table) {
++        return -1;
++    }
++
++    result = flecs_table_search_relation(world, r, tgt_table, 0, id, cr, 
++        rel, cr_r, true, tgt_out, id_out, tr_out);
++    if (result != -1) {
++        goto found;
+     }
+ 
+     return -1;

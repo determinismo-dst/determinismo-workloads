@@ -1,0 +1,75 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..bf1c09a 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -28,6 +28,7 @@ static ecs_cmd_t* flecs_cmd_new(
+     ecs_cmd_t *cmd = ecs_vec_append_t(&stage->allocator, &stage->cmd->queue, 
+         ecs_cmd_t);
+     cmd->is._1.value = NULL;
++    cmd->is._1.target = 0;
+     cmd->id = 0;
+     cmd->next_for_entity = 0;
+     cmd->entry = NULL;
+@@ -299,6 +300,13 @@ bool flecs_defer_add(
+         cmd->kind = EcsCmdAdd;
+         cmd->id = id;
+         cmd->entity = entity;
++        if (ECS_IS_PAIR(id)) {
++            /* A pair only stores the 32 bits of its target. Keep the target
++             * with its generation, so that the merge can tell whether it was
++             * deleted (and its id recycled) after the command was queued. */
++            cmd->is._1.target = flecs_entities_get_alive(
++                stage->world, ECS_PAIR_SECOND(id));
++        }
+         return true;
+     }
+ 
+@@ -892,6 +900,7 @@ static void flecs_discard_cmd(
+ 
+ static bool flecs_remove_invalid(
+     ecs_world_t *world,
++    const ecs_cmd_t *cmd,
+     ecs_id_t id,
+     ecs_id_t *id_out)
+ {
+@@ -904,7 +913,9 @@ static bool flecs_remove_invalid(
+             return true;
+         } else {
+             ecs_entity_t tgt = ECS_PAIR_SECOND(id);
+-            if (!flecs_entities_is_valid(world, tgt)) {
++            if (!flecs_entities_is_valid(world, tgt) || (cmd->is._1.target &&
++                !flecs_entities_is_alive(world, cmd->is._1.target)))
++            {
+                 /* Check the relationship's policy for deleted targets */
+                 ecs_component_record_t *cr = flecs_components_get(world, 
+                     ecs_pair(rel, EcsWildcard));
+@@ -1028,7 +1039,7 @@ static void flecs_cmd_batch_for_entity(
+                 return;
+             }
+ 
+-            if (flecs_remove_invalid(world, id, &id)) {
++            if (flecs_remove_invalid(world, cmd, id, &id)) {
+                 if (!id) {
+                     /* Entity should remain alive but id should not be added */
+                     cmd->kind = EcsCmdSkip;
+@@ -1401,7 +1412,7 @@ resume:
+                 }
+             }
+ 
+-            if (flecs_remove_invalid(world, id, &id)) {
++            if (flecs_remove_invalid(world, cmd, id, &id)) {
+                 if (id) {
+                     world->info.cmd.add_count ++;
+                     flecs_add_id_now(world, e, id);
+diff --git a/src/commands.h b/src/commands.h
+index b3bcf6f..ca85e2a 100644
+--- a/src/commands.h
++++ b/src/commands.h
+@@ -35,6 +35,7 @@ typedef struct ecs_cmd_1_t {
+     ecs_size_t size;                 /* Size of value */
+     bool clone_value;                /* Clone entity with value (used for clone) */ 
+     bool force_delete;               /* Delete prefab tables (used for delete_with) */
++    ecs_entity_t target;             /* Pair target alive when queued (used by add) */
+ } ecs_cmd_1_t;
+ 
+ typedef struct ecs_cmd_n_t {

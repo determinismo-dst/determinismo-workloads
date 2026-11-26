@@ -1,0 +1,59 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..87a2ae9 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -941,6 +941,35 @@ static bool flecs_remove_invalid(
+     return true;
+ }
+ 
++/* Test whether a remove of id (or a clear, if id is 0) removes a pair that the
++ * batch added, and whose relationship deletes the entity or panics when the
++ * pair's target is deleted. */
++static bool flecs_cmd_batch_removes_cleanup_pair(
++    ecs_world_t *world,
++    const ecs_table_diff_builder_t *diff,
++    ecs_id_t id)
++{
++    const ecs_id_t *added = diff->added.array;
++    int32_t i, count = diff->added.count;
++    for (i = 0; i < count; i ++) {
++        ecs_id_t pair = added[i];
++        if (!ECS_IS_PAIR(pair) || (id && !ecs_id_match(pair, id))) {
++            continue;
++        }
++
++        ecs_component_record_t *cr = flecs_components_get(world,
++            ecs_pair(ECS_PAIR_FIRST(pair), EcsWildcard));
++        if (cr) {
++            ecs_entity_t action = ECS_ID_ON_DELETE_TARGET(cr->flags);
++            if (action == EcsDelete || action == EcsPanic) {
++                return true;
++            }
++        }
++    }
++
++    return false;
++}
++
+ static bool flecs_cmd_parent_is_alive(
+     ecs_world_t *world,
+     const ecs_cmd_t *cmd)
+@@ -1063,6 +1092,18 @@ static void flecs_cmd_batch_for_entity(
+             }
+         }
+ 
++        if ((kind == EcsCmdRemove || kind == EcsCmdClear) &&
++            flecs_cmd_batch_removes_cleanup_pair(world, diff,
++                kind == EcsCmdRemove ? id : 0))
++        {
++            /* The remove undoes a pair that this batch added and whose
++             * target's deletion deletes the entity or panics. Commands of
++             * other entities queued in between (like deleting the target)
++             * must see the entity with the pair, so split the batch. */
++            split = cur;
++            break;
++        }
++
+         switch(kind) {
+         case EcsCmdAddModified:
+             /* Add is batched, but keep Modified */

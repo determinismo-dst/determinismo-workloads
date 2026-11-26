@@ -1,0 +1,104 @@
+diff --git a/src/query/cache/cache_iter.c b/src/query/cache/cache_iter.c
+index 8ad5b2e..4c33fe1 100644
+--- a/src/query/cache/cache_iter.c
++++ b/src/query/cache/cache_iter.c
+@@ -122,6 +122,47 @@ static ecs_query_cache_match_t* flecs_query_cache_next(
+     }
+ }
+ 
++/* Get the cache match of the current result. A call made while a result is
++ * iterated can add tables to the cache, which can reallocate the table vector
++ * that qit->elem points into. Look up the match of the table again. */
++ecs_query_cache_match_t* flecs_query_cache_iter_elem(
++    ecs_iter_t *it)
++{
++    ecs_query_iter_t *qit = &it->priv_.iter.query;
++    ecs_query_cache_match_t *elem = qit->elem;
++    if (!elem) {
++        return NULL;
++    }
++
++    ecs_query_cache_t *cache = flecs_query_impl(it->query)->cache;
++    if (!cache || (qit->all_tables == &cache->table_slices)) {
++        /* Sorted table slices only change when an iterator is created */
++        return elem;
++    }
++
++    ecs_query_cache_table_t *qt = flecs_query_cache_get_table(
++        cache, it->table);
++    if (!qt) {
++        /* Table is no longer matched by the cache */
++        return NULL;
++    }
++
++    elem = flecs_query_cache_match_from_table(cache, qt);
++    ecs_vec_t *wildcard_matches = elem->wildcard_matches;
++    if (wildcard_matches && (qit->tables == wildcard_matches) && qit->cur) {
++        /* Iterating the additional wildcard matches of the table */
++        if (qit->cur > ecs_vec_count(wildcard_matches)) {
++            return NULL;
++        }
++
++        elem = ecs_vec_get_t(wildcard_matches,
++            ecs_query_cache_match_t, qit->cur - 1);
++    }
++
++    qit->elem = elem;
++    return elem;
++}
++
+ static ecs_query_cache_match_t* flecs_query_test(
+     const ecs_query_run_ctx_t *ctx,
+     bool redo)
+diff --git a/src/query/cache/cache_iter.h b/src/query/cache/cache_iter.h
+index 9cf595c..8346865 100644
+--- a/src/query/cache/cache_iter.h
++++ b/src/query/cache/cache_iter.h
+@@ -13,6 +13,10 @@ void flecs_query_cache_iter_init(
+     ecs_query_iter_t *qit,
+     ecs_query_impl_t *impl);
+ 
++/* Get cache match of the current result */
++ecs_query_cache_match_t* flecs_query_cache_iter_elem(
++    ecs_iter_t *it);
++
+ /* Cache search where entire query is cached */
+ bool flecs_query_is_cache_search(
+     const ecs_query_run_ctx_t *ctx,
+diff --git a/src/query/cache/change_detection.c b/src/query/cache/change_detection.c
+index a91ce5c..c4aa272 100644
+--- a/src/query/cache/change_detection.c
++++ b/src/query/cache/change_detection.c
+@@ -701,9 +701,13 @@ bool ecs_iter_changed(
+ 
+     /* If query has a cache, check for changes in current matched result */
+     if (impl->cache) {
+-        ecs_query_cache_match_t *qm = 
+-            (ecs_query_cache_match_t*)it->priv_.iter.query.elem;
+-        ecs_check(qm != NULL, ECS_INVALID_PARAMETER, NULL);
++        ecs_check(it->priv_.iter.query.elem != NULL,
++            ECS_INVALID_PARAMETER, NULL);
++        ecs_query_cache_match_t *qm = flecs_query_cache_iter_elem(it);
++        if (!qm) {
++            /* Table is no longer matched by the cache */
++            return true;
++        }
+         return flecs_query_check_match_monitor(impl, qm, it);
+     }
+ 
+diff --git a/src/query/engine/eval_iter.c b/src/query/engine/eval_iter.c
+index a93c291..00d50d9 100644
+--- a/src/query/engine/eval_iter.c
++++ b/src/query/engine/eval_iter.c
+@@ -227,7 +227,10 @@ static void flecs_query_change_detection(
+             if (impl->pub.flags & EcsQueryHasChangeDetection) {
+                 /* If this query uses change detection, synchronize the
+                  * monitor for the iterated table with the query */
+-                flecs_query_sync_match_monitor(impl, qit->elem);
++                ecs_query_cache_match_t *qm = flecs_query_cache_iter_elem(it);
++                if (qm) {
++                    flecs_query_sync_match_monitor(impl, qm);
++                }
+             }
+         }
+     }

@@ -1,0 +1,30 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..2df11e4 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -1390,6 +1390,25 @@ resume:
+             goto next;
+         }
+ 
++        if ((kind == EcsCmdSet || kind == EcsCmdEnsure ||
++            kind == EcsCmdEmplace || kind == EcsCmdAddModified) &&
++            ECS_IS_PAIR(id))
++        {
++            /* Like a queued add, a queued set of a pair whose relationship or
++             * target was deleted before the merge is discarded, or deletes the
++             * entity if the relationship's cleanup policy says so. */
++            ecs_id_t valid_id = id;
++            bool keep_entity = flecs_remove_invalid(world, id, &valid_id);
++            if (!keep_entity || !valid_id) {
++                world->info.cmd.discard_count ++;
++                flecs_discard_cmd(world, cmd);
++                if (!keep_entity) {
++                    ecs_delete(world, e);
++                }
++                goto next;
++            }
++        }
++
+         switch(kind) {
+         case EcsCmdAdd:
+             ecs_assert(id != 0, ECS_INTERNAL_ERROR, NULL);

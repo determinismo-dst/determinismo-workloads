@@ -1,0 +1,17 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..297a134 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -1158,6 +1158,12 @@ static void flecs_cmd_batch_for_entity(
+     flecs_commands_end(world, stage);
+     stage->ensure_add = prev_ensure_add;
+ 
++    if (!r->table) {
++        /* Entity was deleted by an observer or hook during the commit. The
++         * entity's remaining commands are discarded by the flush. */
++        goto done;
++    }
++
+     /* If destination table has new sparse components, make sure they're created
+      * for the entity. */
+     if ((table_diff.added_flags & EcsTableHasSparse) && added.count) {

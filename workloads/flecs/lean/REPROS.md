@@ -19,6 +19,7 @@ curl -fsSL https://github.com/SanderMertens/flecs/archive/refs/tags/v4.2.0.tar.g
 
 - [ ] **F34: A cached query whose Or chain starts with a table term and ends with a Sparse term, with a term after the chain, returns wrong entities, and compiling it writes 42 bytes before the op array**. Story, code path and the docs it breaks: REPORT-5.md, F34.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: F29's patch ([fixes/F29.diff](fixes/F29.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_sparse_term_after_chain.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -29,6 +30,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_sparse_term_after_
 
 - [ ] **F35: While a cascade query is iterated, a call that changes a parent's depth returns a table again, or frees the group being iterated (a read of freed memory)**. Story, code path and the docs it breaks: REPORT-5.md, F35.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  No small fix: F30's design question, for cascade groups (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_cascade_table_twice.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -43,6 +45,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_cascade_group_freed.c
 
 - [ ] **F36: With change detection on, a call during an iteration that adds a table to the iterated group reallocates the group's array, and the next ecs_query_next reads and writes the freed array**. Story, code path and the docs it breaks: REPORT-5.md, F36.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the iterator looks the cache entry up again instead of keeping a pointer into a reallocated array ([fixes/F36.diff](fixes/F36.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_iter_table_array_realloc.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -52,6 +55,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_iter_table_array_real
 
 - [ ] **F39: With a Parent hierarchy, instances made after a prefab child changes copy the child's old type; a Sparse component added to it aborts the next instantiation**. Story, code path and the docs it breaks: REPORT-5.md, F39.
   Tracker: not found (searched 2026-11-26); related, another symptom: #2284 (closed, adding a component to an instantiated prefab aborted).
+  Proposed fix: the tree spawner is rebuilt when a prefab child changed table (a field added to a public flecs.h struct) ([fixes/F39.diff](fixes/F39.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/tree_spawner_stale_child_type.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -67,6 +71,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/tree_spawner_stale_sparse_a
 
 - [ ] **F29: A cached query (or a system) whose Or chain ends with a Sparse component crashes when it is created**. Story, code path and the docs it breaks: REPORT-4.md, F29.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+  Proposed fix: an Or chain with a Sparse term is kept out of the cache as a whole (also F34) ([fixes/F29.diff](fixes/F29.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_sparse_cache_crash.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -76,6 +81,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_sparse_cache_crash
 
 - [ ] **F3: A queued set of a pair whose target is deleted before the merge aborts the merge**. Story, code path and the docs it breaks: REPORT.md, F3.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: a queued set, ensure, emplace or add-modified of a pair with a dead target goes through the queued add's check ([fixes/F3.diff](fixes/F3.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/staged_set_pair_dead_target.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -84,6 +90,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/staged_set_pair_dead_target
 
 - [ ] **F4: Batched commands plus an observer that deletes its entity through it->stage: internal assert**. Story, code path and the docs it breaks: REPORT.md, F4.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: the batch stops if an observer deleted the entity ([fixes/F4.diff](fixes/F4.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_observer_deletes_entity.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -92,6 +99,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_observer_deletes_enti
 
 - [ ] **F5: ecs_set/ecs_ensure abort when an OnAdd observer deletes the entity through it->stage**. Story, code path and the docs it breaks: REPORT.md, F5.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: set ends quietly when an OnAdd observer deleted the entity; ensure gives its documented INVALID_OPERATION ([fixes/F5.diff](fixes/F5.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/set_observer_deletes_entity.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -100,6 +108,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/set_observer_deletes_entity
 
 - [ ] **F8: Entity ranges: make_alive of an id recycled while its range was inactive**. Story, code path and the docs it breaks: REPORT.md, F8.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: make_alive removes the id from its range's recycled list ([fixes/F8.diff](fixes/F8.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/range_make_alive_recycled.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -108,6 +117,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/range_make_alive_recycled.c
 
 - [ ] **F8: Entity ranges: make_alive of an id recycled while its range was inactive** (a second program for the same mechanism). Story, code path and the docs it breaks: REPORT.md, F8.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: make_alive removes the id from its range's recycled list ([fixes/F8.diff](fixes/F8.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/range_new_from_range_duplicate.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -124,6 +134,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_write_read_same_sy
 
 - [ ] **F17: A system that disables itself makes the pipeline skip the next systems in that frame** (the assert half). Story, code path and the docs it breaks: REPORT-2.md, F17.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: after a mid-frame rebuild the frame resumes from the schedule's start when none of its systems ran ([fixes/F17.diff](fixes/F17.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_disabled_systems_assert.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -140,6 +151,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_cache_stale_ref.c 
 
 - [ ] **F26: The worker threads' synchronization does not re-check its condition after a wait**. Story, code path and the docs it breaks: REPORT-3.md, F26.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: every condition-variable wait of the worker sync re-checks its condition in a loop ([fixes/F26.diff](fixes/F26.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_spurious_wakeup.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -192,6 +204,7 @@ cc -std=gnu99 -O1 -g -DNDEBUG -fsanitize=thread -I flecs/distr tests/flecs_lean/
 
 - [ ] **F2: The same with a Panic relationship: the merge panics**. Story, code path and the docs it breaks: REPORT.md, F2.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: F1's patch: the remove no longer panics ([fixes/F1.diff](fixes/F1.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_remove_dead_target_panic_record.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -200,6 +213,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_remove_dead_target_pa
 
 - [ ] **F7: Panic isn't enforced when another pair to the same target follows it in the type, or any pair has Delete**. Story, code path and the docs it breaks: REPORT.md, F7.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: a Panic pair wins over Delete and Remove when its target is deleted ([fixes/F7.diff](fixes/F7.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/panic_target_order.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -210,6 +224,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/panic_target_order.c flecs/
 
 - [ ] **F38: An instance of a prefab variant does not own a DontFragment component that the variant's base auto-overrides**. Story, code path and the docs it breaks: REPORT-5.md, F38.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the DontFragment auto-override walk follows the base's own IsA bases ([fixes/F38.diff](fixes/F38.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/auto_override_dont_fragment_variant.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -219,6 +234,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/auto_override_dont_fragment
 
 - [ ] **F40: While an order_by query is iterated, deleting an entity from a table with a later slice makes the iterator return rows past that table's count**. Story, code path and the docs it breaks: REPORT-5.md, F40.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: order_by slices are clamped to the table's current row count ([fixes/F40.diff](fixes/F40.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_stale_rows.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -227,6 +243,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_stale_rows.c
 
 - [ ] **F16: No sync point between a wildcard or Any write annotation and an overlapping read**. Story, code path and the docs it breaks: REPORT-2.md, F16.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: the sync-point check treats Wildcard and Any as overlapping on both sides (needs F15's upstream fix, PR #2417) ([fixes/F16.diff](fixes/F16.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_wildcard_sync_point.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -236,6 +253,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_wildcard_sync_poin
 
 - [ ] **F30: A call during an iteration that removes a table from the query's cache makes the iterator skip another table**. Story, code path and the docs it breaks: REPORT-4.md, F30.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+  No small fix: the cache iterator can't survive tables leaving mid-iteration without deferring cache changes or a redesign; or the docs say such calls must be deferred (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_iter_skips_table.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -244,6 +262,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_iter_skips_table.c fl
 
 - [ ] **F32: Overriding a DontFragment Inherit component inherited through two IsA levels constructs it instead of copying it**. Story, code path and the docs it breaks: REPORT-4.md, F32.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+  Proposed fix: the base search goes on through deeper IsA levels for DontFragment components ([fixes/F32.diff](fixes/F32.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_dont_fragment_2_levels.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -252,6 +271,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_dont_fragment_2_le
 
 - [ ] **F33: Worker threads of a multi-threaded change-detection system allocate a table's dirty state without synchronization (double allocation, a leak, a data race)**. Story, code path and the docs it breaks: REPORT-4.md, F33.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+  Proposed fix: only worker 0 runs change detection, so one thread allocates the dirty state ([fixes/F33.diff](fixes/F33.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_dirty_state_double_alloc.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -260,6 +280,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_dirty_state_double_
 
 - [ ] **F1: A batched remove of a pair whose target died earlier in the merge deletes the entity**. Story, code path and the docs it breaks: REPORT.md, F1.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: a batched remove of a pair whose target is gone is skipped instead of deleting the entity (also F2) ([fixes/F1.diff](fixes/F1.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_remove_dead_target.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -268,6 +289,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_remove_dead_target.c 
 
 - [ ] **F6: An on_set hook that moves its entity makes OnSet observers run for another entity**. Story, code path and the docs it breaks: REPORT.md, F6.
   Tracker: related, another path: #2368 (observers after one that writes to the event's table; closed 2026-11-02, before v4.2.0). F6 is an on_set hook, still on v4.2.0.
+  Proposed fix: OnSet goes to the entity where it is after the on_set hook ran ([fixes/F6.diff](fixes/F6.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_set_hook_moves_entity.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -277,6 +299,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_set_hook_moves_entity.c 
 
 - [ ] **F9: A queued set is written in place, and is lost if the component goes away before the merge**. Story, code path and the docs it breaks: REPORT.md, F9.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  No small fix: writing a queued set straight into storage is intended (flecs's own tests assert it; always queueing broke 10 of them): a design or docs decision (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/staged_set_value_lost.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -294,6 +317,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_childof_replaced_onad
 
 - [ ] **F11: Under batching, OnSet observers and on_set hooks see later values**. Story, code path and the docs it breaks: REPORT.md, F11.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: a second set of one component in a batch runs in queue order; ensure after a queued set gets its own copy ([fixes/F11.diff](fixes/F11.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_onset_values.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -302,6 +326,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_onset_values.c flecs/
 
 - [ ] **F12: Batching runs an entity's later commands before other entities' earlier ones; a child survives its parent's deletion**. Story, code path and the docs it breaks: REPORT.md, F12.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: the batch is split before a remove or clear that undoes a Delete or Panic pair it just added ([fixes/F12.diff](fixes/F12.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_child_survives_parent_delete.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -310,6 +335,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_child_survives_parent
 
 - [ ] **F21: Instantiating a prefab with children makes a deleted entity handle alive again**. Story, code path and the docs it breaks: REPORT-2.md, F21.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: an instance child's reused id never gets an older generation ([fixes/F21.diff](fixes/F21.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/instantiate_resurrects_deleted_handle.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -318,6 +344,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/instantiate_resurrects_dele
 
 - [ ] **F22: A batched set, remove and add of the same component keeps the set's value**. Story, code path and the docs it breaks: REPORT-2.md, F22.
   Tracker: related: open issue #2363 (the batch's diff keeps ids a later command undid); this set/remove/add value case isn't in it.
+  Proposed fix: a later remove in the batch drops the earlier set's value ([fixes/F22.diff](fixes/F22.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_set_remove_add_value.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -326,6 +353,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/batch_set_remove_add_value.
 
 - [ ] **F23: A queued ChildOf to a parent that was deleted, and whose id was recycled, attaches the child to the new entity**. Story, code path and the docs it breaks: REPORT-2.md, F23.
   Tracker: related, another path: #2362 (ecs_table_clear_entities leaves pairs a recycled id inherits; closed 2026-11-02, before v4.2.0). F23 is a queued ChildOf, still on v4.2.0.
+  Proposed fix: a queued pair add records the target's generation, so a recycled parent counts as deleted (8 bytes more a command) ([fixes/F23.diff](fixes/F23.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/staged_childof_recycled_parent.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -359,6 +387,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/override_cache_onset_source
 
 - [ ] **F28: With an entity range active, instantiating a prefab with children creates instance children outside the range**. Story, code path and the docs it breaks: REPORT-3.md, F28.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  No small fix: flecs's own test requires instance children beside their instance, outside the active range: the docs should change (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/instantiate_child_outside_range.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -367,6 +396,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/instantiate_child_outside_r
 
 - [ ] **F13: The generation wraps after 2^16 recycles** (by design (16-bit generation), against the docs' "a deleted handle is not alive"). Story, code path and the docs it breaks: REPORT.md, F13.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  No small fix: the 16-bit generation is part of the public id layout: the docs should say a stale handle can test alive again after 65,536 recycles (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/generation_wraps.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -375,6 +405,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/generation_wraps.c flecs/di
 
 - [ ] **F14: Inside an on_add hook the entity doesn't have the component yet (lower confidence)** (lower confidence: the docs show the order only in a diagram). Story, code path and the docs it breaks: REPORT.md, F14.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  No small fix: showing the entity inside on_add needs a two-pass table move: a design and docs question (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_add_hook_view.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -395,6 +426,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_mixed_children_insta
 
 - [ ] **F37: A system whose commands reorder the phases makes the pipeline skip, in that frame, the systems now ordered before it (with or without ProgressTasks)**. Story, code path and the docs it breaks: REPORT-5.md, F37.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  No small fix: the fix tried broke 9 of flecs's Pipeline tests, which require a system joining mid-frame to wait for the next frame: a redesign, flecs's decision (fixes/README.md).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_phase_reorder_skips.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -404,6 +436,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_phase_reorder_skip
 
 - [ ] **F31: The pipeline keeps a stale schedule when its query's match changes outside the cache (a system in a disabled module's Parent hierarchy keeps running; custom pipelines with a fixed-source or DontFragment term too)**. Story, code path and the docs it breaks: REPORT-4.md, F31.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+  Proposed fix: each frame compares the matched systems with the schedule and rebuilds if they differ (about 0.5 us a frame, 200 systems) ([fixes/F31.diff](fixes/F31.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_parent_module_disabled.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -418,6 +451,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_custom_uncached_te
 
 - [ ] **F17: A system that disables itself as the first of its frame makes the pipeline skip the next system (corrected tests: no builtin system first, it->stage)**. Story, code path and the docs it breaks: REPORT-2.md and REPORT-4.md, F17.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25).
+  Proposed fix: after a mid-frame rebuild the frame resumes from the schedule's start when none of its systems ran ([fixes/F17.diff](fixes/F17.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_disabled_system_skips_next.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -431,6 +465,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_disabled_system_sk
 
 - [ ] **F18: Change detection misses a write to a source entity that moved to another table**. Story, code path and the docs it breaks: REPORT-2.md, F18.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: change monitors record which table the source entity was in (also F19) ([fixes/F18.diff](fixes/F18.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/change_detection_fixed_source_moved.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -439,6 +474,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/change_detection_fixed_sour
 
 - [ ] **F19: Change detection on a fixed source that lacks the component: removal is missed, addition reads uninitialized memory**. Story, code path and the docs it breaks: REPORT-2.md, F19.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: F18's patch: a missing component is recorded, not skipped (the uninitialized read shown with checks/F19_fixed_source_added_optional.c) ([fixes/F18.diff](fixes/F18.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/change_detection_fixed_source_removed.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -447,6 +483,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/change_detection_fixed_sour
 
 - [ ] **F20: Monitors with up traversal report OnAdd for an entity that already matched, and OnRemove for one that still matches**. Story, code path and the docs it breaks: REPORT-2.md, F20.
   Tracker: related, another path: #2373 (Not-term observers and monitors check the whole table; closed 2026-11-02, before v4.2.0). F20 is up traversal, still on v4.2.0.
+  Proposed fix: propagated events carry a flag, and monitors skip them while the component is reachable through another parent ([fixes/F20.diff](fixes/F20.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/monitor_up_grandparent.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -456,6 +493,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/monitor_up_grandparent.c fl
 
 - [ ] **F25: After `ecs_run_aperiodic(EcsAperiodicEmptyQueries)`, a system stays inactive when its query matches entities again**. Story, code path and the docs it breaks: REPORT-3.md, F25.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: queries tagged empty are re-tested at each frame's start (includes F27's change) ([fixes/F25.diff](fixes/F25.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_system_stays_inactive.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -464,6 +502,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/pipeline_system_stays_inact
 
 - [ ] **F27: `ecs_query_is_true` and `ecs_query_count` clear the change state that `ecs_query_changed` reports**. Story, code path and the docs it breaks: REPORT-3.md, F27.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-25, by mechanism, error text and the recent list).
+  Proposed fix: ecs_query_is_true and ecs_query_count no longer clear the change state (or F25.diff) ([fixes/F27.diff](fixes/F27.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_is_true_consumes_change.c flecs/distr/flecs.c -lm -lpthread -o t && ./t

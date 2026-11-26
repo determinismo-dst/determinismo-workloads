@@ -1,0 +1,32 @@
+diff --git a/src/iter.c b/src/iter.c
+index 2d644bd..a346833 100644
+--- a/src/iter.c
++++ b/src/iter.c
+@@ -1053,6 +1053,14 @@ bool ecs_worker_next(
+         /* Copy everything up to the private iterator data */
+         ecs_os_memcpy(it, chain_it, offsetof(ecs_iter_t, priv_));
+ 
++        if (res_index) {
++            /* Every worker iterates the same results. Only the first worker
++             * does change detection for them, as it lazily allocates the dirty
++             * state of tables and the monitors of the query, which isn't
++             * thread safe. */
++            chain_it->flags |= EcsIterSkip;
++        }
++
+         int32_t count = it->count;
+         per_worker = count / res_count;
+         first = per_worker * res_index;
+diff --git a/src/query/engine/eval_iter.c b/src/query/engine/eval_iter.c
+index a93c291..9745cf0 100644
+--- a/src/query/engine/eval_iter.c
++++ b/src/query/engine/eval_iter.c
+@@ -238,7 +238,7 @@ static void flecs_query_self_change_detection(
+     ecs_query_iter_t *qit,
+     ecs_query_impl_t *impl)
+ {
+-    if (!it->table || !it->table->dirty_state) {
++    if ((it->flags & EcsIterSkip) || !it->table || !it->table->dirty_state) {
+         return;
+     }
+ 

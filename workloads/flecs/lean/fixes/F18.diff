@@ -1,0 +1,203 @@
+diff --git a/src/query/api.c b/src/query/api.c
+index 8da069a..170f03a 100644
+--- a/src/query/api.c
++++ b/src/query/api.c
+@@ -298,7 +298,8 @@ static void flecs_query_fini(
+     flecs_free_n(a, ecs_query_op_t, impl->op_count, impl->ops);
+     flecs_free_n(a, ecs_var_id_t, impl->pub.field_count, impl->src_vars);
+ #endif
+-    flecs_free_n(a, int32_t, impl->pub.field_count, impl->monitor);
++    flecs_free_n(a, ecs_query_fixed_monitor_t, impl->pub.field_count,
++        impl->monitor);
+ 
+     ecs_query_t *q = &impl->pub;
+     if (q->flags & EcsQueryValid) {
+diff --git a/src/query/cache/cache.c b/src/query/cache/cache.c
+index 53172f4..0301e14 100644
+--- a/src/query/cache/cache.c
++++ b/src/query/cache/cache.c
+@@ -618,7 +618,7 @@ static void flecs_query_cache_allocators_init(
+         flecs_ballocator_init(&cache->allocators.ids,
+             field_count * ECS_SIZEOF(ecs_id_t));
+         flecs_ballocator_init(&cache->allocators.monitors,
+-            (1 + field_count) * ECS_SIZEOF(int32_t));
++            FLECS_QUERY_MONITOR_SIZE(field_count));
+         flecs_ballocator_init(&cache->allocators.columns,
+             field_count * ECS_SIZEOF(int16_t));
+     }
+diff --git a/src/query/cache/change_detection.c b/src/query/cache/change_detection.c
+index a91ce5c..b3d6e3a 100644
+--- a/src/query/cache/change_detection.c
++++ b/src/query/cache/change_detection.c
+@@ -74,6 +74,15 @@ static void flecs_query_get_column_for_field(
+     out->column = tr->column;
+ }
+ 
++/* Get the source table ids stored after the dirty counters of a monitor. */
++static uint64_t* flecs_query_monitor_tables(
++    const ecs_query_t *q,
++    int32_t *monitor)
++{
++    return ECS_OFFSET(monitor,
++        FLECS_QUERY_MONITOR_TABLES_OFFSET(q->field_count));
++}
++
+ /* Get match monitor. Monitors are used to keep track of whether components 
+  * matched by the query in a table have changed. */
+ static bool flecs_query_get_match_monitor(
+@@ -100,6 +109,9 @@ static bool flecs_query_get_match_monitor(
+     int32_t i, field = -1, term_count = q->term_count;
+     flecs_table_column_t tc;
+ 
++    ecs_os_memset_n(flecs_query_monitor_tables(q, monitor), 0,
++        uint64_t, q->field_count);
++
+     for (i = 0; i < term_count; i ++) {
+         if (field == q->terms[i].field_index) {
+             if (monitor[field + 1] != -1) {
+@@ -150,7 +162,7 @@ static bool flecs_query_get_fixed_monitor(
+ 
+     if (!impl->monitor) {
+         impl->monitor = flecs_alloc_n(&impl->stage->allocator,
+-            int32_t, q->field_count);
++            ecs_query_fixed_monitor_t, q->field_count);
+         check = false; /* If the monitor is new, initialize it with dirty state */
+     }
+ 
+@@ -169,29 +181,34 @@ static bool flecs_query_get_fixed_monitor(
+         ecs_entity_t src = ECS_TERM_REF_ID(&term->src);
+         ecs_assert(src != 0, ECS_INTERNAL_ERROR, NULL);
+ 
+-        ecs_record_t *r = flecs_entities_get(world, src);
+-        if (!r || !r->table) {
+-            continue; /* Entity is empty, nothing to track */
+-        }
++        /* If the entity doesn't have the component, store table 0 so that
++         * adding the component is detected as a change. */
++        ecs_query_fixed_monitor_t cur = {0};
+ 
++        ecs_record_t *r = flecs_entities_get(world, src);
+         ecs_component_record_t *cr = flecs_components_get(world, term->id);
+-        if (!cr) {
+-            continue; /* If id doesn't exist, entity can't have it */
+-        }
+-
+-        const ecs_table_record_t *tr = flecs_component_get_table(cr, r->table);
+-        if (!tr) {
+-            continue; /* Entity doesn't have the component */
++        if (r && r->table && cr) {
++            const ecs_table_record_t *tr = flecs_component_get_table(
++                cr, r->table);
++            if (tr) {
++                /* Copy/check column dirty state from table */
++                int32_t *dirty_state = flecs_table_get_dirty_state(
++                    world, r->table);
++                ecs_assert(dirty_state != NULL, ECS_INTERNAL_ERROR, NULL);
++                cur.table_id = r->table->id;
++                cur.dirty_state = dirty_state[tr->column + 1];
++            }
+         }
+ 
+-        /* Copy/check column dirty state from table */
+-        int32_t *dirty_state = flecs_table_get_dirty_state(world, r->table);
+-        ecs_assert(dirty_state != NULL, ECS_INTERNAL_ERROR, NULL);
+-
++        ecs_query_fixed_monitor_t *monitor = &impl->monitor[field_index];
+         if (!check) {
+-            impl->monitor[field_index] = dirty_state[tr->column + 1];
++            *monitor = cur;
+         } else {
+-            if (impl->monitor[field_index] != dirty_state[tr->column + 1]) {
++            /* Dirty counters of different tables can't be compared, so a
++             * source that moved to another table has changed. */
++            if (monitor->table_id != cur.table_id ||
++                monitor->dirty_state != cur.dirty_state)
++            {
+                 return true;
+             }
+         }
+@@ -254,6 +271,15 @@ static bool flecs_query_check_match_monitor_term(
+         &impl->pub, match, field - 1, &cur);
+     ecs_assert(cur.column != -1, ECS_INTERNAL_ERROR, NULL);
+ 
++    if (cur.table != table) {
++        /* Component is stored on a source: check if it moved tables */
++        if (flecs_query_monitor_tables(cache->query, monitor)[field - 1] !=
++            cur.table->id)
++        {
++            return true;
++        }
++    }
++
+     return monitor[field] != flecs_table_get_dirty_state(
+         cache->query->stage, cur.table)[cur.column + 1];
+ }
+@@ -408,6 +434,11 @@ static bool flecs_query_check_match_monitor(
+             continue;
+         }
+ 
++        /* Dirty counters of different tables can't be compared */
++        if (flecs_query_monitor_tables(query, monitor)[i] != tc.table->id) {
++            return true;
++        }
++
+         int32_t *src_dirty_state = flecs_table_get_dirty_state(
+             world, tc.table);
+         if (mon != src_dirty_state[tc.column + 1]) {
+@@ -626,6 +657,7 @@ void flecs_query_sync_match_monitor(
+ 
+             monitor[field + 1] = flecs_table_get_dirty_state(
+                 q->stage, tc.table)[tc.column + 1];
++            flecs_query_monitor_tables(q, monitor)[field] = tc.table->id;
+         }
+     }
+ 
+diff --git a/src/query/cache/change_detection.h b/src/query/cache/change_detection.h
+index 909653f..e5317a0 100644
+--- a/src/query/cache/change_detection.h
++++ b/src/query/cache/change_detection.h
+@@ -12,6 +12,17 @@ void flecs_query_mark_fields_dirty(
+     ecs_query_impl_t *impl,
+     ecs_iter_t *it);
+ 
++/* A match monitor stores the dirty counter of the table (element 0) and of
++ * each field, followed by the id of the table each field's source was in when
++ * the monitor was synchronized. Dirty counters of different tables can't be
++ * compared, so a source that moved to another table has changed. */
++#define FLECS_QUERY_MONITOR_TABLES_OFFSET(field_count)\
++    ECS_ALIGN((1 + (field_count)) * ECS_SIZEOF(int32_t), ECS_SIZEOF(uint64_t))
++
++#define FLECS_QUERY_MONITOR_SIZE(field_count)\
++    (FLECS_QUERY_MONITOR_TABLES_OFFSET(field_count) +\
++        (field_count) * ECS_SIZEOF(uint64_t))
++
+ void flecs_query_sync_match_monitor(
+     ecs_query_impl_t *impl,
+     ecs_query_cache_match_t *match);
+diff --git a/src/query/types.h b/src/query/types.h
+index 09c5af5..c6e306e 100644
+--- a/src/query/types.h
++++ b/src/query/types.h
+@@ -480,6 +480,13 @@ typedef struct {
+     ecs_query_iter_t *qit;
+ } ecs_query_run_ctx_t;
+ 
++/* Change monitor for a field with a fixed source. Dirty counters of different
++ * tables can't be compared, so the monitor also stores the source's table. */
++typedef struct ecs_query_fixed_monitor_t {
++    uint64_t table_id;            /* Table of source (0 if it lacks the component) */
++    int32_t dirty_state;          /* Dirty counter of the component's column */
++} ecs_query_fixed_monitor_t;
++
+ struct ecs_query_impl_t {
+     ecs_query_t pub;              /* Public query data */
+ 
+@@ -507,7 +514,7 @@ struct ecs_query_impl_t {
+     /* Misc */
+     int32_t tokens_len;           /* Length of tokens buffer */
+     char *tokens;                 /* Buffer with string tokens used by terms */
+-    int32_t *monitor;             /* Change monitor for fields with fixed src */
++    ecs_query_fixed_monitor_t *monitor; /* Change monitor for fields with fixed src */
+     ecs_termset_t dont_fragment_fields; /* Fields with only DontFragment terms */
+ 
+ #ifdef FLECS_DEBUG

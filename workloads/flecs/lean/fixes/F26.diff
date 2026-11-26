@@ -1,0 +1,65 @@
+diff --git a/src/addons/pipeline/worker.c b/src/addons/pipeline/worker.c
+index 111ab8a..259ce1e 100644
+--- a/src/addons/pipeline/worker.c
++++ b/src/addons/pipeline/worker.c
+@@ -20,13 +20,17 @@ static void flecs_sync_worker(
+ 
+     /* Signal that thread is waiting */
+     ecs_os_mutex_lock(world->sync_mutex);
++    int32_t signal = world->workers_signal;
+     if (++world->workers_waiting == (stage_count - 1)) {
+         /* Only signal main thread when all threads are waiting */
+         ecs_os_cond_signal(world->sync_cond);
+     }
+ 
+-    /* Wait until main thread signals that thread can continue */
+-    ecs_os_cond_wait(world->worker_cond, world->sync_mutex);
++    /* Wait until main thread signals that thread can continue. Condition
++     * variables may wake up without a signal, so check the signal counter. */
++    while (signal == world->workers_signal) {
++        ecs_os_cond_wait(world->worker_cond, world->sync_mutex);
++    }
+     ecs_os_mutex_unlock(world->sync_mutex);
+ }
+ 
+@@ -45,7 +49,10 @@ static void* flecs_worker(void *arg) {
+     ecs_os_mutex_lock(world->sync_mutex);
+     world->workers_running ++;
+ 
+-    if (!(world->flags & EcsWorldQuitWorkers)) {
++    int32_t signal = world->workers_signal;
++    while (!(world->flags & EcsWorldQuitWorkers) &&
++        (signal == world->workers_signal))
++    {
+         ecs_os_cond_wait(world->worker_cond, world->sync_mutex);
+     }
+ 
+@@ -148,7 +155,7 @@ void flecs_wait_for_sync(
+     ecs_dbg_3("#[bold]pipeline: waiting for worker sync");
+ 
+     ecs_os_mutex_lock(world->sync_mutex);
+-    if (world->workers_waiting != (stage_count - 1)) {
++    while (world->workers_waiting != (stage_count - 1)) {
+         ecs_os_cond_wait(world->sync_cond, world->sync_mutex);
+     }
+ 
+@@ -173,6 +180,7 @@ void flecs_signal_workers(
+ 
+     ecs_dbg_3("#[bold]pipeline: signal workers");
+     ecs_os_mutex_lock(world->sync_mutex);
++    world->workers_signal ++;
+     ecs_os_cond_broadcast(world->worker_cond);
+     ecs_os_mutex_unlock(world->sync_mutex);
+ }
+diff --git a/src/world.h b/src/world.h
+index cfa03b9..2ba1aea 100644
+--- a/src/world.h
++++ b/src/world.h
+@@ -156,6 +156,7 @@ struct ecs_world_t {
+     ecs_os_mutex_t sync_mutex;       /* Mutex for job_cond */
+     int32_t workers_running;         /* Number of threads running */
+     int32_t workers_waiting;         /* Number of workers waiting on sync */
++    int32_t workers_signal;          /* Incremented each time workers are signalled */
+     ecs_pipeline_state_t* pq;        /* Pointer to the pipeline for the workers to execute */
+     bool workers_use_task_api;       /* Workers are short-lived tasks, not long-running threads */
+ 

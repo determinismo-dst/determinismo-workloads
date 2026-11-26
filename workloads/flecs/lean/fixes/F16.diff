@@ -1,0 +1,62 @@
+diff --git a/src/addons/pipeline/pipeline.c b/src/addons/pipeline/pipeline.c
+index ec5abbc..f428290 100644
+--- a/src/addons/pipeline/pipeline.c
++++ b/src/addons/pipeline/pipeline.c
+@@ -58,6 +58,39 @@ typedef struct ecs_write_state_t {
+     ecs_map_t wildcard_ids;
+ } ecs_write_state_t;
+ 
++static bool flecs_pipeline_elem_overlaps(
++    ecs_entity_t a,
++    ecs_entity_t b)
++{
++    return (a == b) ||
++        (a == EcsWildcard) || (a == EcsAny) ||
++        (b == EcsWildcard) || (b == EcsAny);
++}
++
++/* Two (wildcard) ids overlap when an id exists that matches both. Unlike
++ * ecs_id_match, this treats wildcards on both sides, and Any like Wildcard. */
++static bool flecs_pipeline_ids_overlap(
++    ecs_id_t a,
++    ecs_id_t b)
++{
++    if (ecs_id_match(a, b) || ecs_id_match(b, a)) {
++        return true;
++    }
++
++    if ((a == EcsAny) || (b == EcsAny)) {
++        return true;
++    }
++
++    if (ECS_IS_PAIR(a) && ECS_IS_PAIR(b)) {
++        return flecs_pipeline_elem_overlaps(
++                ECS_PAIR_FIRST(a), ECS_PAIR_FIRST(b)) &&
++            flecs_pipeline_elem_overlaps(
++                ECS_PAIR_SECOND(a), ECS_PAIR_SECOND(b));
++    }
++
++    return false;
++}
++
+ static ecs_write_kind_t flecs_pipeline_get_write_state(
+     ecs_write_state_t *write_state,
+     ecs_id_t id)
+@@ -86,7 +119,7 @@ static ecs_write_kind_t flecs_pipeline_get_write_state(
+     } else {
+         ecs_map_iter_t it = ecs_map_iter(&write_state->ids);
+         while (ecs_map_next(&it)) {
+-            if (ecs_id_match(ecs_map_key(&it), id)) {
++            if (flecs_pipeline_ids_overlap(ecs_map_key(&it), id)) {
+                 return WriteStateToStage;
+             }
+         }
+@@ -95,7 +128,7 @@ static ecs_write_kind_t flecs_pipeline_get_write_state(
+     if (ecs_map_count(&write_state->wildcard_ids)) {
+         ecs_map_iter_t it = ecs_map_iter(&write_state->wildcard_ids);
+         while (ecs_map_next(&it)) {
+-            if (ecs_id_match(id, ecs_map_key(&it))) {
++            if (flecs_pipeline_ids_overlap(id, ecs_map_key(&it))) {
+                 return WriteStateToStage;
+             }
+         }

@@ -1,0 +1,128 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..29d819b 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -490,10 +490,12 @@ static
+ void* flecs_defer_find_cmd_value(
+     ecs_stage_t *stage,
+     ecs_entity_t entity,
+-    ecs_id_t id)
++    ecs_id_t id,
++    bool *is_set)
+ {
+     ecs_commands_t *commands = stage->cmd;
+     ecs_cmd_entry_t *entry = flecs_cmd_entry_get(commands, entity);
++    *is_set = false;
+     if (!entry) {
+         return NULL;
+     }
+@@ -511,17 +513,21 @@ void* flecs_defer_find_cmd_value(
+         case EcsCmdEnsureDontFragment:
+             if (cmd->id == id) {
+                 result = cmd->is._1.value;
++                *is_set = cmd->kind == EcsCmdSet ||
++                    cmd->kind == EcsCmdSetDontFragment;
+             }
+             break;
+         case EcsCmdRemove:
+             if (ecs_id_match(id, cmd->id)) {
+                 result = NULL;
++                *is_set = false;
+             }
+             break;
+         case EcsCmdClone:
+         case EcsCmdClear:
+         case EcsCmdDelete:
+             result = NULL;
++            *is_set = false;
+             break;
+         case EcsCmdBulkNew:
+         case EcsCmdAdd:
+@@ -565,11 +571,21 @@ void* flecs_defer_ensure(
+         "bad size for component in ensure");
+ 
+     bool use_cmd_storage = !ptr.ptr || ti->hooks.on_replace != NULL;
++    const void *set_value = NULL;
+ 
+     if (use_cmd_storage) {
+-        void *existing = flecs_defer_find_cmd_value(stage, entity, id);
++        bool is_set;
++        void *existing = flecs_defer_find_cmd_value(
++            stage, entity, id, &is_set);
+         if (existing) {
+-            return existing;
++            if (!is_set) {
++                return existing;
++            }
++
++            /* Don't return the storage of a queued set, as writing to it would
++             * change the value the set's OnSet event sees. Start the ensure
++             * from the set's value instead. */
++            set_value = existing;
+         }
+     }
+ 
+@@ -585,7 +601,9 @@ void* flecs_defer_ensure(
+         cmd->is._1.size = size;
+         cmd->is._1.value = value;
+ 
+-        if (ptr.ptr) {
++        if (set_value) {
++            flecs_type_info_copy_ctor(value, set_value, 1, ti);
++        } else if (ptr.ptr) {
+             flecs_type_info_copy_ctor(value, ptr.ptr, 1, ti);
+         } else {
+             /* Check if entity inherits component */
+@@ -965,6 +983,20 @@ static bool flecs_cmd_table_has_id(
+     return cr && flecs_component_get_table(cr, table) != NULL;
+ }
+ 
++static bool flecs_cmd_batch_set_copied(
++    const ecs_vec_t *set_ids,
++    ecs_id_t id)
++{
++    const ecs_id_t *ids = ecs_vec_first_t(set_ids, ecs_id_t);
++    int32_t i, count = ecs_vec_count(set_ids);
++    for (i = 0; i < count; i ++) {
++        if (ids[i] == id) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ static void flecs_cmd_batch_for_entity(
+     ecs_world_t *world,
+     ecs_table_diff_builder_t *diff,
+@@ -1177,6 +1209,11 @@ static void flecs_cmd_batch_for_entity(
+      * yet, as for entities that did have the component already the value will
+      * have been assigned directly to the component storage. */
+     if (has_set) {
++        /* Ids whose first set in the batch was copied. Later sets of the same
++         * id are not batched: they run in queue order, so that each OnSet sees
++         * the value of its own set. */
++        ecs_vec_clear(set_ids);
++
+         cur = start;
+         do {
+             ecs_cmd_t *cmd = &cmds[cur];
+@@ -1188,6 +1225,10 @@ static void flecs_cmd_batch_for_entity(
+             switch(cmd->kind) {
+             case EcsCmdSet:
+             case EcsCmdEnsure: {
++                if (flecs_cmd_batch_set_copied(set_ids, cmd->id)) {
++                    break;
++                }
++
+                 flecs_component_ptr_t dst = flecs_get_mut(
+                     world, entity, cmd->id, r, cmd->is._1.size);
+ 
+@@ -1228,6 +1269,8 @@ static void flecs_cmd_batch_for_entity(
+ 
+                     flecs_stack_free(ptr, cmd->is._1.size);
+                     cmd->is._1.value = NULL;
++                    ecs_vec_append_t(&world->allocator, set_ids, ecs_id_t)[0] =
++                        cmd->id;
+ 
+                     if (cmd->kind == EcsCmdSet) {
+                         /* A set operation is add + copy + modified. We just did

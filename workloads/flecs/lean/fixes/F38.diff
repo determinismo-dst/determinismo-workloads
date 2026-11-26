@@ -1,0 +1,78 @@
+diff --git a/src/addons/prefab/instantiate.c b/src/addons/prefab/instantiate.c
+index fe3b79f..849c15f 100644
+--- a/src/addons/prefab/instantiate.c
++++ b/src/addons/prefab/instantiate.c
+@@ -370,24 +370,50 @@ void flecs_instantiate_dont_fragment(
+ static void flecs_instantiate_override_dont_fragment(
+     ecs_world_t *world,
+     ecs_table_t *base_table,
+-    ecs_entity_t instance)
++    ecs_entity_t instance,
++    int32_t depth)
+ {
++    ecs_check(depth < FLECS_DAG_DEPTH_MAX, ECS_CYCLE_DETECTED, 
++        "likely cycle detected during instantiation");
++
+     int32_t i, type_count = base_table->type.count;
+-    for (i = 0; i < type_count; i ++) {
+-        ecs_id_t id = base_table->type.array[i];
+-        if (!(id & ECS_AUTO_OVERRIDE)) {
+-            continue;
+-        }
++    if (base_table->flags & EcsTableOverrideDontFragment) {
++        for (i = 0; i < type_count; i ++) {
++            ecs_id_t id = base_table->type.array[i];
++            if (!(id & ECS_AUTO_OVERRIDE)) {
++                continue;
++            }
+ 
+-        id &= ~ECS_AUTO_OVERRIDE;
++            id &= ~ECS_AUTO_OVERRIDE;
+ 
+-        ecs_flags32_t flags = flecs_component_get_flags(world, id);
+-        if (!(flags & EcsIdDontFragment)) {
+-            continue;
++            ecs_flags32_t flags = flecs_component_get_flags(world, id);
++            if (!(flags & EcsIdDontFragment)) {
++                continue;
++            }
++
++            ecs_add_id(world, instance, id);
+         }
++    }
+ 
+-        ecs_add_id(world, instance, id);
++    /* Auto overrides of the base's own bases apply to the instance too, like
++     * flecs_add_overrides_for_base does for components that fragment. */
++    if (base_table->flags & EcsTableHasIsA) {
++        const ecs_table_record_t *tr = flecs_component_get_table(
++            world->cr_isa_wildcard, base_table);
++        ecs_assert(tr != NULL, ECS_INTERNAL_ERROR, NULL);
++        int32_t end = tr->index + tr->count;
++        for (i = tr->index; i < end; i ++) {
++            ecs_entity_t base = ecs_pair_second(
++                world, base_table->type.array[i]);
++            ecs_table_t *table = base ? ecs_get_table(world, base) : NULL;
++            if (table) {
++                flecs_instantiate_override_dont_fragment(
++                    world, table, instance, depth + 1);
++            }
++        }
+     }
++error:
++    return;
+ }
+ 
+ void flecs_instantiate(
+@@ -404,9 +430,9 @@ void flecs_instantiate(
+         "likely cycle detected during instantiation of base %s",
+         flecs_errstr(ecs_get_path(world, base)));
+ 
+-    if (base_table->flags & EcsTableOverrideDontFragment) {
++    if (base_table->flags & (EcsTableOverrideDontFragment|EcsTableHasIsA)) {
+         flecs_instantiate_override_dont_fragment(
+-            world, base_table, instance);
++            world, base_table, instance, 0);
+     }
+ 
+     /* If base has non-fragmenting components, add to instance */

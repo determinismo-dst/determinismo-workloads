@@ -1,0 +1,48 @@
+diff --git a/src/commands.c b/src/commands.c
+index 9f1a39e..fe4c5a6 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -953,6 +953,30 @@ static bool flecs_cmd_parent_is_alive(
+     return flecs_entities_is_alive(world, p->value);
+ }
+ 
++/* Skip the queued sets and ensures of an id (or of every id, when id is 0)
++ * that come before a command in the entity's batch that removes it. The remove
++ * destroys the value, and an add after it constructs a new one. */
++static void flecs_cmd_batch_skip_removed_sets(
++    ecs_cmd_t *cmds,
++    int32_t start,
++    int32_t end,
++    ecs_id_t id)
++{
++    int32_t cur = start;
++    while (cur != end) {
++        ecs_cmd_t *cmd = &cmds[cur];
++        if ((cmd->kind == EcsCmdSet || cmd->kind == EcsCmdEnsure) &&
++            (!id || ecs_id_match(cmd->id, id)))
++        {
++            cmd->kind = EcsCmdSkip;
++        }
++
++        int32_t next = cmd->next_for_entity;
++        cur = next < 0 ? -next : next;
++        ecs_assert(cur != 0, ECS_INTERNAL_ERROR, NULL);
++    }
++}
++
+ static bool flecs_cmd_table_has_id(
+     const ecs_table_t *table,
+     ecs_id_t id,
+@@ -1097,10 +1121,12 @@ static void flecs_cmd_batch_for_entity(
+             table = flecs_find_table_remove(world, table, id, diff);
+             world->info.cmd.batched_command_count ++;
+             cmd->kind = EcsCmdSkip;
++            flecs_cmd_batch_skip_removed_sets(cmds, start, cur, id);
+             break;
+         }
+         case EcsCmdClear:
+             ecs_assert(table != NULL, ECS_INTERNAL_ERROR, NULL);
++            flecs_cmd_batch_skip_removed_sets(cmds, start, cur, 0);
+             if (table->type.count) {
+                 ecs_id_t *ids = ecs_vec_grow_t(&world->allocator, 
+                     &diff->removed, ecs_id_t, table->type.count);

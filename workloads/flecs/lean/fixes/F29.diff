@@ -1,0 +1,16 @@
+diff --git a/src/query/validator.c b/src/query/validator.c
+index 28cbcc9..fced17b 100644
+--- a/src/query/validator.c
++++ b/src/query/validator.c
+@@ -1024,6 +1024,11 @@ static int flecs_query_finalize_terms(
+ 
+         if (cr_flags & EcsIdSparse) {
+             is_sparse = true;
++
++            /* Sparse terms aren't cacheable. Clear the flag before the OR
++             * chain check below, so an OR chain is cached whole or not at
++             * all, as the cache can't hold part of a chain. */
++            ECS_BIT_CLEAR16(term->flags_, EcsTermIsCacheable);
+         }
+ 
+ #ifdef FLECS_CONSTRAINT_TRAITS

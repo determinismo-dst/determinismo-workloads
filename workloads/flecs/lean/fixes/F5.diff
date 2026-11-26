@@ -1,0 +1,63 @@
+diff --git a/src/addons/flecs_cpp.c b/src/addons/flecs_cpp.c
+index cbf0f7d..73558ae 100644
+--- a/src/addons/flecs_cpp.c
++++ b/src/addons/flecs_cpp.c
+@@ -590,6 +590,8 @@ ecs_cpp_get_mut_t ecs_cpp_set(
+     ecs_record_t *r = flecs_entities_get(world, entity);
+     flecs_component_ptr_t dst = flecs_ensure(world, entity, id, r, 
+         flecs_uto(int32_t, size));
++    ecs_check(dst.ptr != NULL, ECS_INVALID_OPERATION,
++        "entity was deleted by an observer while setting a component");
+     
+     result.ptr = dst.ptr;
+     result.world = world;
+diff --git a/src/entity.c b/src/entity.c
+index 1af5f92..fd230d1 100644
+--- a/src/entity.c
++++ b/src/entity.c
+@@ -567,12 +567,17 @@ flecs_component_ptr_t flecs_ensure(
+     flecs_commands_end(world, world->stages[0]);
+     flecs_commands_begin(world, world->stages[0]);
+ 
++    if (!r->table) {
++        /* Entity was deleted by an OnAdd observer or hook. Return a NULL
++         * pointer so the caller can tell. */
++        return dst;
++    }
++
+     if (!cr) {
+         cr = flecs_components_get(world, component);
+         ecs_assert(cr != NULL, ECS_INTERNAL_ERROR, NULL);
+     }
+ 
+-    ecs_assert(r->table != NULL, ECS_INTERNAL_ERROR, NULL);
+     return flecs_get_component_ptr(
+         world, r->table, ECS_RECORD_TO_ROW(r->row), cr);
+ }
+@@ -1941,6 +1946,15 @@ void flecs_set_id_move(
+     ecs_record_t *r = flecs_entities_get(world, entity);
+     flecs_component_ptr_t dst = flecs_ensure(
+         world, entity, component, r, flecs_uto(int32_t, size));
++    if (!dst.ptr && !r->table) {
++        /* Entity was deleted by an observer while the component was added:
++         * drop the value. */
++        const ecs_type_info_t *ti = ecs_get_type_info(world, component);
++        if (ti && ti->hooks.dtor) {
++            ti->hooks.dtor(ptr, 1, ti);
++        }
++        return;
++    }
+     ecs_check(dst.ptr != NULL, ECS_INVALID_PARAMETER, NULL);
+ 
+     const ecs_type_info_t *ti = dst.ti;
+@@ -2014,6 +2028,10 @@ void ecs_set_id(
+     ecs_record_t *r = flecs_entities_get(world, entity);
+     flecs_component_ptr_t dst = flecs_ensure(world, entity, component, r, 
+         flecs_uto(int32_t, size));
++    if (!dst.ptr && !r->table) {
++        /* Entity was deleted by an observer while the component was added */
++        goto done;
++    }
+     ecs_check(dst.ptr != NULL, ECS_INVALID_PARAMETER, NULL);
+ 
+     if (component < FLECS_HI_COMPONENT_ID) {

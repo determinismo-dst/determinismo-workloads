@@ -1,0 +1,114 @@
+diff --git a/include/flecs/private/api_flags.h b/include/flecs/private/api_flags.h
+index f1d6f2d..925f44c 100644
+--- a/include/flecs/private/api_flags.h
++++ b/include/flecs/private/api_flags.h
+@@ -136,6 +136,7 @@ extern "C" {
+ #define EcsIterMatchEmptyTables        (1u << 3u)  /* Match empty tables. */
+ #define EcsIterIgnoreThis              (1u << 4u)  /* Only evaluate non-this terms. */
+ #define EcsIterTrivialChangeDetection  (1u << 5u)
++#define EcsIterNoChangeDetection       (1u << 24u) /* Iterator doesn't update change detection state (used by ecs_query_count, ecs_query_is_true). */
+ #define EcsIterHasCondSet              (1u << 6u)  /* Does the iterator have conditionally set fields. */
+ #define EcsIterProfile                 (1u << 7u)  /* Profile iterator performance. */
+ #define EcsIterTrivialSearch           (1u << 8u)  /* Trivial iterator mode. */
+diff --git a/src/query/api.c b/src/query/api.c
+index 8da069a..a634a48 100644
+--- a/src/query/api.c
++++ b/src/query/api.c
+@@ -664,6 +664,29 @@ bool flecs_query_count_trivial_cache(
+ }
+ #endif
+ 
++/* Create an iterator that tests a query for results. Testing is not iterating:
++ * it doesn't change the state reported by ecs_query_changed. */
++static ecs_iter_t flecs_query_test_iter(
++    const ecs_query_t *q)
++{
++#ifdef FLECS_CACHED_QUERIES
++    ecs_query_cache_t *cache = flecs_query_impl(q)->cache;
++    int32_t prev_match_count = cache ? cache->prev_match_count : 0;
++#endif
++
++    ecs_iter_t it = flecs_query_iter(q->stage, q);
++    it.flags |= EcsIterNoData|EcsIterNoChangeDetection;
++
++#ifdef FLECS_CACHED_QUERIES
++    if (cache) {
++        /* Iterator creation marks matched/unmatched tables as seen */
++        cache->prev_match_count = prev_match_count;
++    }
++#endif
++
++    return it;
++}
++
+ ecs_query_count_t ecs_query_count(
+     const ecs_query_t *q)
+ {
+@@ -674,8 +697,7 @@ ecs_query_count_t ecs_query_count(
+     if (!flecs_query_count_trivial_cache(q, &result))
+ #endif
+     {
+-        ecs_iter_t it = flecs_query_iter(q->stage, q);
+-        it.flags |= EcsIterNoData;
++        ecs_iter_t it = flecs_query_test_iter(q);
+ 
+         while (ecs_query_next(&it)) {
+             result.results ++;
+@@ -708,7 +730,7 @@ bool ecs_query_is_true(
+ {
+     flecs_poly_assert(q, ecs_query_t);
+ 
+-    ecs_iter_t it = flecs_query_iter(q->stage, q);
++    ecs_iter_t it = flecs_query_test_iter(q);
+     return ecs_iter_is_true(&it);
+ }
+ 
+diff --git a/src/query/cache/cache_iter.c b/src/query/cache/cache_iter.c
+index 8ad5b2e..413f805 100644
+--- a/src/query/cache/cache_iter.c
++++ b/src/query/cache/cache_iter.c
+@@ -81,7 +81,9 @@ static ecs_query_cache_match_t* flecs_query_cache_next(
+         ecs_table_t *table = qm->base.table;
+         if (!ecs_table_count(table)) {
+             if (!(always_match_empty || (it->flags & EcsIterMatchEmptyTables))) {
+-                if (ctx->query->pub.flags & EcsQueryHasChangeDetection) {
++                if ((ctx->query->pub.flags & EcsQueryHasChangeDetection) &&
++                    !(it->flags & EcsIterNoChangeDetection))
++                {
+                     ecs_query_impl_t *impl = flecs_query_impl(it->query);
+                     flecs_query_sync_match_monitor(impl, qm);
+ 
+diff --git a/src/query/engine/eval_iter.c b/src/query/engine/eval_iter.c
+index a93c291..d1cfcee 100644
+--- a/src/query/engine/eval_iter.c
++++ b/src/query/engine/eval_iter.c
+@@ -220,7 +220,7 @@ static void flecs_query_change_detection(
+     ecs_query_impl_t *impl)
+ {
+     /* Change detection */
+-    if (!(it->flags & EcsIterSkip)) {
++    if (!(it->flags & (EcsIterSkip|EcsIterNoChangeDetection))) {
+         /* Mark table columns that are written to dirty */
+         flecs_query_mark_fields_dirty(impl, it);
+         if (qit->elem) {
+@@ -595,12 +595,14 @@ bool ecs_query_next(
+ 
+     /* Done iterating */
+ #ifdef FLECS_CACHED_QUERIES
+-    if (impl->pub.write_fields & impl->pub.fixed_fields) {
+-        flecs_query_mark_fixed_fields_dirty(impl, it);
+-    }
+-    if (ctx.query->monitor) {
+-        flecs_query_update_fixed_monitor(
+-            ECS_CONST_CAST(ecs_query_impl_t*, ctx.query));
++    if (!(it->flags & EcsIterNoChangeDetection)) {
++        if (impl->pub.write_fields & impl->pub.fixed_fields) {
++            flecs_query_mark_fixed_fields_dirty(impl, it);
++        }
++        if (ctx.query->monitor) {
++            flecs_query_update_fixed_monitor(
++                ECS_CONST_CAST(ecs_query_impl_t*, ctx.query));
++        }
+     }
+ #endif
+ 

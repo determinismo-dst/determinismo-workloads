@@ -1,0 +1,28 @@
+diff --git a/src/on_delete.c b/src/on_delete.c
+index 92dc37d..abd6296 100644
+--- a/src/on_delete.c
++++ b/src/on_delete.c
+@@ -126,12 +126,20 @@ static ecs_entity_t flecs_get_delete_action(
+             ecs_type_t *type = &table->type;
+             ecs_table_record_t *trr = &table->_->records[i];
+             ecs_component_record_t *crr = trr->hdr.cr;
+-            result = ECS_ID_ON_DELETE_TARGET(crr->flags);
+-            if (result == EcsDelete) {
+-                /* Delete takes precedence over Remove */
++            ecs_entity_t pair_action = ECS_ID_ON_DELETE_TARGET(crr->flags);
++            if (pair_action == EcsPanic) {
++                /* Panic takes precedence over Delete and Remove */
++                result = EcsPanic;
+                 break;
+             }
+ 
++            if (pair_action == EcsDelete) {
++                /* Delete takes precedence over Remove */
++                result = EcsDelete;
++            } else if (result != EcsDelete) {
++                result = pair_action;
++            }
++
+             if (count > 1) {
+                 /* If table contains multiple pairs for target they are not
+                  * guaranteed to occupy consecutive elements in the table's type

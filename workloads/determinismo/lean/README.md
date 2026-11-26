@@ -149,5 +149,6 @@ nothing, so a set value's variants are one history again (CE62), a `--scenario a
 request rewritten with its first scenario and the explorer's own fields (CE63), `podman_cpuset`
 reading 512 bytes of the user manager's cpuset (CE64), a tree's declared lines written once per
 timeline instead of once per run (CE65), and a bundle that leaves the run's injectors on the
-recording host (CE66). CE62 and CE66 are fixed on the platform's next (7c5bc6f, c6c995e), each
-with a regression test that failed first; the others are in progress.
+recording host (CE66). Fixed on the platform's next, each with a regression test that failed
+first: CE62 (7c5bc6f), CE66 (c6c995e), CE65 (33efd94), CE61 (d5ac7fa), CE64 (c950738) and CE63's
+request half (fd5f1a2); which scenarios a resume continues (CE63's other half) is next.

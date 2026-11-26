@@ -6,6 +6,8 @@ run's verdict means. The composer (guest/runtime/composer.zig), the fault inject
 (guest/runtime/faults.zig), verdicts (src/core/events.zig, src/report.zig, src/main.zig, serve's
 properties), and tapes and replay (src/core/tape.zig, src/core/vm.zig), at platform commit 0dea225.
 
+How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../../../METHODOLOGY.md).
+
 ## Round 1
 
 [REPORT.md](REPORT.md): 13 counterexamples (CE1-CE13), a minor one (CE14) and notes, each with

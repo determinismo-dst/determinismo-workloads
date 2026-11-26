@@ -6,6 +6,8 @@ determinismo-dst/determinismo, pinned in `lakefile.toml`). It was written blind:
 code and documentation, without our earlier findings. Each deviation it predicts was then tested
 on the real jank.
 
+How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../../../METHODOLOGY.md).
+
 ## Rounds
 
 - **Round 1** (jank f3d82d654, then main 7135b7708): numbers, hashing, equality, transients,
@@ -90,9 +92,14 @@ on the real jank.
   `max`), LG2 (long overflow wraps or gives a BigInt where Clojure throws) and LG3 (`subs` indexes
   bytes; round 2's R52 had predicted it, but its test recorded only its first assertion). Round 6
   starts from that lesson.
+- **Round 6**: its 56 tests run on jank main 7135b7708 (2026-11-26, Linux, each test in its own
+  process): 53 deviations confirmed, both controls pass (`fix-v03` checks a proposed fix, jank
+  only). Every expected value was checked on Clojure 1.12.3, and every example filed was run on
+  both (the observed values, not the predicted ones). Filed in jankifier as LV51-LV85 and as new
+  tests of S9, LG1-LG3, R5 and LS40.
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
-jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
+jankifier's [specs/repros.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/repros.md), ordered by harm.
 
 ## Building and running
 

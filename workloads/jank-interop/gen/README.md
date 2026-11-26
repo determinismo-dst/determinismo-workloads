@@ -7,6 +7,8 @@ without anyone writing its case: a second source of jank findings beside the Lea
 rounds (ephyra's method; [jankifier](https://github.com/pfeodrippe/jankifier) keeps the
 confirmed ones).
 
+How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../../../METHODOLOGY.md).
+
 Three stages, with a determinismo-ci run (examples' ci-jank) after each of the first two:
 
 ```sh

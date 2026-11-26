@@ -1196,29 +1196,41 @@ which entry each change fixes.
                  :type         :G2-item}
      ; G2 is identical, except we want a cycle explained as G2
      ; specifically--it'll have at least one :predicate? edge.
-@@ -682,15 +702,18 @@
+@@ -682,18 +702,22 @@
                              want to see
        :additional-graphs    If you'd like even more dependencies"
    [opts]
 -  (let [ats (reportable-anomaly-types opts)]
+-    (-> ; If we need realtime, use realtime-graph. No need to bother
+-        ; with process, cuz we'll find those too.
+-        (cond (seq (set/intersection realtime-anomaly-types ats))
+-              #{elle/realtime-graph}
+-
+-              ; If we're looking for any process anomalies...
+-              (seq (set/intersection process-anomaly-types ats))
+-              #{elle/process-graph}
 +  (let [ats  (reportable-anomaly-types opts)
 +        ; Round 2's D3 fix: edges into :info operations only for models
 +        ; prohibiting G1a.
 +        g1a? (contains? (prohibited-anomaly-types opts) :G1a)]
-     (-> ; If we need realtime, use realtime-graph. No need to bother
-         ; with process, cuz we'll find those too.
-         (cond (seq (set/intersection realtime-anomaly-types ats))
--              #{elle/realtime-graph}
-+              #{(if g1a? elle/realtime-graph elle/realtime-graph-without-info)}
++    (-> ; Realtime anomalies need realtime-graph, process anomalies process-graph: each
++        ; graph for its own kind. The D2 fix (the Lean replica of Elle): realtime-graph
++        ; alone, once any realtime anomaly was reportable, named a process-order cycle
++        ; G-single-item-realtime, and a model asked for beside one prohibiting only process
++        ; anomalies (strong session SI with strong read uncommitted) passed it.
++        (cond-> nil
++          (seq (set/intersection realtime-anomaly-types ats))
++          (conj (if g1a? elle/realtime-graph elle/realtime-graph-without-info))
  
-               ; If we're looking for any process anomalies...
-               (seq (set/intersection process-anomaly-types ats))
--              #{elle/process-graph}
-+              #{(if g1a? elle/process-graph-with-info elle/process-graph)}
+-              ; Otherwise, the usual graph is fine.
+-              true nil)
++          (seq (set/intersection process-anomaly-types ats))
++          (conj (if g1a? elle/process-graph-with-info elle/process-graph)))
++        (some-> set)
+         ; Tack on any other requested graphs.
+         (into (:additional-graphs opts)))))
  
-               ; Otherwise, the usual graph is fine.
-               true nil)
-@@ -816,7 +839,11 @@
+@@ -816,7 +840,11 @@
                                 cycle-types
                                 (cm/anomalies-prohibited-by possible-models))]
      ;(info :impossible-anomalies impossible-anomalies)

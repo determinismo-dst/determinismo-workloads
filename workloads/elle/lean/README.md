@@ -9,6 +9,8 @@ built from the definitions rather than from Elle's code. It was written blind, f
 its documentation and the papers it implements, and searched with determinismo's Lean library
 (`sdk/lean`, pinned in `lakefile.toml`).
 
+How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../../../METHODOLOGY.md).
+
 ## Rounds
 
 - **Round 1**: history handling, list-append, rw-register (initial states, `:wfr-keys?`),

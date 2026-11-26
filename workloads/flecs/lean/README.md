@@ -5,6 +5,8 @@ replicated in Lean 4 function by function from its source, blind (from the code,
 own tests only), and searched for departures from what its docs promise, under every order of API
 calls and every interleaving of worker threads within bounds.
 
+How rounds are run, findings confirmed and fixes verified: [METHODOLOGY.md](../../../METHODOLOGY.md).
+
 ## Round 1
 
 [REPORT.md](REPORT.md): 14 predictions, F1-F14, each with a minimal API program, the property and
@@ -76,6 +78,22 @@ and order_by slices under iteration, phase reordering, auto overrides through va
 spawner. F34-F40, 9 new C tests (57 in all), each confirmed on the real flecs v4.2.0 (2026-11-26):
 F35 and F36 segfault reading freed memory, F34 writes before its op array, F39 asserts.
 
+## Round 6
+
+[REPORT-6.md](REPORT-6.md): OnSet for inherited components (Sparse and DontFragment storage,
+overrides, several bases), mixed-storage prefab children, order_by slices of deleted tables,
+multi-threaded order_by systems. F41-F47, each confirmed on flecs v4.2.0 (macOS and Linux; F47's
+race in a release build under ThreadSanitizer, its debug build aborting on an undocumented assert).
+
+## Round 7
+
+[REPORT-7.md](REPORT-7.md): OnAdd and OnRemove for inherited components, the tree spawner's
+Inherit components, the iterator a system's callback receives, the uncached query VM. F48-F54
+confirmed on flecs v4.2.0 (2026-11-26): OnAdd/OnRemove/OnSet misaddressed or missing for inherited
+components (F48-F51), instantiation aborting for a Parent child's Inherit component with a hook or
+Sparse storage (F52), `ecs_iter_changed`/`ecs_iter_skip` aborting in multi-threaded systems and run
+callbacks (F53, F54). F55 (a dirty state left in a freed table's slot) not reproduced.
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled
@@ -121,6 +139,10 @@ F17 whole (the skip, with no builtin system before the self-disabling one, and t
 instead).
 
 [REPROS.md](REPROS.md) lists every confirmed finding by kind, each with its repro.
+
+Proposed fixes ([fixes/](fixes/README.md)): 30 of the 37 findings F1-F40 fixed by 27 patches,
+each one's test red on v4.2.0 and green with it, flecs's own suites unchanged; the other 7 are
+design or documentation questions.
 
 ## Building and running
 

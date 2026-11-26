@@ -299,11 +299,15 @@
     (println (count groups) "signatures from" (count rows) "minimal cases, in" (str file))))
 
 (defn -main [& [mode & args]]
+  ;; Maps printed whole, never as #:ns{...}: clojure.main prints namespaced maps so, and jank's
+  ;; reader refuses that syntax (jankifier's R17, known), which failed every test of a namespace
+  ;; holding one expected value of it (seed 2, 2026-11-26).
+  (binding [*print-namespace-maps* false]
   (case mode
     "gen" (let [[seed n] args] (generate (Long/parseLong seed) (Long/parseLong n) "."))
     "shrink" (let [[seed failures] args] (shrink (Long/parseLong seed) failures "."))
     "group" (let [[seed failures] args] (group (Long/parseLong seed) failures "."))
-    (println "clojure -M gen.clj gen <seed> <forms> | shrink <seed> <failures.json> | group <seed> <failures.json>"))
+    (println "clojure -M gen.clj gen <seed> <forms> | shrink <seed> <failures.json> | group <seed> <failures.json>")))
   (shutdown-agents))
 
 (apply -main *command-line-args*)

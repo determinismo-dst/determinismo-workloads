@@ -1,0 +1,130 @@
+diff --git a/src/observable.c b/src/observable.c
+index 881bd08..0f371da 100644
+--- a/src/observable.c
++++ b/src/observable.c
+@@ -307,6 +307,79 @@ static void flecs_emit_propagate(
+     ecs_event_id_record_t **iders,
+     int32_t ider_count);
+ 
++/* Find the base that provides a component to the entities of a table through
++ * IsA, in the order that ecs_get uses (flecs_get_base_component): the table's
++ * IsA targets in type order, depth first. Returns the entity that owns the
++ * component (0 if there is none), and in direct_out the table's own IsA
++ * target it was found through. */
++static ecs_entity_t flecs_emit_isa_source(
++    ecs_world_t *world,
++    const ecs_table_t *table,
++    ecs_component_record_t *cr,
++    ecs_entity_t *direct_out,
++    int32_t depth)
++{
++    if (!(table->flags & EcsTableHasIsA) || (depth >= FLECS_DAG_DEPTH_MAX)) {
++        return 0;
++    }
++
++    const ecs_table_record_t *tr_isa = flecs_component_get_table(
++        world->cr_isa_wildcard, table);
++    if (!tr_isa) {
++        return 0;
++    }
++
++    const ecs_id_t *ids = table->type.array;
++    int32_t i = tr_isa->index, end = i + tr_isa->count;
++    for (; i < end; i ++) {
++        ecs_entity_t base = flecs_entities_get_alive(
++            world, ECS_PAIR_SECOND(ids[i]));
++        ecs_record_t *r = base ? flecs_entities_get(world, base) : NULL;
++        if (!r || !r->table) {
++            continue;
++        }
++
++        ecs_entity_t src = 0;
++        if (cr->flags & EcsIdDontFragment) {
++            if (flecs_component_sparse_has(cr, base)) {
++                src = base;
++            }
++        } else if (flecs_component_get_table(cr, r->table)) {
++            src = base;
++        }
++
++        if (!src) {
++            src = flecs_emit_isa_source(world, r->table, cr, NULL, depth + 1);
++        }
++
++        if (src) {
++            if (direct_out) {
++                *direct_out = base;
++            }
++            return src;
++        }
++    }
++
++    return 0;
++}
++
++/* Whether src is the source of a component for the entities of a table, the
++ * primary source of ObserversManual.md ("Adding an IsA pair"), reached
++ * through the table's IsA target tgt. An OnSet event that names another base
++ * reports a value that the entities don't have. */
++static bool flecs_emit_isa_is_source(
++    ecs_world_t *world,
++    const ecs_table_t *table,
++    ecs_component_record_t *cr,
++    ecs_entity_t src,
++    ecs_entity_t tgt)
++{
++    ecs_entity_t direct = 0;
++    ecs_entity_t owner = flecs_emit_isa_source(world, table, cr, &direct, 0);
++    return ((uint32_t)owner == (uint32_t)src) &&
++        ((uint32_t)direct == (uint32_t)tgt);
++}
++
+ static void flecs_emit_propagate_id_for_range(
+     ecs_world_t *world,
+     ecs_iter_t *it,
+@@ -421,9 +494,23 @@ static void flecs_emit_propagate_id(
+         ecs_table_cache_iter_t idt;
+         flecs_table_cache_iter(&cur->cache, &idt, EcsTableEmpty|EcsTableNotEmpty);
+ 
++        /* An OnSet reaches entities through every base that provides the
++         * component. Only notify through their source (another base can
++         * provide the component first, or the same base can be reached
++         * twice), and don't propagate further from the other paths: the
++         * value of these entities, and of their inheritors, didn't change. */
++        bool check_source = (trav == EcsIsA) && (it->event == EcsOnSet) &&
++            it->sources[0];
++
+         const ecs_table_cache_elem_t *elem;
+         while ((elem = flecs_table_cache_next(&idt))) {
+             ecs_table_t *table = elem->table;
++            if (check_source && !flecs_emit_isa_is_source(world, table, cr,
++                it->sources[0], ECS_PAIR_SECOND(cur->id)))
++            {
++                continue;
++            }
++
+             flecs_emit_propagate_id_for_range(
+                 world, it, cr, trav, iders, ider_count,
+                     &(ecs_table_range_t){
+@@ -828,7 +915,20 @@ static void flecs_emit_forward(
+             ECS_INTERNAL_ERROR, NULL);
+         ecs_dbg_assert(r->table == elem->table, ECS_INTERNAL_ERROR, NULL);
+ 
+-        flecs_emit_forward_id(world, er, er_onset, emit_ids, it, table,
++        /* The reachable ids can hold the component once for every base that
++         * provides it. Only emit the OnSet from the entities' source. */
++        const ecs_event_record_t *elem_onset = er_onset;
++        if (er_onset) {
++            ecs_event_id_record_t *iders_onset[5];
++            if (flecs_event_observers_get(er_onset, rc_cr->id, iders_onset) &&
++                !flecs_emit_isa_is_source(world, table, rc_cr, elem->src,
++                    ECS_PAIR_SECOND(cr->id)))
++            {
++                elem_onset = NULL;
++            }
++        }
++
++        flecs_emit_forward_id(world, er, elem_onset, emit_ids, it, table,
+             rc_cr, elem->src, r->table, tr->index, trav);
+     }
+ 

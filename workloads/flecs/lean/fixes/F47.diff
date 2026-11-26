@@ -1,0 +1,110 @@
+diff --git a/src/addons/pipeline/pipeline.c b/src/addons/pipeline/pipeline.c
+index ec5abbc..91f699a 100644
+--- a/src/addons/pipeline/pipeline.c
++++ b/src/addons/pipeline/pipeline.c
+@@ -615,6 +615,19 @@ void flecs_run_pipeline(
+ 
+         pq->immediate = immediate;
+ 
++#ifdef FLECS_CACHED_QUERIES
++        if (op_multi_threaded) {
++            /* Sort the order_by queries of the op's systems now: the worker
++             * threads can't sort the tables they iterate at the same time. */
++            ecs_system_t **systems = ecs_vec_first_t(
++                &pq->systems, ecs_system_t*);
++            int32_t s, end = pq->cur_op->offset + pq->cur_op->count;
++            for (s = pq->cur_i; s < end; s ++) {
++                flecs_query_sort_for_workers(world, systems[s]->query);
++            }
++        }
++#endif
++
+         if (!immediate) {
+             ecs_readonly_begin(world, multi_threaded);
+         } else {
+diff --git a/src/query/cache/cache.h b/src/query/cache/cache.h
+index 9db0ebc..0ac9cc6 100644
+--- a/src/query/cache/cache.h
++++ b/src/query/cache/cache.h
+@@ -131,6 +131,10 @@ void flecs_query_cache_sort_tables(
+ void flecs_query_cache_build_sorted_tables(
+     ecs_query_cache_t *cache);
+ 
++void flecs_query_sort_for_workers(
++    ecs_world_t *world,
++    ecs_query_t *q);
++
+ bool flecs_query_cache_is_trivial(
+     const ecs_query_cache_t *cache);
+ 
+diff --git a/src/query/cache/cache_iter.c b/src/query/cache/cache_iter.c
+index 8ad5b2e..0ee3d82 100644
+--- a/src/query/cache/cache_iter.c
++++ b/src/query/cache/cache_iter.c
+@@ -26,11 +26,29 @@ void flecs_query_cache_iter_init(
+ 
+     /* If query uses order_by, iterate the array with ordered table slices. */
+     if (cache->order_by_callback) {
+-        /* Check if query needs sorting. */
+-        flecs_query_cache_sort_tables(it->world, impl);
++        /* Check if query needs sorting. Sorting moves table rows, so it
++         * can't run while worker threads iterate the same tables: in
++         * multithreaded mode the iterator uses the slices of the sort that
++         * the pipeline did before it started the workers
++         * (flecs_query_sort_for_workers). */
++        bool sort = !(it->world->flags & EcsWorldMultiThreaded);
++        if (sort) {
++            flecs_query_cache_sort_tables(it->world, impl);
++        } else {
++            ecs_assert(cache->match_count == cache->prev_match_count,
++                ECS_UNSUPPORTED, "cannot sort query in multithreaded mode "
++                "(only the queries of multithreaded systems are sorted "
++                "before the workers start)");
++        }
++
+         qit->tables = &cache->table_slices;
+         qit->all_tables = qit->tables;
+         qit->group = NULL;
++
++        if (!sort) {
++            /* flecs_query_sort_for_workers updated prev_match_count */
++            return;
++        }
+     }
+ 
+     cache->prev_match_count = cache->match_count;
+diff --git a/src/query/cache/order_by.c b/src/query/cache/order_by.c
+index 53596ce..f8c67ab 100644
+--- a/src/query/cache/order_by.c
++++ b/src/query/cache/order_by.c
+@@ -225,6 +225,30 @@ void flecs_query_cache_build_sorted_tables(
+     }
+ }
+ 
++/* Sort an order_by query before the worker threads of a multithreaded
++ * pipeline op start. Sorting moves table rows, which can't happen while other
++ * threads iterate the same tables, so the iterators that the workers create
++ * don't sort (flecs_query_cache_iter_init). The pipeline calls this on the
++ * main thread for the systems of the op, before it signals the workers. */
++void flecs_query_sort_for_workers(
++    ecs_world_t *world,
++    ecs_query_t *q)
++{
++    ecs_query_impl_t *impl = flecs_query_impl(q);
++    ecs_query_cache_t *cache = impl->cache;
++    if (!cache || !cache->order_by_callback) {
++        return;
++    }
++
++    ecs_assert(!(world->flags & EcsWorldMultiThreaded), ECS_INTERNAL_ERROR,
++        NULL);
++
++    flecs_query_cache_sort_tables(world, impl);
++
++    /* What creating an iterator does after sorting */
++    cache->prev_match_count = cache->match_count;
++}
++
+ void flecs_query_cache_sort_tables(
+     ecs_world_t *world,
+     ecs_query_impl_t *impl)

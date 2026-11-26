@@ -1,25 +1,18 @@
 # Fixes for the flecs v4.2.0 findings
 
-Proposed changes to flecs v4.2.0 for the findings in `REPROS.md` (F1–F40, from the Lean replica's reports `REPORT.md` to `REPORT-5.md`). Each patch is a `git diff` against the release's `src/` (and `include/` where a public header changes) and applies to a clean v4.2.0 with `git apply`.
+Proposed changes to flecs v4.2.0 for the findings in `REPROS.md` (F1–F47, from the Lean replica's reports `REPORT.md` to `REPORT-6.md`). Each patch is a `git diff` against the release's `src/` (and `include/` where a public header changes) and applies to a clean v4.2.0 with `git apply`.
 
 Not patched here, as asked: F10 (open issue #2363), F15 (fixed by PR #2417, after v4.2.0) and F24 (open PR #2397).
 
-
-> Published here: the patches (`F<n>.diff`, `all-fixes.diff`), `checks/`, `attempts/` and
-> `bin/apply2distr.py`. The work tree the sections cite (`work/`, `build/`, the other `bin/` scripts,
-> `orig/`) stayed with the agent's run. Checked again on 2026-11-26: `all-fixes.diff` applied to
-> v4.2.0's amalgamation with `bin/apply2distr.py`, all 66 tests run: the 42 tests of the fixed
-> findings pass; the 23 failing belong to F9, F10, F13, F14, F15, F24, F28, F30, F35, F37 (no patch
-> here) and F41-F47 (round 6, not yet in this pass).
-
 ## Summary
 
-- **Fixed, one patch each:** F1 (also F2), F3, F4, F5, F6, F7, F8, F11, F12, F16, F17, F18 (also F19), F20, F21, F22, F23, F25 (also F27), F26, F27, F29 (also F34), F31, F32, F33, F36, F38, F39, F40.
+- **Fixed, one patch each:** F1 (also F2), F3, F4, F5, F6, F7, F8, F11, F12, F16, F17, F18 (also F19), F20, F21, F22, F23, F25 (also F27), F26, F27, F29 (also F34), F31, F32, F33, F36, F38, F39, F40, F41, F42, F43, F44, F45, F46, F47.
 - **Patches shared by two findings:**
   - `F1.diff` fixes F1 and F2;
   - `F18.diff` fixes F18 and F19;
   - `F29.diff` fixes F29 and F34;
   - `F25.diff` contains `F27.diff`'s change. Apply one of them: `F25.diff` fixes both.
+- **F47** is fixed in the code (the pipeline sorts before the workers start), not only in the documentation; its section says why.
 - **No fix:** F9, F13, F14, F28, F30, F35 and F37 (see "Findings without a fix" at the end).
 
 ## Layout
@@ -29,8 +22,9 @@ Not patched here, as asked: F10 (open issue #2363), F15 (fixed by PR #2417, afte
 - `fixes/attempts/*.diff`: changes that were tried and dropped, for F9 and F37.
 - `tests/`: unchanged copies of `tests/flecs_lean` and its `README.txt`.
 - `orig/flecs-4.2.0/`: the untouched release (read-only), from `https://github.com/SanderMertens/flecs/archive/refs/tags/v4.2.0.tar.gz` (sha256 `4107b0a36aa25f80ddcd6f939451ccfe1bacafcccdd2695840a4a8c413d05b40`).
-- `work/F<n>/`: the edited `src/` and `include/` copies the patches were made from.
-- `bin/`: the scripts named below.
+- `work/F<n>/`: the edited `src/` and `include/` copies the patches were made from; `work/ALL/` is the combined tree of `fixes/all-fixes.diff`.
+- `bin/`: the scripts named below. `bin/chk.sh` runs a program of `fixes/checks` against a build.
+- `build/asan/` and `build/tsan/`: the AddressSanitizer build used for F46 and the ThreadSanitizer release builds used for F47 (`bin/asan-build.sh`, `bin/asan-run.sh`, `bin/tsan-build.sh`, `bin/tsan-run.sh`, `bin/tsan-pairs.py`).
 - `build/verify/F<n>/summary.txt` and `build/verify/together/summary.txt`: the output of the final checks. `build/orig/suites/*.log` holds the baseline runs.
 
 ## How each patch was checked
@@ -42,6 +36,7 @@ Every patch was checked from its final `fixes/F<n>.diff` alone (`bin/verify-one.
 3. The finding's C tests, built against the patched amalgamation in two ways: linked with a patched `flecs.o`, and with the one-step command `cc -std=gnu99 -O1 -g -I distr <test>.c distr/flecs.c -lm -lpthread`. Both builds of every test exit 0.
 4. The same tests built against the unpatched release still fail. The section of each finding gives the output.
 5. flecs's own test suites, built against the patched amalgamation (see "flecs's suites").
+6. For memory and thread findings, sanitizer builds of the same amalgamation: AddressSanitizer with `FLECS_USE_OS_ALLOC` (F46), ThreadSanitizer in a release build (F47).
 
 The test programs are the ones in `tests/` (debug builds, asserts on, macOS arm64, Apple clang).
 
@@ -68,21 +63,28 @@ Each patch applies alone to v4.2.0. Applied together:
 - **F25 contains F27.** Apply one or the other, not both.
 - **F16 and F15:** apply F16 with F15's upstream fix (PR #2417). A system whose own `[out]` annotation overlaps its own later read only through wildcards now reaches F15's assert, as the exact-id form already does on v4.2.0.
 - **New iterator flag bits:** F20 adds bit 23 (`EcsIterPropagated`), and F25/F27 add bit 24 (`EcsIterNoChangeDetection`). They do not collide.
+- **F41, F42 and F43** all edit `src/observable.c`. F41 and F42 both add `flecs_emit_invoke_not_owned`, and F41 and F43 both add `flecs_emit_isa_source` (the same text in each patch). Applied together, the file keeps one copy of each; the other hunks don't overlap. Together, an OnSet through IsA follows the entity's source (F43) for every storage, and per-entity ownership of DontFragment components (F42) applies to the propagation that F43 leaves in place.
+- **F45 and F38:** F45 makes `flecs_instantiate_override_dont_fragment` non-static with its v4.2.0 signature and calls it from `flecs_spawner_instantiate`. F38 adds a `depth` parameter to it and makes it walk the base's IsA targets. Together, the declaration in `prefab.h` has the `depth` parameter, and the spawner calls it with 0 when the prefab child's table has `EcsTableOverrideDontFragment` or `EcsTableHasIsA` (F38's condition in `flecs_instantiate`).
+- **F44, F45 and F39** edit `flecs_spawner_instantiate`: F44 adds a parameter next to F39's first hunk and a pass after the spawn loop, F45 a call inside it. `patch -p1` applies them in numeric order.
+- **F46 and F36** both change `ecs_iter_changed`. Together, F36's `flecs_query_cache_iter_elem` returns NULL for a slice that F46 cleared, and F46's own change to `ecs_iter_changed` is left out; F46's guard in `flecs_query_change_detection` stays. F46 and F40 change different parts of `flecs_query_cache_next`.
+- **F47** edits `flecs_query_cache_iter_init`, `order_by.c` and `cache.h` next to F46's and F40's hunks, without overlap. F47 removes the sorting races of a multithreaded order_by system and F33 its monitor races; the ThreadSanitizer reports left with every patch are under "Everything together".
 - **All others** apply together in numeric order. F11, F12 and F22 edit different parts of the batch code in `commands.c`.
 
-`fixes/all-fixes.diff` is every patch applied together (F27 through F25, F23 adjusted as above). The build from it was checked like the single patches; the results are under "Everything together".
+`fixes/all-fixes.diff` is every patch applied together (F27 through F25, F23 adjusted, and F41–F43, F45 with F38 and F46 with F36 merged, as above). The build from it was checked like the single patches; the results are under "Everything together".
 
 ## Everything together
 
 `fixes/all-fixes.diff` was built and checked as one patch (`bin/verify-combo.sh`), with every test in `tests/`:
 
-- **The finding tests of the fixed findings:** all 42 exit 0. Two of them also pass on v4.2.0: `batch_remove_dead_target_panic.c` (F2's first form) and `change_detection_fixed_source_added.c` (F19).
+- **The finding tests of the fixed findings:** all 50 exit 0 (the 42 of rounds 1–5 and the 8 of round 6). Two of them also pass on v4.2.0: `batch_remove_dead_target_panic.c` (F2's first form) and `change_detection_fixed_source_added.c` (F19).
 - **The tests that are still red:**
   - the no-fix findings: `staged_set_value_lost.c` and `staged_set_after_remove_all.c` (F9), `generation_wraps.c` (F13), `on_add_hook_view.c` (F14), `instantiate_child_outside_range.c` (F28), `query_iter_skips_table.c` (F30), `query_cascade_table_twice.c` and `query_cascade_group_freed.c` (F35), `pipeline_phase_reorder_skips.c` (F37);
   - the findings left to upstream: `batch_childof_replaced_onadd.c` (F10), `pipeline_write_read_same_system.c` (F15), and the four `override_cache_*.c` tests (F24).
 - **F10's test:** the F12 patch fixes its add-then-clear half. The other half, a ChildOf pair replaced within one batch, still fails.
 - **Suites:** core 3870 / 0, query 4798 / 6 (the baseline's 6), addons 643 / 0, collections 97 / 0, cpp 1919 / 0: unchanged.
 - **Warnings:** the amalgamation compiles without warnings with all patches.
+- **Round 6's extra checks** (`fixes/checks/F41_*.c` to `F47_*.c`) all pass on the combined build. The earlier checks give the results their sections describe (F5's check stops at the documented INVALID_OPERATION; F20's Parent `self|up` variant still fails).
+- **ThreadSanitizer, all patches** (release build, `workers_order_by_sort_race.c`, 3 runs): "two threads sorting at once: 0; table intact: 1" and 4 race reports in each run, none in sorting, slices or monitors (F47 removes those, F33 the monitor syncs). The 4 left are statistics counters that every worker increments without atomics (`q->eval_count` in `flecs_query_iter`, `world->info.queries_ran_total` and `systems_ran_total`) and the worker loop's read of `world->flags` against `ecs_frame_begin`. No patch here changes them.
 
 ## Findings
 
@@ -425,6 +427,143 @@ What a fix would need, and why no small one is safe:
 - **Test:** `query_order_by_stale_rows.c`: v4.2.0 prints "FAIL: e3 returned 2 times (expected 1); a result extends past its table's count: 1" (rc=1); with the patch rc=0 (e3 once, no result past its table's count).
 - **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). The query suite includes the Sorting tests.
 - **Risk:** low. Only results of slices that extend past their table's count change: they get shorter or are skipped. The order of the remaining rows is still the order computed when the iterator was created; a deleted row's place is taken by the table's last row, so an entity of the same table can still be missed or seen out of order after such a call, as the docs describe for entities that move during an iteration ("Sorting": sorting is decided when an iterator is created).
+
+### F41. An IsA add gives no OnSet for an inherited Sparse or DontFragment component
+
+- **Change:** two parts, one patch (src/observable.c). Patch: `fixes/F41.diff`.
+  - `flecs_emit_forward_id` also emits the forwarded OnSet for a Sparse component. The component has no column, so the observers get the field size and read the value from the source, as they do when a set on the base is propagated.
+  - A new `flecs_emit_forward_dont_fragment`, called by `flecs_emit` after it forwards a new `(IsA, b)` pair, emits OnSet for each DontFragment component with the Inherit trait that has OnSet observers. Its source is found the way `ecs_get` finds it (`flecs_emit_isa_source`: the table's IsA targets in type order, depth first, like `flecs_get_base_component`). The event is emitted only when b is the first of the entities' bases that provides the component, and entities that own the component get no self|up event (`flecs_emit_invoke_not_owned`).
+- **Root cause:** `flecs_emit` (src/observable.c 1196-1237) forwards the ids reachable through a new IsA pair to the OnSet observers (`flecs_emit_forward`, 799-890).
+  - The reachable ids are the Inherit ids of the base's table type, recursively through the base's own IsA pairs (`flecs_reachable_cache_ensure`, 708-780). A DontFragment component is in no table type, so it is never listed.
+  - For a listed id, `flecs_emit_forward_id` (613-706) invokes the OnSet observers only when the id has a column in the source's table (685, `if (storage_i != -1)`). A Sparse component has none.
+  - Instantiation emits nothing either: `flecs_instantiate_dont_fragment` skips Inherit components of a base the instance has an IsA pair to (src/addons/prefab/instantiate.c 313-316).
+- **Test:** `isa_onset_sparse_dont_fragment.c`: v4.2.0 rc=1 ("OnSet events (one level, two levels): Position 1 1, Health (Sparse) 0 0, Defense (DontFragment) 0 0", "FAIL: an IsA add produced no OnSet for an inherited Sparse or DontFragment component"); patched rc=0 (1 1 for all three).
+- **Extra check** `fixes/checks/F41_isa_onset_more.c`, red on v4.2.0 and green with the patch:
+  - an entity that owns Health and Defense gets no self|up event when it gains the base, and an up-only observer gets one for each;
+  - an entity whose first base has neither component gets one event each from the second base;
+  - a DontFragment component without Inherit, copied at instantiation, still gets one owned event (as on v4.2.0).
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). core includes the Observer, ObserverOnSet and Prefab suites.
+- **Risk:**
+  - Every IsA add in a world that has OnSet observers and DontFragment components walks the world's list of DontFragment components. For each with Inherit and OnSet observers, it searches the entities' bases. `flecs_instantiate_dont_fragment` already walks that list for every instantiation of a base with DontFragment components.
+  - OnSet observers of Sparse and DontFragment components now get the events that ObserversManual.md "Adding an IsA pair" documents; before, they got none.
+  - Not covered: inheritors of an entity that gains a base. The downward propagation of a new pair carries only OnAdd, for table components as well (REPORT-6.md lists it under "Not counted as findings").
+
+### F42. Setting a DontFragment component on a base sends OnSet with the base's value to an instance that overrides it
+
+- **Change:** `flecs_emit_propagate_id_for_range` decides per entity whether an entity owns a DontFragment component. It invokes the self|up observers only for the runs of entities in the range that don't own it (`flecs_emit_invoke_not_owned`), and doesn't propagate further from entities that own it. The up observers get every entity, as before and as for table components. Patch: `fixes/F42.diff` (src/observable.c).
+- **Root cause:** a set on a base propagates OnSet down the IsA pairs (src/observable.c 1316: `flecs_propagate_entities`, 571-611; `flecs_emit_propagate`, 440-465; `flecs_emit_propagate_id`, 378-438). `flecs_emit_propagate_id_for_range` (310-376) skips the self|up observers and the further propagation only when the table owns the component (`owned`, 324), which it reads from the table type. A DontFragment component is in no table type, so an instance that overrides it in the sparse storage never counts as owning it, and gets the base's event and value.
+- **Test:** `set_base_onset_dont_fragment_override.c`: v4.2.0 rc=1 ("OnSet events for inst after setting base: Position 0, Health 0, Defense 1; ecs_get(inst, Defense) = 7", "Defense event for inst: source base, value 60", FAIL); patched rc=0 (Defense 0).
+- **Extra check** `fixes/checks/F42_dont_fragment_override_more.c`: i1 and i2 in one table, i1 overrides Defense; j IsA i1, k IsA i2; then base's Defense is set. Self|up events must reach only i2 and k, none i1 or j (whose value is i1's); an up-only observer must get i1 and i2. v4.2.0: i1 1, i2 1, j 1, k 1 (FAIL); patched: i1 0, i2 1, j 0, k 1, up-only i1 1, i2 1 (OK).
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). query includes the DontFragment suite.
+- **Risk:** low.
+  - For DontFragment components only, one sparse lookup per entity of each propagated range; table and Sparse components keep the table check.
+  - A range with owners is split into runs, so an observer can be called more than once for one table in one event (with the same event id; multi-component observers accept that for the same field).
+
+### F43. OnSet events name a base that isn't the entity's primary source
+
+- **Change:** OnSet events that come through IsA are emitted only through the entities' source of the component, the base that `ecs_get` reads it from (`flecs_emit_isa_source`: the table's IsA targets in type order, depth first, the order of `flecs_get_base_component`). Patch: `fixes/F43.diff` (src/observable.c).
+  - **Adding an IsA pair:** `flecs_emit_forward` drops the OnSet of a reachable id unless the id's source is the entities' source and the new pair's target is the base they see it through. This covers a second base that doesn't become the primary source, and a variant whose reachable ids list the component once per base.
+  - **Setting a base:** when the OnSet propagates down IsA, `flecs_emit_propagate_id` skips a table whose entities don't see the component from the set entity through that pair's target: an earlier base in type order provides it, or the same base is reached a second time through another path (a diamond). It doesn't propagate further from such a table either: the value of its entities, and of their inheritors, didn't change.
+  - OnAdd and OnRemove forwarding and propagation are unchanged.
+- **Root cause:**
+  - `flecs_emit_forward_id` checks only whether the entity's own table has the component (`owned`, src/observable.c 662-663).
+  - The reachable ids of `(IsA, v)` hold the component once for every base of v that provides it (`flecs_reachable_cache_ensure`, 729-764).
+  - The propagation walks every `(IsA, b)` table (`flecs_emit_propagate_id`, 420-434; `flecs_emit_propagate_id_for_range`, 310-376).
+  - `ecs_get` takes the first base in type order, depth first (`flecs_get_base_component`, src/addons/prefab/instantiate.c 485-555). ObserversManual.md "Adding an IsA pair" says no OnSet is generated when the new base doesn't become the primary source (the base with the lowest id).
+- **Test:** `isa_second_base_onset.c`: v4.2.0 rc=1 ("1. second base added: 1 event(s) for inst, 1 from b2", "2. second base set: 1 event(s) for inst (its Position: 1)", "3. variant with two bases: 2 event(s) for i3, 1 from b1", FAIL); patched rc=0 (0, 0, and 1 from b1; the control still gets 1 from b1).
+- **Extra check** `fixes/checks/F43_onset_source_more.c`, for table, Sparse and DontFragment storage, with the two bases created in both orders:
+  - a diamond (e1 IsA e0; e2 IsA e0 and IsA e1; set e0): e2 gets one event, not two;
+  - setting a base that isn't the primary source (inst IsA b1 and b2; set b2): neither inst nor its inheritor c gets an event (v4.2.0: one each), while setting b1 gives each one event from b1.
+  - Red on v4.2.0, green with the patch.
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). core includes the Observer and ObserverOnSet suites.
+- **Risk:**
+  - For each table that an OnSet reaches through IsA, and for each forwarded id that has OnSet observers, one search of the table's bases: a table-record lookup per base visited, one lookup for an entity with a single base that owns the component.
+  - Applications that counted on the duplicate or non-primary OnSet events no longer get them.
+  - The manual's "lowest entity id" is the type order of the direct bases. For deeper bases the patch follows `ecs_get`'s depth-first order, which is where the entity's value comes from.
+
+### F44. A prefab with ChildOf and Parent children gives instances no copy of the ChildOf children
+
+- **Change:** the ChildOf children of a prefab are instantiated also when the prefab has Parent children. Patch: `fixes/F44.diff` (src/addons/prefab/instantiate.c, tree_spawner.c, prefab.h).
+  - `flecs_instantiate` runs the tree spawner, which only holds Parent children, and then the same ChildOf loop it runs for prefabs without Parent children. That loop is now a function, `flecs_instantiate_childof_children`; for an ordered parent it returns at once when no child has a ChildOf pair.
+  - `flecs_spawner_instantiate`, after its spawn loop, calls the same function for each prefab child it spawned that has ChildOf children, with the spawned instance child as the parent. It copies the (prefab child, instance child) pairs first, because a nested instantiation can use another spawner, which reuses the `parents` array. It gets the instantiation depth as a new parameter, for the cycle check.
+- **Root cause:** with a Parent child, `flecs_instantiate` uses the tree spawner and returns (src/addons/prefab/instantiate.c 429-443). The spawner keeps only children whose table has the Parent component (tree_spawner.c 82-84) and descends only into the children of the children it kept (101-113). ChildOf children are instantiated only by the loop after that return (446-458), so neither a ChildOf child next to a Parent child nor one below a Parent child gets a copy.
+- **Test:** `prefab_mixed_children_instance.c`: v4.2.0 rc=1 ("children: mixed 1 (copy of the ChildOf child: 0), two ChildOf 2, two Parent 2; nested: 1 child with 0 grandchild"); patched rc=0 ("mixed 2 (copy of the ChildOf child: 1) ...; nested: 1 child with 1 grandchild").
+- **Extra check** `fixes/checks/F44_mixed_children_more.c`, red on v4.2.0 and green with the patch:
+  - two instances of a prefab whose Parent child comes before its ChildOf child (the second instance uses the cached spawner), with `ecs_get_target(inst, prefab_child)` of the Parent child;
+  - three levels: a Parent child, its ChildOf child and that one's Parent child;
+  - a ChildOf child below a ChildOf child below a Parent child.
+  - v4.2.0: "copy of a 0", levels "1 0 0"; patched: every copy at every level, with its value.
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). core includes the Prefab and NonFragmentingChildOf suites.
+- **Risk:**
+  - The copies of ChildOf children are created after the spawned ones, so the instance's ordered children list them after the Parent children; the prefab can interleave them.
+  - `ecs_get_target(instance, prefab_child)` finds an instance child by its index in the ordered children (`flecs_get_prefab_instance_child`, src/addons/prefab/prefab.c 73-133). It keeps working for Parent children placed before every ChildOf child of the prefab, as on v4.2.0. For the others it reports that the children "have changed since prefab instantiation", as it did on v4.2.0, where the instance lacked those children.
+  - Prefabs with only Parent children: one table-cache count per instantiation and one component-record lookup per spawned child.
+  - `flecs_spawner_instantiate` (internal, src/addons/prefab/prefab.h) takes one more parameter.
+
+### F45. Auto-overriding a DontFragment component on a prefab child aborts instantiation
+
+- **Change:** an `AUTO_OVERRIDE` of a DontFragment component on a prefab child no longer becomes an id in the instance child's table type. Patch: `fixes/F45.diff` (src/addons/prefab/instantiate.c, tree_spawner.c, prefab.h).
+  - Instead, the prefab child's table gets the flag `EcsTableOverrideDontFragment`, which `flecs_add_overrides_for_base` sets for the same id on a prefab (src/storage/table_graph.c 739-748).
+  - The component is then added to the instance child the way a prefab's own DontFragment auto override is added to an instance, by `flecs_instantiate_override_dont_fragment` (now non-static): for ChildOf children through the `flecs_instantiate(child, instance_child)` call that already follows (instantiate.c 293), for Parent children by `flecs_spawner_instantiate`, before it copies the prefab child's DontFragment values.
+- **Root cause:**
+  - `flecs_instantiate_children` turns each `AUTO_OVERRIDE|C` id of the prefab child's type into C in the instance child's type (src/addons/prefab/instantiate.c 197-208), and `flecs_prefab_spawner_build_type` does the same for Parent children (tree_spawner.c 33-42).
+  - The `AUTO_OVERRIDE|C` record has no trait flags, so nothing filters a DontFragment C, and `flecs_table_init` asserts that a table type cannot contain DontFragment components (src/storage/table.c 249-259).
+  - On the prefab itself, `flecs_instantiate_override_dont_fragment` (instantiate.c 370-391) handles the id, which is why the control passes.
+- **Test:** `prefab_child_auto_override_dont_fragment.c` (ChildOf child) and `prefab_parent_child_auto_override_dont_fragment.c` (Parent child): v4.2.0 both abort, `fatal: flecs.c: 41518: assert(!(id_cr->flags & EcsIdDontFragment)): table type cannot contain DontFragment components (INVALID_OPERATION)`, then the handler's FAIL, rc=1; patched both rc=0 (one child, which owns Defense {50}).
+- **Extra check** `fixes/checks/F45_auto_override_dont_fragment_inherit.c`: the component also has the Inherit trait; both hierarchies, two instances each. Every instance child must own a copy of 50, and a set on the copy must leave the prefab child's value alone. v4.2.0 aborts; patched OK. With Inherit, a Parent child's instance child, which is `IsA` the prefab child, would only inherit the value without the spawner's new call.
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites").
+- **Risk:** low.
+  - Only prefab children with a DontFragment auto override take the new path.
+  - Parent hierarchies pay one more flag test per spawned child per instantiation.
+  - The instance child gets the component through `ecs_add_id` and then the copy (OnAdd, then OnSet), as an instance of a prefab with the same auto override does.
+
+### F46. During an order_by iteration, a deleted table's slice is reused by a new table, and its entities and freed arrays are returned
+
+- **Change:** when a table leaves the cache of an order_by query, the cache clears the sorted slices that refer to it. Patch: `fixes/F46.diff` (src/query/cache/order_by.c, group.c, cache_iter.c, change_detection.c, cache.h; src/query/engine/eval_iter.c).
+  - `flecs_query_cache_remove_table` (the table was deleted or no longer matches) calls a new `flecs_query_cache_remove_table_slices`, which zeroes those slices: no table, no arrays.
+  - The iterator skips a cleared slice before it reads its table, and the change detection of the current result (`flecs_query_change_detection`, `ecs_iter_changed`) leaves a cleared slice alone; `ecs_iter_changed` reports it as changed (its table is gone).
+  - The next iterator rebuilds the slices, since the removal changed the cache's `match_count`.
+- **Root cause:**
+  - An order_by query iterates `cache->table_slices`, struct copies of the cache's matches (the table pointer, `_trs`, columns, `_ids`, `_sources`, `_monitor`) made when the iterator is created (src/query/cache/order_by.c 195-205).
+  - Deleting a table during the iteration removes its match and frees its arrays (group.c 302-326, match.c 18-67). `flecs_table_fini` returns the table's slot to the table store, and the next table created gets the same memory (src/storage/table.c 1268-1336).
+  - The iterator skips only a slice whose table has no entities, and syncs that slice's freed monitor while it does (src/query/cache/cache_iter.c 81-99). Otherwise it returns the slice's rows of whatever table is now in that memory, with the slice's freed arrays (192-222).
+- **Test:** `query_order_by_reused_table_slot.c`: v4.2.0 aborts in the debug build, `fatal: flecs.c: 85074: assert(columns[i] == expected): it->columns[0]=-27088 does not match expected 1` (in `flecs_iter_assert_columns`), and the handler prints FAIL, rc=1; patched rc=0 ("results: 2; [TagB] took the freed table's memory: 1": the iterator skips the cleared slice).
+- **Memory checks** with AddressSanitizer and `FLECS_USE_OS_ALLOC`, so every block is its own malloc (`bin/asan-build.sh`, `bin/asan-run.sh`):
+  - the finding's test: v4.2.0 `heap-use-after-free` (a read) in `flecs_query_cache_init_mapped_fields`; patched clean, rc=0;
+  - `fixes/checks/F46_order_by_deleted_table_skip.c`, the form without a new table, calling `ecs_iter_changed` on every result: it prints OK on both builds without ASan; under ASan v4.2.0 has a `heap-use-after-free` (a write) in `flecs_query_sync_match_monitor`, and the patched build is clean (OK).
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). query includes the OrderBy, OrderByEntireTable and ChangeDetection suites.
+- **Risk:** low.
+  - Removing a table from an order_by cache walks the cache's slices once. Tables are removed when they are deleted or stop matching.
+  - Not covered: a rematch that keeps the table can free a match's `_ids` or `_sources` array (match.c 117-120, 139-142) or wildcard matches that a slice still points at, during an iteration.
+  - Not covered: deleting the table of the current result from its own iteration, which other paths read as well (F30's class).
+
+### F47. A multi-threaded order_by system: debug builds abort, release builds race
+
+- **Change:** the code, not only the documentation: the pipeline sorts the queries once, before the workers start. Patch: `fixes/F47.diff` (src/addons/pipeline/pipeline.c, src/query/cache/order_by.c, cache_iter.c, cache.h).
+  - Before a multithreaded op signals the workers, and before `ecs_readonly_begin`, `flecs_run_pipeline` calls a new `flecs_query_sort_for_workers` for every system of the op. For an order_by query, it sorts on the main thread and does what creating an iterator does after sorting (`prev_match_count`).
+  - An iterator created while the world is in multithreaded mode doesn't sort; it uses those slices and leaves `prev_match_count` alone.
+  - In debug builds, a worker thread that creates an iterator for an order_by query whose cache matched or unmatched tables since its last sort still gets the UNSUPPORTED assert, now saying that only the queries of multithreaded systems are sorted before the workers start.
+- **Why this and not only the documentation:**
+  - The documentation alone would leave the debug abort and the release data race (undefined behavior), unless system creation also refused the combination. Systems.md "Threading" says staging "makes it safe for multiple threads to iterate the same world without taking locks", and nothing says order_by is excluded.
+  - The pipeline already has the right place for the sort. Between two ops only the main thread runs, and the world is merged. During a multithreaded op structural changes are deferred, so slices computed when the op starts stay valid until it ends.
+  - The sort runs once per op instead of once per worker.
+  - If flecs prefers to keep the combination unsupported, the documentation (Systems.md "Threading", Queries.md "Sorting") should say so, and `ecs_system_init` should reject `multi_threaded` with an order_by query in every build mode, since a release build has no assert.
+- **Root cause:**
+  - Each stage creates its own iterator for the system's query (src/addons/system/system.c 80-81). The main thread runs stage 0 while the workers run the others (src/addons/pipeline/pipeline.c 626-638).
+  - Creating the iterator runs `flecs_query_cache_iter_init` (src/query/cache/cache_iter.c 11-37), which for an order_by query calls `flecs_query_cache_sort_tables` (order_by.c 228-321). That sorts each changed table in place, rebuilds the slice vector (215-225) and increments `match_count` (317).
+  - The match monitors that decide whether a table changed are synced only after the table is iterated (src/query/engine/eval_iter.c 217-234), so every stage sees the table as changed and sorts it.
+  - Debug builds stop at the UNSUPPORTED assert of `flecs_query_cache_build_sorted_table_range` (order_by.c 87-88). Release builds sort the same table on several threads at once.
+- **Test:** `workers_order_by_sort_race.c` (debug build): v4.2.0 aborts, `fatal: flecs.c: 79891: assert(!(world->flags & EcsWorldMultiThreaded)): cannot sort query in multithreaded mode (UNSUPPORTED)`, then "FAIL: signal 6 during the frame", rc=1; patched rc=0 ("system runs: 2; compares during the frame: 448; two threads sorting at once: 0; table intact: 1"; the main thread sorts, and the test's 2-second rendezvous times out).
+- **Release build with ThreadSanitizer** (`-DNDEBUG -fsanitize=thread`; `bin/tsan-build.sh`, `bin/tsan-run.sh`, `bin/tsan-pairs.py`), the same test:
+  - v4.2.0, 2 runs: "two threads sorting at once: 1", FAIL, and 19 race reports in each. 18 of them have an access in `flecs_query_cache_build_sorted_tables`; others are in `flecs_query_cache_sort_tables` (the `match_count` increment), the lazy monitor allocation (`flecs_query_get_match_monitor`) and `flecs_table_get_dirty_state`.
+  - Patched, 3 runs: "two threads sorting at once: 0; table intact: 1" each, and no report in a sort, slice or monitor-allocation function.
+  - The reports left (1, 1 and 6 per run) are not about sorting: statistics counters that every worker increments without atomics (`q->eval_count` in `flecs_query_iter`, the world's `info` counters), the worker loop's read of `world->flags` against `ecs_frame_begin`, and F33's monitor sync. "Everything together" has the run with every patch.
+- **Extra check** `fixes/checks/F47_mt_order_by_frames.c`: 4 threads, 300 entities in 3 tables, 20 frames, with new values and table moves between frames. In every frame each entity must be seen once and each worker must see its rows in ascending order; a single-threaded order_by system is the control. v4.2.0 aborts at the assert; patched OK.
+- **Suites:** core, query, addons, collections and cpp with this patch: unchanged from v4.2.0 (core 3870 / 0, query 4798 / 6, addons 643 / 0, collections 97 / 0, cpp 1919 / 0; see "flecs's suites"). addons includes the MultiThread and MultiThreadStaging suites; query includes OrderBy.
+- **Risk:**
+  - The order of a multithreaded order_by system is computed when its op starts, not when each worker creates its iterator. Values that other systems of the same op write during the op don't change it; those systems run at the same time as it, so nothing orders them before it anyway.
+  - An order_by query that isn't a query of the op's systems, iterated on a worker thread, isn't sorted there. If its cache changed since its last iteration, debug builds assert as before; release builds iterate the slices of its last sort.
+  - Every op of multithreaded systems calls `flecs_query_sort_for_workers` once per system: a cache lookup, and the sort for order_by queries, which the stages did before.
 
 ## Findings without a fix
 

@@ -1,0 +1,87 @@
+diff --git a/src/addons/prefab/instantiate.c b/src/addons/prefab/instantiate.c
+index fe3b79f..a493ec6 100644
+--- a/src/addons/prefab/instantiate.c
++++ b/src/addons/prefab/instantiate.c
+@@ -196,6 +196,18 @@ static void flecs_instantiate_children(
+          * that have already been added to the child table type. */
+         if (ECS_HAS_ID_FLAG(id, AUTO_OVERRIDE)) {
+             ecs_id_t concreteId = id & ~ECS_AUTO_OVERRIDE;
++
++            /* A DontFragment component can't be in a table type. Flag the
++             * prefab child's table so that flecs_instantiate adds the
++             * component to the instance children, as it does for an auto
++             * override on the prefab itself. */
++            if (flecs_component_get_flags(world, concreteId) &
++                EcsIdDontFragment)
++            {
++                child_table->flags |= EcsTableOverrideDontFragment;
++                continue;
++            }
++
+             int32_t insert_index = flecs_child_type_insert(
+                 &diff.added, component_data, concreteId);
+             if (childof_base_index != -1 && insert_index != -1 &&
+@@ -367,7 +379,7 @@ void flecs_instantiate_dont_fragment(
+     }
+ }
+ 
+-static void flecs_instantiate_override_dont_fragment(
++void flecs_instantiate_override_dont_fragment(
+     ecs_world_t *world,
+     ecs_table_t *base_table,
+     ecs_entity_t instance)
+diff --git a/src/addons/prefab/prefab.h b/src/addons/prefab/prefab.h
+index 11379d2..ad6b476 100644
+--- a/src/addons/prefab/prefab.h
++++ b/src/addons/prefab/prefab.h
+@@ -46,6 +46,13 @@ void flecs_instantiate_dont_fragment(
+     ecs_entity_t base,
+     ecs_entity_t instance);
+ 
++/* Add the DontFragment components that a base auto overrides to an instance
++ * (the AUTO_OVERRIDE ids in the base's table type). */
++void flecs_instantiate_override_dont_fragment(
++    ecs_world_t *world,
++    ecs_table_t *base_table,
++    ecs_entity_t instance);
++
+ void flecs_instantiate_sparse(
+     ecs_world_t *world,
+     const ecs_table_range_t *base_child_range,
+diff --git a/src/addons/prefab/tree_spawner.c b/src/addons/prefab/tree_spawner.c
+index 126772c..052bb01 100644
+--- a/src/addons/prefab/tree_spawner.c
++++ b/src/addons/prefab/tree_spawner.c
+@@ -38,7 +38,19 @@ static ecs_type_t flecs_prefab_spawner_build_type(
+              * that aren't copyable, since a prefab can have a component with
+              * AUTO_OVERRIDE flag, but not have the actual component (which then
+              * isn't copied). */
+-            flecs_type_add(world, &dst, id & ~ECS_AUTO_OVERRIDE);
++            ecs_id_t concrete = id & ~ECS_AUTO_OVERRIDE;
++
++            /* A DontFragment component can't be in a table type. Flag the
++             * prefab child's table so that flecs_spawner_instantiate adds the
++             * component to the instance child. */
++            if (flecs_component_get_flags(world, concrete) & 
++                EcsIdDontFragment)
++            {
++                table->flags |= EcsTableOverrideDontFragment;
++                continue;
++            }
++
++            flecs_type_add(world, &dst, concrete);
+             continue;
+         }
+ 
+@@ -337,6 +349,11 @@ void flecs_spawner_instantiate(
+         flecs_instantiate_sparse(world, &base_range, &base_child,
+             r->table, &entity, ECS_RECORD_TO_ROW(r->row), true);
+ 
++        if (spawn_r->table->flags & EcsTableOverrideDontFragment) {
++            flecs_instantiate_override_dont_fragment(
++                world, spawn_r->table, entity);
++        }
++
+         if (spawn_r->row & EcsEntityHasDontFragment) {
+             flecs_instantiate_dont_fragment(
+                 world, spawn_child->child, entity);

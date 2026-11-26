@@ -1,0 +1,98 @@
+diff --git a/src/observable.c b/src/observable.c
+index 881bd08..f0e482e 100644
+--- a/src/observable.c
++++ b/src/observable.c
+@@ -307,6 +307,42 @@ static void flecs_emit_propagate(
+     ecs_event_id_record_t **iders,
+     int32_t ider_count);
+ 
++/* Invoke observers for the entities of the iterated range that don't own a
++ * DontFragment component. Such a component is in no table type, so whether an
++ * entity owns it (overrides it) is decided per entity. */
++static void flecs_emit_invoke_not_owned(
++    ecs_world_t *world,
++    ecs_map_t *observers,
++    ecs_iter_t *it,
++    ecs_table_t *table,
++    ecs_entity_t trav,
++    ecs_component_record_t *cr)
++{
++    const ecs_entity_t *entities = it->entities;
++    int32_t offset = it->offset, count = it->count;
++    int32_t i = 0;
++    while (i < count) {
++        if (flecs_component_sparse_has(cr, entities[i])) {
++            i ++;
++            continue;
++        }
++
++        int32_t start = i;
++        while (i < count && !flecs_component_sparse_has(cr, entities[i])) {
++            i ++;
++        }
++
++        it->entities = &entities[start];
++        it->offset = offset + start;
++        it->count = i - start;
++        flecs_observers_invoke(world, observers, it, table, trav);
++    }
++
++    it->entities = entities;
++    it->offset = offset;
++    it->count = count;
++}
++
+ static void flecs_emit_propagate_id_for_range(
+     ecs_world_t *world,
+     ecs_iter_t *it,
+@@ -323,6 +359,10 @@ static void flecs_emit_propagate_id_for_range(
+ 
+     bool owned = flecs_component_get_table(cr, table) != NULL;
+ 
++    /* Entities that own a DontFragment component (an override) don't get
++     * the event from self|up observers and don't propagate it. */
++    int32_t owned_count = 0;
++
+     int32_t e;
+     it->table = table;
+     it->other_table = NULL;
+@@ -332,6 +372,13 @@ static void flecs_emit_propagate_id_for_range(
+     ECS_CONST_CAST(int16_t*, it->columns)[0] = -1;
+     if (count) {
+         it->entities = &ecs_table_entities(table)[offset];
++
++        if (!owned && (cr->flags & EcsIdDontFragment)) {
++            for (e = 0; e < count; e ++) {
++                owned_count += flecs_component_sparse_has(
++                    cr, it->entities[e]);
++            }
++        }
+     }
+ 
+     if (notify) {
+@@ -346,7 +393,13 @@ static void flecs_emit_propagate_id_for_range(
+ 
+             if (!owned) {
+                 /* Owned takes precedence */
+-                flecs_observers_invoke(world, &ider->self_up, it, table, trav);
++                if (!owned_count) {
++                    flecs_observers_invoke(
++                        world, &ider->self_up, it, table, trav);
++                } else {
++                    flecs_emit_invoke_not_owned(
++                        world, &ider->self_up, it, table, trav, cr);
++                }
+             }
+         } else if (ider->up_notify_count) {
+             flecs_observers_invoke_up_notify(world, &ider->up, it, table, trav);
+@@ -364,6 +417,10 @@ static void flecs_emit_propagate_id_for_range(
+ 
+     const ecs_entity_t *entities = it->entities;
+     for (e = 0; e < count; e ++) {
++        if (owned_count && flecs_component_sparse_has(cr, entities[e])) {
++            continue;
++        }
++
+         ecs_component_record_t *cr_t = flecs_components_get(
+             world, ecs_pair(EcsWildcard, entities[e]));
+         if (cr_t) {

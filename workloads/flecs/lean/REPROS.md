@@ -160,6 +160,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_spurious_wakeup.c f
 
 - [ ] **F45: `ecs_auto_override` of a DontFragment component on a prefab child aborts the instantiation** ("table type cannot contain DontFragment components"), with ChildOf and with Parent children; on the prefab itself it works. Story, code path and the docs it breaks: REPORT-6.md, F45.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26); related: #1334 added AUTO_OVERRIDE on prefab children (2024).
+  Proposed fix: a DontFragment auto override on a prefab child stays out of the instance child's table type and is added as an override on the prefab is ([fixes/F45.diff](fixes/F45.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_child_auto_override_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -175,6 +176,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_child_auto_ov
 
 - [ ] **F46: during an order_by iteration, deleting a table and creating another lets the new table take the freed one's memory; the iterator returns its entities, which don't match the query, with the slice's freed arrays** (without a new table, skipping the slice still writes its freed monitor). Story, code path and the docs it breaks: REPORT-6.md, F46.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: a table leaving an order_by cache clears the sorted slices that point at it, and the iterator and change detection skip cleared slices (AddressSanitizer: a use after free on v4.2.0, none with it) ([fixes/F46.diff](fixes/F46.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_reused_table_slot.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -184,6 +186,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_reused_table
 
 - [ ] **F47: a multi-threaded system whose query has order_by**: in a debug build flecs aborts ("cannot sort query in multithreaded mode", UNSUPPORTED, src/query/cache/order_by.c:88), which no page says (Systems.md "Threading": staging "makes it safe for multiple threads to iterate the same world without taking locks"); in a release build (`NDEBUG`) the assert is gone and every worker sorts the same table in place and rebuilds its slices at once. Story, code path: REPORT-6.md, F47.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the pipeline sorts a multi-threaded op's order_by queries on the main thread before the workers start; iterators made on worker threads don't sort (ThreadSanitizer: 19 reports a run in the sort on v4.2.0, none there with it) ([fixes/F47.diff](fixes/F47.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/workers_order_by_sort_race.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -415,6 +418,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/on_add_hook_view.c flecs/di
 
 - [ ] **F44: a prefab with a ChildOf child and a Parent child gives instances no copy of the ChildOf child; a ChildOf child below a Parent child is dropped too** (HierarchiesManual.md: one parent can hold children of both storages, and instantiation works with both). Story, code path and the docs it breaks: REPORT-6.md, F44.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: after the tree spawner, a prefab's ChildOf children (and each spawned Parent child's) are instantiated too ([fixes/F44.diff](fixes/F44.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_mixed_children_instance.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -513,6 +517,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_is_true_consumes_chan
 
 - [ ] **F41: adding an IsA pair produces no OnSet for an inherited Sparse or DontFragment component with the Inherit trait**, at one or two levels (a table component gets it; ObserversManual.md "OnSet and Inheritance"). Story, code path and the docs it breaks: REPORT-6.md, F41.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: OnSet is emitted for inherited Sparse components when an IsA pair is added, and for DontFragment Inherit ones by a new function; owners of the component get no self|up event ([fixes/F41.diff](fixes/F41.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_onset_sparse_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -522,6 +527,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_onset_sparse_dont_fragm
 
 - [ ] **F42: setting a DontFragment component on a base sends an OnSet, with the base's value, to an instance that overrides it** ("If the base entity has a component that the entity already had no event is generated"). Story, code path and the docs it breaks: REPORT-6.md, F42.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: the down-propagation of a set on a base decides DontFragment ownership per entity, so an overriding instance and its inheritors get no base event ([fixes/F42.diff](fixes/F42.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/set_base_onset_dont_fragment_override.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
@@ -532,6 +538,7 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/set_base_onset_dont_fragmen
 
 - [ ] **F43: OnSet events name a base that is not the entity's source** (table components too): a second base that doesn't become the primary source, setting it, a variant with two bases (two events), a diamond (two events from one set). Story, code path and the docs it breaks: REPORT-6.md, F43.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: OnSet through IsA comes only from the base `ecs_get` reads (the first base in type order, depth first) ([fixes/F43.diff](fixes/F43.diff); verified on macOS: its test(s) fail on v4.2.0 and pass with it; flecs's core, query, addons, collections and cpp suites as on v4.2.0, with it alone and with every patch together).
 
 ```sh
 cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_second_base_onset.c flecs/distr/flecs.c -lm -lpthread -o t && ./t

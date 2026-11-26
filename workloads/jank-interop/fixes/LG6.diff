@@ -1,0 +1,57 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/object.hpp b/compiler+runtime/include/cpp/jank/runtime/object.hpp
+index 6e50d1b76..0e79cf90c 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/object.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/object.hpp
+@@ -667,20 +667,20 @@ namespace std
+   template <>
+   struct hash<jank::runtime::object_ref>
+   {
+-    size_t operator()(jank::runtime::object_ref const o) const noexcept;
++    size_t operator()(jank::runtime::object_ref const o) const;
+   };
+ 
+   template <>
+   struct hash<jank::runtime::object>
+   {
+-    size_t operator()(jank::runtime::object const &o) const noexcept;
++    size_t operator()(jank::runtime::object const &o) const;
+   };
+ 
+   template <>
+   struct equal_to<jank::runtime::object_ref>
+   {
+     bool operator()(jank::runtime::object_ref const lhs,
+-                    jank::runtime::object_ref const rhs) const noexcept;
++                    jank::runtime::object_ref const rhs) const;
+   };
+ }
+ 
+diff --git a/compiler+runtime/src/cpp/jank/runtime/object.cpp b/compiler+runtime/src/cpp/jank/runtime/object.cpp
+index b85252e70..0c081584a 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/object.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/object.cpp
+@@ -366,21 +366,20 @@ namespace jank::runtime
+ namespace std
+ {
+   size_t
+-  hash<jank::runtime::object_ref>::operator()(jank::runtime::object_ref const o) const noexcept
++  hash<jank::runtime::object_ref>::operator()(jank::runtime::object_ref const o) const
+   {
+     return jank::hash::visit(o);
+   }
+ 
+-  size_t hash<jank::runtime::object>::operator()(jank::runtime::object const &o) const noexcept
++  size_t hash<jank::runtime::object>::operator()(jank::runtime::object const &o) const
+   {
+     return jank::hash::visit(const_cast<jank::runtime::object *>(&o));
+   }
+ 
+   bool
+-  // NOLINTNEXTLINE(bugprone-exception-escape): TODO: Sort this out.
+   equal_to<jank::runtime::object_ref>::operator()(
+     jank::runtime::object_ref const lhs,
+-    jank::runtime::object_ref const rhs) const noexcept
++    jank::runtime::object_ref const rhs) const
+   {
+     return jank::runtime::equal(lhs, rhs);
+   }

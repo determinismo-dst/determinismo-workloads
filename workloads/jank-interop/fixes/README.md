@@ -16,6 +16,11 @@ finding's forms run on that build:
 - [LG7.diff](LG7.diff): an empty lazy sequence hashes as the empty list (`persistent_list::empty()`'s
   hash), not 1. `(= #{()} (set [(lazy-seq)]))` is true, `(hash (lazy-seq))` 2277397642 like `(hash ())`;
   on the build without it, false and 1.
+- [LG6.diff](LG6.diff): `std::hash` and `std::equal_to` of jank objects are no longer `noexcept`, so an
+  exception from hashing or comparing a lazy element reaches the caller instead of `std::terminate`.
+  `(try (set [(lazy-seq (list (< [0] 3)))]) (catch cpp/std.exception e :caught))` is `:caught` (on the
+  build without it, the process aborts); a hash map's key the same. jank's 551 pass tests with it:
+  549 pass, as without.
 jank's own tests with all three patches applied: its 551 `pass-` files under test/jank, each in
 its own process, read whole and its forms evaluated in order (jank has no `load-file`; its test
 runner passes a file whose last form is `:success`): 549 pass on the original build and 549 on the

@@ -107,6 +107,19 @@ on the real jank.
   Clojure 1.12.3. With fixes/combined/all.diff applied, 182 of 358 replica tests passed (16 on stock), with
   three regressions that round 7 traces and fixes: deviations_main_test no longer loaded (S40), s02 failed
   (D8), and 5 of jank's 551 pass- files failed (R23, R24, R26, U75).
+- **Round 7**: on jank 7135b7708's tree (Linux x86-64, each test in its own process; the generated file in
+  chunks of 40), stock and with round 7's fixes/combined/all.diff.
+  - Stock: 70 of round 7's 71 tests behaved as predicted. The exception is x8, which passes because
+    D8's approximate `=` hides S4's cut. Among them, S2 is confirmed (`(/ 6.0M 3.0M)` prints 1.99…9,
+    120 nines), so round 3's refutation was wrong. The new NaN paths segfault on x86-64 (D9).
+  - The generated differential test: all 639 verdicts as predicted (340 pass, 270 fail, 29 throw),
+    and each of the 197 failures that prints a value shows the predicted jank value.
+  - The patched build first stopped compiling core.jank: S40's `dotimes` casts with `long`, defined
+    3,000 lines later. `long` was moved above it ([fixes/combined/S40-order.diff](fixes/combined/S40-order.diff)).
+  - With the patch, 737 of 1,068 replica and generated tests passed (370 on stock), 369 flipping to
+    passing. Two flipped to failing: x9b, a control predicted to fail with D4, and x8. jank's suite
+    passed 549 of 551 on both builds, the same two files failing, so round 6's three regressions are
+    gone.
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).

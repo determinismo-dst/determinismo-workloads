@@ -122,6 +122,16 @@ on the real jank.
   and generated tests passed (370 on stock); jank's suite 549 of 551 on stock and patched alike. All 639
   generated verdicts on stock were as predicted; round 7's 71 new tests as predicted on stock except x8.
   Round 8 reconciles every difference (REPORT-8 section 1).
+- **Round 8**: on jank main 94d32623 (7135b7708's compiler+runtime, Linux x86-64, each test in its own
+  process with a 120 s limit), deviations_r8_test.jank's 102 tests on stock: 56 failed and 25 erred, 23 of
+  those errors jank's own "TODO: port" (`with-precision`, `rationalize`, eight `unchecked-*`); 21 passed,
+  the 19 controls, y21 (as predicted on stock) and y12g (predicted to pass for the wrong reason: the
+  TODO-port throw). The new items' Clojure values (Y1, H8-1, DEC8-1, and S3's, R99's, V57's and V64's
+  new instances) checked on Clojure 1.11.1. With round 8's combined patch (S40's `long` folded in; it
+  builds), 984 of 1,170 replica and generated tests passed (391 on stock): 593 flip to passing, none to
+  failing, 6 move between fail and error. Round 8's tests: 90 of 102, the 12 still failing being the four
+  items written without a fix (H8-1, DEC8-1, Q1, Q2). jank's suite: 549 of 551 on stock and patched
+  alike.
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).

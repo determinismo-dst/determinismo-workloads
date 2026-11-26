@@ -105,7 +105,7 @@ child is re-parented (F57), spawn tables kept for good for instances at depth 6 
 ## Round 9
 
 [REPORT-9.md](REPORT-9.md): F59-F62, confirmed on flecs v4.2.0 (2026-11-26, macOS, debug and
-`-DNDEBUG`): an uncached Or chain with an up or self|up term gives a result another term's source,
+`-DNDEBUG`; on Linux too, the flecs-lean workflow: each test exits 1): an uncached Or chain with an up or self|up term gives a result another term's source,
 id or up flag, so `ecs_field` aborts, crashes or reads another entity (F59, four forms); removing a
 DontFragment tag mid-iteration makes the trivial sparse search skip entities (F60: 1,024 of 2,100;
 its second form, the VM's select returning one twice, not reproduced); `ecs_iter_set_group` with

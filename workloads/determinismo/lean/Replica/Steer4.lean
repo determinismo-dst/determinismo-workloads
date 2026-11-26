@@ -33,7 +33,7 @@ structure SCfg where
   budget : Bool := false
   /-- Round 6: main.zig as at a7fe05d (every ended timeline counted, `change_count`) unless a
   theorem about 3939448 says so. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   deriving Inhabited
 
 structure SS where

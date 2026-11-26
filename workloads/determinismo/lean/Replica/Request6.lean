@@ -60,8 +60,15 @@ def inputs (a : Asked) : List String :=
   a.injectors.map (s!"initramfs injector {·}")
 
 /-- What an analysis boots of a command-line run: its request (as `run_request_write` at `ver`
-wrote it) through `system_arguments`, its machine.json through `run_machine`. -/
+wrote it) through `system_arguments`, its machine.json through `run_machine`. df8f08b
+(main.zig:1441-1453, 1519-1522; CE51's fix): `timeline_limit` as given, `swarm`, `injectors` (kept
+by content) in the request, which system_arguments gives again (serve.zig:5595-5602); `--epoch`,
+`--timer-slack-us`, `--timer-landing-permille` in machine.json when not the default: every input. -/
 def analysisOfCommandLine (ver : Ver) (a : Asked) : Asked :=
+  -- Round 7: the injectors in the request are the kept copies (runs.zig:217-219,
+  -- `<hash>-<basename>`), which the run never booted: the system disk takes each by its
+  -- basename (prepare.zig:195-199, 1464-1471), so the analysis's is another disk.
+  if ver.sinceDf then { a with injectors := a.injectors.map ("0123456789abcdef-" ++ ·) } else
   { timelineLimitMs := 3600000          -- no `timeline_limit` in the request: the default hour
     swarm := true                        -- `swarm` written at its default
     clockStartMaxMs := if ver.sinceA7 then a.clockStartMaxMs else none   -- a7fe05d's fix
@@ -97,7 +104,7 @@ structure World where
   /-- Who started the run: a command line (explore with a run directory) or serve. -/
   commandLine : Bool := true
   /-- The commit whose explorer wrote the request (a run recorded before a7fe05d), and serve's. -/
-  recordedBy : Ver := .va7fe05d
+  recordedBy : Ver := .vdf8f08b
   deriving Inhabited
 
 def draw : EStateM Stop S (List String × Asked) := do
@@ -120,13 +127,16 @@ def judge (w : World) (src : Source) : Ended :=
     let replayed := inputs booted
     { taken := s.decisions.taken,
       violation := if ran == replayed then none else
-        some (property, s!"a {if w.commandLine then "command-line" else "serve"} run{if w.recordedBy != .va7fe05d then s!" recorded by {reprStr w.recordedBy}" else ""} given {given}: its tapes' inputs {ran}; its analyses boot {replayed}: TapeInputsDiffer, every tape refused") }
+        some (property, s!"a {if w.commandLine then "command-line" else "serve"} run{if w.recordedBy != .vdf8f08b then s!" recorded by {reprStr w.recordedBy}" else ""} given {given}: its tapes' inputs {ran}; its analyses boot {replayed}: TapeInputsDiffer, every tape refused") }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
 def worlds : List World :=
-  [ { label := "a run started from a command line (a7fe05d)" },
-    { label := "a run serve started (a7fe05d)", commandLine := false },
-    { label := "a command-line run recorded by 62e06e3's explorer, analyzed by a7fe05d's serve", recordedBy := .v62e06e3 } ]
+  [ { label := "a run started from a command line (df8f08b)" },
+    { label := "a run serve started (df8f08b)", commandLine := false },
+    { label := "a command-line run recorded by 62e06e3's explorer, analyzed by df8f08b's serve", recordedBy := .v62e06e3 },
+    -- Round 7: a7fe05d's command-line runs (CE51 found again), and such a run recorded before
+    -- df8f08b, analyzed by df8f08b's serve (its request has none of the new fields).
+    { label := "a command-line run recorded by a7fe05d's explorer, analyzed by df8f08b's serve", recordedBy := .va7fe05d } ]
 
 def searchAll (exhaustRuns : Nat) : IO Unit := do
   say s!"== request property: {property}"
@@ -137,6 +147,6 @@ def searchAll (exhaustRuns : Nat) : IO Unit := do
   -- Each flag alone, a command-line run.
   for (flag, f) in menu do
     let a := f {}
-    say s!"a command-line run given only {flag}: its analyses boot its inputs: {inputs a == inputs (analysisOfCommandLine .va7fe05d a)} (a7fe05d), {inputs a == inputs (analysisOfCommandLine .v62e06e3 a)} (62e06e3)"
+    say s!"a command-line run given only {flag}: its analyses boot its inputs: {inputs a == inputs (analysisOfCommandLine .vdf8f08b a)} (df8f08b), {inputs a == inputs (analysisOfCommandLine .va7fe05d a)} (a7fe05d), {inputs a == inputs (analysisOfCommandLine .v62e06e3 a)} (62e06e3)"
 
 end Replica.Request6

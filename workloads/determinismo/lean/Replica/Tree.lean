@@ -181,6 +181,9 @@ structure TreeState where
   doomWeight : Nat := 1
   doomFrontier : Bool := false
   generation : Nat := 0
+  /-- Round 7: the code's version (df8f08b: `archive_add_judged`'s repeats, CE25's fix;
+  `archive_returns`' moments taken once, CE26's fix). -/
+  ver : Ver := .vdf8f08b
   deriving Inhabited
 
 def lookup {α : Type} (xs : List (Nat × α)) (k : Nat) : Option α := (xs.find? (·.1 == k)).map (·.2)
@@ -249,10 +252,12 @@ def objectivePlace (s : Summary) (at_ : Nat) : Nat :=
 
 /-- main.zig:6989-7040 `archive_add`: the timeline's plan into `planned`, and with the archive
 its behaviors past its start into cells. -/
-def archiveAdd (st : TreeState) (plan : List Planned) (s : Summary) : TreeState := Id.run do
+def archiveAdd (st : TreeState) (plan : List Planned) (s : Summary) (repeat_ : Bool := false) : TreeState := Id.run do
   let some planned := plan.find? (·.index == s.index) | return st
   let mut st := { st with planned := (st.planned.filter (·.1 != s.index)) ++ [(s.index, planned)] }
-  if !st.archive then return st
+  -- df8f08b (main.zig:7308-7314, 7369): a repeat (its whole trace an earlier timeline's) is
+  -- planned, and no cell's place (CE25's fix).
+  if !st.archive || repeat_ then return st
   for b in s.behaviors do
     if b.vtime ≤ s.startNs then continue
     let reachedAt := b.vtime + after
@@ -340,6 +345,8 @@ def archiveReturns (st : TreeState) (size children : Nat) (returns : List TreeRe
     let some i := st.cells.findIdx? (·.hash == hash) | continue
     let cell := st.cells[i]!
     let place := cell.place
+    -- df8f08b (main.zig:7482-7486): never a moment this generation returns to already (CE26).
+    if st.ver.sinceDf && list.any (fun r => r.branch == place.branch && r.vtime == place.vtime) then continue
     st := { st with cells := st.cells.set! i { cell with visits := cell.visits + 1 } }
     let start := match lookup st.planned place.branch with
       | some p => (p.path.getLast?.map (·.vtime)).getD 0

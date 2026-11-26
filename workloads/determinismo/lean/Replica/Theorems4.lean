@@ -40,30 +40,30 @@ open Replica.Resume4 in
 child (timeline 6) recorded: `recorded_returns` gives #2 alone, the resumed tree numbers its
 child 4, and timeline 6's record is judged as a fresh timeline. -/
 theorem ce32_dropped_return :
-    ((judgeR keepsRecorded (rworlds[0]!) (Source.path #[0, 0, 0, 0, 1, 0])).violation.isSome) = true := by
+    ((judgeR keepsRecorded ({ rworlds[0]! with ver := .va7fe05d }) (Source.path #[0, 0, 0, 0, 1, 0])).violation.isSome) = true := by
   native_decide
 
 open Replica.Resume4 in
 /-- (by computation) CE32: two returns to one moment (CE26) are one key: the second's child
 (timeline 5) is judged as the third return's. -/
 theorem ce32_merged_returns :
-    ((judgeR keepsRecorded (rworlds[5]!) (Source.path #[0, 0, 1, 0, 1, 0])).violation.isSome) = true := by
+    ((judgeR keepsRecorded ({ rworlds[5]! with ver := .va7fe05d }) (Source.path #[0, 0, 1, 0, 1, 0])).violation.isSome) = true := by
   native_decide
 
 open Replica.Resume4 in
 /-- (by computation) CE33: #1's children all recorded (ready), #0's not: the resumed tree plans
 #1's first (timelines 5, 6), #0's after (7, 8), its nodes made in the makings' order. -/
 theorem ce33_ready_first :
-    ((judgeR keepsRecorded (rworlds[2]!) (Source.path #[0, 0, 1, 1, 1, 0])).violation.isSome) = true ∧
-    ((judgeR startsWhereItsPathSays (rworlds[2]!) (Source.path #[0, 0, 1, 1, 1, 0])).violation.isSome) = true := by
+    ((judgeR keepsRecorded ({ rworlds[2]! with ver := .va7fe05d }) (Source.path #[0, 0, 1, 1, 1, 0])).violation.isSome) = true ∧
+    ((judgeR startsWhereItsPathSays ({ rworlds[2]! with ver := .va7fe05d }) (Source.path #[0, 0, 1, 1, 1, 0])).violation.isSome) = true := by
   native_decide
 
 open Replica.Resume4 in
 /-- (by computation) CE34: a filler (timeline 7) taken between #0's and #1's timelines: the resume
 cuts the record and numbers the generation again. -/
 theorem ce34_filler_cut :
-    ((judgeR neverCut (rworlds[3]!) (Source.path #[0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])).violation.isSome) = true ∧
-    ((judgeR keepsRecorded (rworlds[3]!) (Source.path #[0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0])).violation.isSome) = true := by
+    ((judgeR neverCut ({ rworlds[3]! with ver := .va7fe05d }) (Source.path #[0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])).violation.isSome) = true ∧
+    ((judgeR keepsRecorded ({ rworlds[3]! with ver := .va7fe05d }) (Source.path #[0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0])).violation.isSome) = true := by
   native_decide
 
 /-! ## CE35: sync_stall and durable_crash share one arm -/

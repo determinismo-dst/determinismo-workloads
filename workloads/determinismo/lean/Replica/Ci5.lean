@@ -76,6 +76,12 @@ def xargsRuns : List Run → List Run
   | [] => []
   | r :: rest => if r.stops then [r] else r :: xargsRuns rest
 
+/-- The runs xargs makes at a version: df8f08b (ci.zig:543-555) passes a run's 255 on as 254
+(`if [ $s -eq 255 ]; then s=254; fi; exit $s`, with or without a report), so no run stops xargs
+(CE55's fix); before, up to the first whose shell exited 255. -/
+def xargsRunsV (ver : Ver) (runs : List Run) : List Run :=
+  if ver.sinceDf then runs else xargsRuns runs
+
 /-- The file system's part of it: the report at the path, and the parts moved aside. -/
 structure Files where
   report : Option (List String) := none
@@ -87,7 +93,7 @@ aside when the shell gets there. 3939448 (ci.zig:226-233): no move. a7fe05d (ci.
 the run line in a subshell of its own, closed on a line of its own, the move after it: reached
 whatever the run line does with its shell (CE40's fix). -/
 def step (ver : Ver) (line : RunLine) (f : Files) (r : Run) : Files :=
-  if (ver = .v62e06e3 ∧ line.reachesMove r.failed = true) ∨ ver = .va7fe05d then { report := none, parts := f.parts ++ [r.names] }
+  if (ver = .v62e06e3 ∧ line.reachesMove r.failed = true) ∨ ver.sinceA7 = true then { report := none, parts := f.parts ++ [r.names] }
   else { f with report := some r.names }
 
 /-- After xargs (ci.zig:548-554): the parts concatenated over the path, when any. Returns the
@@ -112,7 +118,7 @@ structure World where
   lengths : List Nat := [5, 12, 20]
   buffer : Nat := 48
   base : Nat := 16
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   /-- Round 6: a runner may exit 255 (xargs then stops). -/
   exits255 : Bool := false
 
@@ -142,7 +148,7 @@ def judge (w : World) (src : Source) : Ended :=
   match (draw w).run { decisions := { source := src } } with
   | .ok d s =>
     let names := d.runs.flatMap (·.names)
-    let got := judged w.ver d.line (xargsRuns d.runs)
+    let got := judged w.ver d.line (xargsRunsV w.ver d.runs)
     let lost := names.filter (!got.contains ·)
     { taken := s.decisions.taken,
       violation := if lost.isEmpty then none else
@@ -154,8 +160,8 @@ def story (w : World) (src : Source) : List String :=
   | .ok d _ =>
     [s!"the run line: {d.line.show}"] ++
     (d.runs.zipIdx.map fun (r, i) =>
-      s!"xargs batch {i + 1}: {r.names}, {if i ≥ (xargsRuns d.runs).length then "never run (xargs stopped at a 255)" else s!"its runner {if r.stops then "exits 255" else if r.failed then "exits 1" else "exits 0"}; the move {if w.ver == .va7fe05d || (w.ver == .v62e06e3 && d.line.reachesMove r.failed) then "runs" else "never runs (the shell is gone)"}"}") ++
-    [s!"det-assert junit reads: {judged w.ver d.line (xargsRuns d.runs)}"]
+      s!"xargs batch {i + 1}: {r.names}, {if i ≥ (xargsRunsV w.ver d.runs).length then "never run (xargs stopped at a 255)" else s!"its runner {if r.stops then "exits 255" else if r.failed then "exits 1" else "exits 0"}; the move {if w.ver.sinceA7 || (w.ver == .v62e06e3 && d.line.reachesMove r.failed) then "runs" else "never runs (the shell is gone)"}"}") ++
+    [s!"det-assert junit reads: {judged w.ver d.line (xargsRunsV w.ver d.runs)}"]
   | .error _ _ => []
 
 def worlds : List World :=
@@ -164,7 +170,9 @@ def worlds : List World :=
     { label := "3939448: a plain run line", lines := [.plain], ver := .v3939448 },
     { label := "62e06e3: every run line's form", ver := .v62e06e3 },
     -- Round 6: a runner's exit status 255 (xargs stops there).
-    { label := "every run line's form, runners exiting 0, 1 or 255", exits255 := true } ]
+    { label := "every run line's form, runners exiting 0, 1 or 255", exits255 := true },
+    -- Round 7: the same at a7fe05d (CE55 found again there).
+    { label := "a7fe05d: every run line's form, runners exiting 0, 1 or 255", exits255 := true, ver := .va7fe05d } ]
 
 def searchAll (exhaustRuns : Nat) : IO Unit := do
   say s!"== ci property: {property}"
@@ -180,7 +188,7 @@ def searchAll (exhaustRuns : Nat) : IO Unit := do
   for line in [RunLine.plain, .exits, .execs, .comment, .setE] do
     for failing in [none, some 0] do
       let runs := batches.zipIdx.map fun (b, i) => ({ names := b, failed := failing == some i } : Run)
-      let got := judged .va7fe05d line runs
+      let got := judged .vdf8f08b line runs
       say s!"at GNU's 131,072 bytes, 2,000 names of 80 bytes, {batches.length} xargs runs, {if failing.isSome then "the first run's runner failing" else "every runner passing"}: `{line.show}`: {got.length} of 2,000 tests judged"
 
 end Replica.Ci5

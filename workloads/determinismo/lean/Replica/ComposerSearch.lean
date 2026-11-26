@@ -91,7 +91,18 @@ def worlds : List World :=
     -- for a return to an objective's best) under a timeline limit and no length.
     { label := "a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm"
       scenario := { commands := [cmd "drive" .parallel_driver [10, 270]], parallelMax := some 1 }
-      cmdline := { swarmOff := true, timelineLimitMs := some 600, againAsked := true } } ]
+      cmdline := { swarmOff := true, timelineLimitMs := some 600, againAsked := true } },
+    -- Round 7 (worlds 18 and 19): worlds 14 and 17 at a7fe05d (the drivers' stop unsaid on a
+    -- phase's last start, the e2e check half-limit-again's).
+    { label := "a7fe05d: a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm"
+      scenario := { commands := [cmd "holding" .parallel_driver [400], cmd "next" .parallel_driver [1]],
+                    parallelMax := some 1 }
+      cmdline := { swarmOff := true, timelineLimitMs := some 600 }
+      consts := { Consts.tiny with ver := .va7fe05d } },
+    { label := "a7fe05d: a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm"
+      scenario := { commands := [cmd "drive" .parallel_driver [10, 270]], parallelMax := some 1 }
+      cmdline := { swarmOff := true, timelineLimitMs := some 600, againAsked := true }
+      consts := { Consts.tiny with ver := .va7fe05d } } ]
 
 /-- The story of a world's timeline. -/
 def worldStory (wd : World) (source : Source) : List String :=

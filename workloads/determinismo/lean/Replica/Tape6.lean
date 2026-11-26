@@ -54,6 +54,12 @@ structure SC where
   text, grown by an ArrayList's doublings, must fit beside the line's map. Measured with Zig
   0.17's std.json on a copy of a7fe05d's tape.zig: 42,235 bytes (runs6/ce52-zig.txt). -/
   scratchMax : Nat := 42235
+  /-- Round 7: the code's version. df8f08b (CE52's fix): `write_step` (tape.zig:512-547) streams a
+  step's line whole through a 4 KiB buffer, escaping as it goes; `step_line_parse` (552-609)
+  decodes the string straight into the step table (no scratch); `step_record` (vm.zig:2214-2221)
+  refuses a step past `step_fits(steps + 1, bytes + "det:over".len, len)` (TapeStepsFull, before
+  it runs), room kept for the session's det:over. -/
+  ver : Ver := .vdf8f08b
   deriving Repr, Inhabited
 
 /-- What a session tapes, in order. `step len escapes`: a step of `len` bytes, `escapes` of them
@@ -72,11 +78,37 @@ inductive Piece where
 /-- The JSON string of a step: its bytes, its escapes' second bytes, the two quotes. -/
 def jsonLen (len escapes : Nat) : Nat := len + escapes + 2
 
-/-- tape.zig:500-511 `write_step` and 400-415 `write_override`. -/
+/-- `det:over`'s length, the room `step_record` keeps (vm.zig:2217). -/
+def overLen : Nat := 8
+
+/-- vm.zig:2214-2221 (df8f08b) `step_record`'s cap: tape.zig:499-502 `step_fits(count, used, size)`
+= `count < steps_max and used + size <= step_text_max`, asked for one more step and det:over's
+bytes. The steps it lets on the tape, in order (a refused step errs, the session's step fails). -/
+def accepted (c : SC) (items : List Item) : List Item := Id.run do
+  let mut out : Array Item := #[]
+  let mut steps := 0
+  let mut bytes := 0
+  for it in items do
+    match it with
+    | .override _ => out := out.push it
+    | .step len _ =>
+      if steps + 1 < c.stepsMax && bytes + overLen + len ≤ c.textMax then
+        out := out.push it
+        steps := steps + 1
+        bytes := bytes + len
+  return out.toList
+
+/-- tape.zig:500-511 `write_step` and 400-415 `write_override`. df8f08b: every accepted step's
+line written whole. -/
 def record (c : SC) (items : List Item) : List Piece :=
+  if c.ver.sinceDf then (accepted c items).map .line else
   items.map fun
     | .override p => .line (.override p)
     | .step len esc => if jsonLen len esc + 2 > c.buffer then .head (.step len esc) else .line (.step len esc)
+
+/-- What the recorder wrote whole (what a replay must read back). -/
+def written (c : SC) (items : List Item) : List Item :=
+  if c.ver.sinceDf then accepted c items else items
 
 /-- The tape's lines as its parse reads them: a head runs on into the next piece. -/
 def lines (pieces : List Piece) : List (List Piece) := Id.run do
@@ -100,7 +132,7 @@ def parse (c : SC) (pieces : List Piece) : Except String (List Item) := do
     | [.line it] =>
       match it with
       | .step len esc =>
-        if len > c.scratchMax then throw s!"OutOfMemory (a step of {len} bytes, {esc} escaped, in the line parse's 64 KiB scratch)"
+        if !c.ver.sinceDf && len > c.scratchMax then throw s!"OutOfMemory (a step of {len} bytes, {esc} escaped, in the line parse's 64 KiB scratch)"
         if steps == c.stepsMax || text + len > c.textMax then throw "TapeTooLong (steps_max, step_text_max)"
         steps := steps + 1
         text := text + len
@@ -142,14 +174,20 @@ def judgeSteps (w : SW) (src : Source) : Ended :=
     let taped := record w.consts items
     { taken := s.decisions.taken,
       violation := match parse w.consts taped with
-        | .ok back => if back == items then none else some (stepsProp, s!"taped {reprStr items}, read back {reprStr back}")
+        | .ok back => if back == written w.consts items then none else some (stepsProp, s!"taped {reprStr (written w.consts items)}, read back {reprStr back}")
         | .error e => some (stepsProp, s!"the session ran {reprStr items}; its tape: {reprStr taped}; the replay's parse: {e}") }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
 def stepWorlds : List SW :=
   [ { label := "a buffer of 16 bytes, steps of 4 or 20 bytes, overrides, 3 items", consts := { buffer := 16, scratchMax := 1000 }, lens := [4, 20] },
     { label := "a parse scratch of 8 bytes, a buffer of 100, steps of 4 or 12 bytes, overrides, 3 items", consts := { buffer := 100, scratchMax := 8 }, lens := [4, 12] },
-    { label := "a step table of 2 steps and 10 bytes, steps of 4 bytes, 4 items", consts := { buffer := 1000, stepsMax := 2, textMax := 10 }, items := 4, lens := [4] } ]
+    { label := "a step table of 2 steps and 10 bytes, steps of 4 bytes, 4 items", consts := { buffer := 1000, stepsMax := 2, textMax := 10 }, items := 4, lens := [4] },
+    -- Round 7: the same three at a7fe05d (CE52 found again there).
+    { label := "a7fe05d: a buffer of 16 bytes, steps of 4 or 20 bytes, overrides, 3 items", consts := { buffer := 16, scratchMax := 1000, ver := .va7fe05d }, lens := [4, 20] },
+    { label := "a7fe05d: a parse scratch of 8 bytes, a buffer of 100, steps of 4 or 12 bytes, overrides, 3 items", consts := { buffer := 100, scratchMax := 8, ver := .va7fe05d }, lens := [4, 12] },
+    { label := "a7fe05d: a step table of 2 steps and 10 bytes, steps of 4 bytes, 4 items", consts := { buffer := 1000, stepsMax := 2, textMax := 10, ver := .va7fe05d }, items := 4, lens := [4] },
+    -- Round 7: a table of 3 steps and 20 bytes, steps of 4 or 9 bytes, 5 items (the cap's edges).
+    { label := "a step table of 3 steps and 20 bytes, steps of 4 or 9 bytes, 5 items", consts := { buffer := 1000, stepsMax := 3, textMax := 20 }, items := 5, lens := [4, 9] } ]
 
 /-! ## Returns into a full tape -/
 
@@ -180,6 +218,16 @@ structure FW where
   consts : FC
   pulls : Nat := 3
   holders : Bool := true
+  /-- Round 7: the code's version. df8f08b (main.zig:4083, 6552-6558 `returns_before_ns`): a judged
+  timeline's `last_pull_ns` is also before its tape was full (VM.tape_full_ns), so the frontier's
+  and the archive's moments land before the marker. -/
+  ver : Ver := .vdf8f08b
+  /-- Round 7: the parent was cut at its horizon (`--horizon`): `archive_add` (main.zig:7374)
+  takes a cut branch's moments to its end (`open = summary.cut or at < summary.last_pull_ns`). -/
+  cut : Bool := false
+  /-- Round 7: a strategy (a plugin) chooses the moment: `tree_returns` (main.zig:7625-7631)
+  bounds it by the timeline's start and end alone. -/
+  strategy : Bool := false
   deriving Inhabited
 
 structure Return where
@@ -191,8 +239,11 @@ structure Return where
 def drawReturn (w : FW) : EStateM Stop S Return := do
   let mut overrides := []
   for _ in [0:w.pulls] do overrides := overrides ++ [(← below "parent.override" 2) == 1]
-  -- The judgment's moment: any of the parent's (its returns drawn among them).
-  let moment ← below "judgment.moment" (w.pulls + 1)
+  -- The judgment's moment: any of the parent's (its returns drawn among them); at df8f08b, an
+  -- uncut parent's explorer returns before its tape was full.
+  let full := fullAt w.consts overrides
+  let bound := if w.ver.sinceDf && !w.cut && !w.strategy then (full.getD w.pulls) else w.pulls
+  let moment ← below "judgment.moment" (bound + 1)
   let holder ← if w.holders then do pure ((← below "node.holder" 2) == 0) else pure false
   return { overrides, moment, holder }
 
@@ -214,7 +265,13 @@ def judgeFull (w : FW) (src : Source) : Ended :=
 
 def fullWorlds : List FW :=
   [ { label := "a cap of one override, a parent of 3 pulls, holders", consts := { overrideMax := 1 } },
-    { label := "a cap of one override, a parent of 3 pulls, no holders (a deciding strategy)", consts := { overrideMax := 1 }, holders := false } ]
+    { label := "a cap of one override, a parent of 3 pulls, no holders (a deciding strategy)", consts := { overrideMax := 1 }, holders := false },
+    -- Round 7: a7fe05d (CE53 found again); a parent cut at its horizon (the archive's place);
+    -- a strategy's moment.
+    { label := "a7fe05d: a cap of one override, a parent of 3 pulls, holders", consts := { overrideMax := 1 }, ver := .va7fe05d },
+    { label := "a cap of one override, a parent of 3 pulls cut at its horizon, holders (the archive)", consts := { overrideMax := 1 }, cut := true },
+    { label := "a cap of one override, a parent of 3 pulls, holders, a strategy's moment", consts := { overrideMax := 1 }, strategy := true },
+    { label := "a cap of two overrides, a parent of 5 pulls, holders", consts := { overrideMax := 2 }, pulls := 5 } ]
 
 def searchAll (exhaustRuns : Nat) : IO Unit := do
   say s!"== tape property: {stepsProp}"

@@ -111,7 +111,7 @@ structure Consts where
   reasonMax : Nat := 1000000
   /-- Round 5: tape.zig and vm.zig as at 62e06e3 unless a theorem about 3939448 says so. At
   62e06e3 `overrideMax` (override_count_max, 1,048,576) bounds the recorder too. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   deriving Repr, Inhabited
 
 /-- tape.zig:603 `checkpoint_kept`. -/

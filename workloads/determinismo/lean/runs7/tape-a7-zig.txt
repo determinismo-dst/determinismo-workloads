@@ -1,0 +1,138 @@
+1/3 tape.test.round 7, CE52: a session's REPL message of 96 KiB (a det:ask step of 131,072 bytes) is read back from its tape...FAIL (UnexpectedEndOfInput)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1313:13: 0x104d7aabf in skipWhitespaceCheckEnd (test)
+            return error.UnexpectedEndOfInput;
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1109:21: 0x104d95447 in peekNextTokenType (test)
+                if (try self.skipWhitespaceCheckEnd()) return .end_of_document;
+                    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:134:23: 0x104d91983 in nextAllocMax (test)
+        else => |err| return err,
+                      ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:163:25: 0x104d836d7 in handleCompleteValue__func_1073 (test)
+                switch (try source.nextAllocMax(allocator, .alloc_always, options.max_value_len.?)) {
+                        ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:90:28: 0x104d8419f in jsonParse__func_1072 (test)
+                    return try handleCompleteValue(&stack, allocator, source, Value{ .string = s }, options) orelse continue;
+                           ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:274:17: 0x104d82d43 in innerParse__func_1070 (test)
+                return T.jsonParse(allocator, source, options);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:150:19: 0x104d7a607 in parseFromTokenSourceLeaky__func_1068 (test)
+    const value = try innerParse(T, allocator, scanner_or_reader, resolved_options);
+                  ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:98:5: 0x104d7a0db in parseFromSliceLeaky__func_1006 (test)
+    return parseFromTokenSourceLeaky(T, allocator, &scanner, options);
+    ^
+scratch/zig7/a7/built/tape/tape.zig:620:23: 0x104d71d6b in parse (test)
+        const value = try std.json.parseFromSliceLeaky(Value, rest.allocator(), line, .{});
+                      ^
+scratch/zig7/a7/built/tape/tape.zig:1207:9: 0x104da5393 in test.round 7, CE52: a session's REPL message of 96 KiB (a det:ask step of 131,072 bytes) is read back from its tape (test)
+    _ = try parse(source, scratch, overrides);
+        ^
+2/3 tape.test.round 7, CE52: a session's shell step of 40,000 quoted words is read back from its tape...FAIL (OutOfMemory)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:325:82: 0x104c50917 in allocBytesAligned__func_121 (test)
+    const byte_ptr = self.rawAlloc(byte_count, alignment, return_address) orelse return error.OutOfMemory;
+                                                                                 ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:311:5: 0x104c507b7 in allocWithSizeAndAlignment__func_119 (test)
+    return self.allocBytesAligned(alignment, byte_count, return_address);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:299:55: 0x104d5b5f7 in allocAdvancedWithRetAddr (test)
+    const ptr: [*]align(a.toByteUnits()) T = @ptrCast(try self.allocWithSizeAndAlignment(@sizeOf(T), a, n, return_address));
+                                                      ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:287:5: 0x104d5b66b in alignedAlloc__func_931 (test)
+    return self.allocAdvancedWithRetAddr(T, alignment, n, @returnAddress());
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:484:36: 0x104d977e7 in ensureTotalCapacityPrecise (test)
+                const new_memory = try self.allocator.alignedAlloc(T, alignment, new_capacity);
+                                   ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:460:13: 0x104d9750b in ensureTotalCapacity (test)
+            return self.ensureTotalCapacityPrecise(better_capacity);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:495:13: 0x104d95c0f in ensureUnusedCapacity (test)
+            return self.ensureTotalCapacity(try addOrOom(self.items.len, additional_count));
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:334:13: 0x104d94e67 in appendSlice (test)
+            try self.ensureUnusedCapacity(items.len);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1751:5: 0x104d9453f in appendSlice (test)
+    try list.appendSlice(buf);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:194:17: 0x104d94d3b in allocNextIntoArrayListMax (test)
+                try appendSlice(value_list, slice, max_value_len);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:144:31: 0x104d91ae7 in nextAllocMax (test)
+                else => |err| return err,
+                              ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:88:21: 0x104d83ecb in jsonParse__func_1072 (test)
+            switch (try source.nextAllocMax(allocator, .alloc_always, options.max_value_len.?)) {
+                    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:274:17: 0x104d82d43 in innerParse__func_1070 (test)
+                return T.jsonParse(allocator, source, options);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:150:19: 0x104d7a607 in parseFromTokenSourceLeaky__func_1068 (test)
+    const value = try innerParse(T, allocator, scanner_or_reader, resolved_options);
+                  ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:98:5: 0x104d7a0db in parseFromSliceLeaky__func_1006 (test)
+    return parseFromTokenSourceLeaky(T, allocator, &scanner, options);
+    ^
+scratch/zig7/a7/built/tape/tape.zig:620:23: 0x104d71d6b in parse (test)
+        const value = try std.json.parseFromSliceLeaky(Value, rest.allocator(), line, .{});
+                      ^
+scratch/zig7/a7/built/tape/tape.zig:1229:9: 0x104da49df in test.round 7, CE52: a session's shell step of 40,000 quoted words is read back from its tape (test)
+    _ = try parse(source, scratch, overrides);
+        ^
+3/3 tape.test.round 7, CE52: a session's REPL message of 33 KiB (a det:ask step of 45,000 bytes) is read back from its tape...FAIL (OutOfMemory)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:325:82: 0x104c50917 in allocBytesAligned__func_121 (test)
+    const byte_ptr = self.rawAlloc(byte_count, alignment, return_address) orelse return error.OutOfMemory;
+                                                                                 ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:311:5: 0x104c507b7 in allocWithSizeAndAlignment__func_119 (test)
+    return self.allocBytesAligned(alignment, byte_count, return_address);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:299:55: 0x104d5b5f7 in allocAdvancedWithRetAddr (test)
+    const ptr: [*]align(a.toByteUnits()) T = @ptrCast(try self.allocWithSizeAndAlignment(@sizeOf(T), a, n, return_address));
+                                                      ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/mem/Allocator.zig:287:5: 0x104d5b66b in alignedAlloc__func_931 (test)
+    return self.allocAdvancedWithRetAddr(T, alignment, n, @returnAddress());
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:484:36: 0x104d977e7 in ensureTotalCapacityPrecise (test)
+                const new_memory = try self.allocator.alignedAlloc(T, alignment, new_capacity);
+                                   ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:460:13: 0x104d9750b in ensureTotalCapacity (test)
+            return self.ensureTotalCapacityPrecise(better_capacity);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:495:13: 0x104d95c0f in ensureUnusedCapacity (test)
+            return self.ensureTotalCapacity(try addOrOom(self.items.len, additional_count));
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/array_list.zig:334:13: 0x104d94e67 in appendSlice (test)
+            try self.ensureUnusedCapacity(items.len);
+            ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:1751:5: 0x104d9453f in appendSlice (test)
+    try list.appendSlice(buf);
+    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:224:17: 0x104d94ccb in allocNextIntoArrayListMax (test)
+                try appendSlice(value_list, slice, max_value_len);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/Scanner.zig:144:31: 0x104d91ae7 in nextAllocMax (test)
+                else => |err| return err,
+                              ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/dynamic.zig:88:21: 0x104d83ecb in jsonParse__func_1072 (test)
+            switch (try source.nextAllocMax(allocator, .alloc_always, options.max_value_len.?)) {
+                    ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:274:17: 0x104d82d43 in innerParse__func_1070 (test)
+                return T.jsonParse(allocator, source, options);
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:150:19: 0x104d7a607 in parseFromTokenSourceLeaky__func_1068 (test)
+    const value = try innerParse(T, allocator, scanner_or_reader, resolved_options);
+                  ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/json/static.zig:98:5: 0x104d7a0db in parseFromSliceLeaky__func_1006 (test)
+    return parseFromTokenSourceLeaky(T, allocator, &scanner, options);
+    ^
+scratch/zig7/a7/built/tape/tape.zig:620:23: 0x104d71d6b in parse (test)
+        const value = try std.json.parseFromSliceLeaky(Value, rest.allocator(), line, .{});
+                      ^
+scratch/zig7/a7/built/tape/tape.zig:1250:9: 0x104d72bf3 in test.round 7, CE52: a session's REPL message of 33 KiB (a det:ask step of 45,000 bytes) is read back from its tape (test)
+    _ = try parse(source, scratch, overrides);
+        ^
+0 passed; 0 skipped; 3 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/f8ad2378f3d391bd7ddfdcbd8a4d90e4/test --seed=0x39c7dfbd

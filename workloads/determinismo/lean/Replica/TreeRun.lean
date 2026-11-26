@@ -109,7 +109,7 @@ structure Config where
   seededJudgment : Bool := false
   /-- Round 6: main.zig as at a7fe05d (`plan_adopt_ran`, 6399-6410, 6490: a judged timeline's
   plan takes the seed it ran with) unless a theorem about 3939448 says so. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   deriving Inhabited
 
 def branchSeed (base index : Nat) : Nat := mix (base * 1000003 + 77) (index + 1)
@@ -268,7 +268,13 @@ def judge : RM Unit := do
       if s.st.seen.contains b.hash then continue
       reached := bump reached b.hash
   let mut st := s.st
-  for sm in summaries do st := archiveAdd st plan sm
+  -- df8f08b (main.zig:7308-7314 `archive_add_judged`): a repeat of an earlier judgment's
+  -- timeline, or of one before it in this judgment, is no cell's place (CE25's fix).
+  let mut traced : List Nat := []
+  for sm in summaries do
+    let rep := st.ver.sinceDf && (st.traces.contains sm.traceHash || traced.contains sm.traceHash)
+    traced := traced ++ [sm.traceHash]
+    st := archiveAdd st plan sm rep
   let doomShift ← draw (below "doom.weight" 7)
   let doomFrontier ← draw (below "doom.frontier" 2)
   st := { st with doomWeight := 2 ^ doomShift, doomFrontier := doomFrontier == 1 }
@@ -373,7 +379,7 @@ def run : RM Unit := do
   let cfg := (← get).cfg
   let base := cfg.bases[(← below "world.base" cfg.bases.length)]!
   let size := cfg.size
-  modify fun s => { s with base, size, st := { archive := cfg.archive } }
+  modify fun s => { s with base, size, st := { archive := cfg.archive, ver := cfg.ver } }
   for planned in [0:cfg.pipeline * size] do
     let s ← get
     if s.nextIndex ≥ cfg.total then break

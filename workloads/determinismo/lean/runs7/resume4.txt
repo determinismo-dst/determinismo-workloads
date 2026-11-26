@@ -1,0 +1,438 @@
+== resume property: every recorded timeline keeps its plan in the resumed tree
+   source: main.zig:242-244 (--resume: "continue that run, its recorded timelines skipped"); main.zig:4643-4645 (tree_rejudge: "the queue is then the interrupted run's"); main.zig:4552-4561 (queue_take: "so that every index keeps its timeline"); main.zig:4136-4139 ("a resumed run judges the same generations again")
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, 3 returns, no filler]: complete, 186 timelines, none broke it (2 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, 3 returns, no filler]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: complete, 98 timelines, none broke it (1 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: complete, 62 timelines, none broke it (1 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: 2000 timelines (seeds 0..1999), none broke it (6 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, up to 3 fillers]: complete, 19924 timelines, none broke it (73 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, up to 3 fillers]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: complete, 19924 timelines, none broke it (73 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: FOUND after 33 timelines (0 ms): every recorded timeline keeps its plan in the resumed tree: timeline 4 ran as a child of the return to #0 at 10 µs; the resumed tree never plans it (shrunk to 7 decisions from 7)
+--- counterexample [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: every recorded timeline keeps its plan in the resumed tree
+detail: timeline 4 ran as a child of the return to #0 at 10 µs; the resumed tree never plans it
+values: [0, 0, 1, 0, 1, 0, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"resumed.step","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #0 at 10 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #0 at 10 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 4 (a child of the return to #0 at 10 µs); 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #0 at 10 µs, #0 at 10 µs, #2 at 30 µs; ready (no node, the setup's snapshot): [false, false, true]
+  the resumed tree plans (planned in the order [2, 0, 1]): 6: a child of the return to #2 at 30 µs; 5: a child of the return to #0 at 10 µs; 5: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot
+---
+search explore [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: FOUND at timeline 2 of seeds 0..1999 (0 ms): every recorded timeline keeps its plan in the resumed tree: timeline 4 ran as a child of the return to #0 at 10 µs; the resumed tree never plans it (shrunk to 5 decisions from 5)
+--- counterexample [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: every recorded timeline keeps its plan in the resumed tree
+detail: timeline 4 ran as a child of the return to #0 at 10 µs; the resumed tree never plans it
+values: [0, 0, 1, 1, 1]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #0 at 10 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #0 at 10 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 4 (a child of the return to #0 at 10 µs); 5 (a child of the return to #0 at 10 µs); 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #0 at 10 µs, #0 at 10 µs, #2 at 30 µs; ready (no node, the setup's snapshot): [true, true, true]
+  the resumed tree plans (planned in the order [0, 1, 2]): 5: a child of the return to #0 at 10 µs; 5: a child of the return to #0 at 10 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+---
+search exhaust [every recorded timeline keeps its plan in the resumed tree / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: stopped at 100000 timelines, none broke it (673 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: 2000 timelines (seeds 0..1999), none broke it (21 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: complete, 41218 timelines, none broke it (149 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: complete, 56100 timelines, none broke it (195 ms)
+search explore [every recorded timeline keeps its plan in the resumed tree / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND after 24 timelines (1 ms): every recorded timeline keeps its plan in the resumed tree: timeline 7 ran as a child of the return to #1 at 20 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so (shrunk to 7 decisions from 11)
+--- counterexample [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: every recorded timeline keeps its plan in the resumed tree
+detail: timeline 7 ran as a child of the return to #1 at 20 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so
+values: [0, 0, 0, 0, 1, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 7 (a child of the return to #1 at 20 µs); 8 (a child of the return to #1 at 20 µs)
+  resume: recorded_returns gives #1 at 20 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 5: a child of the return to #1 at 20 µs; 6: a child of the return to #1 at 20 µs; 7: fresh from the setup snapshot; 8: fresh from the setup snapshot; 9: fresh from the setup snapshot
+---
+search explore [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND at timeline 1 of seeds 0..1999 (0 ms): every recorded timeline keeps its plan in the resumed tree: timeline 7 ran as a child of the return to #1 at 20 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so (shrunk to 7 decisions from 11)
+--- counterexample [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: every recorded timeline keeps its plan in the resumed tree
+detail: timeline 7 ran as a child of the return to #1 at 20 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so
+values: [0, 0, 0, 0, 1, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 7 (a child of the return to #1 at 20 µs); 8 (a child of the return to #1 at 20 µs)
+  resume: recorded_returns gives #1 at 20 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 5: a child of the return to #1 at 20 µs; 6: a child of the return to #1 at 20 µs; 7: fresh from the setup snapshot; 8: fresh from the setup snapshot; 9: fresh from the setup snapshot
+---
+search exhaust [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: FOUND after 13 timelines (1 ms): every recorded timeline keeps its plan in the resumed tree: timeline 6 ran as a child of the return to #2 at 30 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so (shrunk to 6 decisions from 6)
+--- counterexample [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: every recorded timeline keeps its plan in the resumed tree
+detail: timeline 6 ran as a child of the return to #2 at 30 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so
+values: [0, 0, 0, 0, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #1 at 20 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #2 at 30 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 4: a child of the return to #2 at 30 µs; 5: fresh from the setup snapshot; 6: fresh from the setup snapshot; 7: fresh from the setup snapshot
+---
+search explore [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: FOUND at timeline 1 of seeds 0..1999 (0 ms): every recorded timeline keeps its plan in the resumed tree: timeline 6 ran as a child of the return to #2 at 30 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so (shrunk to 6 decisions from 6)
+--- counterexample [every recorded timeline keeps its plan in the resumed tree / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: every recorded timeline keeps its plan in the resumed tree
+detail: timeline 6 ran as a child of the return to #2 at 30 µs (its record line); the resumed tree plans it as fresh from the setup snapshot, and judges its summary so
+values: [0, 0, 0, 0, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #1 at 20 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #2 at 30 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 4: a child of the return to #2 at 30 µs; 5: fresh from the setup snapshot; 6: fresh from the setup snapshot; 7: fresh from the setup snapshot
+---
+== resume property: every timeline the resumed tree runs starts where its path says (it replays from its tape)
+   source: README_AI.md ("every timeline replays bit-identically"); docs/ANTITHESIS.md, Branching ("every timeline's path in its record and tape (it replays alone)"); main.zig:6458-6460 (a ready return's timelines are "planned from the setup snapshot, never started")
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 4, 1 branch a return, 3 returns, no filler]: complete, 186 timelines, none broke it (1 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 4, 1 branch a return, 3 returns, no filler]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: complete, 98 timelines, none broke it (1 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: complete, 62 timelines, none broke it (1 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, up to 3 fillers]: complete, 19924 timelines, none broke it (71 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, up to 3 fillers]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: complete, 19924 timelines, none broke it (72 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: complete, 234 timelines, none broke it (2 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: stopped at 100000 timelines, none broke it (673 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: 2000 timelines (seeds 0..1999), none broke it (19 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: complete, 41218 timelines, none broke it (145 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: complete, 56100 timelines, none broke it (194 ms)
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND after 57 timelines (1 ms): every timeline the resumed tree runs starts where its path says (it replays from its tape): timeline 5 is not recorded and runs: planned as a child of the return to #1 at 20 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #1 (shrunk to 7 decisions from 7)
+--- counterexample [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: every timeline the resumed tree runs starts where its path says (it replays from its tape)
+detail: timeline 5 is not recorded and runs: planned as a child of the return to #1 at 20 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #1
+values: [0, 0, 0, 0, 1, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 7 (a child of the return to #1 at 20 µs); 8 (a child of the return to #1 at 20 µs)
+  resume: recorded_returns gives #1 at 20 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 5: a child of the return to #1 at 20 µs; 6: a child of the return to #1 at 20 µs; 7: fresh from the setup snapshot; 8: fresh from the setup snapshot; 9: fresh from the setup snapshot
+---
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND at timeline 1 of seeds 0..1999 (0 ms): every timeline the resumed tree runs starts where its path says (it replays from its tape): timeline 5 is not recorded and runs: planned as a child of the return to #1 at 20 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #1 (shrunk to 7 decisions from 11)
+--- counterexample [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: every timeline the resumed tree runs starts where its path says (it replays from its tape)
+detail: timeline 5 is not recorded and runs: planned as a child of the return to #1 at 20 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #1
+values: [0, 0, 0, 0, 1, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 7 (a child of the return to #1 at 20 µs); 8 (a child of the return to #1 at 20 µs)
+  resume: recorded_returns gives #1 at 20 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 5: a child of the return to #1 at 20 µs; 6: a child of the return to #1 at 20 µs; 7: fresh from the setup snapshot; 8: fresh from the setup snapshot; 9: fresh from the setup snapshot
+---
+search exhaust [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: FOUND after 13 timelines (1 ms): every timeline the resumed tree runs starts where its path says (it replays from its tape): timeline 4 is not recorded and runs: planned as a child of the return to #2 at 30 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #2 (shrunk to 6 decisions from 6)
+--- counterexample [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: every timeline the resumed tree runs starts where its path says (it replays from its tape)
+detail: timeline 4 is not recorded and runs: planned as a child of the return to #2 at 30 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #2
+values: [0, 0, 0, 0, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #1 at 20 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #2 at 30 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 4: a child of the return to #2 at 30 µs; 5: fresh from the setup snapshot; 6: fresh from the setup snapshot; 7: fresh from the setup snapshot
+---
+search explore [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: FOUND at timeline 1 of seeds 0..1999 (0 ms): every timeline the resumed tree runs starts where its path says (it replays from its tape): timeline 4 is not recorded and runs: planned as a child of the return to #2 at 30 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #2 (shrunk to 6 decisions from 6)
+--- counterexample [every timeline the resumed tree runs starts where its path says (it replays from its tape) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: every timeline the resumed tree runs starts where its path says (it replays from its tape)
+detail: timeline 4 is not recorded and runs: planned as a child of the return to #2 at 30 µs from a ready return, it starts at the setup snapshot while its path (its tape's chain) says it begins inside #2
+values: [0, 0, 0, 0, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #1 at 20 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #2 at 30 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 4: a child of the return to #2 at 30 µs; 5: fresh from the setup snapshot; 6: fresh from the setup snapshot; 7: fresh from the setup snapshot
+---
+== resume property: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+   source: main.zig:4552-4561 (queue_take: "a resumed run takes it again at the same place (tree_rejudge), before that generation's plan, so that every index keeps its timeline"); main.zig:4643-4645 ("the queue is then the interrupted run's")
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, 3 returns, no filler]: complete, 186 timelines, none broke it (1 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, 3 returns, no filler]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: complete, 98 timelines, none broke it (1 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: complete, 62 timelines, none broke it (1 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, up to 3 fillers]: complete, 19924 timelines, none broke it (73 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, up to 3 fillers]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: complete, 19924 timelines, none broke it (73 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (10 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: FOUND after 19 timelines (1 ms): every timeline the interrupted run planned keeps its plan (every index keeps its timeline): timeline 4 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree never plans it (shrunk to 6 decisions from 6)
+--- counterexample [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+detail: timeline 4 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree never plans it
+values: [0, 0, 0, 1, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #0 at 10 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #0 at 10 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 5 (a child of the return to #0 at 10 µs); 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #0 at 10 µs, #0 at 10 µs, #2 at 30 µs; ready (no node, the setup's snapshot): [true, true, true]
+  the resumed tree plans (planned in the order [0, 1, 2]): 5: a child of the return to #0 at 10 µs; 5: a child of the return to #0 at 10 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+---
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: FOUND at timeline 3 of seeds 0..1999 (0 ms): every timeline the interrupted run planned keeps its plan (every index keeps its timeline): timeline 5 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree never plans it (shrunk to 6 decisions from 6)
+--- counterexample [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+detail: timeline 5 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree never plans it
+values: [2, 0, 1, 0, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":2}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #0 at 10 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [2, 0, 1]): 4: a child of the return to #2 at 30 µs; 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 4 (a child of the return to #2 at 30 µs); 6 (a child of the return to #0 at 10 µs)
+  resume: recorded_returns gives #0 at 10 µs, #0 at 10 µs, #2 at 30 µs; ready (no node, the setup's snapshot): [true, true, true]
+  the resumed tree plans (planned in the order [0, 1, 2]): 6: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 4: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+---
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: stopped at 100000 timelines, none broke it (704 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: 2000 timelines (seeds 0..1999), none broke it (20 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: complete, 41218 timelines, none broke it (149 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: complete, 56100 timelines, none broke it (197 ms)
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND after 4 timelines (1 ms): every timeline the interrupted run planned keeps its plan (every index keeps its timeline): timeline 7 (not recorded) was planned as a child of the return to #1 at 20 µs; the resumed tree runs it as fresh from the setup snapshot (shrunk to 7 decisions from 11)
+--- counterexample [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+detail: timeline 7 (not recorded) was planned as a child of the return to #1 at 20 µs; the resumed tree runs it as fresh from the setup snapshot
+values: [0, 0, 1, 1, 0, 0, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 5 (a child of the return to #0 at 10 µs); 6 (a child of the return to #0 at 10 µs)
+  resume: recorded_returns gives #0 at 10 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: fresh from the setup snapshot; 9: fresh from the setup snapshot
+---
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND at timeline 1 of seeds 0..1999 (0 ms): every timeline the interrupted run planned keeps its plan (every index keeps its timeline): timeline 7 (not recorded) was planned as a child of the return to #1 at 20 µs; the resumed tree runs it as fresh from the setup snapshot (shrunk to 7 decisions from 11)
+--- counterexample [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+detail: timeline 7 (not recorded) was planned as a child of the return to #1 at 20 µs; the resumed tree runs it as fresh from the setup snapshot
+values: [0, 0, 1, 1, 0, 0, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 5 (a child of the return to #0 at 10 µs); 6 (a child of the return to #0 at 10 µs)
+  resume: recorded_returns gives #0 at 10 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: fresh from the setup snapshot; 9: fresh from the setup snapshot
+---
+search exhaust [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: FOUND after 2 timelines (1 ms): every timeline the interrupted run planned keeps its plan (every index keeps its timeline): timeline 4 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree runs it as a child of the return to #1 at 20 µs (shrunk to 6 decisions from 8)
+--- counterexample [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+detail: timeline 4 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree runs it as a child of the return to #1 at 20 µs
+values: [0, 0, 0, 1, 0, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #1 at 20 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 5 (a child of the return to #1 at 20 µs)
+  resume: recorded_returns gives #1 at 20 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 4: a child of the return to #1 at 20 µs; 5: fresh from the setup snapshot; 6: fresh from the setup snapshot; 7: fresh from the setup snapshot
+---
+search explore [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: FOUND at timeline 1 of seeds 0..1999 (0 ms): every timeline the interrupted run planned keeps its plan (every index keeps its timeline): timeline 4 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree runs it as a child of the return to #2 at 30 µs (shrunk to 6 decisions from 6)
+--- counterexample [every timeline the interrupted run planned keeps its plan (every index keeps its timeline) / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: every timeline the interrupted run planned keeps its plan (every index keeps its timeline)
+detail: timeline 4 (not recorded) was planned as a child of the return to #0 at 10 µs; the resumed tree runs it as a child of the return to #2 at 30 µs
+values: [0, 0, 0, 0, 1, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 3; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs, #2 at 30 µs (1 branches each)
+  the interrupted run planned (nodes made in the order [0, 1, 2]): 4: a child of the return to #0 at 10 µs; 5: a child of the return to #1 at 20 µs; 6: a child of the return to #2 at 30 µs; 7: fresh from the setup snapshot
+  its fillers' fresh lines: []
+  recorded before the stop: 6 (a child of the return to #2 at 30 µs)
+  resume: recorded_returns gives #2 at 30 µs; ready (no node, the setup's snapshot): [true]
+  the resumed tree plans (planned in the order [0]): 4: a child of the return to #2 at 30 µs; 5: fresh from the setup snapshot; 6: fresh from the setup snapshot; 7: fresh from the setup snapshot
+---
+== resume property: a resume judges again every generation its record has whole, made with this plan
+   source: main.zig:4643-4646 (tree_rejudge: "A resumed run's recorded generations judged again, in their order ... the queue is then the interrupted run's. A generation whose summaries the interruption cut ends it"); main.zig:4665-4669 (Rejudged.cut: "Not the plan its record was made with, or cut by the interruption"); main.zig:4692 ("The fresh timelines taken while it was judged, before its plan as they were")
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 4, 1 branch a return, 3 returns, no filler]: complete, 186 timelines, none broke it (1 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 4, 1 branch a return, 3 returns, no filler]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: complete, 98 timelines, none broke it (1 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, no filler, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: complete, 62 timelines, none broke it (1 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, every return recorded, nodes made again in the makings' order]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, up to 3 fillers]: complete, 19924 timelines, none broke it (71 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, up to 3 fillers]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: complete, 19924 timelines, none broke it (71 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: complete, 234 timelines, none broke it (2 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 4, 1 branch a return, two returns to one moment (CE26), every return recorded]: 2000 timelines (seeds 0..1999), none broke it (7 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: stopped at 100000 timelines, none broke it (670 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers]: 2000 timelines (seeds 0..1999), none broke it (18 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: complete, 41218 timelines, none broke it (145 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (8 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: complete, 56100 timelines, none broke it (194 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans]: 2000 timelines (seeds 0..1999), none broke it (9 ms)
+search exhaust [a resume judges again every generation its record has whole, made with this plan / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND after 808 timelines (3 ms): a resume judges again every generation its record has whole, made with this plan: generation 0's record is whole and this plan's, its fillers taken at [7] between its returns' timelines (5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: a child of the return to #1 at 20 µs; 9: a child of the return to #1 at 20 µs; 10: fresh from the setup snapshot): rejudge_load cuts it, and the loop judges it again with the resumed host's timing: 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot (shrunk to 12 decisions from 12)
+--- counterexample [a resume judges again every generation its record has whole, made with this plan / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: a resume judges again every generation its record has whole, made with this plan
+detail: generation 0's record is whole and this plan's, its fillers taken at [7] between its returns' timelines (5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: a child of the return to #1 at 20 µs; 9: a child of the return to #1 at 20 µs; 10: fresh from the setup snapshot): rejudge_load cuts it, and the loop judges it again with the resumed host's timing: 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+values: [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":1}
+{"name":"original.step","options":2,"value":1}
+{"name":"original.step","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"resumed.step","options":3,"value":0}
+{"name":"resumed.step","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: a child of the return to #1 at 20 µs; 9: a child of the return to #1 at 20 µs; 10: fresh from the setup snapshot
+  its fillers' fresh lines: [7]
+  recorded before the stop: 
+  resume: rejudge_load's fillers do not come first: .cut (the loop judges generation 0 again, recording)
+  the resumed tree plans (planned in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+---
+search explore [a resume judges again every generation its record has whole, made with this plan / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: FOUND at timeline 2 of seeds 0..1999 (0 ms): a resume judges again every generation its record has whole, made with this plan: generation 0's record is whole and this plan's, its fillers taken at [7] between its returns' timelines (5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: a child of the return to #1 at 20 µs; 9: a child of the return to #1 at 20 µs; 10: fresh from the setup snapshot): rejudge_load cuts it, and the loop judges it again with the resumed host's timing: 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot (shrunk to 12 decisions from 13)
+--- counterexample [a resume judges again every generation its record has whole, made with this plan / a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers]: a resume judges again every generation its record has whole, made with this plan
+detail: generation 0's record is whole and this plan's, its fillers taken at [7] between its returns' timelines (5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: a child of the return to #1 at 20 µs; 9: a child of the return to #1 at 20 µs; 10: fresh from the setup snapshot): rejudge_load cuts it, and the loop judges it again with the resumed host's timing: 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+values: [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+tape:
+{"name":"original.step","options":3,"value":0}
+{"name":"original.step","options":2,"value":1}
+{"name":"original.step","options":2,"value":1}
+{"name":"original.step","options":2,"value":1}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"stop.recorded","options":2,"value":0}
+{"name":"resumed.step","options":3,"value":0}
+{"name":"resumed.step","options":2,"value":0}
+story:
+  generation 0: timelines 0 to 4; returns, in the makings' order: #0 at 10 µs, #1 at 20 µs (2 branches each)
+  the interrupted run planned (nodes made in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: fresh from the setup snapshot; 8: a child of the return to #1 at 20 µs; 9: a child of the return to #1 at 20 µs; 10: fresh from the setup snapshot
+  its fillers' fresh lines: [7]
+  recorded before the stop: 
+  resume: rejudge_load's fillers do not come first: .cut (the loop judges generation 0 again, recording)
+  the resumed tree plans (planned in the order [0, 1]): 5: a child of the return to #0 at 10 µs; 6: a child of the return to #0 at 10 µs; 7: a child of the return to #1 at 20 µs; 8: a child of the return to #1 at 20 µs; 9: fresh from the setup snapshot
+---
+search exhaust [a resume judges again every generation its record has whole, made with this plan / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: complete, 150 timelines, none broke it (1 ms)
+search explore [a resume judges again every generation its record has whole, made with this plan / a7fe05d: size 4, 1 branch a return, 3 returns, no filler]: 2000 timelines (seeds 0..1999), none broke it (6 ms)

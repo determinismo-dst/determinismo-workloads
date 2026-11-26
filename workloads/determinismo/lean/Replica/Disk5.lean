@@ -57,7 +57,7 @@ structure Named where
 structure S where
   decisions : Decisions := {}
   /-- Round 6: nodes.zig as at a7fe05d (the drain) unless a theorem about 62e06e3 says so. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   /-- Round 6: whether pidfd_open may fail in the heal (a decision), the drain's fallback. -/
   pidfdMayFail : Bool := false
   /-- Faults whose tracer said it failed (`disk_reads_trace_failed`: "drain", "rmdir"). -/
@@ -78,6 +78,12 @@ structure S where
   corrupted : List Line := []
   named : List Named := []
   log : Array String := #[]
+  /-- Round 7: the reader may die while its fault lasts (the OOM killer: a step of its own). -/
+  readerMayDie : Bool := false
+  /-- Round 7: the fault whose reader died before its heal. -/
+  deadReader : Option Nat := none
+  /-- Round 7: faults whose heal SIGKILLed another process (the dead reader's pid reused). -/
+  strangersKilled : List Nat := []
   deriving Inhabited
 
 instance : Chaotic S where
@@ -172,16 +178,47 @@ def healA7 : DM Unit := do
     else
       note s!"fault #{f} heals: its reader not scheduled within 2 s: killed (\"drain\" said) and not exited 2 s later: rmdir refused (\"rmdir\" said), the instance stays with {s.buffer.length} lines"
 
+/-- Round 7: the reader dies while its fault lasts (the OOM killer; nothing else kills it: it
+runs in det-faults' process group, which faults_stop signals by pid alone). What it had not read
+stays in the instance. -/
+def readerDies : DM Unit := do
+  let s ← get
+  let some f := s.active | return
+  if s.reader != some f then return
+  modify fun s => { s with reader := none, deadReader := some f }
+  note s!"the reader of fault #{f} dies (the OOM killer): {s.buffer.length} lines unread, none read from here"
+
+/-- Round 7: disk_reads_trace_stop (nodes.zig:2384-2420, a7fe05d and df8f08b) when the reader
+died during the fault. `pidfd_open(pid)` fails with ESRCH (no "drain": `watched` false, no wait,
+no kill), or its pid was reused (a decision) and opens that process: not exited within 2 s,
+"drain" said, SIGKILLed. Either way the dead reader holds no pipe: rmdir succeeds, the unread lines
+gone with the instance. -/
+def healDeadReader (f : Nat) : DM Unit := do
+  let s ← get
+  modify fun s => { s with active := none, deadReader := none }
+  let reused := (← below "world.reader_pid_reused" 2) == 1
+  if reused then
+    modify fun s => { s with said := s.said ++ [(f, "drain")], strangersKilled := s.strangersKilled ++ [f],
+                             instance_ := false, buffer := [] }
+    note s!"fault #{f} heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: \"drain\" said, SIGKILL sent to it; the instance removed, {s.buffer.length} lines never named"
+  else
+    modify fun s => { s with instance_ := false, buffer := [] }
+    note s!"fault #{f} heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, {s.buffer.length} lines never named"
+
 def heal : DM Unit := do
+  let s ← get
+  if let some f := s.active then
+    if s.ver.sinceA7 && s.deadReader == some f then return ← healDeadReader f
   if (← get).ver.sinceA7 then healA7 else heal62
 
 def timeline (steps : Nat) : DM Unit := do
   for _ in [0:steps] do
-    match (← below "step" 4) with
+    match (← below "step" (if (← get).readerMayDie then 5 else 4)) with
     | 0 => fail
     | 1 => read
     | 2 => readerRuns
-    | _ => heal
+    | 3 => heal
+    | _ => readerDies
 
 def everyReadNamed : String := "every read a corrupt_reads fault corrupts is named in that fault (disk_corrupt_read), one just before the heal too"
 def everyReadNamedSource : String := "sdk/zig/schema.zig:520-524 (62e06e3): \"Every read it corrupts is an event (`disk_corrupt_read` ...): a loss outside every such read is the system's\"; nodes.zig:1983-1986; nodes.zig:2052-2055 (\"a read just before is named too: never one missed\"); 2415 (\"After the table heals: a read just before it is named too\")"
@@ -192,10 +229,18 @@ def namedRight : String := "a disk_corrupt_read names a read under the fault tha
 (`disk_reads_trace_failed`, as a judge would read it: those reads unnamed). -/
 def everyReadNamedOrSaid : String := "every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)"
 
-def judgeWith (prop : String) (steps : Nat) (src : Source) (ver : Ver := .va7fe05d) (pidfdMayFail : Bool := false) : Ended :=
-  match (timeline steps).run { decisions := { source := src }, ver, pidfdMayFail } with
+/-- Round 7: the heal stops its own reader and nothing else (nodes.zig:2390-2391: "The tracer
+stopped (its pid read and killed, its instance removed)"). -/
+def killsOnlyItsReader : String := "a corrupt_reads heal kills its own reader and no other process"
+
+def judgeWith (prop : String) (steps : Nat) (src : Source) (ver : Ver := .vdf8f08b) (pidfdMayFail : Bool := false) (readerMayDie : Bool := false) : Ended :=
+  match (timeline steps).run { decisions := { source := src }, ver, pidfdMayFail, readerMayDie } with
   | .ok _ s =>
-    let v := if prop == everyReadNamed || prop == everyReadNamedOrSaid then
+    let v := if prop == killsOnlyItsReader then
+        match s.strangersKilled.head? with
+        | some f => some s!"fault #{f}'s heal SIGKILLed the process that took its dead reader's pid"
+        | none => none
+      else if prop == everyReadNamed || prop == everyReadNamedOrSaid then
         -- Judged once the faults ended (the last one healed): each corrupted read named in its own fault.
         if s.active.isSome then none
         else match s.corrupted.find? fun l => !s.named.contains { read := l.read, fault := l.fault } &&
@@ -208,8 +253,8 @@ def judgeWith (prop : String) (steps : Nat) (src : Source) (ver : Ver := .va7fe0
     { taken := s.decisions.taken, violation := v.map (prop, ·) }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
-def storyD (steps : Nat) (src : Source) (ver : Ver := .va7fe05d) (pidfdMayFail : Bool := false) : List String :=
-  match (timeline steps).run { decisions := { source := src }, ver, pidfdMayFail } with
+def storyD (steps : Nat) (src : Source) (ver : Ver := .vdf8f08b) (pidfdMayFail : Bool := false) (readerMayDie : Bool := false) : List String :=
+  match (timeline steps).run { decisions := { source := src }, ver, pidfdMayFail, readerMayDie } with
   | .ok _ s => s.log.toList ++ [s!"named: {reprStr s.named}"]
   | .error _ s => s.log.toList
 

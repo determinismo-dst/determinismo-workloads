@@ -1,0 +1,61 @@
+census [8 steps, overlap eighths drawn 0..8, seeds 0..19999]: 0 timelines with a sync not its fault's decision; 9882 had both kinds begin
+== durability property: while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision
+   source: ARCHITECTURE.md:360-368 ("While a `sync_stall` or `durable_crash` fault lasts, each of its syncs is a decision (one randomness pull), and one in a few is picked"); docs/ANTITHESIS.md:57 (Durability points); faults.zig:53-60 ("while the fault lasts, the guest module makes each of the node's fsyncs and sync writes a decision")
+search exhaust [while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision / 4 steps, overlap 0 eighths]: complete, 6444 timelines, none broke it (6 ms)
+search explore [while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision / 4 steps, overlap 0 eighths]: 20000 timelines (seeds 0..19999), none broke it (34 ms)
+search exhaust [while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision / 5 steps, overlap 8 eighths]: complete, 33480 timelines, none broke it (32 ms)
+search explore [while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision / 5 steps, overlap 8 eighths]: 20000 timelines (seeds 0..19999), none broke it (40 ms)
+search exhaust [while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision / 6 steps, overlap 4 eighths]: stopped at 200000 timelines, none broke it (213 ms)
+search explore [while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision / 6 steps, overlap 4 eighths]: 20000 timelines (seeds 0..19999), none broke it (43 ms)
+== disk property: with disk_lost_writes off, a write whose fsync returned 0 (no error reported since) is stored
+   source: sdk/zig/schema.zig:515-519 ("Its other failures leave what is stored intact, so durability stays judgeable under them"); Linux: fsync(2) and Documentation/filesystems/vfs.rst (a writeback error is reported by the next fsync of each open description)
+search exhaust [with disk_lost_writes off, a write whose fsync returned 0 (no error reported since) is stored / write_errors, one page, 7 steps]: stopped at 200000 timelines, none broke it (360 ms)
+search explore [with disk_lost_writes off, a write whose fsync returned 0 (no error reported since) is stored / write_errors, one page, 7 steps]: 20000 timelines (seeds 0..19999), none broke it (60 ms)
+== disk property: with disk_lost_writes off, a write whose fsync returned 0 (no error reported since) is stored
+   source: sdk/zig/schema.zig:515-519 ("Its other failures leave what is stored intact, so durability stays judgeable under them"); Linux: fsync(2) and Documentation/filesystems/vfs.rst (a writeback error is reported by the next fsync of each open description)
+search exhaust [with disk_lost_writes off, a write whose fsync returned 0 (no error reported since) is stored / write_errors, two pages, 7 steps, no eviction]: stopped at 200000 timelines, none broke it (415 ms)
+search explore [with disk_lost_writes off, a write whose fsync returned 0 (no error reported since) is stored / write_errors, two pages, 7 steps, no eviction]: 20000 timelines (seeds 0..19999), none broke it (66 ms)
+== disk property: lost writes are gone at the next crash: until then, a read returns the node's last write
+   source: docs/ANTITHESIS.md:56 ("writes acknowledged and never stored (gone at the next crash, synced or not)"); nodes.zig:1932-1934 (lost_writes: "a crash after loses them although they were synced")
+search exhaust [lost writes are gone at the next crash: until then, a read returns the node's last write / lost_writes, one page, 6 steps, no eviction]: stopped at 200000 timelines, none broke it (317 ms)
+search explore [lost writes are gone at the next crash: until then, a read returns the node's last write / lost_writes, one page, 6 steps, no eviction]: 20000 timelines (seeds 0..19999), none broke it (56 ms)
+== disk property: lost writes are gone at the next crash: until then, a read returns the node's last write
+   source: docs/ANTITHESIS.md:56 ("writes acknowledged and never stored (gone at the next crash, synced or not)"); nodes.zig:1932-1934 (lost_writes: "a crash after loses them although they were synced")
+search exhaust [lost writes are gone at the next crash: until then, a read returns the node's last write / lost_writes, one page, 6 steps]: FOUND after 2512 timelines (6 ms): lost writes are gone at the next crash: until then, a read returns the node's last write: t=5: page 0: the node wrote 2 (not synced), no crash since; its read returns 0 (shrunk to 6 decisions from 6)
+--- counterexample [lost writes are gone at the next crash: until then, a read returns the node's last write / lost_writes, one page, 6 steps]: lost writes are gone at the next crash: until then, a read returns the node's last write
+detail: t=5: page 0: the node wrote 2 (not synced), no crash since; its read returns 0
+values: [0, 0, 3, 2, 8, 6]
+tape:
+{"name":"disk.step","options":9,"value":0}
+{"name":"disk.step","options":9,"value":0}
+{"name":"disk.step","options":9,"value":3}
+{"name":"disk.step","options":9,"value":2}
+{"name":"disk.step","options":9,"value":8}
+{"name":"disk.step","options":9,"value":6}
+story:
+  t=0: the node writes 1 to page 0
+  t=1: the node writes 2 to page 0
+  t=2: the disk fails: Replica.Durable.Table.lostWrites
+  t=3: the flusher writes the dirty pages back
+  t=4: memory pressure evicts page 0 (clean)
+  t=5: the node reads its pages
+---
+search explore [lost writes are gone at the next crash: until then, a read returns the node's last write / lost_writes, one page, 6 steps]: FOUND at timeline 3862 of seeds 0..19999 (10 ms): lost writes are gone at the next crash: until then, a read returns the node's last write: t=5: page 0: the node wrote 3 (not synced), no crash since; its read returns 0 (shrunk to 6 decisions from 6)
+--- counterexample [lost writes are gone at the next crash: until then, a read returns the node's last write / lost_writes, one page, 6 steps]: lost writes are gone at the next crash: until then, a read returns the node's last write
+detail: t=5: page 0: the node wrote 3 (not synced), no crash since; its read returns 0
+values: [0, 3, 0, 2, 8, 6]
+tape:
+{"name":"disk.step","options":9,"value":0}
+{"name":"disk.step","options":9,"value":3}
+{"name":"disk.step","options":9,"value":0}
+{"name":"disk.step","options":9,"value":2}
+{"name":"disk.step","options":9,"value":8}
+{"name":"disk.step","options":9,"value":6}
+story:
+  t=0: the node writes 1 to page 0
+  t=1: the disk fails: Replica.Durable.Table.lostWrites
+  t=2: the node writes 3 to page 0
+  t=3: the flusher writes the dirty pages back
+  t=4: memory pressure evicts page 0 (clean)
+  t=5: the node reads its pages
+---

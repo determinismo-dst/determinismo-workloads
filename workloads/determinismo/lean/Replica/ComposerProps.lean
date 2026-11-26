@@ -238,6 +238,18 @@ def noStartPastHalfLimit : Prop' :=
           return some s!"{describeInst w i} starts past {ds + limit / 2}"
       return none }
 
+/-- Round 7: the e2e check half-limit-again's (df8f08b's composer.zig:820-823): a timeline whose
+drivers' stop cut a start says `drivers_stopped`. -/
+def stopSaid : Prop' :=
+  { name := "a timeline whose drivers' stop cut a start says drivers_stopped"
+    source := "docs/AGENTS.md:300-302 (\"no driver starts past half the timeline's limit (a `drivers_stopped` event)\"); composer.zig:820-823 (df8f08b: \"A wait for the slot that reached the stop is the drivers' stop too, said as the check above says it: on a phase's last start it was the only sign\"); tools/e2e.zig:441, 9208-9270"
+    check := fun w stop => Id.run do
+      if !finished stop then return none
+      if w.startsCut == 0 then return none
+      let said := w.log.any fun | .note text _ => text.startsWith "drivers_stopped" | _ => false
+      if said then return none
+      return some s!"{w.startsCut} start(s) cut by the stop (a slot waited for until it, none free), no drivers_stopped said" }
+
 /-- Round 2: with a scenario's `drive_ms_max` (or --drive-max) and no --timeline, the driver
 phase's drawn length is at most that: no driver runs past it and the grace. The singleton
 timeline draws none (composer.zig:712-715: "a drawn length doesn't, a singleton running alone to
@@ -260,7 +272,7 @@ def driveMaxBound : Prop' :=
 def allProps : List Prop' :=
   [oneEnding, eventuallyAlone, finallyAfterCompletion, finallyAfterCompletionStrict, singletonAlone,
    singletonAloneStrict, serialAlone, parallelismBound, faultsWindow, workloadKept, noPanic,
-   lengthBound, exitsJudged, noStartPastHalfLimit, driveMaxBound]
+   lengthBound, exitsJudged, noStartPastHalfLimit, driveMaxBound, stopSaid]
 
 /-- One timeline judged by one property. -/
 def judge (p : Prop') (scenario : Scenario) (cmdline : Cmdline) (consts : Consts) (source : Source) :

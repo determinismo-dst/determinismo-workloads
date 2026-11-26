@@ -57,7 +57,7 @@ structure Cfg where
   flakyPasses : Bool := false
   sessions : Bool := false
   /-- Round 5: ci.zig as at 62e06e3 unless a theorem about 3939448 says so. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   deriving Inhabited
 
 structure CS where
@@ -125,7 +125,7 @@ def drawJob (cfg : Cfg) : CM Job := do
 
 /-- ci.zig:273-275 `shard_sql` over `timeline_events` (sessions' timelines included) at 3939448;
 over `explored_timeline_events` (sessions left out) at 62e06e3 (ci.zig:340-342, CE28's fix). -/
-def shardRow (j : Job) (shard : Nat) (ver : Ver := .va7fe05d) : Nat × Nat :=
+def shardRow (j : Job) (shard : Nat) (ver : Ver := .vdf8f08b) : Nat × Nat :=
   let rows := j.stated.filter fun s => s.shard == shard && s.shardCondition.isSome && (ver == .v3939448 || !s.session)
   ((rows.filter (·.shardCondition == some false)).length, rows.length)
 

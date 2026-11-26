@@ -42,7 +42,7 @@ theorem subshell_parts (line : Ci5.RunLine) (runs : List Ci5.Run) (f : Ci5.Files
   | cons r rest ih =>
     simp only [List.foldl_cons, List.map_cons]
     rw [ih]
-    simp [Ci5.step]
+    simp [Ci5.step, Ver.sinceA7]
 
 /-- For every run line's form and every list of xargs runs (none stopping xargs), a7fe05d judges
 every name: CE40's property, for all inputs. -/
@@ -178,9 +178,9 @@ def cutReport : String :=
 the one in the CDATA, and goes on from there: the printed `printed::bad` is judged failing (in
 every timeline: the job fails); and a test's real failure after such output is never seen. -/
 theorem ce49_printed_cases_judged :
-    (Junit.cases printedReport == [{ name := "junit.WriterTest::writes_a_report", failed := false },
+    (Junit.cases printedReport .va7fe05d == [{ name := "junit.WriterTest::writes_a_report", failed := false },
                                     { name := "printed::bad", failed := true }]) = true ∧
-    (Junit.cases cutReport == [{ name := "junit.WriterTest::closes_a_case", failed := false }]) = true := by
+    (Junit.cases cutReport .va7fe05d == [{ name := "junit.WriterTest::closes_a_case", failed := false }]) = true := by
   native_decide
 
 /-! ## CE50: the coverage gate on a run from a snapshot -/
@@ -188,7 +188,7 @@ theorem ce49_printed_cases_judged :
 /-- (by computation) Round 3's draws on a run from a snapshot (its setup another run's: its
 events/setup.jsonl empty): stopped as uninstrumented. -/
 theorem ce50_snapshot_run_stopped :
-    (match (Serve3.drawGate { label := "", instrumented := some true, fromSnapshot := some true }).run
+    (match (Serve3.drawGate { label := "", instrumented := some true, fromSnapshot := some true, ver := .va7fe05d }).run
         { decisions := { source := Source.path #[0, 0, 1, 3, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1] } } with
      | .ok g _ => g.instrumented && g.stoppedAt.isSome && g.rows.all (·.2 == 0)
      | .error _ _ => false) = true := by
@@ -215,6 +215,9 @@ machine): the property holds there, for all inputs. -/
 theorem serve_run_boots_its_inputs (a : Request6.Asked) :
     Request6.inputs (Request6.analysisOfServeRun a) = Request6.inputs a := rfl
 
+/-- The Zig's sizes at a7fe05d (round 7: the model's default is df8f08b's). -/
+def a7 : Tape6.SC := { ver := .va7fe05d }
+
 /-! ## CE52: a session's steps on its tape -/
 
 /-- (by computation) The Zig's sizes. The parse: a `det:ask` step of 42,236 bytes (a 31 KiB REPL
@@ -222,11 +225,11 @@ message in base64) does not fit the line parse's 64 KiB scratch (OutOfMemory); 4
 The recorder: one of 131,072 bytes (a 96 KiB message) has its head taped unfinished, the next
 line running on from it (a parse with any scratch fails). And past steps_max: TapeTooLong. -/
 theorem ce52_long_step_unreadable :
-    (Tape6.parse {} (Tape6.record {} [.step 42236 0, .step 7 0])).toOption.isNone = true ∧
-    (Tape6.parse {} (Tape6.record {} [.step 42235 0, .step 7 0])).toOption.isSome = true ∧
-    (Tape6.parse { scratchMax := 1000000 } (Tape6.record {} [.step 131072 0, .step 7 0])).toOption.isNone = true ∧
-    (Tape6.parse { scratchMax := 1000000 } (Tape6.record {} [.step 131068 0, .step 7 0])).toOption.isSome = true ∧
-    (Tape6.parse { stepsMax := 2 } (Tape6.record {} [.step 4 0, .step 4 0, .step 4 0])).toOption.isNone = true := by
+    (Tape6.parse a7 (Tape6.record a7 [.step 42236 0, .step 7 0])).toOption.isNone = true ∧
+    (Tape6.parse a7 (Tape6.record a7 [.step 42235 0, .step 7 0])).toOption.isSome = true ∧
+    (Tape6.parse { a7 with scratchMax := 1000000 } (Tape6.record a7 [.step 131072 0, .step 7 0])).toOption.isNone = true ∧
+    (Tape6.parse { a7 with scratchMax := 1000000 } (Tape6.record a7 [.step 131068 0, .step 7 0])).toOption.isSome = true ∧
+    (Tape6.parse { a7 with stepsMax := 2 } (Tape6.record a7 [.step 4 0, .step 4 0, .step 4 0])).toOption.isNone = true := by
   native_decide
 
 /-! ## CE53: a return past a full tape's marker -/
@@ -235,7 +238,7 @@ theorem ce52_long_step_unreadable :
 full at pull 2. A return to its moment 3 from a holder: the child runs; its chain stops at
 TapeFull. -/
 theorem ce53_child_of_a_full_tape_never_replays :
-    ((Tape6.judgeFull (Tape6.fullWorlds[0]!) (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = true := by
+    ((Tape6.judgeFull (Tape6.fullWorlds[2]!) (Source.path #[0, 1, 1, 3, 0])).violation.isSome) = true := by
   native_decide
 
 /-! ## CE54: the byte an aimed corrupt_reads names -/

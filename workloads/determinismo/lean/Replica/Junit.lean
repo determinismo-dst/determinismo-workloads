@@ -98,11 +98,47 @@ def capturedEnd (body : Array Char) (from_ : Nat) (closing : String) : Option Na
     | none => return some close
   return none
 
+/-- junit.zig:115-131 (df8f08b) `captured_end`: an element's closing tag past `from`, a CDATA
+section or a comment before it skipped whole, whichever opens first (CE49's fix). -/
+def capturedEndDf (body : Array Char) (from_ : Nat) (closing : String) : Option Nat := Id.run do
+  let mut at_ := from_
+  for _ in [0:body.size + 1] do
+    let some close := findFrom body (arr closing) at_ | return none
+    let cdata := (findFrom body (arr "<![CDATA[") at_).getD body.size
+    let comment := (findFrom body (arr "<!--") at_).getD body.size
+    if min cdata comment < close then
+      let endMarker := if cdata < comment then "]]>" else "-->"
+      let some e := findFrom body (arr endMarker) (min cdata comment) | return none
+      at_ := e + endMarker.length
+    else return some close
+  return none
+
+/-- junit.zig:62-83 (df8f08b) `case_index`: the next `<testcase` element at or past `from`, none
+inside a CDATA section or a comment; `<testcase` followed by a space, tab, line break, `/` or
+`>` (or the report's end). -/
+def caseIndex (r : Array Char) (from_ : Nat) : Option Nat := Id.run do
+  let mut at_ := from_
+  for _ in [0:r.size + 1] do
+    let some next := findChar r '<' at_ | return none
+    if startsAt r next "<![CDATA[" then
+      let some e := findFrom r (arr "]]>") next | return none
+      at_ := e + 3
+      continue
+    if startsAt r next "<!--" then
+      let some e := findFrom r (arr "-->") next | return none
+      at_ := e + 3
+      continue
+    if startsAt r next "<testcase" then
+      let after := next + "<testcase".length
+      if after == r.size || [' ', '\t', '\r', '\n', '/', '>'].contains r[after]! then return some next
+    at_ := next + 1
+  return none
+
 /-- junit.zig:58-87 (62e06e3) `element_index`: where a case's body opens `opening`, outside its
 `<system-out>`/`<system-err>` (each skipped to the first `</system-out>`/`</system-err>` after its
 tag, whatever lies between) and any CDATA section (skipped to its first `]]>`). a7fe05d
 (junit.zig:72-81): the closing tag found past any CDATA section (`captured_end`, CE41). -/
-def elementIndex (body : Array Char) (opening : String) (ver : Ver := .va7fe05d) : Option Nat := Id.run do
+def elementIndex (body : Array Char) (opening : String) (ver : Ver := .vdf8f08b) : Option Nat := Id.run do
   let mut at_ := 0
   for _ in [0:body.size + 1] do
     let some next := findChar body '<' at_ | return none
@@ -118,7 +154,8 @@ def elementIndex (body : Array Char) (opening : String) (ver : Ver := .va7fe05d)
           at_ := tagEnd + 1
         else
           let close := "</" ++ captured ++ ">"
-          let found := if ver.sinceA7 then capturedEnd body tagEnd close else findFrom body (arr close) tagEnd
+          let found := if ver.sinceDf then capturedEndDf body tagEnd close
+            else if ver.sinceA7 then capturedEnd body tagEnd close else findFrom body (arr close) tagEnd
           let some e := found | return none
           at_ := e + close.length
         skipped := true
@@ -128,20 +165,22 @@ def elementIndex (body : Array Char) (opening : String) (ver : Ver := .va7fe05d)
   return none
 
 /-- junit.zig:11-55 `cases` (names and verdicts; the message left out). At 3939448 a case failed
-when its body held the text `<failure` or `<error` anywhere (CE16); at 62e06e3 by `elementIndex`. -/
-def cases (report : String) (ver : Ver := .va7fe05d) : List Case := Id.run do
+when its body held the text `<failure` or `<error` anywhere (CE16); at 62e06e3 by `elementIndex`.
+At df8f08b (junit.zig:14, 21) each case found by `caseIndex` and its body ended by
+`capturedEndDf` (CE49's fix). -/
+def cases (report : String) (ver : Ver := .vdf8f08b) : List Case := Id.run do
   let r := arr report
   let mut out : Array Case := #[]
   let mut pos := 0
   for _ in [0:r.size + 1] do
-    let some opn := findFrom r (arr "<testcase") pos | break
+    let some opn := (if ver.sinceDf then caseIndex r pos else findFrom r (arr "<testcase") pos) | break
     let some tagEnd := findChar r '>' opn | break
     let tag := r.extract opn tagEnd
     let closed := tag.size > 0 && tag[tag.size - 1]! == '/'
     let mut body : Array Char := #[]
     pos := tagEnd + 1
     if !closed then
-      let close := (findFrom r (arr "</testcase>") pos).getD r.size
+      let close := (if ver.sinceDf then capturedEndDf r pos "</testcase>" else findFrom r (arr "</testcase>") pos).getD r.size
       body := r.extract pos close
       pos := close
     let cls := (attr tag "classname").getD #[]
@@ -157,7 +196,7 @@ def cases (report : String) (ver : Ver := .va7fe05d) : List Case := Id.run do
   return out.toList
 
 /-- assert_main.zig:43-51: each case an `always` named "test passes: <name>", true unless failed. -/
-def assertions (report : String) (ver : Ver := .va7fe05d) : List (String × Bool) :=
+def assertions (report : String) (ver : Ver := .vdf8f08b) : List (String × Bool) :=
   (cases report ver).map fun c => ("test passes: " ++ c.name, !c.failed)
 
 /-! ## A test runner's report, drawn: what each test did, then its XML -/
@@ -171,6 +210,8 @@ inductive Child where
   | outCdata (text : String)
   /-- Its captured standard error in a CDATA section. -/
   | errCdata (text : String)
+  /-- Round 7: a comment in its body (`<!-- text -->`). -/
+  | comment (text : String)
   deriving Repr, BEq, Inhabited
 
 structure TestCase where
@@ -191,6 +232,7 @@ def Child.render : Child → String
   | .outText t => "<system-out>" ++ escapeText t ++ "</system-out>"
   | .outCdata t => "<system-out><![CDATA[" ++ t ++ "]]></system-out>"
   | .errCdata t => "<system-err><![CDATA[" ++ t ++ "]]></system-err>"
+  | .comment t => "<!-- " ++ t ++ " -->"
 
 def TestCase.render (c : TestCase) : String :=
   let sep := if c.newlineBeforeName then "\n    " else " "
@@ -219,6 +261,7 @@ structure JWorld where
   childMenu : List Child
   childrenMax : Nat := 2
   layouts : Bool := false
+  ver : Ver := .vdf8f08b
 
 def drawReport (wd : JWorld) : EStateM Stop JS (List TestCase) := do
   let mut out := []
@@ -233,13 +276,13 @@ def drawReport (wd : JWorld) : EStateM Stop JS (List TestCase) := do
 structure JProp where
   name : String
   source : String
-  check : List TestCase → Option String
+  check : Ver → List TestCase → Option String
 
 def verdictsAsReported : JProp :=
   { name := "a test fails exactly when its test case holds a failure or an error (skipped ones pass)"
     source := "guest/runtime/junit.zig:2-6: \"each `<testcase>`'s classname and name, whether it holds a `<failure>` or an `<error>` (skipped ones pass)\"; assert_main.zig:7-10; docs/CI.md (Verdicts per test; `junit`)"
-    check := fun cs => Id.run do
-      let said := cases (render cs)
+    check := fun ver cs => Id.run do
+      let said := cases (render cs) ver
       for c in cs do
         let full := c.cls ++ "::" ++ c.name
         match said.find? (·.name == full) with
@@ -252,8 +295,8 @@ def verdictsAsReported : JProp :=
 def everyCaseATest : JProp :=
   { name := "every test case of the report is a test of its own"
     source := "docs/CI.md (Verdicts per test): \"each test is a property of its own in each timeline (`det-assert junit`)\"; junit.zig:2: \"each `<testcase>`'s classname and name\""
-    check := fun cs =>
-      let said := (cases (render cs)).map (·.name)
+    check := fun ver cs =>
+      let said := (cases (render cs) ver).map (·.name)
       match cs.find? fun c => !said.contains (c.cls ++ "::" ++ c.name) with
       | some c => some s!"{c.cls}::{c.name} is in the report and no test ({if c.newlineBeforeName then "a line break before its name attribute" else "?"}); tests judged: {said}"
       | none => none }
@@ -262,9 +305,9 @@ def everyCaseATest : JProp :=
 def onlyItsCases : JProp :=
   { name := "the tests judged are the report's test cases, each with its own verdict"
     source := "guest/runtime/junit.zig:2-6 (\"each `<testcase>`'s classname and name\"); a7fe05d's test name \"captured output that prints its own closing tag never fails its test\" (CE41's fix); docs/CI.md (Verdicts per test)"
-    check := fun cs =>
+    check := fun ver cs =>
       let real := cs.map fun c => c.cls ++ "::" ++ c.name
-      match (cases (render cs)).find? fun s => !real.contains s.name with
+      match (cases (render cs) ver).find? fun s => !real.contains s.name with
       | some s => some s!"\"{s.name}\" judged {if s.failed then "failing" else "passing"}: no test case of the report has that name (the report's: {real}); it is text a test printed"
       | none => none }
 
@@ -272,13 +315,13 @@ def allJProps : List JProp := [verdictsAsReported, everyCaseATest, onlyItsCases]
 
 def judgeJ (p : JProp) (wd : JWorld) (source : Source) : Ended :=
   match (drawReport wd).run { decisions := { source } } with
-  | .ok cs s => { taken := s.decisions.taken, violation := (p.check cs).map fun d => (p.name, d) }
+  | .ok cs s => { taken := s.decisions.taken, violation := (p.check wd.ver cs).map fun d => (p.name, d) }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
 def jstory (wd : JWorld) (source : Source) : List String :=
   match (drawReport wd).run { decisions := { source } } with
   | .ok cs _ => ["the report:"] ++ ((render cs).splitOn "\n") ++
-      ["det-assert junit states:"] ++ ((assertions (render cs)).map fun (m, c) => s!"  always({c}) \"{m}\"")
+      ["det-assert junit states:"] ++ ((assertions (render cs) wd.ver).map fun (m, c) => s!"  always({c}) \"{m}\"")
   | .error _ _ => []
 
 def jworlds : List JWorld :=
@@ -299,7 +342,16 @@ def jworlds : List JWorld :=
     { label := "two cases, failures and captured output in CDATA that prints test cases of its own",
       childMenu := [.failure, .outCdata "plain output",
                     .outCdata "<testsuite><testcase classname=\"printed\" name=\"ok\"></testcase><testcase classname=\"printed\" name=\"bad\"><failure message=\"x\"/></testcase></testsuite>",
-                    .errCdata "</testcase>"] } ]
+                    .errCdata "</testcase>"] },
+    -- Round 7: the same at a7fe05d (CE49 found again there).
+    { label := "a7fe05d: two cases, failures and captured output in CDATA that prints test cases of its own",
+      childMenu := [.failure, .outCdata "plain output",
+                    .outCdata "<testsuite><testcase classname=\"printed\" name=\"ok\"></testcase><testcase classname=\"printed\" name=\"bad\"><failure message=\"x\"/></testcase></testsuite>",
+                    .errCdata "</testcase>"], ver := .va7fe05d },
+    -- Round 7 (df8f08b's case_index skips comments, element_index does not): a comment in a
+    -- case's body, a failure commented out.
+    { label := "two cases, failures, skips and a comment in a case's body that mentions a failure element",
+      childMenu := [.failure, .skipped, .comment "<failure message=\"retried\"/>", .comment "<testcase name=\"x\"/>"] } ]
 
 /-! ## The shard's run command through xargs (ci.zig:226-233) -/
 

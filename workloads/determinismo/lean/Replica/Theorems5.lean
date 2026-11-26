@@ -174,11 +174,11 @@ theorem leaving_parts (line : Ci5.RunLine) (hl : line ≠ .plain ∧ line ≠ .s
     have hm : line.reachesMove r.failed = false := by
       cases line <;> simp_all [Ci5.RunLine.reachesMove]
     cases rest with
-    | nil => simp [Ci5.step, hm]
+    | nil => simp [Ci5.step, hm, Ver.sinceA7]
     | cons r' rest' =>
       cases hx : (r' :: rest').getLast? with
       | none => simp at hx
-      | some x => simp [Ci5.step, hm, hx]
+      | some x => simp [Ci5.step, hm, hx, Ver.sinceA7]
 
 /-- For every list of xargs runs, a run line that leaves the shell (`exit`, `exec`, a trailing
 comment) has only the last run's names judged: CE21 as at 3939448. -/

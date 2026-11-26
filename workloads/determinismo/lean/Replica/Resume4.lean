@@ -81,6 +81,15 @@ structure Cfg where
   /-- The resumed host's timing drawn; false: it makes its nodes in the makings' order, no
   worker frees up meanwhile (the same order the interrupted run had when it made them so). -/
   resumedTiming : Bool := true
+  /-- Round 7: the code's version. df8f08b (main.zig:6491-6545 `judge_plan_one`, 4752-4775
+  `index_settle`/`child_indices`, 2117-2127 `Resumed.plan_note`/`return_recorded`, 7096-7111
+  `recorded_returns`): each return's children's numbers recorded as it is planned (`planned`
+  lines), given again on resume whatever order its nodes come in, passed over by every other
+  number; a return whose planned numbers are all recorded makes no node. -/
+  ver : Ver := .vdf8f08b
+  /-- Round 7: the stop may come while the judgment still plans (a point in its chronology,
+  drawn), not only after. -/
+  stopMidPlan : Bool := false
   deriving Inhabited
 
 structure RS where
@@ -103,7 +112,20 @@ structure Planning where
   fromReady : List Nat := []
   /-- The order the makings were planned in (for the story). -/
   order : List Nat := []
+  /-- Round 7 (df8f08b): the numbers the record planned for each return (its `planned` lines,
+  `Resumed.planned`: a key's last line, `put`). -/
+  reserved : List (Ret × List Nat) := []
+  /-- Round 7 (df8f08b): every number a `planned` line holds (`Resumed.planned_indices`). -/
+  held : List Nat := []
   deriving Inhabited
+
+/-- df8f08b `index_settle`: the next number none of the record's planned lines holds. -/
+def Planning.settle (p : Planning) : Planning := Id.run do
+  let held := p.held
+  let mut n := p.next
+  for _ in [0:held.length + 1] do
+    if held.contains n then n := n + 1 else break
+  return { p with next := n }
 
 def planOf (p : Planning) (i : Nat) : Option Plan := (p.plans.find? (·.1 == i)).map (·.2)
 
@@ -118,10 +140,18 @@ def planReady (cfg : Cfg) (rets : List Ret) (ready : Array Bool) (readyAtStart :
     if !ready[k]! || planned[k]! then continue
     planned := planned.set! k true
     p := { p with order := p.order ++ [k] }
-    for _ in [0:cfg.children] do
-      p := { p with plans := p.plans ++ [(p.next, .child rets[k]!)], queue := p.queue ++ [p.next],
-                    fromReady := if readyAtStart[k]! then p.fromReady ++ [p.next] else p.fromReady,
-                    next := p.next + 1 }
+    -- df8f08b `child_indices`: the record's numbers for this return, else fresh ones.
+    match p.reserved.find? (·.1 == rets[k]!) with
+    | some (_, nums) =>
+      for i in nums do
+        p := { p with plans := p.plans ++ [(i, .child rets[k]!)], queue := p.queue ++ [i],
+                      fromReady := if readyAtStart[k]! then p.fromReady ++ [i] else p.fromReady }
+    | none =>
+      for _ in [0:cfg.children] do
+        p := p.settle
+        p := { p with plans := p.plans ++ [(p.next, .child rets[k]!)], queue := p.queue ++ [p.next],
+                      fromReady := if readyAtStart[k]! then p.fromReady ++ [p.next] else p.fromReady,
+                      next := p.next + 1 }
   return (planned, p)
 
 /-- The run's loop while a judgment's nodes are made (main.zig:4258-4262 the poll, 4303-4339 a
@@ -151,10 +181,13 @@ def judging (name : String) (cfg : Cfg) (rets : List Ret) (readyAtStart : List B
       frees := frees - 1
       match p.queue with
       | _ :: rest => p := { p with queue := rest }
-      | [] => p := { p with plans := p.plans ++ [(p.next, .fresh)], freshLines := p.freshLines ++ [p.next], next := p.next + 1 }
+      | [] =>
+        p := p.settle
+        p := { p with plans := p.plans ++ [(p.next, .fresh)], freshLines := p.freshLines ++ [p.next], next := p.next + 1 }
     (planned, p) := planReady cfg rets ready readyAtStart planned p
   let branches := k * cfg.children
   for _ in [branches:cfg.size] do
+    p := p.settle
     p := { p with plans := p.plans ++ [(p.next, .fresh)], next := p.next + 1 }
   return p
 
@@ -181,6 +214,9 @@ def recordedReturns (recorded : List (Nat × Plan)) : Option (List Ret) := Id.ru
 /-- One run: the interrupted run's judgment, its stop, the resume's. -/
 structure Run where
   original : Planning
+  /-- Round 7: what the interrupted run planned before its stop (all of it, unless the stop came
+  while it planned). -/
+  before : List (Nat × Plan) := []
   recorded : List (Nat × Plan)
   cut : Bool
   resumedRets : List Ret
@@ -191,12 +227,46 @@ structure Run where
 def runOf (cfg : Cfg) : RM Run := do
   -- The interrupted run: generation 0 (indices 0 to size - 1) judged, its returns' nodes made.
   let original ← judging "original" cfg cfg.rets (cfg.rets.map fun _ => false) { next := cfg.size }
+  -- Round 7: the stop's point in the planning's chronology (drawn when the stop may come while
+  -- it plans): what was planned before it is in the record's `planned` and `fresh` lines.
+  let stopAt ← if cfg.stopMidPlan then below "stop.at" (original.plans.length + 1) else pure original.plans.length
+  let before := original.plans.take stopAt
   -- The stop: the timelines that finished by then are recorded (fewer than a generation, so the
   -- next one was not judged).
   let mut recorded : List (Nat × Plan) := []
-  for (i, pl) in original.plans do
+  for (i, pl) in before do
     if recorded.length + 1 ≥ cfg.size then break
     if (← below "stop.recorded" 2) == 1 then recorded := recorded ++ [(i, pl)]
+  if cfg.ver.sinceDf then
+    -- df8f08b: the record's `planned` lines (each return planned before the stop, its numbers),
+    -- its `fresh` lines; the resumed generation is the record's last (rejudge_last): its
+    -- returns the judgment's own again (deterministic: the makings' order), each with the
+    -- record's numbers if planned (child_indices), the fillers first at theirs (rejudge_load:
+    -- index_settle passing over the planned numbers, else .cut).
+    -- One `planned` line a making, in the order they were planned (its children consecutive):
+    -- `plan_note` puts each under its key, a later line of the same key replacing an earlier.
+    let childNums := (before.filter fun (_, pl) => pl != .fresh).map (·.1)
+    let lines : List (Ret × List Nat) := (original.order.zipIdx.filterMap fun (k, j) =>
+      let nums := (childNums.drop (j * cfg.children)).take cfg.children
+      if nums.isEmpty then none else some (cfg.rets[k]!, nums))
+    let reserved : List (Ret × List Nat) := lines.foldl (fun acc (r, nums) => (acc.filter (·.1 != r)) ++ [(r, nums)]) []
+    let held := lines.flatMap (·.2)
+    let freshBefore := original.freshLines.filter fun f => before.any (·.1 == f)
+    let mut p : Planning := { next := cfg.size, reserved, held }
+    let mut cut := false
+    for f in freshBefore do
+      p := p.settle
+      if f != p.next then
+        cut := true
+        break
+      p := { p with plans := p.plans ++ [(p.next, .fresh)], queue := p.queue ++ [p.next], next := p.next + 1 }
+    let done := recorded.map (·.1)
+    let readyR : List Bool := cfg.rets.map fun r =>
+      match reserved.find? (·.1 == r) with
+      | some (_, nums) => nums.all done.contains
+      | none => false
+    let resumed ← judging "resumed" cfg cfg.rets readyR p cfg.resumedTiming
+    return { original, before, recorded, cut, resumedRets := cfg.rets, readyR, resumed }
   -- resume_read; rejudge_load's fillers first (4694-4698).
   let mut p : Planning := { next := cfg.size }
   let mut cut := false
@@ -208,7 +278,7 @@ def runOf (cfg : Cfg) : RM Run := do
   let resumedRets := if cut then cfg.rets else (recordedReturns recorded).getD cfg.rets
   let readyR : List Bool := resumedRets.map fun r => decide (childrenOf recorded r ≥ cfg.children)
   let resumed ← judging "resumed" cfg resumedRets readyR p cfg.resumedTiming
-  return { original, recorded, cut, resumedRets, readyR, resumed }
+  return { original, before, recorded, cut, resumedRets, readyR, resumed }
 
 def isRecorded (r : Run) (i : Nat) : Bool := r.recorded.any (·.1 == i)
 
@@ -252,7 +322,7 @@ def keepsPlanned : RProp :=
     source := "main.zig:4552-4561 (queue_take: \"a resumed run takes it again at the same place (tree_rejudge), before that generation's plan, so that every index keeps its timeline\"); main.zig:4643-4645 (\"the queue is then the interrupted run's\")"
     check := fun cfg r => Id.run do
       if !admitted cfg r then return none
-      for (i, pl) in r.original.plans do
+      for (i, pl) in r.before do
         if isRecorded r i then continue
         match planOf r.resumed i with
         | some pl' => if pl' != pl then
@@ -299,7 +369,13 @@ def rworlds : List Cfg :=
     { label := "size 5, 2 branches a return, 2 returns, up to 3 fillers", size := 5, children := 2, rets := [retA, retB], frees := 3 },
     { label := "size 5, 2 branches a return, 2 returns, up to 3 fillers, every return recorded", size := 5, children := 2, rets := [retA, retB], frees := 3, everyReturnRecorded := true },
     { label := "size 4, 1 branch a return, two returns to one moment (CE26), every return recorded", size := 4, children := 1, rets := [retA, retA, retC], everyReturnRecorded := true },
-    { label := "the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers", size := 16, children := 4, rets := [retA, retB, retC], frees := 6 } ]
+    { label := "the default shape: size 16, 4 branches a return, 3 returns, up to 6 fillers", size := 16, children := 4, rets := [retA, retB, retC], frees := 6 },
+    -- Round 7: the stop while the judgment still plans; and a7fe05d's worlds (CE32-CE34 found
+    -- again there).
+    { label := "size 5, 2 branches a return, 2 returns, up to 3 fillers, the stop while it plans", size := 5, children := 2, rets := [retA, retB], frees := 3, stopMidPlan := true },
+    { label := "size 4, 1 branch a return, 3 returns, up to 2 fillers, the stop while it plans", size := 4, children := 1, rets := [retA, retB, retC], frees := 2, stopMidPlan := true },
+    { label := "a7fe05d: size 5, 2 branches a return, 2 returns, up to 3 fillers", size := 5, children := 2, rets := [retA, retB], frees := 3, ver := .va7fe05d },
+    { label := "a7fe05d: size 4, 1 branch a return, 3 returns, no filler", size := 4, children := 1, rets := [retA, retB, retC], ver := .va7fe05d } ]
 
 def searchAll (exhaustRuns seeds : Nat) : IO Unit := do
   for p in allRProps do

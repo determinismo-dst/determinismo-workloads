@@ -1,0 +1,219 @@
+== disk property: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+   source: nodes.zig:2390-2420 (df8f08b: the drain; "disk_reads_trace_failed" when it is cut); schema.zig corrupt_reads ("Every read it corrupts is named")
+search exhaust [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 4 steps]: FOUND after 82 timelines (2 ms): every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed): read 0, corrupted by fault #0, is never named in it (shrunk to 5 decisions from 5)
+--- counterexample [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 4 steps]: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+detail: read 0, corrupted by fault #0, is never named in it
+values: [0, 1, 4, 3, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":1}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  read 0 during fault #0: corrupted, its line buffered
+  the reader of fault #0 dies (the OOM killer): 1 lines unread, none read from here
+  fault #0 heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, 1 lines never named
+  named: []
+---
+search explore [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 4 steps]: FOUND at timeline 572 of seeds 0..19999 (1 ms): every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed): read 0, corrupted by fault #0, is never named in it (shrunk to 5 decisions from 5)
+--- counterexample [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 4 steps]: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+detail: read 0, corrupted by fault #0, is never named in it
+values: [0, 1, 4, 3, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":1}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  read 0 during fault #0: corrupted, its line buffered
+  the reader of fault #0 dies (the OOM killer): 1 lines unread, none read from here
+  fault #0 heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, 1 lines never named
+  named: []
+---
+search exhaust [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 5 steps]: FOUND after 82 timelines (1 ms): every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed): read 0, corrupted by fault #0, is never named in it (shrunk to 6 decisions from 6)
+--- counterexample [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 5 steps]: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+detail: read 0, corrupted by fault #0, is never named in it
+values: [0, 0, 1, 4, 3, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":1}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  read 0 during fault #0: corrupted, its line buffered
+  the reader of fault #0 dies (the OOM killer): 1 lines unread, none read from here
+  fault #0 heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, 1 lines never named
+  named: []
+---
+search explore [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 5 steps]: FOUND at timeline 194 of seeds 0..19999 (1 ms): every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed): read 0, corrupted by fault #0, is never named in it (shrunk to 6 decisions from 6)
+--- counterexample [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 5 steps]: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+detail: read 0, corrupted by fault #0, is never named in it
+values: [0, 0, 1, 4, 3, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":1}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  read 0 during fault #0: corrupted, its line buffered
+  the reader of fault #0 dies (the OOM killer): 1 lines unread, none read from here
+  fault #0 heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, 1 lines never named
+  named: []
+---
+search exhaust [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 6 steps]: FOUND after 82 timelines (1 ms): every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed): read 0, corrupted by fault #0, is never named in it (shrunk to 7 decisions from 7)
+--- counterexample [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 6 steps]: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+detail: read 0, corrupted by fault #0, is never named in it
+values: [0, 0, 0, 1, 4, 3, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":1}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  read 0 during fault #0: corrupted, its line buffered
+  the reader of fault #0 dies (the OOM killer): 1 lines unread, none read from here
+  fault #0 heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, 1 lines never named
+  named: []
+---
+search explore [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 6 steps]: FOUND at timeline 62 of seeds 0..19999 (1 ms): every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed): read 0, corrupted by fault #0, is never named in it (shrunk to 7 decisions from 7)
+--- counterexample [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader may die / 6 steps]: every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed)
+detail: read 0, corrupted by fault #0, is never named in it
+values: [0, 0, 0, 1, 4, 3, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":1}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  read 0 during fault #0: corrupted, its line buffered
+  the reader of fault #0 dies (the OOM killer): 1 lines unread, none read from here
+  fault #0 heals: the marker written; pidfd_open fails (ESRCH: the reader is gone): no wait, no kill, nothing said; rmdir succeeds, 1 lines never named
+  named: []
+---
+search exhaust [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader lives / 4 steps]: complete, 396 timelines, none broke it (1 ms)
+search exhaust [every read a corrupt_reads fault corrupts is named in that fault, or the fault says its tracer failed (disk_reads_trace_failed) / df8f08b, the reader lives / 6 steps]: complete, 8856 timelines, none broke it (10 ms)
+== disk property: a corrupt_reads heal kills its own reader and no other process
+   source: nodes.zig:2366-2391 (df8f08b: "The tracer stopped (its pid read and killed, its instance removed)")
+search exhaust [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 4 steps]: FOUND after 41 timelines (1 ms): a corrupt_reads heal kills its own reader and no other process: fault #0's heal SIGKILLed the process that took its dead reader's pid (shrunk to 5 decisions from 5)
+--- counterexample [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 4 steps]: a corrupt_reads heal kills its own reader and no other process
+detail: fault #0's heal SIGKILLed the process that took its dead reader's pid
+values: [0, 0, 4, 3, 1]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":1}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  the reader of fault #0 dies (the OOM killer): 0 lines unread, none read from here
+  fault #0 heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: "drain" said, SIGKILL sent to it; the instance removed, 0 lines never named
+  named: []
+---
+search explore [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 4 steps]: FOUND at timeline 109 of seeds 0..19999 (1 ms): a corrupt_reads heal kills its own reader and no other process: fault #0's heal SIGKILLed the process that took its dead reader's pid (shrunk to 5 decisions from 5)
+--- counterexample [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 4 steps]: a corrupt_reads heal kills its own reader and no other process
+detail: fault #0's heal SIGKILLed the process that took its dead reader's pid
+values: [0, 0, 4, 3, 1]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":1}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  the reader of fault #0 dies (the OOM killer): 0 lines unread, none read from here
+  fault #0 heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: "drain" said, SIGKILL sent to it; the instance removed, 0 lines never named
+  named: []
+---
+search exhaust [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 5 steps]: FOUND after 41 timelines (1 ms): a corrupt_reads heal kills its own reader and no other process: fault #0's heal SIGKILLed the process that took its dead reader's pid (shrunk to 6 decisions from 6)
+--- counterexample [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 5 steps]: a corrupt_reads heal kills its own reader and no other process
+detail: fault #0's heal SIGKILLed the process that took its dead reader's pid
+values: [0, 0, 0, 4, 3, 1]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":1}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  the reader of fault #0 dies (the OOM killer): 0 lines unread, none read from here
+  fault #0 heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: "drain" said, SIGKILL sent to it; the instance removed, 0 lines never named
+  named: []
+---
+search explore [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 5 steps]: FOUND at timeline 30 of seeds 0..19999 (0 ms): a corrupt_reads heal kills its own reader and no other process: fault #0's heal SIGKILLed the process that took its dead reader's pid (shrunk to 6 decisions from 6)
+--- counterexample [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 5 steps]: a corrupt_reads heal kills its own reader and no other process
+detail: fault #0's heal SIGKILLed the process that took its dead reader's pid
+values: [0, 0, 4, 0, 3, 1]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":1}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  the reader of fault #0 dies (the OOM killer): 0 lines unread, none read from here
+  fault #0 heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: "drain" said, SIGKILL sent to it; the instance removed, 0 lines never named
+  named: []
+---
+search exhaust [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 6 steps]: FOUND after 41 timelines (2 ms): a corrupt_reads heal kills its own reader and no other process: fault #0's heal SIGKILLed the process that took its dead reader's pid (shrunk to 7 decisions from 7)
+--- counterexample [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 6 steps]: a corrupt_reads heal kills its own reader and no other process
+detail: fault #0's heal SIGKILLed the process that took its dead reader's pid
+values: [0, 0, 0, 0, 4, 3, 1]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":1}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  the reader of fault #0 dies (the OOM killer): 0 lines unread, none read from here
+  fault #0 heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: "drain" said, SIGKILL sent to it; the instance removed, 0 lines never named
+  named: []
+---
+search explore [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 6 steps]: FOUND at timeline 30 of seeds 0..19999 (0 ms): a corrupt_reads heal kills its own reader and no other process: fault #0's heal SIGKILLed the process that took its dead reader's pid (shrunk to 7 decisions from 7)
+--- counterexample [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader may die / 6 steps]: a corrupt_reads heal kills its own reader and no other process
+detail: fault #0's heal SIGKILLed the process that took its dead reader's pid
+values: [0, 0, 4, 0, 3, 1, 0]
+tape:
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":4}
+{"name":"step","options":5,"value":0}
+{"name":"step","options":5,"value":3}
+{"name":"world.reader_pid_reused","options":2,"value":1}
+{"name":"step","options":5,"value":0}
+story:
+  corrupt_reads #0 begins: the reader starts on the instance (0 lines already in it)
+  the reader of fault #0 dies (the OOM killer): 0 lines unread, none read from here
+  fault #0 heals: the marker written; the dead reader's pid is another process's now: pidfd_open opens it, it does not exit within 2 s: "drain" said, SIGKILL sent to it; the instance removed, 0 lines never named
+  corrupt_reads #1 begins: the reader starts on the instance (0 lines already in it)
+  named: []
+---
+search exhaust [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader lives / 4 steps]: complete, 396 timelines, none broke it (1 ms)
+search exhaust [a corrupt_reads heal kills its own reader and no other process / df8f08b, the reader lives / 6 steps]: complete, 8856 timelines, none broke it (10 ms)

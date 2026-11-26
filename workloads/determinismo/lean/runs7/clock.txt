@@ -1,0 +1,44 @@
+== clock property: the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer
+   source: guest/runtime/composer.zig:907-912 (62e06e3): "by default short of what a setup made to last an hour (a token's hour, the commonest lifetime): the jump and the longest default drive (20 minutes) stay within it, so a timeline failing on the jump, no workload's failure, takes a credential shorter than that"; its test 970-979; 900-901 ("not past what a setup made to expire")
+search explore [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults: a 30-minute cap, 20-minute phases, an objective's return, endings of 1 s to 20 min]: FOUND at timeline 313 of seeds 0..199999 (2 ms): the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer: jump 1024000 ms; driver phases [600000, 1091454] ms, grace 0 ms, ending 1200000 ms: 2891454 ms of virtual time (no hang); the setup's hour token is used 315454 ms past its expiry, never without the jump (shrunk to 8 decisions from 8)
+--- counterexample [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults: a 30-minute cap, 20-minute phases, an objective's return, endings of 1 s to 20 min]: the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer
+detail: jump 1024000 ms; driver phases [600000, 1091454] ms, grace 0 ms, ending 1200000 ms: 2891454 ms of virtual time (no hang); the setup's hour token is used 315454 ms past its expiry, never without the jump
+values: [10, 0, 0, 0, 0, 491454, 0, 3]
+tape:
+{"name":"composer.clock_start","options":11,"value":10}
+{"name":"random_below","options":776001,"value":0}
+{"name":"composer.drive_ms","options":7,"value":0}
+{"name":"random_below","options":600001,"value":0}
+{"name":"composer.drive_ms","options":7,"value":0}
+{"name":"random_below","options":600001,"value":491454}
+{"name":"world.past_the_length","options":2,"value":0}
+{"name":"world.ending_ms","options":4,"value":3}
+story:
+  clock_start ms=1024000 max_ms=1800000 (band 10: 1024000..1800000)
+  driver phases (ms): [600000, 1091454]
+  grace: 0 ms; ending: 1200000 ms
+  virtual time from the draw to the ending's end: 2891454 ms (under the hour's limit)
+  wall time from the token's issue: 3915454 ms (the token lasts 3600000 ms)
+---
+search explore [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults, no objective's return (one phase), endings of 1 s to 20 min]: FOUND at timeline 639 of seeds 0..199999 (2 ms): the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer: jump 1624445 ms; driver phases [760404] ms, grace 30000 ms, ending 1200000 ms: 1990404 ms of virtual time (no hang); the setup's hour token is used 14849 ms past its expiry, never without the jump (shrunk to 6 decisions from 6)
+--- counterexample [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults, no objective's return (one phase), endings of 1 s to 20 min]: the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer
+detail: jump 1624445 ms; driver phases [760404] ms, grace 30000 ms, ending 1200000 ms: 1990404 ms of virtual time (no hang); the setup's hour token is used 14849 ms past its expiry, never without the jump
+values: [10, 600445, 0, 160404, 1, 3]
+tape:
+{"name":"composer.clock_start","options":11,"value":10}
+{"name":"random_below","options":776001,"value":600445}
+{"name":"composer.drive_ms","options":7,"value":0}
+{"name":"random_below","options":600001,"value":160404}
+{"name":"world.past_the_length","options":2,"value":1}
+{"name":"world.ending_ms","options":4,"value":3}
+story:
+  clock_start ms=1624445 max_ms=1800000 (band 10: 1024000..1800000)
+  driver phases (ms): [760404]
+  grace: 30000 ms; ending: 1200000 ms
+  virtual time from the draw to the ending's end: 1990404 ms (under the hour's limit)
+  wall time from the token's issue: 3614849 ms (the token lasts 3600000 ms)
+---
+search explore [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults, one phase, a quick ending (1 s): the fix's own claim]: 200000 timelines (seeds 0..199999), none broke it (335 ms)
+census [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults: a 30-minute cap, 20-minute phases, an objective's return, endings of 1 s to 20 min]: 908 of 200000 timelines
+census [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults, no objective's return (one phase), endings of 1 s to 20 min]: 278 of 200000 timelines
+census [the default wall clock jump never takes a timeline past what its setup made to last an hour (a token's hour), unless the timeline itself is longer / the defaults, one phase, a quick ending (1 s): the fix's own claim]: 0 of 200000 timelines

@@ -132,7 +132,7 @@ structure Consts where
   /-- Loop steps before a timeline is cut (an end, not a failure). -/
   fuel : Nat := 200000
   /-- Round 5: the platform's code modeled, 62e06e3 unless a theorem about 3939448 says so. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   deriving Repr, Inhabited
 
 /-- Tiny worlds: one start's run and end fixed unless a command says, four starts without the
@@ -240,6 +240,8 @@ structure W where
   /-- Round 5: the explorer's yes to `composer.again` given (advisor.zig:79-83: `again_left`
   1, then no). -/
   againTaken : Nat := 0
+  /-- Round 7: starts the drivers' stop cut (a slot waited for until the stop, none free). -/
+  startsCut : Nat := 0
   deriving Inhabited
 
 instance : Chaotic W where
@@ -574,21 +576,23 @@ def loadNext (load : Load) (endT : Option Nat) : M (Bool × Load) := do
 (`start_by_ns`) and a serial driver's bound (`run_until_ns`) apart: `runUntil` defaults to the
 slot's deadline, as 3939448's one deadline did. -/
 def driverStartBy (kinds : List Kind) (parallelism : Nat) (deadline : Option Nat)
-    (runUntil : Option Nat := deadline) : M Unit := do
+    (runUntil : Option Nat := deadline) : M Bool := do
+  -- df8f08b (composer.zig:897-916): false when the wait reached `start_by_ns` with no slot free.
   let kind := kinds[(← below "random_below" kinds.length)]!
   match kind with
   | .serial_driver =>
     waitBelow 1 deadline
-    if (← get).running.size > 0 then return
+    if (← get).running.size > 0 then return false
     runAloneUntil (← pick .serial_driver) runUntil
   | .parallel_driver | .anytime =>
     waitBelow parallelism deadline
-    if (← get).running.size ≥ parallelism then return
+    if (← get).running.size ≥ parallelism then return false
     let c ← pick kind
     announce c "start"
     start c
   | _ => panic "unreachable (composer.zig:829)"
   pause (← below "random_below" (← get).consts.pauseMax)
+  return true
 
 /-- composer.zig:700 `run_drivers`: when the timeline's length ends, if it has one. a7fe05d
 (composer.zig:767, 801-804) takes the drivers' start: every phase's stop is half the limit since
@@ -619,7 +623,7 @@ def runDrivers (driveStart : Nat) (driveMsMax : Option Nat) (parallelMax : Optio
       let (ok, l) ← loadNext load (some endT)
       load := l
       if !ok then continue
-      driverStartBy kinds load.parallelism (some endT)
+      discard <| driverStartBy kinds load.parallelism (some endT)
     throw .limit
   | none =>
     let stop := w.cmdline.timelineLimitMs.map fun limit =>
@@ -639,8 +643,15 @@ def runDrivers (driveStart : Nat) (driveMsMax : Option Nat) (parallelMax : Optio
           break
       -- composer.zig:809-813 (62e06e3): the slot waited for until the stop at most; a serial
       -- driver started runs to its end (no length bounds it here). 3939448: no deadline.
-      if w.consts.ver.since62 then driverStartBy kinds load.parallelism stop (runUntil := none)
-      else driverStartBy kinds load.parallelism none
+      if w.consts.ver.since62 then
+        let made ← driverStartBy kinds load.parallelism stop (runUntil := none)
+        if !made && stop.isSome then modify fun w => { w with startsCut := w.startsCut + 1 }
+        -- df8f08b (composer.zig:820-827): a wait for the slot that reached the stop is the
+        -- drivers' stop too, said: on a phase's last start it was the only sign.
+        if !made && w.consts.ver.sinceDf then
+          note s!"drivers_stopped {started} {starts}"
+          break
+      else discard <| driverStartBy kinds load.parallelism none
     return none
 
 /-- composer.zig:792 `min_drive`. -/

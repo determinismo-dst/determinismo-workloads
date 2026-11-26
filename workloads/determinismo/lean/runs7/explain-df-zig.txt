@@ -1,0 +1,40 @@
+1/3 explain_test.test.round 7, CE57: each of a set value's m variants is a history of its own...[determinismo] explain: replaying to the failure
+[determinismo] explain: 1 faults to vary; saving the timeline before them
+[determinismo] explain: 12 variants from 16999 ms
+
+--draw clock_step.ms=0: {"explain":{"property":"balances add up","failure_ns":20000000000,"snapshot_ms":16999,"horizon_ns":23001000000,"decisions":0,"faults_kept":0,"variants":6,"faults":[{"vtime_ns":17000000000,"picked":"clock_step.ms","control":{"draw":"retry.jitter-ms","failing":5,"of":6},"removed":null,"details":[{"draw":"clock_step.ms","pull":30,"drew":5200,"set":0,"option":null,"failing":6,"of":6,"verdict":"free"}]}]}}
+
+expected 6, found 1
+FAIL (TestExpectedEqual)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:93:17: 0x1025e1147 in expectEqualInner__func_1061 (test)
+                return error.TestExpectedEqual;
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:57:5: 0x10264c7eb in expectEqual (test)
+    return expectEqualInner(T, expected, actual);
+    ^
+scratch/zig7/df/built/explain/explain_test.zig:1028:5: 0x10264c867 in test.round 7, CE57: each of a set value's m variants is a history of its own (test)
+    try std.testing.expectEqual(@as(usize, 6), try r7_explain_variants("clock_step.ms=0"));
+    ^
+2/3 explain_test.test.round 7, CE57's consequence: a value whose one history does not fail is not called needed...[determinismo] explain: replaying to the failure
+[determinismo] explain: 1 faults to vary; saving the timeline before them
+[determinismo] explain: 12 variants from 16999 ms
+
+--draw clock_step.ms=8: {"explain":{"property":"balances add up","failure_ns":20000000000,"snapshot_ms":16999,"horizon_ns":23001000000,"decisions":0,"faults_kept":0,"variants":6,"faults":[{"vtime_ns":17000000000,"picked":"clock_step.ms","control":{"draw":"retry.jitter-ms","failing":5,"of":6},"removed":null,"details":[{"draw":"clock_step.ms","pull":30,"drew":5200,"set":8,"option":null,"failing":0,"of":6,"verdict":"needed"}]}]}}
+
+FAIL (TestUnexpectedResult)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:584:14: 0x10264c533 in expect (test)
+    if (!ok) return error.TestUnexpectedResult;
+             ^
+scratch/zig7/df/built/explain/explain_test.zig:1034:5: 0x10264c687 in test.round 7, CE57's consequence: a value whose one history does not fail is not called needed (test)
+    try std.testing.expect(!(try r7_explain("clock_step.ms=8")).needed);
+    ^
+3/3 explain_test.test.round 7, CE57's control: a named draw's m fresh values are m histories...[determinismo] explain: replaying to the failure
+[determinismo] explain: 1 faults to vary; saving the timeline before them
+[determinismo] explain: 12 variants from 16999 ms
+
+--draw clock_step.ms: {"explain":{"property":"balances add up","failure_ns":20000000000,"snapshot_ms":16999,"horizon_ns":23001000000,"decisions":0,"faults_kept":0,"variants":6,"faults":[{"vtime_ns":17000000000,"picked":"clock_step.ms","control":{"draw":"retry.jitter-ms","failing":5,"of":6},"removed":null,"details":[{"draw":"clock_step.ms","pull":30,"drew":5200,"set":null,"option":null,"failing":5,"of":6,"verdict":"free"}]}]}}
+
+OK
+1 passed; 0 skipped; 2 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/9d0d22b2e6cad7f02c544d169dbde615/test --seed=0xa520e669

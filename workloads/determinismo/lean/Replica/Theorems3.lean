@@ -109,7 +109,7 @@ def frontierAtIt : List TreeReturn :=
 /-- (by computation) The Zig's default shape (16, 4 from each): the frontier's return and the
 archive's return to the same moment. -/
 theorem frontier_and_archive_one_moment :
-    (match (archiveReturns oneCell 16 4 frontierAtIt).run { decisions := { source := Source.path #[] } } with
+    (match (archiveReturns { oneCell with ver := .va7fe05d } 16 4 frontierAtIt).run { decisions := { source := Source.path #[] } } with
      | .ok (_, rs) _ => rs.map (fun r => (r.branch, r.vtime)) == [(0, 1000001), (0, 1000001)]
      | .error _ _ => false) = true := by
   native_decide

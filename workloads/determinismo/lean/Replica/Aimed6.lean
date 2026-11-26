@@ -59,6 +59,35 @@ def changed (aimed : List (Nat × Nat)) (start count : Nat) : List Nat :=
 def named (aimed : List (Nat × Nat)) (start count : Nat) : Option Nat :=
   if aimed.any fun (s, c) => start < s + c && s < start + count then some start else none
 
+/-- nodes.zig:2301-2318 (df8f08b) `read_corrupted_parts`, CE54's fix: a part per aimed extent the
+read overlaps, from `max(sector, extent.start)`, its byte the part's first (with `corrupt_byte` 1,
+in blocks, no part is shorter than the byte). -/
+def namedDf (aimed : List (Nat × Nat)) (start count : Nat) : List Nat :=
+  aimed.filterMap fun (s, c) =>
+    if start < s + c && s < start + count then some (max start s) else none
+
+/-- The bytes a version's reader names for one read bio. -/
+def namedAt (ver : Ver) (aimed : List (Nat × Nat)) (start count : Nat) : List Nat :=
+  if ver.sinceDf then namedDf aimed start count else (named aimed start count).toList
+
+/-- In sectors with a `corrupt_byte` (round 7): dm-flakey changes byte `cb` of each clone over an
+extent, counted from the clone's start, nothing in a clone shorter than that. -/
+def changedB (aimed : List (Nat × Nat)) (start count cb : Nat) : List Nat :=
+  aimed.filterMap fun (s, c) =>
+    let ps := max start s
+    let pe := min (start + count) (s + c)
+    if ps < pe && cb ≤ (pe - ps) * 512 then some (ps * 512 + cb - 1) else none
+
+/-- nodes.zig:2301-2318 (df8f08b) `read_corrupted_parts` in sectors, as the Zig reads: the parts'
+bytes (`part_start * 512 + corrupt_byte - 1`), a part skipped when `part_start >= part_end or
+corrupt_byte > (part_end - part_start) * 512`. -/
+def readCorruptedParts (aimed : List (Nat × Nat)) (start count cb : Nat) : List Nat :=
+  aimed.filterMap fun (s, c) =>
+    let partStart := max start s
+    let partEnd := min (start + count) (s + c)
+    if partStart ≥ partEnd || cb > (partEnd - partStart) * 512 then none
+    else some (partStart * 512 + cb - 1)
+
 /-- ext4_ext_find_goal for a hole at logical `i`: the left neighbour's block plus one, else the
 right neighbour's minus one. -/
 def goal (phys : List (Option Nat)) (i : Nat) : Option Nat :=
@@ -80,6 +109,7 @@ structure W where
   label : String
   blocks : Nat := 3
   device : Nat := 6
+  ver : Ver := .vdf8f08b
   deriving Inhabited
 
 structure Drawn where
@@ -127,18 +157,19 @@ def judge (w : W) (src : Source) : Ended :=
       | none => none
       | some (start, count) =>
         let ch := changed d.aimed start count
-        let nm := named d.aimed start count
-        let ok := match nm with
-          | none => ch.isEmpty
-          | some b => ch == [b]
+        let nm := namedAt w.ver d.aimed start count
+        let ok := ch == nm
         if ok then none else
-          some (property, s!"the file's blocks {reprStr d.before} at the fault's start (aimed extents {d.aimed}), {reprStr d.after} once a hole was written; a read of blocks {start}..{start + count - 1}: dm splits it, the bytes changed at the starts of blocks {ch}; the event names the byte at block {reprStr nm}")
+          some (property, s!"the file's blocks {reprStr d.before} at the fault's start (aimed extents {d.aimed}), {reprStr d.after} once a hole was written; a read of blocks {start}..{start + count - 1}: dm splits it, the bytes changed at the starts of blocks {ch}; the events name the bytes at blocks {nm}")
     { taken := s.decisions.taken, violation := v }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
 def worlds : List W :=
   [ { label := "a file of 3 blocks on a device of 6" },
-    { label := "a file of 4 blocks on a device of 8", blocks := 4, device := 8 } ]
+    { label := "a file of 4 blocks on a device of 8", blocks := 4, device := 8 },
+    -- Round 7: a7fe05d (CE54 found again), and a larger file at df8f08b.
+    { label := "a7fe05d: a file of 3 blocks on a device of 6", ver := .va7fe05d },
+    { label := "a file of 5 blocks on a device of 10", blocks := 5, device := 10 } ]
 
 /-- Per world, over seeds: the reads drawn (a bio), those named wrongly or with a byte unnamed. -/
 def census (w : W) (count : Nat) : IO Unit := do

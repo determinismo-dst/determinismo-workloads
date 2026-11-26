@@ -1,0 +1,16 @@
+1/4 serve_gate.test.round 7, CE50: a run from a machine's checkpoint or a fork's snapshot is not stopped as uninstrumented...OK
+2/4 serve_gate.test.round 7, CE50's control: a run of its own without coverage is stopped...[serve] run 1 stopped: no coverage in its first 4 timelines: its system runs without its language's instrumentation (coverage always); build its workload with it, or ask "coverage": "off" for a self-test
+OK
+3/4 serve_gate.test.round 7, CE56: a run from a checkpoint that ended is not said to run uninstrumented...[serve] run 1 ended uncovered: no coverage in its 4 timelines: its system runs without its language's instrumentation (coverage always); build its workload with it, or ask "coverage": "off" for a self-test
+FAIL (TestUnexpectedResult)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:584:14: 0x10481b8d3 in expect (test)
+    if (!ok) return error.TestUnexpectedResult;
+             ^
+scratch/zig7/df/built/serve/serve_gate.zig:234:5: 0x10484f837 in test.round 7, CE56: a run from a checkpoint that ended is not said to run uninstrumented (test)
+    try std.testing.expect(!(try r7_gate("{\"checkpoint\":\"/data/machines/3/checkpoints/here-1\",\"branching\":\"flat\"}", false)).uncovered);
+    ^
+4/4 serve_gate.test.round 7, CE56's control: a run of its own that ended without coverage is said uncovered...[serve] run 1 ended uncovered: no coverage in its 4 timelines: its system runs without its language's instrumentation (coverage always); build its workload with it, or ask "coverage": "off" for a self-test
+OK
+3 passed; 0 skipped; 1 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/cd36999dd07428d0161efa0b3d6cf21c/test --seed=0x6a46a6e7

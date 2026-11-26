@@ -1,0 +1,24 @@
+== disk property: a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named
+   source: sdk/zig/schema.zig (a7fe05d) corrupt_reads: "Every read it corrupts is named (`disk_corrupt_read`: node, file, sectors, the byte ...), so a durability judge excludes those pages, or flags a loss inside one, without guessing"; guest/runtime/nodes.zig:2278 (".byte = read.sector * 512 + corrupt_byte - 1, // The device's byte the fault changed.")
+search exhaust [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 3 blocks on a device of 6]: complete, 2280 timelines, none broke it (4 ms)
+census [a file of 3 blocks on a device of 6]: 20000 timelines, 8966 reads of the file, 7417 through an aimed extent, 0 named with the wrong byte or a byte unnamed
+search exhaust [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 4 blocks on a device of 8]: complete, 59840 timelines, none broke it (87 ms)
+census [a file of 4 blocks on a device of 8]: 20000 timelines, 7864 reads of the file, 6444 through an aimed extent, 0 named with the wrong byte or a byte unnamed
+search exhaust [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a7fe05d: a file of 3 blocks on a device of 6]: FOUND after 83 timelines (2 ms): a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named: the file's blocks [none, none, some 1] at the fault's start (aimed extents [(1, 1)]), [none, some 0, some 1] once a hole was written; a read of blocks 0..1: dm splits it, the bytes changed at the starts of blocks [1]; the events name the bytes at blocks [0] (shrunk to 8 decisions from 8)
+--- counterexample [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a7fe05d: a file of 3 blocks on a device of 6]: a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named
+detail: the file's blocks [none, none, some 1] at the fault's start (aimed extents [(1, 1)]), [none, some 0, some 1] once a hole was written; a read of blocks 0..1: dm splits it, the bytes changed at the starts of blocks [1]; the events name the bytes at blocks [0]
+values: [0, 0, 1, 1, 0, 1, 1, 1]
+tape:
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":0}
+{"name":"file.block_written","options":2,"value":1}
+{"name":"file.block_at","options":6,"value":1}
+{"name":"system.writes_the_hole","options":2,"value":0}
+{"name":"system.writes_the_hole","options":2,"value":1}
+{"name":"read.first_block","options":3,"value":1}
+{"name":"read.blocks","options":2,"value":1}
+story:
+---
+census [a7fe05d: a file of 3 blocks on a device of 6]: 20000 timelines, 8966 reads of the file, 7417 through an aimed extent, 532 named with the wrong byte or a byte unnamed
+search exhaust [a disk_corrupt_read names the byte its read had changed, and every read's changed byte is named / a file of 5 blocks on a device of 10]: stopped at 200000 timelines, none broke it (331 ms)
+census [a file of 5 blocks on a device of 10]: 20000 timelines, 7040 reads of the file, 5668 through an aimed extent, 0 named with the wrong byte or a byte unnamed

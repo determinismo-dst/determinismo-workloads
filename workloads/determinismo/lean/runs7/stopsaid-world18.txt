@@ -1,0 +1,34 @@
+== composer property: a timeline whose drivers' stop cut a start says drivers_stopped
+search exhaust [a timeline whose drivers' stop cut a start says drivers_stopped / a7fe05d: a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm]: FOUND after 3 timelines (0 ms): a timeline whose drivers' stop cut a start says drivers_stopped: 1 start(s) cut by the stop (a slot waited for until it, none free), no drivers_stopped said (shrunk to 3 decisions from 3)
+--- counterexample [a timeline whose drivers' stop cut a start says drivers_stopped / a7fe05d: a parallel driver of 400 ms holding the only slot, another of 1 ms, a 600 ms limit, no swarm]: a timeline whose drivers' stop cut a start says drivers_stopped
+detail: 1 start(s) cut by the stop (a slot waited for until it, none free), no drivers_stopped said
+values: [1, 1, 0]
+tape:
+{"name":"composer.command","options":2,"value":1}
+{"name":"composer.command","options":2,"value":1}
+{"name":"composer.command","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start next start
+  0 ms: assert reachable "test command started: next" true
+  5 ms: assert reachable "test command completed: next" true
+  5 ms: reaped next#1: status 0
+  5 ms: assert always "test commands exit successfully" true
+  5 ms: command_start next start
+  10 ms: reaped next#2: status 0
+  10 ms: command_start holding start
+  10 ms: assert reachable "test command started: holding" true
+  410 ms: assert reachable "test command completed: holding" true
+  410 ms: reaped holding#3: status 0
+  410 ms: faults stop
+  410 ms: faults_phase stop
+  410 ms: composer_done 3
+  truth: next#1 [0,1] exited 0
+  truth: next#2 [5,6] exited 0
+  truth: holding#3 [10,410] exited 0
+  end: none
+---

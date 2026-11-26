@@ -128,7 +128,7 @@ structure GCfg where
   runners : List Runner := [.python312, .python311, .jdk24, .jdk21, .jdk21Aot, .jest, .goPlain]
   /-- Round 6: serve.zig as at a7fe05d (a CI job never stopped by the gate, 765-769) unless a
   theorem about 3939448 or 62e06e3 says so. -/
-  ver : Ver := .va7fe05d
+  ver : Ver := .vdf8f08b
   deriving Inhabited
 
 structure Gate where

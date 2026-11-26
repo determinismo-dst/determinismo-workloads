@@ -1,0 +1,29 @@
+1/3 request.test.round 7, CE51: a command-line run's analyses are given every input flag of its command line and machine...OK
+2/3 request.test.round 7, CE60: an injector reaches the analysis under the name the run's system disk has...
+the run's injector: chaos; the analysis's: 056e8453348f0063-chaos
+
+====== expected this output: =========
+chaos␃
+
+======== instead found this: =========
+056e8453348f0063-chaos␃
+
+======================================
+First difference occurs on line 1:
+expected:
+chaos
+^ ('\x63')
+found:
+056e8453348f0063-chaos
+^ ('\x30')
+FAIL (TestExpectedEqual)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:696:9: 0x10080d8b7 in expectEqualStrings (test)
+        return error.TestExpectedEqual;
+        ^
+scratch/zig7/df/built/request/request.zig:574:5: 0x10080dfcf in test.round 7, CE60: an injector reaches the analysis under the name the run's system disk has (test)
+    try std.testing.expectEqualStrings("chaos", std.fs.path.basename(given.?));
+    ^
+3/3 request.test.round 7, CE51's control: --clock-start-max is given again (a7fe05d's own fix)...OK
+2 passed; 0 skipped; 1 failed.
+error: the following test command failed with exit code 1:
+~/.cache/zig/o/7554bcee5e111db44e46e1b84200fd41/test --seed=0xdb120415

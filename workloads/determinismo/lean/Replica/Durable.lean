@@ -72,8 +72,13 @@ structure Fault where
 
 structure DS where
   decisions : Decisions := {}
-  /-- The module's arm for the node's cgroup (det_armed: one a cgroup). -/
+  /-- The module's arm for the node's cgroup (det_armed: one a cgroup, 3939448). -/
   armed : Option Mode := none
+  /-- 62e06e3 (det_guest.c:249, 287-307, 490-494): two arms a cgroup, a stall's and a crash's,
+  each replaced or disarmed by its own kind alone. -/
+  armedStall : Option Mode := none
+  armedCrash : Option Mode := none
+  ver : Ver := .v62e06e3
   /-- nodes_faulted's two layers: the process layer's and the condition layer's. -/
   process : Option Fault := none
   condition : Option Fault := none
@@ -89,8 +94,12 @@ abbrev DM := EStateM Stop DS
 
 def note (line : String) : DM Unit := modify fun s => { s with log := s.log.push line }
 
-/-- det_guest.c:461-497: an arm replaces the cgroup's, a disarm (one_in 0) clears it. -/
-def moduleArm (m : Option Mode) : DM Unit := modify fun s => { s with armed := m }
+/-- det_guest.c:461-497: an arm replaces the cgroup's, a disarm (one_in 0) clears it (3939448).
+62e06e3: the arm of the fault's kind alone (`kind`: the sync_stall's or the durable_crash's;
+faults.zig:2245-2250 and 3264 disarm by kind). -/
+def moduleArm (m : Option Mode) (kind : Kind := .syncStall) : DM Unit := modify fun s =>
+  if s.ver == .v3939448 then { s with armed := m }
+  else if kind == .syncStall then { s with armedStall := m } else { s with armedCrash := m }
 
 /-- faults.zig:1632-1641 `node_admits`: its layer free, and the other free or the overlap drawn
 (`fault.overlap` below the regime's eighths: one value of 8 here, so both ways are searched). -/
@@ -112,7 +121,7 @@ def begin (k : Kind) (overlapEighths : Nat) : DM Unit := do
   let f : Fault := { kind := k, mode }
   if k == .syncStall then modify fun s => { s with condition := some f }
   else modify fun s => { s with process := some f }
-  moduleArm (some mode)
+  moduleArm (some mode) k
   note s!"{k.show} begins: the module armed {mode.show}"
 
 /-- A fault ends (faults.zig:2244-2262): both disarm the node's cgroup. -/
@@ -122,7 +131,7 @@ def finish (k : Kind) : DM Unit := do
   if active.isNone then return
   if k == .syncStall then modify fun s => { s with condition := none }
   else modify fun s => { s with process := none }
-  moduleArm none
+  moduleArm none k
   note s!"{k.show} ends: the module disarmed"
 
 /-- A sync of the node (det_guest.c:404-439): a decision on the armed mode's side. The
@@ -130,18 +139,22 @@ properties: while a sync_stall lasts each sync is a stall decision; while a dura
 a crash decision (ARCHITECTURE.md:360-368; docs/ANTITHESIS.md:57; faults.zig:53-60). -/
 def sync (at_ : Nat) : DM Unit := do
   let s ← get
-  let what := match s.armed with
-    | some m => s!"a {m.show} decision"
-    | none => "no decision (nothing armed)"
+  -- 62e06e3 (det_guest.c:419-447): the crash arm decides on its side, then (before the sync,
+  -- not crashed) the stall arm: one pull each.
+  let decided : List Mode := if s.ver == .v3939448 then s.armed.toList
+    else s.armedCrash.toList ++ s.armedStall.toList
+  let what := if decided.isEmpty then "no decision (nothing armed)"
+    else String.intercalate " and " (decided.map fun m => s!"a {m.show} decision")
   note s!"t={at_}: the node syncs: {what}"
   if s.violation.isSome then return
   for f in [s.condition, s.process].filterMap id do
-    if s.armed != some f.mode then
+    if !decided.contains f.mode then
       modify fun s => { s with violation := some s!"t={at_}: a {f.kind.show} fault is under way ({f.mode.show}), and the node's sync is {what}" }
       return
 
 /-- A timeline: `steps` moments, at each a fault begins or ends, or the node syncs. -/
-def timeline (steps overlapEighths : Nat) : DM Unit := do
+def timeline (steps overlapEighths : Nat) (ver : Ver := .v62e06e3) : DM Unit := do
+  modify fun s => { s with ver }
   for t in [0:steps] do
     match (← below "step" 5) with
     | 0 => begin .syncStall overlapEighths
@@ -153,13 +166,13 @@ def timeline (steps overlapEighths : Nat) : DM Unit := do
 def durableProperty : String := "while a sync_stall or durable_crash lasts, each of the node's syncs is that fault's decision"
 def durableSource : String := "ARCHITECTURE.md:360-368 (\"While a `sync_stall` or `durable_crash` fault lasts, each of its syncs is a decision (one randomness pull), and one in a few is picked\"); docs/ANTITHESIS.md:57 (Durability points); faults.zig:53-60 (\"while the fault lasts, the guest module makes each of the node's fsyncs and sync writes a decision\")"
 
-def judgeD (steps overlapEighths : Nat) (source : Source) : Ended :=
-  match (timeline steps overlapEighths).run { decisions := { source } } with
+def judgeD (steps overlapEighths : Nat) (source : Source) (ver : Ver := .v62e06e3) : Ended :=
+  match (timeline steps overlapEighths ver).run { decisions := { source } } with
   | .ok _ s => { taken := s.decisions.taken, violation := s.violation.map fun d => (durableProperty, d) }
   | .error _ s => { taken := s.decisions.taken, violation := none }
 
-def storyD (steps overlapEighths : Nat) (source : Source) : List String :=
-  match (timeline steps overlapEighths).run { decisions := { source } } with
+def storyD (steps overlapEighths : Nat) (source : Source) (ver : Ver := .v62e06e3) : List String :=
+  match (timeline steps overlapEighths ver).run { decisions := { source } } with
   | .ok _ s => s.log.toList
   | .error _ s => s.log.toList
 

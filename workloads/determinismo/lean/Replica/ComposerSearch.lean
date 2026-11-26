@@ -86,7 +86,12 @@ def worlds : List World :=
       scenario := { commands := [cmd "drive" .parallel_driver [1, 3] [.code 0, .signal 9], cmd "check" .eventually [1]],
                     minDriveMs := some 0 }
       cmdline := { swarmOff := true }
-      consts := { Consts.tiny with pauseMax := 3 } } ]
+      consts := { Consts.tiny with pauseMax := 3 } },
+    -- Round 5 (world 17): a second driver phase (composer.again, which the explorer answers
+    -- for a return to an objective's best) under a timeline limit and no length.
+    { label := "a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm"
+      scenario := { commands := [cmd "drive" .parallel_driver [10, 270]], parallelMax := some 1 }
+      cmdline := { swarmOff := true, timelineLimitMs := some 600, againAsked := true } } ]
 
 /-- The story of a world's timeline. -/
 def worldStory (wd : World) (source : Source) : List String :=

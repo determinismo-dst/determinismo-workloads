@@ -80,8 +80,39 @@ structure Case where
   failed : Bool
   deriving Repr, BEq, Inhabited
 
-/-- junit.zig:11-55 `cases` (names and verdicts; the message left out). -/
-def cases (report : String) : List Case := Id.run do
+def startsAt (a : Array Char) (i : Nat) (prefix_ : String) : Bool :=
+  a.extract i (i + prefix_.length) == arr prefix_
+
+/-- junit.zig:58-87 (62e06e3) `element_index`: where a case's body opens `opening`, outside its
+`<system-out>`/`<system-err>` (each skipped to the first `</system-out>`/`</system-err>` after its
+tag, whatever lies between) and any CDATA section (skipped to its first `]]>`). -/
+def elementIndex (body : Array Char) (opening : String) : Option Nat := Id.run do
+  let mut at_ := 0
+  for _ in [0:body.size + 1] do
+    let some next := findChar body '<' at_ | return none
+    if startsAt body next "<![CDATA[" then
+      let some e := findFrom body (arr "]]>") next | return none
+      at_ := e + 3
+      continue
+    let mut skipped := false
+    for captured in ["system-out", "system-err"] do
+      if !skipped && startsAt body next ("<" ++ captured) then
+        let some tagEnd := findChar body '>' next | return none
+        if tagEnd > 0 && body[tagEnd - 1]! == '/' then
+          at_ := tagEnd + 1
+        else
+          let close := "</" ++ captured ++ ">"
+          let some e := findFrom body (arr close) tagEnd | return none
+          at_ := e + close.length
+        skipped := true
+    if skipped then continue
+    if startsAt body next opening then return some next
+    at_ := next + 1
+  return none
+
+/-- junit.zig:11-55 `cases` (names and verdicts; the message left out). At 3939448 a case failed
+when its body held the text `<failure` or `<error` anywhere (CE16); at 62e06e3 by `elementIndex`. -/
+def cases (report : String) (ver : Ver := .v62e06e3) : List Case := Id.run do
   let r := arr report
   let mut out : Array Case := #[]
   let mut pos := 0
@@ -102,13 +133,15 @@ def cases (report : String) : List Case := Id.run do
     let name := if cls.size > 0 && named.size > cls.size + 1 && named.extract 0 cls.size == cls && named[cls.size]! == '/'
       then named.extract (cls.size + 1) named.size else named
     let full := if cls.size > 0 then str cls ++ "::" ++ str name else str name
-    let failure := (findFrom body (arr "<failure") 0).isSome || (findFrom body (arr "<error") 0).isSome
+    let failure := if ver == .v3939448 then
+        (findFrom body (arr "<failure") 0).isSome || (findFrom body (arr "<error") 0).isSome
+      else (elementIndex body "<failure").isSome || (elementIndex body "<error").isSome
     out := out.push { name := unescape full, failed := failure }
   return out.toList
 
 /-- assert_main.zig:43-51: each case an `always` named "test passes: <name>", true unless failed. -/
-def assertions (report : String) : List (String × Bool) :=
-  (cases report).map fun c => ("test passes: " ++ c.name, !c.failed)
+def assertions (report : String) (ver : Ver := .v62e06e3) : List (String × Bool) :=
+  (cases report ver).map fun c => ("test passes: " ++ c.name, !c.failed)
 
 /-! ## A test runner's report, drawn: what each test did, then its XML -/
 
@@ -119,6 +152,8 @@ inductive Child where
   | outText (text : String)
   /-- Its captured output in a CDATA section (as Surefire, jest-junit and go-junit-report write it). -/
   | outCdata (text : String)
+  /-- Its captured standard error in a CDATA section. -/
+  | errCdata (text : String)
   deriving Repr, BEq, Inhabited
 
 structure TestCase where
@@ -138,6 +173,7 @@ def Child.render : Child → String
   | .skipped => "<skipped message=\"no\"/>"
   | .outText t => "<system-out>" ++ escapeText t ++ "</system-out>"
   | .outCdata t => "<system-out><![CDATA[" ++ t ++ "]]></system-out>"
+  | .errCdata t => "<system-err><![CDATA[" ++ t ++ "]]></system-err>"
 
 def TestCase.render (c : TestCase) : String :=
   let sep := if c.newlineBeforeName then "\n    " else " "
@@ -225,7 +261,12 @@ def jworlds : List JWorld :=
       childMenu := [.failure, .skipped, .outText "<error code=\"503\"/>", .outCdata "<error code=\"503\"/>",
                     .outCdata "plain output"] },
     { label := "two cases, attribute layouts (a space or a line break before name)",
-      childMenu := [.failure, .skipped], layouts := true } ]
+      childMenu := [.failure, .skipped], layouts := true },
+    -- Round 5 (62e06e3's element_index): captured output in CDATA holding the closing tag of
+    -- its own element (a test printing JUnit XML: a reporter's or a CI tool's own tests).
+    { label := "two cases, failures, skips and captured output in CDATA that prints a closing system-out or system-err tag",
+      childMenu := [.failure, .skipped, .outCdata "<error code=\"503\"/>",
+                    .outCdata "</system-out><error code=\"503\"/>", .errCdata "</system-err><failure message=\"x\"/>"] } ]
 
 /-! ## The shard's run command through xargs (ci.zig:226-233) -/
 

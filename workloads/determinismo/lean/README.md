@@ -104,3 +104,10 @@ first), [../../lean-drift.py](../../lean-drift.py) lists the citations whose lin
 
 A fix shows as changed lines under its counterexample's citations; the next round re-runs those
 searches against the fixed code, where the counterexample should be gone.
+
+## Round 5
+
+[REPORT-5.md](REPORT-5.md): CE1-CE39 rechecked at next 62e06e3 (most fixed; CE4, CE13, CE15, CE19,
+CE20, CE21 and CE29 partly, with remainders numbered anew; CE23-CE26, CE30, CE32-CE34, CE38, CE39
+still there), and CE40-CE48. CE40, CE41 and CE48 fail as Zig tests on copies of 62e06e3's ci.zig,
+junit.zig and tape.zig; the rest are the model's, each with its regression test in tests/.

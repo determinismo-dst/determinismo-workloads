@@ -1,0 +1,98 @@
+== composer property: no driver starts past half the timeline's limit
+search exhaust [no driver starts past half the timeline's limit / a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm]: FOUND after 4 timelines (1 ms): no driver starts past half the timeline's limit: drive#8 [330,340] exited 0 starts past 300 (shrunk to 9 decisions from 9)
+--- counterexample [no driver starts past half the timeline's limit / a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm]: no driver starts past half the timeline's limit
+detail: drive#8 [330,340] exited 0 starts past 300
+values: [0, 0, 0, 0, 1, 0, 0, 1, 0]
+tape:
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"composer.again","options":2,"value":1}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":1}
+{"name":"world.run_ms drive","options":2,"value":0}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start drive start
+  0 ms: assert reachable "test command started: drive" true
+  10 ms: assert reachable "test command completed: drive" true
+  10 ms: reaped drive#1: status 0
+  10 ms: assert always "test commands exit successfully" true
+  10 ms: command_start drive start
+  20 ms: reaped drive#2: status 0
+  20 ms: command_start drive start
+  30 ms: reaped drive#3: status 0
+  30 ms: command_start drive start
+  40 ms: reaped drive#4: status 0
+  40 ms: command_start drive start
+  50 ms: reaped drive#5: status 0
+  50 ms: command_start drive start
+  60 ms: reaped drive#6: status 0
+  60 ms: command_start drive start
+  330 ms: reaped drive#7: status 0
+  330 ms: command_start drive start
+  340 ms: reaped drive#8: status 0
+  340 ms: faults stop
+  340 ms: faults_phase stop
+  340 ms: composer_done 8
+  truth: drive#1 [0,10] exited 0
+  truth: drive#2 [10,20] exited 0
+  truth: drive#3 [20,30] exited 0
+  truth: drive#4 [30,40] exited 0
+  truth: drive#5 [40,50] exited 0
+  truth: drive#6 [50,60] exited 0
+  truth: drive#7 [60,330] exited 0
+  truth: drive#8 [330,340] exited 0
+  end: none
+---
+search explore [no driver starts past half the timeline's limit / a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm]: FOUND at timeline 27 of seeds 0..4999 (0 ms): no driver starts past half the timeline's limit: drive#6 [310,580] exited 0 starts past 300 (shrunk to 7 decisions from 8)
+--- counterexample [no driver starts past half the timeline's limit / a parallel driver of 10 or 270 ms, one at a time, a 600 ms limit, a second phase asked (composer.again: yes once), no swarm]: no driver starts past half the timeline's limit
+detail: drive#6 [310,580] exited 0 starts past 300
+values: [0, 0, 0, 1, 1, 0, 1]
+tape:
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":1}
+{"name":"composer.again","options":2,"value":1}
+{"name":"world.run_ms drive","options":2,"value":0}
+{"name":"world.run_ms drive","options":2,"value":1}
+story:
+  0 ms: setup_complete
+  0 ms: composer_start
+  0 ms: faults_phase start
+  0 ms: faults start
+  0 ms: assert reachable "the fault injector started" true
+  0 ms: command_start drive start
+  0 ms: assert reachable "test command started: drive" true
+  10 ms: assert reachable "test command completed: drive" true
+  10 ms: reaped drive#1: status 0
+  10 ms: assert always "test commands exit successfully" true
+  10 ms: command_start drive start
+  20 ms: reaped drive#2: status 0
+  20 ms: command_start drive start
+  30 ms: reaped drive#3: status 0
+  30 ms: command_start drive start
+  300 ms: reaped drive#4: status 0
+  300 ms: command_start drive start
+  310 ms: reaped drive#5: status 0
+  310 ms: command_start drive start
+  330 ms: drivers_stopped 3 4
+  580 ms: reaped drive#6: status 0
+  580 ms: faults stop
+  580 ms: faults_phase stop
+  580 ms: composer_done 6
+  truth: drive#1 [0,10] exited 0
+  truth: drive#2 [10,20] exited 0
+  truth: drive#3 [20,30] exited 0
+  truth: drive#4 [30,300] exited 0
+  truth: drive#5 [300,310] exited 0
+  truth: drive#6 [310,580] exited 0
+  end: none
+---

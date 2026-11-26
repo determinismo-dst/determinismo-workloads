@@ -1,0 +1,88 @@
+✔ [98/158] Built Replica.Theorems3:c.o (72ms)
+✔ [104/158] Built Replica.Prelude:c.o (125ms)
+✔ [105/158] Built Replica.Ci4:c.o (286ms)
+✔ [106/158] Built Replica.ComposerSearch:c.o (388ms)
+✔ [107/158] Built Replica.Ce2Drawn:c.o (328ms)
+✔ [108/158] Built Main3 (343ms)
+✔ [111/158] Built Main4 (249ms)
+✔ [114/158] Built Replica.Resume5 (449ms)
+✔ [116/158] Built Replica.Clock5 (425ms)
+✔ [118/158] Built Replica.Disk5 (480ms)
+✔ [120/158] Built Replica.Persist:c.o (437ms)
+✔ [121/158] Built Replica.Clock5:c.o (150ms)
+✔ [122/158] Built Replica.Junit (666ms)
+✔ [124/158] Built Replica.Ci:c.o (602ms)
+✔ [125/158] Built Replica.Resume5:c.o (202ms)
+✔ [126/158] Built Replica.Disk5:c.o (235ms)
+✔ [127/158] Built Replica.Verdicts:c.o (744ms)
+✔ [128/158] Built Replica.Durable:c.o (714ms)
+✔ [129/158] Built Main2 (213ms)
+✔ [132/158] Built replica4:exe (114ms)
+✔ [133/158] Built Replica.Theorems2 (317ms)
+✔ [135/158] Built Replica.Ci5 (320ms)
+✔ [137/158] Built Replica.Tape:c.o (1.0s)
+✔ [138/158] Built Replica.Theorems2:c.o (72ms)
+✔ [139/158] Built Replica.Junit:c.o (501ms)
+✔ [140/158] Built Replica.Ci5:c.o (219ms)
+✖ [141/158] Building Replica.Theorems5 (262ms)
+trace: .> LEAN_PATH=./upstream/sdk/lean/.lake/build/lib/lean:./.lake/build/lib/lean ~/.elan/toolchains/leanprover--lean4---v4.36.0/bin/lean ./Replica/Theorems5.lean -o ./.lake/build/lib/lean/Replica/Theorems5.olean -i ./.lake/build/lib/lean/Replica/Theorems5.ilean -c ./.lake/build/ir/Replica/Theorems5.c --setup ./.lake/build/ir/Replica/Theorems5.setup.json --json
+error: Replica/Theorems5.lean:146:19: unsolved goals
+case cons
+r : Ci5.Run
+rest : List Ci5.Run
+ih :
+  ∀ (f : Ci5.Files),
+    (List.foldl (Ci5.step Ver.v62e06e3 Ci5.RunLine.plain) f rest).parts = f.parts ++ List.map (fun x => x.names) rest
+f : Ci5.Files
+⊢ (if (Ver.v62e06e3 == Ver.v62e06e3) = true then { parts := f.parts ++ [r.names] }
+        else { report := some r.names, parts := f.parts }).parts ++
+      List.map (fun x => x.names) rest =
+    f.parts ++ r.names :: List.map (fun x => x.names) rest
+error: Replica/Theorems5.lean:153:65: unsolved goals
+runs : List Ci5.Run
+h : runs ≠ []
+hp : (List.foldl (Ci5.step Ver.v62e06e3 Ci5.RunLine.plain) { } runs).parts = List.map (fun x => x.names) runs
+hne : (List.map (fun x => x.names) runs).isEmpty = false
+⊢ (if (Ver.v62e06e3 == Ver.v62e06e3) = true then { report := some (List.map (fun x => x.names) runs).flatten }
+          else List.foldl (Ci5.step Ver.v62e06e3 Ci5.RunLine.plain) { } runs).report.getD
+      [] =
+    (List.map (fun x => x.names) runs).flatten
+error: Replica/Theorems5.lean:178:20: unsolved goals
+case cons.cons
+line : Ci5.RunLine
+hl : line ≠ Ci5.RunLine.plain ∧ line ≠ Ci5.RunLine.setE
+r : Ci5.Run
+f : Ci5.Files
+hm : line.reachesMove r.failed = false
+r' : Ci5.Run
+rest' : List Ci5.Run
+ih :
+  ∀ (f : Ci5.Files),
+    List.foldl (Ci5.step Ver.v62e06e3 line) f (r' :: rest') =
+      match (r' :: rest').getLast? with
+      | some r => { report := some r.names, parts := f.parts }
+      | none => f
+⊢ (match (r' :: rest').getLast? with
+    | some r => { report := some r.names, parts := f.parts }
+    | none => { report := some r.names, parts := f.parts }) =
+    match (r' :: rest').getLast? with
+    | some r => { report := some r.names, parts := f.parts }
+    | none => f
+error: Replica/Theorems5.lean:207:20: failed to synthesize instance of type class
+  Inhabited Clock5.World
+
+Hint: Adding the command `deriving instance Inhabited for Replica.Clock5.World` may allow Lean to derive the missing instance.
+error: Replica/Theorems5.lean:208:2: Expected type must not contain metavariables
+  (Clock5.judge Clock5.worlds[0]! (Source.path #[10, 776000, 0, 299999, 0, 600000, 0, 0])).violation.isSome = true
+error: Replica/Theorems5.lean:213:20: failed to synthesize instance of type class
+  Inhabited Clock5.World
+
+Hint: Adding the command `deriving instance Inhabited for Replica.Clock5.World` may allow Lean to derive the missing instance.
+error: Replica/Theorems5.lean:214:2: Expected type must not contain metavariables
+  (Clock5.judge Clock5.worlds[1]! (Source.path #[10, 776000, 0, 600000, 1, 2])).violation.isSome = true
+✔ [154/158] Built Replica.Composer:c.o (1.5s)
+✔ [157/158] Built replica2:exe (104ms)
+✔ [158/158] Built replica3:exe (114ms)
+Some required targets logged failures:
+- Replica.Theorems5
+error: build failed

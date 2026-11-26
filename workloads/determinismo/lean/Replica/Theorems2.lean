@@ -57,7 +57,7 @@ def cdataReport : String :=
   "<testsuite>\n<testcase classname=\"api.ErrorsTest\" name=\"renders_503\" time=\"0.1\"><system-out><![CDATA[<error code=\"503\">unavailable</error>]]></system-out></testcase>\n</testsuite>"
 
 theorem captured_error_fails_the_test :
-    (Junit.cases cdataReport == [{ name := "api.ErrorsTest::renders_503", failed := true }]) = true := by
+    (Junit.cases cdataReport .v3939448 == [{ name := "api.ErrorsTest::renders_503", failed := true }]) = true := by
   native_decide
 
 /-- The same output escaped (as pytest writes it) passes. -/
@@ -83,7 +83,7 @@ theorem xargs_loses_the_first_batch :
 range 1 (page 2): after the power loss with the journal committed, page 2 kept, page 0 zeros. -/
 def freshCase : Bool :=
   let file := [Persist.Page.new, .hole, .new]
-  match (Persist.partialFile file).run { decisions := { source := Source.path #[0, 1, 0, 1] } } with
+  match (Persist.partialFile file .v3939448).run { decisions := { source := Source.path #[0, 1, 0, 1] } } with
   | .ok w _ => w == [2] && Persist.kept file w true 2 && !Persist.kept file w true 0
   | .error _ _ => false
 
@@ -100,7 +100,7 @@ def code : Except String Nat → Option Nat
 same message in another: the explorer passes; documented, the sometimes fails (serve says so). -/
 theorem sometimes_hidden_by_another_kind :
     code (Verdicts.explorerExit [[{ scenario := 0, events := [.eval .sometimes "m" false] },
-                                   { scenario := 0, events := [.eval .always "m" true] }]] 1) = some 0 ∧
+                                   { scenario := 0, events := [.eval .always "m" true] }]] 1 .v3939448) = some 0 ∧
     Verdicts.specFailing [{ scenario := 0, events := [.eval .sometimes "m" false] },
                           { scenario := 0, events := [.eval .always "m" true] }] true = [(.sometimes, "m")] := by
   native_decide
@@ -109,9 +109,9 @@ theorem sometimes_hidden_by_another_kind :
 neither reached: the verdict is the catalog's first-noted kind's, so the order timelines end. -/
 theorem catalog_kind_order :
     code (Verdicts.explorerExit [[{ scenario := 0, events := [.declare .reachable "m"] },
-                                   { scenario := 0, events := [.declare .always_or_unreachable "m"] }]] 1) = some 3 ∧
+                                   { scenario := 0, events := [.declare .always_or_unreachable "m"] }]] 1 .v3939448) = some 3 ∧
     code (Verdicts.explorerExit [[{ scenario := 0, events := [.declare .always_or_unreachable "m"] },
-                                   { scenario := 0, events := [.declare .reachable "m"] }]] 1) = some 0 := by
+                                   { scenario := 0, events := [.declare .reachable "m"] }]] 1 .v3939448) = some 0 := by
   native_decide
 
 /-- CE19: a run whose only failure is a declared `reachable` never reached: reaped by serve, its
@@ -136,10 +136,15 @@ def violates (p : Composer.Prop') (w : Nat) (path : Array Nat) : Bool :=
   let wd := Composer.worlds[w]!
   (Composer.judge p wd.scenario wd.cmdline wd.consts (Source.path path)).violation.isSome
 
+/-- The same on 3939448's composer (round 5: the model defaults to 62e06e3). -/
+def violatesAt (ver : Ver) (p : Composer.Prop') (w : Nat) (path : Array Nat) : Bool :=
+  let wd := Composer.worlds[w]!
+  (Composer.judge p wd.scenario wd.cmdline { wd.consts with ver } (Source.path path)).violation.isSome
+
 /-- CE5's other path: parallelism 1, a 600 ms limit (stop at 300 ms): `holding` takes the slot
 for 400 ms; the next start waits for the slot with no deadline (composer.zig:849-851, 868) and
 starts `next` at 400 ms, past the stop, checked before the wait (795-803). -/
-theorem slot_wait_past_half_the_limit : violates Composer.noStartPastHalfLimit 14 #[0, 1] = true := by
+theorem slot_wait_past_half_the_limit : violatesAt .v3939448 Composer.noStartPastHalfLimit 14 #[0, 1] = true := by
   native_decide
 
 /-- CE2's remainder (world 16, the search's second case): min_drive 0, no swarm; drive#3 dies of
@@ -147,7 +152,7 @@ its own SIGKILL at 2 ms; nothing reaps before the eventually's kill_all at 3 ms,
 with killed = true, and SIGKILL is all `by_kill` asks (composer.zig:335-340): reported killed,
 never judged. -/
 theorem own_sigkill_reported_killed :
-    violates Composer.exitsJudged 16 #[1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2] = true := by
+    violatesAt .v3939448 Composer.exitsJudged 16 #[1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2] = true := by
   native_decide
 
 /-- CE4's remainder: a singleton timeline of a scenario with `drive_ms_max` (60 ms, no

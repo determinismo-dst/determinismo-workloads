@@ -1,0 +1,159 @@
+== ci property: the job's verdict is the documented one (a timeline that never exits 0 is not passing)
+   source: docs/CI.md (Verdicts per test: "failing in every timeline, fail; in some, flaky, with how often; in none, pass"; config `run`: "exit status 0 when they pass"; Running it: "Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky")
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (9 ms)
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, no junit]: complete, 343 timelines, none broke it (7 ms)
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 3 timelines, junit, --flaky-passes]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (11 ms)
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / one test, one shard of 3 timelines, no junit, a session opened]: complete, 1250 timelines, none broke it (10 ms)
+search exhaust [the job's verdict is the documented one (a timeline that never exits 0 is not passing) / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: complete, 343 timelines, none broke it (8 ms)
+== ci property: a shard's line counts every timeline that did not pass
+   source: docs/CI.md ("the job's log shows each shard's verdict"); ci.zig:288-291 (`shard k: <verdict> n tests, failing in f of T timelines`)
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, no junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 3 timelines, junit, --flaky-passes]: complete, 343 timelines, none broke it (9 ms)
+search exhaust [a shard's line counts every timeline that did not pass / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (10 ms)
+search exhaust [a shard's line counts every timeline that did not pass / one test, one shard of 3 timelines, no junit, a session opened]: complete, 1250 timelines, none broke it (10 ms)
+search exhaust [a shard's line counts every timeline that did not pass / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: complete, 343 timelines, none broke it (8 ms)
+== ci property: the exit status is the documented one
+   source: docs/CI.md, Running it ("Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky (`--flaky-passes` counts flaky as passing)")
+search exhaust [the exit status is the documented one / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [the exit status is the documented one / two tests, one shard of 3 timelines, no junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [the exit status is the documented one / two tests, one shard of 3 timelines, junit, --flaky-passes]: complete, 343 timelines, none broke it (9 ms)
+search exhaust [the exit status is the documented one / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (12 ms)
+search exhaust [the exit status is the documented one / one test, one shard of 3 timelines, no junit, a session opened]: complete, 1250 timelines, none broke it (8 ms)
+search exhaust [the exit status is the documented one / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: complete, 343 timelines, none broke it (9 ms)
+== ci property: a shard's verdict is its timelines' (a person's session is not the run's)
+   source: docs/CI.md ("A job is one run: shards times timelines ... failing in every timeline, fail; in some, flaky"); store.zig:676-679 ("What the run explored: its timelines but those that extend one (a person's sessions ...). What a run found is judged over these")
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 3 timelines, no junit]: complete, 343 timelines, none broke it (8 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 3 timelines, junit, --flaky-passes]: complete, 343 timelines, none broke it (9 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (11 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / one test, one shard of 3 timelines, no junit, a session opened]: complete, 1250 timelines, none broke it (9 ms)
+search exhaust [a shard's verdict is its timelines' (a person's session is not the run's) / two tests, one shard of 2 timelines, junit, --flaky-passes, a session opened]: complete, 343 timelines, none broke it (9 ms)
+== ci property: tests_judge counts every timeline that stated no test (and calls the job error)
+   source: ci.zig:436-438 (tests_judge: "\"error\" when a timeline stated no test (the run command died before its report)"); ci.zig:477 ("<k> timelines without their JUnit report")
+search exhaust [tests_judge counts every timeline that stated no test (and calls the job error) / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (9 ms)
+search exhaust [tests_judge counts every timeline that stated no test (and calls the job error) / two tests, two shards of 3 timelines, junit]: complete, 15625 timelines, none broke it (47 ms)
+search exhaust [tests_judge counts every timeline that stated no test (and calls the job error) / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (7 ms)
+== ci property: a shard's failures give the job the same exit whatever a passing shard beside it reports
+   source: docs/CI.md ("Each timeline runs its shard's tests ... A shard failing in every timeline fails, in some is flaky"; "Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky")
+search exhaust [a shard's failures give the job the same exit whatever a passing shard beside it reports / three tests, two shards of 2 timelines, junit]: complete, 1225 timelines, none broke it (9 ms)
+search exhaust [a shard's failures give the job the same exit whatever a passing shard beside it reports / two tests, two shards of 3 timelines, junit]: complete, 15625 timelines, none broke it (35 ms)
+search exhaust [a shard's failures give the job the same exit whatever a passing shard beside it reports / two tests, one shard of 3 timelines, junit]: complete, 343 timelines, none broke it (7 ms)
+== ci property: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+   source: docs/CI.md (Coverage: "An older Python or JVM runs uncovered and says so on standard error"; Running it: "Exit status 0 when every shard passes"; the config example's `"run": "cd /app && npx jest --ci --shard={shard}/{shards}"`)
+search exhaust [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: FOUND after 33 timelines (6 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): pytest on Python 3.11: every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 5 decisions from 5)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: pytest on Python 3.11: every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1
+values: [1, 0, 0, 0, 0]
+tape:
+{"name":"world.runner","options":7,"value":1}
+{"name":"watcher.ingest","options":6,"value":0}
+{"name":"watcher.ingest","options":5,"value":0}
+{"name":"watcher.ingest","options":4,"value":0}
+{"name":"watcher.ingest","options":3,"value":0}
+story:
+  2 shards of 3 timelines, pytest on Python 3.11 (coverage events: false)
+  the watcher ingests the ended timelines in batches [1, 1, 1, 1]
+  after 4 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 4 timelines")
+  shards' timelines stating their property: [2, 2]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search explore [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: FOUND at timeline 8 of seeds 0..99999 (1 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [4]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 2 decisions from 2)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / two shards of 3 timelines, every runner]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [4]; serve stopped the run after 4 ended timelines with no coverage; shards stated [2, 2] of 3 timelines: determinismo-ci says error, exit 1
+values: [5, 3]
+tape:
+{"name":"world.runner","options":7,"value":5}
+{"name":"watcher.ingest","options":6,"value":3}
+story:
+  2 shards of 3 timelines, Jest (docs/CI.md's own example config) (coverage events: false)
+  the watcher ingests the ended timelines in batches [4]
+  after 4 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 4 timelines")
+  shards' timelines stating their property: [2, 2]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search exhaust [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: FOUND after 1 timelines (7 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [1, 1, 1, 1, 0, 0, 0, 0] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 4 decisions from 4)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [1, 1, 1, 1]; serve stopped the run after 4 ended timelines with no coverage; shards stated [1, 1, 1, 1, 0, 0, 0, 0] of 3 timelines: determinismo-ci says error, exit 1
+values: [0, 0, 0, 0]
+tape:
+{"name":"watcher.ingest","options":24,"value":0}
+{"name":"watcher.ingest","options":23,"value":0}
+{"name":"watcher.ingest","options":22,"value":0}
+{"name":"watcher.ingest","options":21,"value":0}
+story:
+  8 shards of 3 timelines, Jest (docs/CI.md's own example config) (coverage events: false)
+  the watcher ingests the ended timelines in batches [1, 1, 1, 1]
+  after 4 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 4 timelines")
+  shards' timelines stating their property: [1, 1, 1, 1, 0, 0, 0, 0]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search explore [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: FOUND at timeline 1 of seeds 0..99999 (1 ms): a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so): Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [6]; serve stopped the run after 6 ended timelines with no coverage; shards stated [1, 1, 1, 1, 1, 1, 0, 0] of 3 timelines: determinismo-ci says error, exit 1 (shrunk to 1 decisions from 1)
+--- counterexample [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / docs/CI.md's example shape: 8 shards of 3 timelines, Jest]: a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so)
+detail: Jest (docs/CI.md's own example config): every test passes; timelines ingested in batches [6]; serve stopped the run after 6 ended timelines with no coverage; shards stated [1, 1, 1, 1, 1, 1, 0, 0] of 3 timelines: determinismo-ci says error, exit 1
+values: [5]
+tape:
+{"name":"watcher.ingest","options":24,"value":5}
+story:
+  8 shards of 3 timelines, Jest (docs/CI.md's own example config) (coverage events: false)
+  the watcher ingests the ended timelines in batches [6]
+  after 6 ended timelines with no coverage event (the run still going): serve stops the run ("no coverage in its first 6 timelines")
+  shards' timelines stating their property: [1, 1, 1, 1, 1, 1, 0, 0]; determinismo-ci: error, exit 1
+  the same job with every timeline ended before the gate's first look: pass, exit 0 (an `uncovered` file only)
+---
+search exhaust [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / examples/ci-demo's shape: 3 shards of 12 timelines, Python 3.12]: stopped at 1000000 timelines, none broke it (3194 ms)
+search explore [a CI job whose tests all pass exits 0 (an uncovered runner runs uncovered and says so) / examples/ci-demo's shape: 3 shards of 12 timelines, Python 3.12]: 100000 timelines (seeds 0..99999), none broke it (229 ms)
+== ci property: a shard's line counts the tests its runner ran (the {shard} mode)
+   source: docs/CI.md ("the job's log shows each shard's verdict"); ci.zig:288-291 ("shard k: <verdict> <n> tests")
+search exhaust [shard line counts / 1 to 12 tests, every shard count, a runner splitting in blocks]: 125 shard lines differ; the first: 4 tests, 3 shards, shard 2: the line says 1 tests, a runner splitting in blocks ran 2
+== ci property: the coverage gate stops only runs without their language's instrumentation (the JVM agent and Python)
+   source: docs/SDKS.md:101-105; serve.zig:731-733 ("its system runs without its language's instrumentation")
+a JVM node started in the setup (agent on, JDK 24) ran lines [1, 2, 3] there; each timeline runs [1, 2, 3] again: reports [] (none): stopped as uninstrumented after 4 timelines (CE30's case, the JVM's `queued` set in the setup's snapshot)
+a Python node started in the setup (coverage_start): the same: reports []; a CI run command's new process reports [1, 2]
+== ci property: every test of a shard gets its verdict, however many runs xargs splits the list into
+   source: docs/CI.md (`junit`: "each test gets its own verdict across its shard's timelines"); src/products/ci.zig:526-531 (62e06e3, CE21's fix: "with a report each run's is moved aside and all of them make the report ...: every test of the shard gets its verdict, not only the last run's")
+search exhaust [every test of a shard gets its verdict, however many runs xargs splits the list into / a plain run line (as ci-junit.json), up to 4 tests, an xargs buffer of 48 bytes]: complete, 678 timelines, none broke it (8 ms)
+search exhaust [every test of a shard gets its verdict, however many runs xargs splits the list into / every run line's form, up to 4 tests, an xargs buffer of 48 bytes]: FOUND after 695 timelines (8 ms): every test of a shard gets its verdict, however many runs xargs splits the list into: run line `cd /app && python -m pytest ... --junitxml /tmp/junit.xml {tests}; status=$?; python -c ...; exit $status (ci-capped.json)`, 2 xargs runs ([passing, passing]): 1 of 2 tests never judged: [t0_xxxxxxxxx] (shrunk to 6 decisions from 6)
+--- counterexample [every test of a shard gets its verdict, however many runs xargs splits the list into / every run line's form, up to 4 tests, an xargs buffer of 48 bytes]: every test of a shard gets its verdict, however many runs xargs splits the list into
+detail: run line `cd /app && python -m pytest ... --junitxml /tmp/junit.xml {tests}; status=$?; python -c ...; exit $status (ci-capped.json)`, 2 xargs runs ([passing, passing]): 1 of 2 tests never judged: [t0_xxxxxxxxx]
+values: [1, 1, 1, 2, 0, 0]
+tape:
+{"name":"world.run_line","options":5,"value":1}
+{"name":"world.tests","options":4,"value":1}
+{"name":"world.name_length","options":3,"value":1}
+{"name":"world.name_length","options":3,"value":2}
+{"name":"world.runner_fails","options":2,"value":0}
+{"name":"world.runner_fails","options":2,"value":0}
+story:
+  the run line: cd /app && python -m pytest ... --junitxml /tmp/junit.xml {tests}; status=$?; python -c ...; exit $status (ci-capped.json)
+  xargs run 1: [t0_xxxxxxxxx], its runner exits 0; the move never runs (the shell is gone)
+  xargs run 2: [t1_xxxxxxxxxxxxxxxxx], its runner exits 0; the move never runs (the shell is gone)
+  det-assert junit reads: [t1_xxxxxxxxxxxxxxxxx]
+---
+search exhaust [every test of a shard gets its verdict, however many runs xargs splits the list into / 3939448: a plain run line]: FOUND after 17 timelines (7 ms): every test of a shard gets its verdict, however many runs xargs splits the list into: run line `cd /app && python -m pytest --junitxml /tmp/junit.xml {tests}`, 2 xargs runs ([passing, passing]): 1 of 2 tests never judged: [t0_xxxxxxxxx] (shrunk to 5 decisions from 5)
+--- counterexample [every test of a shard gets its verdict, however many runs xargs splits the list into / 3939448: a plain run line]: every test of a shard gets its verdict, however many runs xargs splits the list into
+detail: run line `cd /app && python -m pytest --junitxml /tmp/junit.xml {tests}`, 2 xargs runs ([passing, passing]): 1 of 2 tests never judged: [t0_xxxxxxxxx]
+values: [1, 1, 2, 0, 0]
+tape:
+{"name":"world.tests","options":4,"value":1}
+{"name":"world.name_length","options":3,"value":1}
+{"name":"world.name_length","options":3,"value":2}
+{"name":"world.runner_fails","options":2,"value":0}
+{"name":"world.runner_fails","options":2,"value":0}
+story:
+  the run line: cd /app && python -m pytest --junitxml /tmp/junit.xml {tests}
+  xargs run 1: [t0_xxxxxxxxx], its runner exits 0; the move never runs (the shell is gone)
+  xargs run 2: [t1_xxxxxxxxxxxxxxxxx], its runner exits 0; the move never runs (the shell is gone)
+  det-assert junit reads: [t1_xxxxxxxxxxxxxxxxx]
+---
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, every runner passing: `cd /app && python -m pytest --junitxml /tmp/junit.xml {tests}`: 2000 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, the first run's runner failing: `cd /app && python -m pytest --junitxml /tmp/junit.xml {tests}`: 2000 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, every runner passing: `cd /app && python -m pytest ... --junitxml /tmp/junit.xml {tests}; status=$?; python -c ...; exit $status (ci-capped.json)`: 383 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, the first run's runner failing: `cd /app && python -m pytest ... --junitxml /tmp/junit.xml {tests}; status=$?; python -c ...; exit $status (ci-capped.json)`: 383 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, every runner passing: `cd /app && exec python -m pytest --junitxml /tmp/junit.xml {tests}`: 383 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, the first run's runner failing: `cd /app && exec python -m pytest --junitxml /tmp/junit.xml {tests}`: 383 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, every runner passing: `python -m pytest --junitxml /tmp/junit.xml {tests}  # all of them`: 383 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, the first run's runner failing: `python -m pytest --junitxml /tmp/junit.xml {tests}  # all of them`: 383 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, every runner passing: `set -e; cd /app; python -m pytest --junitxml /tmp/junit.xml {tests}`: 2000 of 2,000 tests judged
+at GNU's 131,072 bytes, 2,000 names of 80 bytes, 2 xargs runs, the first run's runner failing: `set -e; cd /app; python -m pytest --junitxml /tmp/junit.xml {tests}`: 383 of 2,000 tests judged

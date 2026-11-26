@@ -131,6 +131,8 @@ structure Consts where
   irrelevantDraws : Bool := true
   /-- Loop steps before a timeline is cut (an end, not a failure). -/
   fuel : Nat := 200000
+  /-- Round 5: the platform's code modeled, 62e06e3 unless a theorem about 3939448 says so. -/
+  ver : Ver := .v62e06e3
   deriving Repr, Inhabited
 
 /-- Tiny worlds: one start's run and end fixed unless a command says, four starts without the
@@ -235,6 +237,9 @@ structure W where
   log : Array Ev := #[]
   insts : Array Inst := #[]
   steps : Nat := 0
+  /-- Round 5: the explorer's yes to `composer.again` given (advisor.zig:79-83: `again_left`
+  1, then no). -/
+  againTaken : Nat := 0
   deriving Inhabited
 
 instance : Chaotic W where
@@ -440,8 +445,15 @@ def waitAll : M Unit := waitBelow 1 none
 def waitUntil (deadline : Nat) : M Unit := waitBelow 1 (some deadline)
 
 /-- composer.zig:390 `kill_all`: every running command killed (its group), then reaped as killed.
-A child that had exited already (a zombie) keeps its exit; it is reaped as killed all the same. -/
+A child that had exited already (a zombie) keeps its exit; at 3939448 it is reaped as killed all
+the same. At 62e06e3 (composer.zig:401-412) what ended on its own is reaped first, judged by its
+own status (`while (running_count > 0 and reap(false, false)) {}`), then the rest killed. -/
 def killAll : M Unit := do
+  if (← get).consts.ver == .v62e06e3 then
+    for _ in [0:(← get).consts.fuel] do
+      tick
+      if (← get).running.size == 0 then break
+      if !(← reap false false) then break
   modify fun w => { w with running := w.running.map fun p =>
     if p.stop > w.now then { p with stop := w.now, exit := .signal 9, killed := true } else p }
   for _ in [0:(← get).consts.fuel] do
@@ -558,14 +570,17 @@ def loadNext (load : Load) (endT : Option Nat) : M (Bool × Load) := do
   sleepUntil (match endT with | some e => min untilT e | none => untilT)
   return (false, load)
 
-/-- composer.zig:814 `driver_start_by`. -/
-def driverStartBy (kinds : List Kind) (parallelism : Nat) (deadline : Option Nat) : M Unit := do
+/-- composer.zig:814 `driver_start_by` (3939448); 62e06e3's (883-898) takes the slot's deadline
+(`start_by_ns`) and a serial driver's bound (`run_until_ns`) apart: `runUntil` defaults to the
+slot's deadline, as 3939448's one deadline did. -/
+def driverStartBy (kinds : List Kind) (parallelism : Nat) (deadline : Option Nat)
+    (runUntil : Option Nat := deadline) : M Unit := do
   let kind := kinds[(← below "random_below" kinds.length)]!
   match kind with
   | .serial_driver =>
     waitBelow 1 deadline
     if (← get).running.size > 0 then return
-    runAloneUntil (← pick .serial_driver) deadline
+    runAloneUntil (← pick .serial_driver) runUntil
   | .parallel_driver | .anytime =>
     waitBelow parallelism deadline
     if (← get).running.size ≥ parallelism then return
@@ -619,7 +634,10 @@ def runDrivers (driveMsMax : Option Nat) (parallelMax : Option Nat) : M (Option 
         if (← nowM) ≥ s then
           note s!"drivers_stopped {started} {starts}"
           break
-      driverStartBy kinds load.parallelism none
+      -- composer.zig:809-813 (62e06e3): the slot waited for until the stop at most; a serial
+      -- driver started runs to its end (no length bounds it here). 3939448: no deadline.
+      if w.consts.ver == .v62e06e3 then driverStartBy kinds load.parallelism stop (runUntil := none)
+      else driverStartBy kinds load.parallelism none
     return none
 
 /-- composer.zig:792 `min_drive`. -/
@@ -642,7 +660,11 @@ def driveAgain (driveStart : Nat) : M Bool := do
   if let some limit := w.cmdline.timelineLimitMs then
     if w.now - driveStart ≥ limit / 4 then return false
   if !w.cmdline.againAsked then return false
-  return (← below "composer.again" 2) == 1
+  -- advisor.zig:79-83: yes `again_left` (1) times, then no.
+  if w.againTaken ≥ 1 then return false
+  let yes := (← below "composer.again" 2) == 1
+  if yes then modify fun w => { w with againTaken := w.againTaken + 1 }
+  return yes
 
 /-- composer.zig:931 `ending_pick`. -/
 def endingPick : M Ending := do
@@ -707,17 +729,20 @@ def main : M Unit := do
   let singletons := kindCount w .singleton_driver
   let selfDriven := drivers + singletons + kindCount w .anytime == 0
   if selfDriven && !sc.templates then throw (.violation "composer errs" "NoDriverCommands (composer.zig:463)")
-  note "composer_start"
-  -- composer.zig:905-927 `clock_start_draw` (3939448): the wall clock's start, a band by name
-  -- then a plain draw in it. Changes no command's timing (the monotonic clock stays).
+  -- composer.zig:905-927 `clock_start_draw`: the wall clock's start, a band by name then a plain
+  -- draw in it. Changes no command's timing (the monotonic clock stays). 3939448 drew it after
+  -- the composer_start event, an hour's cap by default; 62e06e3 (491-496, 913-914) before it, 30
+  -- minutes by default.
+  if w.consts.ver == .v3939448 then note "composer_start"
   if w.consts.irrelevantDraws then
-    let maxMs := w.cmdline.clockStartMaxMs.getD 3600000
+    let maxMs := w.cmdline.clockStartMaxMs.getD (if w.consts.ver == .v3939448 then 3600000 else 1800000)
     let bands := clockStartBands maxMs
     if bands > 0 then
       let band ← below "composer.clock_start" bands
       let (low, high) := clockStartBand maxMs band
       let ms := low + (← below "random_below" (high - low + 1))
       note s!"clock_start {ms} {maxMs}"
+  if w.consts.ver == .v62e06e3 then note "composer_start"
   if w.consts.irrelevantDraws && w.cmdline.driversCpuWeight.isNone && !w.cmdline.swarmOff then
     let _ ← below "composer.drivers_cpu" 3
   if kindCount (← get) .first > 0 then runToCompletion (← pick .first)

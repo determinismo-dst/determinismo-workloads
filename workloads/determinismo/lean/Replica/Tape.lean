@@ -73,10 +73,12 @@ def kindOf (reason : String) : OKind :=
   else if reason == serveReason then .serve
   else .decision
 
-/-- A tape line: an override (pull, value, reason), or a checkpoint. -/
+/-- A tape line: an override (pull, value, reason), or a checkpoint; at 62e06e3 also the
+recorder's `tape_full` marker (tape.zig:406-414). -/
 inductive Line where
   | override (pull : Nat) (value : Nat) (reason : String)
   | checkpoint (events : Nat) (hash : UInt64)
+  | full (pull : Nat)
   deriving BEq, Repr, Inhabited
 
 structure Entry where
@@ -94,6 +96,8 @@ structure Overrides where
   checkpoints : Array (Nat × UInt64) := #[]
   checkpointCursor : Nat := 0
   checkpointEvery : Nat := 1
+  /-- 62e06e3 (tape.zig:139-141): where its recorder stopped taping. -/
+  fullAt : Option Nat := none
   deriving Repr, Inhabited
 
 structure Consts where
@@ -105,6 +109,9 @@ structure Consts where
   overrideMax : Nat := 1000000
   /-- reason_count_max (1,024): the decisions' reasons a replay holds. -/
   reasonMax : Nat := 1000000
+  /-- Round 5: tape.zig and vm.zig as at 62e06e3 unless a theorem about 3939448 says so. At
+  62e06e3 `overrideMax` (override_count_max, 1,048,576) bounds the recorder too. -/
+  ver : Ver := .v62e06e3
   deriving Repr, Inhabited
 
 /-- tape.zig:603 `checkpoint_kept`. -/
@@ -129,9 +136,15 @@ def checkpointKeep (c : Consts) (o : Overrides) (cp : Nat × UInt64) : Except St
 /-- tape.zig:514 `parse` (and `override_parse`, 548; `checkpoint_parse`, 573). -/
 def parse (c : Consts) (lines : List Line) : Except String Overrides := do
   let mut o : Overrides := {}
+  -- tape.zig:592-593 (62e06e3): the table sized from the tape's own count of overrides, at most
+  -- override_count_max (`reserve`, 180-187).
+  if c.ver == .v62e06e3 then
+    let count := (lines.filter fun | .override .. => true | _ => false).length
+    if count > c.overrideMax then throw "TapeTooLong (override_count_max)"
   for l in lines do
     match l with
     | .checkpoint e h => o ← checkpointKeep c o (e, h)
+    | .full pull => o := { o with fullAt := some pull }
     | .override pull value reason =>
       -- tape.zig:554-556 and 565-567: the tables' sizes.
       if o.entries.size == c.overrideMax then throw "TapeTooLong (override_count_max)"
@@ -147,9 +160,20 @@ def Overrides.kindAt (o : Overrides) (pull : Nat) : Option OKind :=
   if o.cursor == o.entries.size then none
   else if o.entries[o.cursor]!.pull == pull then some o.entries[o.cursor]!.kind else none
 
-/-- tape.zig:245 `apply`. -/
+/-- tape.zig:295-297 (62e06e3) `passed`: the tape's next override is for an earlier pull. -/
+def Overrides.passed (o : Overrides) (pull : Nat) : Bool :=
+  o.cursor < o.entries.size && o.entries[o.cursor]!.pull < pull
+
+/-- tape.zig:301-305 (62e06e3) `past_full`. -/
+def Overrides.pastFull (o : Overrides) (pull : Nat) : Bool :=
+  match o.fullAt with
+  | some at_ => pull ≥ at_
+  | none => false
+
+/-- tape.zig:245 `apply` (62e06e3: 308, TapeFull past the marker). -/
 def Overrides.apply (o : Overrides) (pull : Nat) : Except String (Option Nat × Overrides) :=
-  if o.cursor == o.entries.size then .ok (none, o)
+  if o.pastFull pull then .error "TapeFull"
+  else if o.cursor == o.entries.size then .ok (none, o)
   else
     let e := o.entries[o.cursor]!
     if e.pull < pull then .error "TapeOutOfOrder"
@@ -221,6 +245,11 @@ structure VM where
   error : Option String := none
   /-- Where the replay reported it parted (its event count). -/
   diverged : Option Nat := none
+  /-- 62e06e3 (vm.zig:345-347): overrides taped so far, and whether the tape filled. -/
+  tapeWritten : Nat := 0
+  tapeFull : Bool := false
+  /-- The caps and the version (the world's `Consts`). -/
+  consts : Consts := {}
   deriving Inhabited
 
 def mix (h : UInt64) (s : String) : UInt64 :=
@@ -248,8 +277,15 @@ def defaultValue (seed pull : Nat) : Nat := (seed * 7 + pull * 3 + 1) % 4
 def decisionEvent (vm : VM) (pull : Nat) (reason : String) : VM :=
   emit vm s!"decision pull={pull} reason={reason}"
 
+/-- tape.write_override (3939448); vm.zig:3684-3699 (62e06e3) `tape_override`: override_count_max
+at most, then the `tape_full` marker (once, with its event) and nothing more. -/
 def writeOverride (vm : VM) (pull value : Nat) (reason : String) : VM :=
-  if vm.recording then { vm with tape := vm.tape.push (.override pull value reason) } else vm
+  if !vm.recording then vm
+  else if vm.consts.ver == .v3939448 then { vm with tape := vm.tape.push (.override pull value reason) }
+  else if vm.tapeWritten ≥ vm.consts.overrideMax then
+    if vm.tapeFull then vm
+    else emit { vm with tapeFull := true, tape := vm.tape.push (.full pull) } s!"tape_full pull={pull} overrides={vm.tapeWritten}"
+  else { vm with tape := vm.tape.push (.override pull value reason), tapeWritten := vm.tapeWritten + 1 }
 
 /-- vm.zig:3627 `override_apply` (no extending tape here). -/
 def overrideApply (vm : VM) (pull : Nat) : Except String (Option Nat × VM) := do
@@ -262,6 +298,9 @@ def overrideApply (vm : VM) (pull : Nat) : Except String (Option Nat × VM) := d
 /-- vm.zig:3645 `decide_random`, for one pull of `label`: the value the guest gets. -/
 def decideRandom (vm : VM) (label : Label) : Except String (Nat × VM) := do
   let pull := vm.pulls
+  -- vm.zig:3708-3709 (62e06e3): past where the tape's recorder stopped, nothing answers.
+  if let some o := vm.overrides then
+    if o.pastFull pull then throw "TapeFull"
   let mut vm := { vm with pulls := pull + 1 }
   let mut value := defaultValue vm.seed pull
   match label with
@@ -302,11 +341,19 @@ def decideRandom (vm : VM) (label : Label) : Except String (Nat × VM) := do
         let (t, vm1) ← overrideApply vm pull
         taped := t
         vm := vm1
+      else if label == .ingressStatus && vm.consts.ver == .v62e06e3 then
+        -- vm.zig:3806-3815 (62e06e3): an idle poll's nothing is never taped, so a replay answers
+        -- a status pull its tape lacks with it, unless the tape's next answer is for an earlier
+        -- pull (it passed it: diverged).
+        if o.passed pull then throw "TapeOutOfOrder"
+        taped := some 1
     match taped with
     | some v => value := v
     | none =>
       value := vm.outside
-      vm := writeOverride vm pull value reason
+      -- vm.zig:3837 (62e06e3): an idle poll's nothing (1 here) is not taped.
+      if !(label == .ingressStatus && vm.consts.ver == .v62e06e3 && value == 1) then
+        vm := writeOverride vm pull value reason
     match label with
     | .egressStatus => vm := decisionEvent vm pull reason -- vm.zig:3730: answered or replayed
     | .ingressStatus => if value != 1 then vm := decisionEvent vm pull reason -- 3765: when something came
@@ -414,12 +461,12 @@ def drawT (wd : TWorld) : EStateM Stop TS Drawn := do
 
 /-- Record, then replay from the tape. -/
 def recordReplay (wd : TWorld) (d : Drawn) (seed : Nat := 5) : VM × VM :=
-  let rec0 : VM := { seed, recording := true, advice := d.advice, forkIndex := d.forkIndex, outside := d.outsideRecord }
+  let rec0 : VM := { seed, recording := true, advice := d.advice, forkIndex := d.forkIndex, outside := d.outsideRecord, consts := wd.consts }
   let recorded := runGuest wd.consts d.steps rec0 .none
   match parse wd.consts recorded.tape.toList with
   | .error e => (recorded, { seed, recording := false, error := some e })
   | .ok o =>
-    let rep0 : VM := { seed, recording := false, overrides := some o, forkIndex := 0, outside := d.outsideReplay }
+    let rep0 : VM := { seed, recording := false, overrides := some o, forkIndex := 0, outside := d.outsideReplay, consts := wd.consts }
     let replayed := runGuest wd.consts d.steps rep0 d.perturb
     (recorded, replayed)
 
@@ -438,6 +485,8 @@ def replaysExactly : TProp :=
     source := "README_AI.md: \"every timeline replays bit-identically\"; ARCHITECTURE.md M3: \"Record → replay matches all checkpoints\"; vm.zig:3730 (egress): \"a replay's history is the run's\""
     check := fun _ d rec rep =>
       if d.perturb != .none then none
+      -- 62e06e3: a full tape stops its replay by design (replaysToItsFull judges it).
+      else if rec.tape.any (fun | .full _ => true | _ => false) then none
       else if let some e := rep.error then some s!"the replay stopped: {e} (recorded {rec.events.size} events)"
       else if let some i := firstDifference rec.events rep.events then
         some s!"histories part at event {i}: recorded {(rec.events[i-1]?.map (·.text)).getD "-"}, replayed {(rep.events[i-1]?.map (·.text)).getD "-"}"
@@ -469,7 +518,30 @@ def stopsWhereItDiverges : TProp :=
         return some s!"parted at event {i}, stopped only at {stopped} (checkpoint {next})"
       | none => return some s!"histories part at event {i}; the tape's checkpoint at {next} passed, the replay ran to its end ({rep.events.size} events) unstopped" }
 
-def allTProps : List TProp := [replaysExactly, pullsRepeat, stopsWhereItDiverges]
+/-- Round 5 (62e06e3): a full tape's replay has the recorded history up to its recorder's stop,
+and stops there (TapeFull); any other tape replays whole. -/
+def replaysToItsFull : TProp :=
+  { name := "a replay has its recorded history to where its recorder stopped taping (tape_full), and stops there"
+    source := "vm.zig:3684-3687 (62e06e3): \"there the tape says it is full (a replay stops at that pull, TapeFull) ... instead of a tape no replay can read\"; tape.zig:139-141, 403-414; README_AI.md: \"every timeline replays bit-identically\""
+    check := fun _ d rec rep =>
+      if d.perturb != .none then none
+      else
+        let full := rec.tape.toList.findSome? fun | .full p => some p | _ => none
+        match full with
+        | none =>
+          if let some e := rep.error then some s!"the replay stopped: {e} (recorded {rec.events.size} events, no tape_full)"
+          else if let some i := firstDifference rec.events rep.events then
+            some s!"histories part at event {i}: recorded {(rec.events[i-1]?.map (·.text)).getD "-"}, replayed {(rep.events[i-1]?.map (·.text)).getD "-"}"
+          else none
+        | some p =>
+          if rep.error != some "TapeFull" then some s!"the tape is full at pull {p}; the replay ended with {rep.error}"
+          -- The refused pull is not counted (decide_random throws before taking it).
+          else if rep.pulls != p then some s!"the tape is full at pull {p}; the replay stopped at pull {rep.pulls}"
+          else if (rep.events.toList.zip rec.events.toList).any (fun (a, b) => a != b) || rep.events.size > rec.events.size then
+            some s!"the replay's history is not the recording's up to the stop"
+          else none }
+
+def allTProps : List TProp := [replaysExactly, pullsRepeat, stopsWhereItDiverges, replaysToItsFull]
 
 def judgeT (p : TProp) (wd : TWorld) (source : Source) : Ended :=
   match (drawT wd).run { decisions := { source } } with
@@ -503,7 +575,12 @@ def tworlds : List TWorld :=
     { label := "ingress polls (each answer on the tape), a table of 4 overrides", steps := 7,
       labels := [.ingressStatus], consts := { overrideMax := 4 } },
     { label := "plain pulls with strategy answers, a table of 2 reasons", steps := 7,
-      labels := [.plain], consts := { reasonMax := 2 } } ]
+      labels := [.plain], consts := { reasonMax := 2 } },
+    -- Round 5 (62e06e3): the recorder's cap and its marker, idle polls untaped.
+    { label := "ingress polls and plain pulls with strategy answers, a cap of 2 overrides", steps := 8,
+      labels := [.ingressStatus, .plain], consts := { overrideMax := 2 } },
+    { label := "egress, ingress and serve answers, a fork's index, a cap of 3 overrides", steps := 8,
+      labels := [.egressStatus, .ingressStatus, .serveStatus, .forkIndex], consts := { overrideMax := 3 } } ]
 
 def searchAll (exhaustRuns : Nat) : IO (List Found) := do
   let mut found := []

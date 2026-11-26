@@ -33,8 +33,8 @@ open Replica.Ci
 
 /-- The timelines of the run (sessions aside) that stated no test (hung, or died before the
 report). -/
-def withoutReport (j : Job) : Nat :=
-  (j.stated.filter fun s => !s.session && s.tests.isEmpty).length
+def withoutReport (j : Job) (ver : Ver := .v3939448) : Nat :=
+  (j.stated.filter fun s => !s.session && s.tests.isEmpty && (ver == .v3939448 || s.shardCondition.isSome)).length
 
 def unreportedCounted : CProp :=
   { name := "tests_judge counts every timeline that stated no test (and calls the job error)"
@@ -42,7 +42,9 @@ def unreportedCounted : CProp :=
     check := fun cfg j =>
       if !cfg.junit then none else
       let v := verdictOf cfg j
-      let none' := withoutReport j
+      -- 62e06e3 (ci.zig:296-308): the timelines that stated their shard's property and no test,
+      -- each; a hung one (no statement) is its shard's failure (shard_verdict).
+      let none' := withoutReport j cfg.ver
       if v.unreported != none' then
         some s!"{describe j}: {none'} timelines stated no test; tests_judge says {v.unreported} timelines without their JUnit report (the job {v.job}, exit {v.exit})"
       else none }
@@ -53,6 +55,8 @@ def shardsIndependent : CProp :=
   { name := "a shard's failures give the job the same exit whatever a passing shard beside it reports"
     source := "docs/CI.md (\"Each timeline runs its shard's tests ... A shard failing in every timeline fails, in some is flaky\"; \"Exit status 0 when every shard passes, 1 when one fails, 2 when one is flaky\")"
     check := fun cfg j => Id.run do
+      -- 3939448's count (round 4); 62e06e3 counts per timeline (unreportedCounted judges it).
+      if cfg.ver == .v62e06e3 then return none
       if !cfg.junit || j.shardCount < 2 then return none
       -- Shard 1 passing in every timeline: its tests reported everywhere. The job without it
       -- (its timelines' statements dropped): the other shards' verdicts alone.

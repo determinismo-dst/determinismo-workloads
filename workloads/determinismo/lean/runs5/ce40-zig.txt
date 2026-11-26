@@ -1,0 +1,30 @@
+1/7 ci.test.a shard whose tests hang in one timeline of three is flaky, failing in that one...OK
+2/7 ci.test.a shard's verdict line read...OK
+3/7 ci.test.the setup's key: the shards and run command reuse it, the setup and the guest do not...OK
+4/7 ci.test.faults: timing, none, or a list of det-faults' kinds with timing's three...OK
+5/7 ci.test.every test of a shard is in its JUnit report, however many runs xargs splits the list into...OK
+6/7 ci.test.a run line ending in exit still has every xargs run's report judged...expected 20000, found 5000
+FAIL (TestExpectedEqual)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:93:17: 0x1021b0e07 in expectEqualInner__func_1007 (test)
+                return error.TestExpectedEqual;
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:57:5: 0x1021bea73 in expectEqual (test)
+    return expectEqualInner(T, expected, actual);
+    ^
+./scratch/zig5/ci/ci.zig:701:5: 0x1021beb2f in test.a run line ending in exit still has every xargs run's report judged (test)
+    try std.testing.expectEqual(@as(usize, 20_000), try shard_report_count(arena_state.allocator(), std.testing.io, runner_exits));
+    ^
+7/7 ci.test.under set -e a failing xargs run's tests are judged...expected 20000, found 15000
+FAIL (TestExpectedEqual)
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:93:17: 0x1021b0e07 in expectEqualInner__func_1007 (test)
+                return error.TestExpectedEqual;
+                ^
+/opt/homebrew/Cellar/zig/0.17.0/lib/zig/std/testing.zig:57:5: 0x1021b0f7f in expectEqual (test)
+    return expectEqualInner(T, expected, actual);
+    ^
+./scratch/zig5/ci/ci.zig:707:5: 0x1021b103b in test.under set -e a failing xargs run's tests are judged (test)
+    try std.testing.expectEqual(@as(usize, 20_000), try shard_report_count(arena_state.allocator(), std.testing.io, runner_set_e));
+    ^
+5 passed; 0 skipped; 2 failed.
+error: the following test command failed with exit code 1:
+./scratch/zig5/.zig-cache/o/a1d4c921fdb2b59b242d3c84448ad228/test --seed=0x99650fa1

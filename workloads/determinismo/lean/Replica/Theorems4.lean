@@ -71,13 +71,13 @@ theorem ce34_filler_cut :
 /-- (by computation) A sync_stall, then a durable_crash over it (the overlap drawn): the node's
 syncs are crash decisions while the stall lasts. -/
 theorem ce35_crash_replaces_stall :
-    ((Durable.judgeD 3 8 (Source.path #[0, 1, 0, 0, 4])).violation.isSome) = true := by
+    ((Durable.judgeD 3 8 (Source.path #[0, 1, 0, 0, 4]) .v3939448).violation.isSome) = true := by
   native_decide
 
 /-- (by computation) A durable_crash, a sync_stall over it that ends first: the durable_crash
 goes on with nothing armed. -/
 theorem ce35_stall_end_disarms_crash :
-    ((Durable.judgeD 4 8 (Source.path #[1, 0, 0, 0, 2, 4])).violation.isSome) = true := by
+    ((Durable.judgeD 4 8 (Source.path #[1, 0, 0, 0, 2, 4]) .v3939448).violation.isSome) = true := by
   native_decide
 
 /-! ## CE36: lost writes read back stale before any crash -/
@@ -122,7 +122,7 @@ theorem unreported_zero_of_one_full (props : List (String × Nat × Nat)) (timel
 /-- (by computation) Two shards of 2 timelines: shard 2's runner dies in one before its report;
 tests_judge says 0 timelines without their report. -/
 theorem ce37_unreported_missed :
-    ((Ci.judgeC Ci4.unreportedCounted (Ci4.worlds37[0]!) (Source.path #[0, 0, 0, 3])).violation.isSome) = true := by
+    ((Ci.judgeC Ci4.unreportedCounted { Ci4.worlds37[0]! with ver := .v3939448 } (Source.path #[0, 0, 0, 3])).violation.isSome) = true := by
   native_decide
 
 /-! ## CE38: the coverage gate on an uncovered CI job -/

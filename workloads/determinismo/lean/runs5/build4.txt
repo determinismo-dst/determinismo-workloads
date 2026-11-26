@@ -1,0 +1,30 @@
+✔ [138/158] Built Replica.Ci5 (492ms)
+✔ [140/158] Built Replica.Clock5 (403ms)
+✔ [142/158] Built Replica.Clock5:c.o (158ms)
+✔ [143/158] Built Replica.Ci5:c.o (227ms)
+✖ [144/158] Building Replica.Theorems5 (388ms)
+trace: .> LEAN_PATH=./upstream/sdk/lean/.lake/build/lib/lean:./.lake/build/lib/lean ~/.elan/toolchains/leanprover--lean4---v4.36.0/bin/lean ./Replica/Theorems5.lean -o ./.lake/build/lib/lean/Replica/Theorems5.olean -i ./.lake/build/lib/lean/Replica/Theorems5.ilean -c ./.lake/build/ir/Replica/Theorems5.c --setup ./.lake/build/ir/Replica/Theorems5.setup.json --json
+error: Replica/Theorems5.lean:181:15: unsolved goals
+case cons.cons.some
+line : Ci5.RunLine
+hl : line ≠ Ci5.RunLine.plain ∧ line ≠ Ci5.RunLine.setE
+r : Ci5.Run
+f : Ci5.Files
+hm : line.reachesMove r.failed = false
+r' : Ci5.Run
+rest' : List Ci5.Run
+ih :
+  ∀ (f : Ci5.Files),
+    List.foldl (Ci5.step Ver.v62e06e3 line) f (r' :: rest') =
+      match (r' :: rest').getLast? with
+      | some r => { report := some r.names, parts := f.parts }
+      | none => f
+x : Ci5.Run
+hx : (r' :: rest').getLast? = some x
+⊢ { report := some x.names, parts := f.parts } =
+    match (r' :: rest').getLast? with
+    | some r => { report := some r.names, parts := f.parts }
+    | none => f
+Some required targets logged failures:
+- Replica.Theorems5
+error: build failed

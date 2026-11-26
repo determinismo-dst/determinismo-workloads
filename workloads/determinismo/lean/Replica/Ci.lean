@@ -56,6 +56,8 @@ structure Cfg where
   junit : Bool := true
   flakyPasses : Bool := false
   sessions : Bool := false
+  /-- Round 5: ci.zig as at 62e06e3 unless a theorem about 3939448 says so. -/
+  ver : Ver := .v62e06e3
   deriving Inhabited
 
 structure CS where
@@ -121,9 +123,10 @@ def drawJob (cfg : Cfg) : CM Job := do
     stated := stated ++ [{ own with timeline := t, session := true }]
   return { shardCount, outcomes, stated }
 
-/-- ci.zig:273-275 `shard_sql` over `timeline_events` (sessions' timelines included). -/
-def shardRow (j : Job) (shard : Nat) : Nat × Nat :=
-  let rows := j.stated.filter fun s => s.shard == shard && s.shardCondition.isSome
+/-- ci.zig:273-275 `shard_sql` over `timeline_events` (sessions' timelines included) at 3939448;
+over `explored_timeline_events` (sessions left out) at 62e06e3 (ci.zig:340-342, CE28's fix). -/
+def shardRow (j : Job) (shard : Nat) (ver : Ver := .v62e06e3) : Nat × Nat :=
+  let rows := j.stated.filter fun s => s.shard == shard && s.shardCondition.isSome && (ver == .v3939448 || !s.session)
   ((rows.filter (·.shardCondition == some false)).length, rows.length)
 
 /-- store.zig:1144-1190 `properties_sql` for the tests' properties: (message, hit, failing),
@@ -152,12 +155,45 @@ structure Verdict where
   unreported : Nat
   deriving Repr, Inhabited
 
-/-- ci.zig:277-301 and 440-485. -/
+/-- ci.zig:277-301 and 440-485 (3939448); 62e06e3: ci.zig:262-296 with `shard_verdict` (326-330:
+a timeline that never stated its shard's property failed it), `tests_judge` (483-513: no count of
+reports) and `unreported_sql` (305-308: the run's timelines that stated their shard's property
+and no test, each; "error" only for one whose shard passed). -/
 def verdictOf (cfg : Cfg) (j : Job) : Verdict := Id.run do
+  if cfg.ver == .v62e06e3 then
+    let mut verdict := "pass"
+    let mut shards := []
+    for number in [1:j.shardCount + 1] do
+      let (rowFailing, rowTimelines) := shardRow j number .v62e06e3
+      let failing := rowFailing + (cfg.timelines - rowTimelines)
+      let v := if failing == 0 then "pass" else if failing ≥ cfg.timelines then "fail" else "flaky"
+      verdict := worse verdict v
+      shards := shards ++ [(number, v, failing, cfg.timelines)]
+    let mut tests := []
+    let mut unreported := 0
+    if cfg.junit then
+      let mut failing := 0
+      let mut flaky := 0
+      for (message, hit, f) in testProperties j do
+        if f == 0 then
+          tests := tests ++ [(message, "pass")]
+          continue
+        if f ≥ hit then
+          failing := failing + 1
+          tests := tests ++ [(message, "fail")]
+        else
+          flaky := flaky + 1
+          tests := tests ++ [(message, "flaky")]
+      verdict := worse verdict (if failing > 0 then "fail" else if flaky > 0 then "flaky" else "pass")
+      let silent := j.stated.filter fun s => !s.session && s.shardCondition.isSome && s.tests.isEmpty
+      unreported := silent.length
+      if silent.any (·.shardCondition == some true) then verdict := "error"
+    let exit := if verdict == "pass" then 0 else if verdict == "flaky" then (if cfg.flakyPasses then 0 else 2) else 1
+    return { job := verdict, exit, shards, tests, unreported }
   let mut verdict := "pass"
   let mut shards := []
   for number in [1:j.shardCount + 1] do
-    let (failing, timelines) := shardRow j number
+    let (failing, timelines) := shardRow j number .v3939448
     let v := if timelines < cfg.timelines then "error" else if failing == 0 then "pass"
       else if failing ≥ timelines then "fail" else "flaky"
     verdict := worse verdict v

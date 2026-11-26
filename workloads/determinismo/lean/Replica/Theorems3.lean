@@ -117,7 +117,7 @@ theorem frontier_and_archive_one_moment :
 /-! ## CE27, CE28: determinismo-ci (ci.zig:277-314) -/
 
 open Replica.Ci in
-def ciCfg : Cfg := { label := "", tests := ["t1", "t2"], timelines := 3 }
+def ciCfg : Cfg := { label := "", tests := ["t1", "t2"], timelines := 3, ver := .v3939448 }
 
 open Replica.Ci in
 def hangJob : Job :=
@@ -133,7 +133,7 @@ theorem hang_is_an_error :
   native_decide
 
 open Replica.Ci in
-def sessionCfg : Cfg := { label := "", tests := ["t1"], timelines := 3, junit := false, flakyPasses := true, sessions := true }
+def sessionCfg : Cfg := { label := "", tests := ["t1"], timelines := 3, junit := false, flakyPasses := true, sessions := true, ver := .v3939448 }
 
 open Replica.Ci in
 def failingWithSession : Job :=

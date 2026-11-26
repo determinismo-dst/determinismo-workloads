@@ -168,22 +168,26 @@ def multiverse (ts : List Timeline) : Except String (Array Aggregate) := do
     for p in props do aggs := merge aggs p
   return aggs
 
-/-- report.zig:125 `Catalog`: by message (first kind), reached anywhere. -/
-def catalogNote (cat : List (String × AKind × Bool)) (kind : AKind) (name : String) (reached : Bool) :
-    List (String × AKind × Bool) :=
-  match cat.find? (·.1 == name) with
-  | some _ => cat.map fun (n, k, r) => if n == name then (n, k, r || reached) else (n, k, r)
+/-- report.zig:125 `Catalog`: by message (first kind), reached anywhere (3939448); by kind and
+message at 62e06e3 (report.zig:143-166, CE18 and CE22's fix). -/
+def catalogNote (cat : List (String × AKind × Bool)) (kind : AKind) (name : String) (reached : Bool)
+    (ver : Ver := .v62e06e3) : List (String × AKind × Bool) :=
+  let same := fun (n : String) (k : AKind) => n == name && (ver == .v3939448 || k == kind)
+  match cat.find? (fun (n, k, _) => same n k) with
+  | some _ => cat.map fun (n, k, r) => if same n k then (n, k, r || reached) else (n, k, r)
   | none => cat ++ [(name, kind, reached)]
 
 /-- report.zig:752-765 `catalog_reached` (by identity). -/
-def catalogReached (cat : List (String × AKind × Bool)) (aggs : Array Aggregate) : List (String × AKind × Bool) :=
+def catalogReached (cat : List (String × AKind × Bool)) (aggs : Array Aggregate) (ver : Ver := .v62e06e3) :
+    List (String × AKind × Bool) :=
   aggs.foldl (fun cat a =>
     let reached := a.branchesHit > 0 && !propertyFailing a.property.kind a.branchesHit a.branchesTrue 0
-    catalogNote cat a.property.kind a.property.identity reached) cat
+    catalogNote cat a.property.kind a.property.identity reached ver) cat
 
-/-- report.zig:140-145 `made_true`: the entry by identity, whatever its kind. -/
-def catalogMadeTrue (cat : List (String × AKind × Bool)) (identity : String) : Bool :=
-  match cat.find? (·.1 == identity) with
+/-- report.zig:140-145 `made_true`: the entry by identity, whatever its kind (3939448); the
+`sometimes` entry at 62e06e3 (report.zig:167-173; main.zig:1152). -/
+def catalogMadeTrue (cat : List (String × AKind × Bool)) (identity : String) (ver : Ver := .v62e06e3) : Bool :=
+  match cat.find? (fun (n, k, _) => n == identity && (ver == .v3939448 || k == .sometimes)) with
   | some (_, _, r) => r
   | none => false
 
@@ -194,19 +198,19 @@ def catalogJudge (cat : List (String × AKind × Bool)) (everyScenario : Bool) :
 /-- main.zig:1097-1157: the exploration's exit status (3: some property failed), or the error
 that ended it. `scenarios`: the scenarios explored, each its timelines in the order they ended;
 `all`: how many scenarios the program has. -/
-def explorerExit (scenarios : List (List Timeline)) (all : Nat) : Except String Nat := do
+def explorerExit (scenarios : List (List Timeline)) (all : Nat) (ver : Ver := .v62e06e3) : Except String Nat := do
   let mut failingScenarios := 0
   let mut cat : List (String × AKind × Bool) := []
   let mut unmet : List (List String) := []
   for ts in scenarios do
     let aggs ← multiverse ts
-    cat := catalogReached cat aggs
+    cat := catalogReached cat aggs ver
     -- main.zig:1143-1147 (3939448)
     if failingViolations aggs > 0 then failingScenarios := failingScenarios + 1
     else unmet := unmet ++ [sometimesUnmet aggs]
   -- main.zig:1150-1155
   for messages in unmet do
-    if messages.any (!catalogMadeTrue cat ·) then failingScenarios := failingScenarios + 1
+    if messages.any (!catalogMadeTrue cat · ver) then failingScenarios := failingScenarios + 1
   if catalogJudge cat (scenarios.length == all) > 0 then failingScenarios := failingScenarios + 1
   return if failingScenarios > 0 then 3 else 0
 
@@ -384,12 +388,19 @@ def recordedStatus (ts : List Timeline) : Except String Nat := do
   let failingBranches := aggs.any (·.branchesFailing > 0)
   return if aggs.any (·.failing) || failingBranches then 3 else 0
 
+/-- serve.zig:5903-5909 (62e06e3) `ended_status`: the explorer's `exit` file when it wrote one,
+else the record's summary (CE19's fix), for an adopted run reaped (6017) and for discovery
+(5756); `runs_adopt` (5815) still takes the record's alone. `exitWritten`: whether the explorer
+wrote its `exit` (it does at its end, main.zig:1170-1175). -/
+def endedStatus (ts : List Timeline) (exitWritten : Bool := true) : Except String Nat :=
+  if exitWritten then explorerExit [ts] 1 else recordedStatus ts
+
 def serveAdoptedAgrees : VProp :=
   { name := "a run's state is the same whether serve reaped its explorer or adopted it across a restart"
     source := "docs/AGENTS.md: \"A restarted serve adopts the runs still going\"; main.zig:1166-1170: \"How it ends, in its run's directory: serve learned it only from runs it reaped itself, and read the others' (... every run adopted across a restart) from their timelines' failing always properties alone\" (the exit file written for them); serve.zig:5912 \"A failing property fails the run, as explore exits\""
     check := fun _ ended =>
       if ended.timelines.length != 1 then none else
-      match explorerExit ended.timelines 1, recordedStatus ended.timelines[0]! with
+      match explorerExit ended.timelines 1, endedStatus ended.timelines[0]! with
       | .ok reaped, .ok adopted =>
         if reaped == adopted then none
         else some s!"reaped: status {reaped} ({if reaped == 3 then "failed" else "passed"}); adopted: status {adopted} ({if adopted == 3 then "failed" else "passed"})"

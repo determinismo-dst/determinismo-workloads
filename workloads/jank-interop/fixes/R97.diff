@@ -1,0 +1,26 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/keyword.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/keyword.cpp
+@@ -1,6 +1,7 @@
+ #include <jank/runtime/obj/keyword.hpp>
+ #include <jank/runtime/obj/symbol.hpp>
+ #include <jank/runtime/rtti.hpp>
++#include <jank/util/fmt.hpp>
+ #include <jank/runtime/core/seq.hpp>
+ 
+ namespace jank::runtime::obj
+@@ -49,7 +50,14 @@
+ 
+   i64 keyword::compare(object const &o) const
+   {
+-    return compare(*expect_object<keyword>(runtime::detail::untagged(&o)));
++    auto const k{ dyn_cast<obj::keyword>(runtime::detail::untagged(&o)) };
++    if(k.is_nil())
++    {
++      throw std::runtime_error{ util::format(
++        "The value for comparison must be a `keyword`, not a `{}`.",
++        object_type_str(o.type)) };
++    }
++    return compare(*k);
+   }
+ 
+   i64 keyword::compare(keyword const &s) const

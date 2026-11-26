@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -324,6 +324,25 @@
+       [](auto const typed_l, auto const r) -> object_ref {
+         return visit_number_like(
+           [](auto const typed_r, auto const &typed_l) -> object_ref {
++            /* Two integers divide as integers: as doubles, past 2^53 they lose precision. */
++            using L = std::decay_t<decltype(typed_l)>;
++            using R = std::decay_t<decltype(typed_r->data)>;
++            /* An integer is an i64, or a small integer's i32. */
++            if constexpr((std::same_as<L, i64> || std::same_as<L, i32>)
++                         && (std::same_as<R, i64> || std::same_as<R, i32>))
++            {
++              i64 const n{ typed_l };
++              i64 const d{ typed_r->data };
++              if(d == 0)
++              {
++                throw make_box("Division by zero is not permitted.").erase();
++              }
++              if(d == -1)
++              {
++                return make_box(static_cast<i64>(0ull - static_cast<unsigned long long>(n))).erase();
++              }
++              return make_box(n / d).erase();
++            }
+             auto const typed_l_data{ to_real(typed_l) };
+             auto const typed_r_data{ to_real(typed_r->data) };
+ #pragma clang diagnostic push

@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -186,10 +186,10 @@
+        :doc "Returns the number of items in the collection. (count nil) returns
+        0.  Also works on strings, arrays, and Java Collections and Maps"
+        :inline (fn* [coll]
+-                 (list 'cpp/jank.runtime.sequence_length coll))}
++                 (list 'cpp/cast 'cpp/jtl.i64 (list 'cpp/jank.runtime.sequence_length coll)))}
+   count
+   (fn* [coll]
+-    (cpp/jank.runtime.sequence_length coll)))
++    (cpp/cast cpp/jtl.i64 (cpp/jank.runtime.sequence_length coll))))
+ 
+ ; Numbers.
+ (def ^{:arglists '([x])

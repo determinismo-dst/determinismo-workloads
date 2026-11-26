@@ -58,9 +58,17 @@ C++'s form), and R5: the literal `-9223372036854775808` reads as a BigInt, which
 
 Seeds 4 and 5 (2026-11-26, grammar 3, which leaves out what seeds 1-3 found and covers sequences,
 maps, sets, higher-order functions and ASCII strings): 1 and 3 of 50 tests differ. New: LG4 (seed 4's
-g0033 died, SIGSEGV: `compare` with a keyword first and a number second, reached through a sorted map
-of mixed keys) and LG5 (seed 5's g0040: `quot` of two longs past 2^53 divides as doubles), both
-filed in jankifier with their proposed fixes. The rest are R96 (booleans not comparable, in a sorted
+g0033 died, SIGSEGV: `compare` with a keyword first and a number second, through a sorted map of
+mixed keys; withdrawn: it is jankifier's R97, which now has its extra cases) and LG5 (seed 5's g0040:
+`quot` of two longs past 2^53 divides as doubles). Their fixes, and LG1's, verified on a build of
+jank: [../fixes](../fixes).
+
+Seeds 6-9 (2026-11-26, grammar 3): 12 of 200 tests differ. New: LG6 (seed 8: an exception thrown
+while a set hashes a lazy element ends the process) and LG7 (seed 8: an empty lazy seq hashes as 1,
+so sets holding one aren't `=` to ones holding `()`). The rest: LG5 again (seed 9: `(quot
+9223372036854775807 1)` gives Long/MIN_VALUE), R96, Clojure's own LazySeq printing, and two
+cases where jank accepts what Clojure refuses (a sorted set of seqs, `split-at` given a function),
+not filed. The rest are R96 (booleans not comparable, in a sorted
 map's keys).
 
 The harness: a thrown string is its own message (`ev`). `ex-message` of a non-exception throws in

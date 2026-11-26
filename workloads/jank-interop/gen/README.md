@@ -56,11 +56,19 @@ C++'s form), and R5: the literal `-9223372036854775808` reads as a BigInt, which
 `abs` of it and the first report's BigInt results under LG2 (corrected in jankifier). `max` of
 -0.0 and 0 returning -0.0 (Clojure: 0) is a tie, not filed.
 
+Seeds 4 and 5 (2026-11-26, grammar 3, which leaves out what seeds 1-3 found and covers sequences,
+maps, sets, higher-order functions and ASCII strings): 1 and 3 of 50 tests differ. New: LG4 (seed 4's
+g0033 died, SIGSEGV: `compare` with a keyword first and a number second, reached through a sorted map
+of mixed keys) and LG5 (seed 5's g0040: `quot` of two longs past 2^53 divides as doubles), both
+filed in jankifier with their proposed fixes. The rest are R96 (booleans not comparable, in a sorted
+map's keys).
+
 The harness: a thrown string is its own message (`ev`). `ex-message` of a non-exception throws in
 jank (jankifier's LU62), and an overflowing `inc` throws a string, so such a case ended its whole
 test with no verdict (seed 1's g0000, seed 2's g0032 and g0042).
 
-Grammars: seeds 1 and 2 are grammar 1 (they regenerate byte for byte). From seed 3 on, grammar 2
+Grammars: seeds 1 and 2 are grammar 1 (they regenerate byte for byte), seed 3 grammar 2, seeds 4
+on grammar 3. Grammar 2
 adds what the first seeds showed the blind replica missed: bit and unchecked arithmetic, the
 primed (promoting) operators, ratios, doubles' special values, and strings past ASCII (two-byte
 letters, surrogate pairs, combining marks) through the functions that index or compare them.

@@ -152,6 +152,111 @@
     10 (list 'if (list (gen-pred) (gen-any (dec d))) (gen-any (dec d)) (gen-any (dec d)))
     11 (list (pick '[some every?]) (pick '[odd? even? pos?]) (gen-coll (dec d)))))
 
+;; Grammar 3 (seeds 4 on): what seeds 1-3 left unreached, without the deviations they found
+;; (jankifier's R5, LG1-LG3, LU74, D2): no Long/MIN_VALUE literal, `count` only through `long`, shifts
+;; below 64, no unchecked-* and no integer `/`, strings ASCII only; sequences, maps, sets, higher-order
+;; functions and ASCII string functions instead.
+(def int3-leaves [0 1 -1 2 3 -3 7 10 127 128 255 -128 1000 Long/MAX_VALUE])
+(def strs3 ["" "a" "abc" "a b" "Ab-C" "x,y,z" " t " "hello world" "a\nb"])
+
+(declare gen-int3 gen-coll3 gen-map3 gen-set3 gen-str3 gen-any3)
+
+(defn- gen-int3 [d]
+  (if (or (<= d 0) (chance 0.4))
+    (pick int3-leaves)
+    (case (below 12)
+      0 (list (pick '[+' -' *']) (gen-int3 (dec d)) (gen-int3 (dec d)))
+      1 (list (pick '[inc' dec' abs -]) (gen-int3 (dec d)))
+      2 (list 'long (list 'count (gen-coll3 (dec d))))
+      3 (list (pick '[max min]) (gen-int3 (dec d)) (gen-int3 (dec d)))
+      4 (list (pick '[quot rem mod]) (gen-int3 (dec d)) (pick [1 2 3 7 -2]))
+      5 (list (pick '[bit-and bit-or bit-xor bit-and-not]) (gen-int3 (dec d)) (gen-int3 (dec d)))
+      6 (list (pick '[bit-shift-left bit-shift-right unsigned-bit-shift-right bit-set bit-clear bit-flip]) (gen-int3 (dec d)) (below 63))
+      7 (list 'reduce (pick '[+' max min]) 0 (gen-coll3 (dec d)))
+      8 (list 'apply (pick '[max min +']) 0 (gen-coll3 (dec d)))
+      9 (list (pick '[first last second peek]) (list 'vec (list 'cons 0 (gen-coll3 (dec d)))))
+      10 (list 'get (gen-map3 (dec d)) (pick [:a :b :x]) -5)
+      11 (list (pick '[max-key min-key]) (pick '[- identity abs]) (gen-int3 (dec d)) (gen-int3 (dec d)) (gen-int3 (dec d))))))
+
+(defn- gen-coll3 [d]
+  (if (or (<= d 0) (chance 0.3))
+    (pick [[] [1 2 3] [3 1 2] '(list 1 2) [0 -1 7 7] (vec (range 5)) [1 1 1] [5 4 4 2 9 0]])
+    (case (below 24)
+      0 (vec (repeatedly (below 4) #(gen-int3 (dec d))))
+      1 (list 'map-indexed 'vector (gen-coll3 (dec d)))
+      2 (list 'keep-indexed '(fn [i x] (when (even? i) x)) (gen-coll3 (dec d)))
+      3 (list 'partition-by (pick '[odd? pos? identity]) (gen-coll3 (dec d)))
+      4 (list 'reductions (pick '[+' max min]) (gen-coll3 (dec d)))
+      5 (list (pick '[dedupe distinct reverse sort rest butlast]) (gen-coll3 (dec d)))
+      6 (list (pick '[take-while drop-while filter remove]) (pick '[pos? odd? even? neg?]) (gen-coll3 (dec d)))
+      7 (list 'interpose 0 (gen-coll3 (dec d)))
+      8 (list 'flatten (list 'list (gen-coll3 (dec d)) (list 'list (gen-coll3 (dec d)))))
+      9 (list 'mapcat '(fn [x] [x x]) (gen-coll3 (dec d)))
+      10 (list (pick '[split-at split-with]) (if (chance 0.5) (below 4) '(fn [x] (< x 3))) (gen-coll3 (dec d)))
+      11 (list 'sort (pick '[> < compare]) (gen-coll3 (dec d)))
+      12 (list 'range (- (below 6) 3) (+ 3 (below 6)) (pick [1 2 3 -1]))
+      13 (list 'take (below 7) (list 'cycle (list 'cons 1 (gen-coll3 (dec d)))))
+      14 (list 'subvec [0 1 2 3 4 5] (below 3) (+ 3 (below 4)))
+      15 (list (pick '[nthnext nthrest drop take take-last drop-last]) (gen-coll3 (dec d)) (below 4))
+      16 (list 'map (pick '[+ max min vector]) (gen-coll3 (dec d)) (gen-coll3 (dec d)))
+      17 (list 'map (list (pick '[juxt comp]) 'inc (pick '[dec - identity])) (gen-coll3 (dec d)))
+      18 (list 'sort-by 'first (list 'map 'vector (gen-coll3 (dec d)) (list 'range)))
+      19 (list 'vals (list 'into '(sorted-map) (list 'zipmap [:a :b :c :d] (gen-coll3 (dec d)))))
+      20 (list 'keys (list 'into '(sorted-map) (gen-map3 (dec d))))
+      21 (list 'seq (list 'into '(sorted-set) (gen-coll3 (dec d))))
+      22 (list (pick '[partition partition-all]) (inc (below 3)) (inc (below 2)) (gen-coll3 (dec d)))
+      23 (list 'filter (list (pick '[every-pred some-fn]) 'odd? 'pos?) (gen-coll3 (dec d))))))
+
+(defn- gen-map3 [d]
+  (if (or (<= d 0) (chance 0.3))
+    (pick [{} {:a 1} {:a 1 :b 2} {:a 1 :x {:y 2}}])
+    (case (below 10)
+      0 (list 'merge-with (pick '[+' max min]) (gen-map3 (dec d)) (gen-map3 (dec d)))
+      1 (list 'update (gen-map3 (dec d)) (pick [:a :b]) '(fnil inc' 0))
+      2 (list 'assoc-in (gen-map3 (dec d)) [:x :y] (gen-int3 (dec d)))
+      3 (list 'update-in (gen-map3 (dec d)) [(pick [:a :x]) :z] '(fnil inc' 0))
+      4 (list 'select-keys (gen-map3 (dec d)) (vec (take (below 3) [:a :b :x])))
+      5 (list 'clojure.set/rename-keys (gen-map3 (dec d)) {:a :z})
+      6 (list 'frequencies (gen-coll3 (dec d)))
+      7 (list 'group-by (pick '[odd? even? pos?]) (gen-coll3 (dec d)))
+      8 (list 'zipmap [:a :b :c] (gen-coll3 (dec d)))
+      9 (list 'reduce-kv '(fn [m k v] (assoc m k [v])) {} (gen-map3 (dec d))))))
+
+(defn- gen-set3 [d]
+  (if (or (<= d 0) (chance 0.3))
+    (pick [#{} #{1} #{1 2 3} #{:a :b}])
+    (case (below 6)
+      0 (list (pick '[clojure.set/union clojure.set/intersection clojure.set/difference]) (gen-set3 (dec d)) (gen-set3 (dec d)))
+      1 (list 'set (gen-coll3 (dec d)))
+      2 (list 'disj (gen-set3 (dec d)) (pick [1 2 :a]))
+      3 (list 'conj (gen-set3 (dec d)) (gen-int3 (dec d)))
+      4 (list 'clojure.set/select 'odd? (list 'set (gen-coll3 (dec d))))
+      5 (list 'into #{} (list 'map 'inc (gen-coll3 (dec d)))))))
+
+(defn- gen-str3 [d]
+  (if (or (<= d 0) (chance 0.4))
+    (pick strs3)
+    (case (below 10)
+      0 (list 'str (gen-int3 (dec d)) (pick [":" "" "-"]) (gen-str3 (dec d)))
+      1 (list (pick '[clojure.string/upper-case clojure.string/lower-case clojure.string/trim clojure.string/capitalize clojure.string/triml clojure.string/trimr]) (gen-str3 (dec d)))
+      2 (list 'clojure.string/join (pick ["" "," "-"]) (gen-coll3 (dec d)))
+      3 (list 'subs (pick ["abcdef" "hello world"]) (below 3) (+ 3 (below 3)))
+      4 (list 'apply 'str (list 'interpose "," (gen-coll3 (dec d))))
+      5 (list 'clojure.string/replace (gen-str3 (dec d)) (pick ["a" "b" " " "l"]) (pick ["" "X" "--"]))
+      6 (list 'str (list (pick '[clojure.string/index-of clojure.string/last-index-of]) (gen-str3 (dec d)) (pick ["a" "b" "l" " "])))
+      7 (list 'str (list (pick '[clojure.string/includes? clojure.string/starts-with? clojure.string/ends-with?]) (gen-str3 (dec d)) (pick ["a" "" "b" "ld"])))
+      8 (list 'pr-str (list (pick '[clojure.string/split-lines clojure.string/blank?]) (gen-str3 (dec d))))
+      9 (list 'clojure.string/join "|" (list 'clojure.string/split (gen-str3 (dec d)) (pick [#"," #" " #"b"]))))))
+
+(defn- gen-any3 [d]
+  (case (below 10)
+    0 (gen-int3 d) 1 (gen-coll3 d) 2 (gen-map3 d) 3 (gen-set3 d) 4 (gen-str3 d)
+    5 (list (pick '[empty? not-empty boolean seq]) (gen-coll3 (dec d)))
+    6 (list (pick '[contains? get find]) (gen-map3 (dec d)) (pick [:a :b :x]))
+    7 (list (pick '[some every? not-any? not-every?]) (pick '[odd? even? pos? #{1 2}]) (gen-coll3 (dec d)))
+    8 (list 'if (list (pick '[empty? seq]) (gen-coll3 (dec d))) (gen-any3 (dec d)) (gen-any3 (dec d)))
+    9 (list 'let ['x (gen-int3 (dec d)) 'c (gen-coll3 (dec d))] (list (pick '[conj cons]) 'x 'c))))
+
 (defn- outcome
   "Clojure's outcome for a form: [:value v], [:throws class-name] or [:skip why]. A lazy result
    is realized (printed) inside the guarded evaluation, as the jank side's `ev` does."
@@ -225,7 +330,7 @@
                 (loop [kept [] tries 0]
                   (if (or (>= (count kept) n) (> tries (* 20 n)))
                     kept
-                    (let [form (gen-any 4)
+                    (let [form (if (>= *grammar* 3) (gen-any3 4) (gen-any 4))
                           ;; A bare literal tests only the reader: forms with a call at least.
                           o (if (some seq? (tree-seq coll? seq form)) (outcome form) [:skip "no call"])]
                       (recur (if (= :skip (first o)) kept (conj kept {:form form :outcome o})) (inc tries))))))
@@ -337,8 +442,9 @@
   (case mode
     "gen" (let [[seed n] args
                 seed (Long/parseLong seed)]
-            ;; Seeds 1 and 2 were drawn by grammar 1: kept so, the same seed the same files.
-            (binding [*grammar* (if (<= seed 2) 1 2)]
+            ;; Seeds 1 and 2 were drawn by grammar 1, seed 3 by grammar 2: kept so, the same seed the
+            ;; same files; seeds 4 on, grammar 3.
+            (binding [*grammar* (cond (<= seed 2) 1 (= seed 3) 2 :else 3)]
               (generate seed (Long/parseLong n) ".")))
     "shrink" (let [[seed failures] args] (shrink (Long/parseLong seed) failures "."))
     "group" (let [[seed failures] args] (group (Long/parseLong seed) failures "."))

@@ -44,7 +44,10 @@ names the adjacent `[:rw :rw]` G2-item. rw-register misses the same through its 
 value" rule (rw_register.clj:184-208, 704-735).
 
 - [ ] **D2: asking for two models at once drops the process order.**
-  Proposed fix: none written yet.
+  Proposed fix: txn.clj `additional-graphs` adds the realtime and the process graph each when its
+  kind of anomaly is reportable, not the realtime one alone (determinismo's Elle checker, fixes.diff;
+  its regression test, red without it; Elle's txn, list-append, consistency-model and core suites
+  as without it: 39 tests, 3,316 assertions, 0 failures).
 
 ```clojure
 (def h2 (h/history

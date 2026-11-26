@@ -1,0 +1,92 @@
+walk: 45 sources × 45 × 10 ops × 2 paths (a parameter paired only with a non-parameter): 38880 cases, complete
+  differ from Clojure 1.12: 10907; differ from the reference (Clojure with D2's truncating `/`, long overflow (LG2, agent N) and division by zero set aside): 10067 (inlined 6827, fn value 3240)
+  LG1 (unsigned natives under C++'s conversions in < <= > >= min max /): LG1.diff: 723 (inlined 723, fn value 0)
+    by op: [(<, 104), (<=, 104), (>, 104), (>=, 104), (min, 104), (max, 104), (/, 99)]
+    e.g. [literal < count] (< -2 (count [])): Clojure true, jank false
+    e.g. [literal < alength] (< -2 (alength (long-array 0))): Clojure true, jank false
+    e.g. [literal < hash] (< -2 (hash 0)): Clojure true, jank false
+    e.g. [long param < count] ((fn [x] (< x (count []))) -2): Clojure true, jank false
+    e.g. [long param < alength] ((fn [x] (< x (alength (long-array 0)))) -2): Clojure true, jank false
+    e.g. [long param < hash] ((fn [x] (< x (hash 0))) -2): Clojure true, jank false
+  R122 (bytes are unsigned): R122a.diff: 2309 (inlined 1053, fn value 1256)
+    by op: [(<, 99), (<=, 99), (>, 99), (>=, 99), (min, 80), (max, 109), (+, 136), (-, 130), (*, 118), (/, 84), (< (fn value), 123), (<= (fn value), 123), (> (fn value), 123), (>= (fn value), 123), (min (fn value), 137), (max (fn value), 134), (+ (fn value), 144), (- (fn value), 134), (* (fn value), 118), (/ (fn value), 97)]
+    e.g. [literal < byte aget] (< -2 (aget (byte-array [200]) 0)): Clojure false, jank true
+    e.g. [double literal < byte aget] (< -1.5 (aget (byte-array [200]) 0)): Clojure false, jank true
+    e.g. [long param < byte aget] ((fn [x] (< x (aget (byte-array [200]) 0))) -2): Clojure false, jank true
+    e.g. [double param < byte aget] ((fn [x] (< x (aget (byte-array [-1]) 0))) -0.5): Clojure false, jank true
+    e.g. [ratio param < byte aget] ((fn [x] (< x (aget (byte-array [-1]) 0))) -1/2): Clojure false, jank true
+    e.g. [int < byte aget] (< (int -1) (aget (byte-array [-1]) 0)): Clojure false, jank true
+  R33 class (bool natives are numbers to math.hpp): R33a.diff + R33b.diff: 1760 (inlined 1760, fn value 0)
+    by op: [(<, 176), (<=, 176), (>, 176), (>=, 176), (min, 176), (max, 176), (+, 176), (-, 176), (*, 176), (/, 176)]
+    e.g. [literal < predicate] (< -2 (nil? nil)): Clojure throws ClassCastException, jank true
+    e.g. [double literal < predicate] (< -1.5 (nil? nil)): Clojure throws ClassCastException, jank true
+    e.g. [long param < predicate] ((fn [x] (< x (nil? nil))) -2): Clojure throws ClassCastException, jank true
+    e.g. [double param < predicate] ((fn [x] (< x (nil? nil))) -0.5): Clojure throws ClassCastException, jank true
+    e.g. [ratio param < predicate] ((fn [x] (< x (nil? nil))) -1/2): Clojure throws ClassCastException, jank true
+    e.g. [count < predicate] (< (count []) (nil? nil)): Clojure throws ClassCastException, jank true
+  P9 (char natives are numbers to math.hpp): no diff: 850 (inlined 850, fn value 0)
+    by op: [(<, 85), (<=, 85), (>, 85), (>=, 85), (min, 85), (max, 85), (+, 85), (-, 85), (*, 85), (/, 85)]
+    e.g. [literal < char aget] (< -2 (aget (char-array "a") 0)): Clojure throws ClassCastException, jank true
+    e.g. [double literal < char aget] (< -1.5 (aget (char-array "a") 0)): Clojure throws ClassCastException, jank true
+    e.g. [long param < char aget] ((fn [x] (< x (aget (char-array "a") 0))) -2): Clojure throws ClassCastException, jank true
+    e.g. [double param < char aget] ((fn [x] (< x (aget (char-array "a") 0))) -0.5): Clojure throws ClassCastException, jank true
+    e.g. [ratio param < char aget] ((fn [x] (< x (aget (char-array "a") 0))) -1/2): Clojure throws ClassCastException, jank true
+    e.g. [count < char aget] (< (count []) (aget (char-array "a") 0)): Clojure throws ClassCastException, jank true
+  P6 (hash is unsigned): no diff: 2424 (inlined 1044, fn value 1380)
+    by op: [(<, 112), (<=, 112), (>, 112), (>=, 112), (min, 112), (max, 120), (+, 127), (-, 98), (*, 66), (/, 73), (< (fn value), 156), (<= (fn value), 156), (> (fn value), 156), (>= (fn value), 156), (min (fn value), 164), (max (fn value), 148), (+ (fn value), 145), (- (fn value), 132), (* (fn value), 82), (/ (fn value), 85)]
+    e.g. [literal < hash] (< 0 (hash 2)): Clojure false, jank true
+    e.g. [double literal < hash] (< -1.5 (hash 2)): Clojure false, jank true
+    e.g. [long param < hash] ((fn [x] (< x (hash 2))) 0): Clojure false, jank true
+    e.g. [double param < hash] ((fn [x] (< x (hash 2))) -0.5): Clojure false, jank true
+    e.g. [ratio param < hash] ((fn [x] (< x (hash 2))) -1/2): Clojure false, jank true
+    e.g. [hash < hash] (< (hash 0) (hash 2)): Clojure false, jank true
+  several switches together: 639 (inlined 504, fn value 135)
+    by op: [(<, 44), (<=, 44), (>, 44), (>=, 44), (min, 109), (max, 63), (+, 31), (-, 36), (*, 52), (/, 37), (max (fn value), 18), (+ (fn value), 15), (- (fn value), 30), (* (fn value), 60), (/ (fn value), 12)]
+    e.g. [count < hash] (< (count []) (hash 2)): Clojure false, jank true
+    e.g. [count < byte aget] (< (count []) (aget (byte-array [-1]) 0)): Clojure false, jank true
+    e.g. [alength < hash] (< (alength (long-array 0)) (hash 2)): Clojure false, jank true
+    e.g. [alength < byte aget] (< (alength (long-array 0)) (aget (byte-array [-1]) 0)): Clojure false, jank true
+    e.g. [hash < byte aget] (< (hash 0) (aget (byte-array [-1]) 0)): Clojure false, jank true
+    e.g. [hash < count] (< (hash 2) (count [])): Clojure true, jank false
+  P7 (float is a double): no diff: 652 (inlined 326, fn value 326)
+    by op: [(<, 1), (<=, 1), (>, 1), (>=, 1), (min, 41), (max, 35), (+, 63), (-, 62), (*, 61), (/, 60), (< (fn value), 1), (<= (fn value), 1), (> (fn value), 1), (>= (fn value), 1), (min (fn value), 41), (max (fn value), 35), (+ (fn value), 63), (- (fn value), 62), (* (fn value), 61), (/ (fn value), 60)]
+    e.g. [float < float aget] (< (float 0.1) (aget (float-array [0.1]) 0)): Clojure false, jank true
+    e.g. [float aget <= float] (<= (aget (float-array [0.1]) 0) (float 0.1)): Clojure true, jank false
+    e.g. [float aget > float] (> (aget (float-array [0.1]) 0) (float 0.1)): Clojure false, jank true
+    e.g. [float >= float aget] (>= (float 0.1) (aget (float-array [0.1]) 0)): Clojure true, jank false
+    e.g. [literal min float] (min 1 (float 0.1)): Clojure 0.10000000149011611 (a Float), jank 0.10000000000000000
+    e.g. [double literal min float] (min 0.5 (float 0.1)): Clojure 0.10000000149011611 (a Float), jank 0.10000000000000000
+  P4 (min/max of two native types give their common type): LG1.diff: 336 (inlined 336, fn value 0)
+    by op: [(min, 153), (max, 183)]
+    e.g. [literal min double literal] (min -2 -1.5): Clojure -2, jank -2.0
+    e.g. [literal min float aget] (min -2 (aget (float-array [0.1]) 0)): Clojure -2, jank -2.0
+    e.g. [double literal min literal] (min -1.5 -2): Clojure -2, jank -2.0
+    e.g. [double literal min count] (min 0.5 (count [])): Clojure 0, jank 0.0
+    e.g. [double literal min alength] (min 0.5 (alength (long-array 0))): Clojure 0, jank 0.0
+    e.g. [double literal min hash] (min 0.5 (hash 0)): Clojure 0, jank 0.0
+  P5 (max keeps the first operand on a tie): no diff: 42 (inlined 10, fn value 32)
+    by op: [(max, 10), (max (fn value), 32)]
+    e.g. [literal max double param] ((fn [x] (max 1 x)) 1.0): Clojure 1.0, jank 1
+    e.g. [double literal max ratio param] ((fn [x] (max 0.5 x)) 1/2): Clojure 1/2, jank 0.5
+    e.g. [long param max float aget] ((fn [x] (max x (aget (float-array [-1.0]) 0))) -1): Clojure -1.0 (a Float), jank -1
+    e.g. [double param max literal] ((fn [x] (max x 1)) 1.0): Clojure 1, jank 1.0
+    e.g. [double param max count] ((fn [x] (max x (count [0]))) 1.0): Clojure 1, jank 1.0
+    e.g. [double param max byte aget] ((fn [x] (max x (aget (byte-array [1]) 0))) 1.0): Clojure 1, jank 1.0
+  R25/D1 class (two narrow ints, or a u32 hash, wrap in + - *): LG2a.diff (agent N): 213 (inlined 102, fn value 111)
+    by op: [(+, 29), (-, 41), (*, 32), (+ (fn value), 42), (- (fn value), 17), (* (fn value), 52)]
+    e.g. [literal + hash] (+ -2 (hash 0)): Clojure -2, jank 4294967294
+    e.g. [literal + literal] (+ 1 2147483647): Clojure 2147483648, jank -2147483648
+    e.g. [literal + long param] ((fn [x] (+ 1 x)) 2147483647): Clojure 2147483648, jank -2147483648
+    e.g. [literal + byte aget] (+ 2147483647 (aget (byte-array [1]) 0)): Clojure 2147483648, jank -2147483648
+    e.g. [long param + hash] ((fn [x] (+ x (hash 0))) -2): Clojure -2, jank 4294967294
+    e.g. [long param + literal] ((fn [x] (+ x 2147483647)) 3): Clojure 2147483650, jank -2147483646
+  P8 (float array elements compute in binary32): no diff: 119 (inlined 119, fn value 0)
+    by op: [(+, 52), (-, 48), (*, 19)]
+    e.g. [literal + float aget] (+ -2 (aget (float-array [0.1]) 0)): Clojure -1.8999999985098838, jank -1.8999999761581420
+    e.g. [long param + float aget] ((fn [x] (+ x (aget (float-array [0.1]) 0))) -2): Clojure -1.8999999985098838, jank -1.8999999761581420
+    e.g. [count + float aget] (+ (count [0]) (aget (float-array [0.1]) 0)): Clojure 1.1000000014901161, jank 1.1000000238418579
+    e.g. [alength + float aget] (+ (alength (long-array 2)) (aget (float-array [0.1]) 0)): Clojure 2.1000000014901161, jank 2.0999999046325683
+    e.g. [hash + float aget] (+ (hash 1) (aget (float-array [0.1]) 0)): Clojure 1392991556.0999999, jank 1392991616.0
+    e.g. [int + float aget] (+ (int -1) (aget (float-array [0.1]) 0)): Clojure -0.89999999850988388, jank -0.89999997615814208
+  with LG1.diff: 9112 differ; with every switch: 0
+  fn-value cases still differing with every switch except LG1.diff's: 0 (no fn-value case needs LG1.diff)

@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -800,7 +800,8 @@
+ 
+         if constexpr(jtl::is_any_same<T, obj::integer, obj::small_integer>)
+         {
+-          return make_box<obj::big_decimal>(typed_o->to_real());
++          /* BigDecimal.valueOf(long): exact, not through a double. */
++          return make_box<obj::big_decimal>(native_big_decimal{ static_cast<i64>(typed_o->data) });
+         }
+         else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
+         {

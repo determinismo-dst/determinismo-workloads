@@ -1,0 +1,58 @@
+Round 6, area Q (nREPL): T3 (two connections, four evals and a completions each... client 0: clone + 4 evals; client 1: clone + 3 evals + completions; capture locked, round 3's set-asides).
+Sources: Run/R6/Nrepl.lean lazy (steps run on demand, Lazy.lean) and dfs (every schedule, StateHash.lean), exe jank6-nrepl.
+
+#### 1. Exact interleavePB counts, logs ordered by client, order check at every step taken: <=0 .. <=6 complete
+(<=7 not run: <=6 held 733,454 states and 4.8 million scheduler states, about 3.6 GB; <=7 would pass the few-GB bound per process.)
+== T3: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked: interleavePB timelines counted with steps run on demand
+  logs ordered by client (canonMem), checked against the other order at every step taken
+  ≤0: 349 states reached, 381 step runs
+      order check: 372 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤0: 1,024 timelines (complete); with every net.read.eintr draw 0: 1; longest: 371 iterations (bound 6000: never reached), 10 decisions; 372 scheduler states (23 ms)
+      violations: nothing
+  ≤1: 7,464 states reached, 10,110 step runs
+      order check: 9,676 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤1: 1,358,848 timelines (complete); with every net.read.eintr draw 0: 1,020; longest: 374 iterations (bound 6000: never reached), 352 decisions; 10,316 scheduler states (732 ms)
+      violations: nothing
+  ≤2: 40,026 states reached, 75,992 step runs
+      order check: 71,335 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤2: 884,608,512 timelines (complete); with every net.read.eintr draw 0: 515,508; longest: 377 iterations (bound 6000: never reached), 354 decisions; 86,798 scheduler states (5138 ms)
+      violations: nothing
+  ≤3: 117,983 states reached, 283,605 step runs
+      order check: 264,173 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤3: 377,378,112,512 timelines (complete); with every net.read.eintr draw 0: 172,220,443; longest: 380 iterations (bound 6000: never reached), 356 decisions; 370,103 scheduler states (19724 ms)
+      violations: nothing
+  ≤4: 255,956 states reached, 710,810 step runs
+      order check: 660,541 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤4: 118,916,805,223,424 timelines (complete); with every net.read.eintr draw 0: 42,828,335,401; longest: 383 iterations (bound 6000: never reached), 358 decisions; 1,070,474 scheduler states (49733 ms)
+      violations: nothing
+  ≤5: 461,356 states reached, 1,416,181 step runs
+      order check: 1,315,019 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤5: 29,577,136,869,748,736 timelines (complete); with every net.read.eintr draw 0: 8,465,234,353,447; longest: 386 iterations (bound 6000: never reached), 360 decisions; 2,447,318 scheduler states (100550 ms)
+      violations: nothing
+  ≤6: 733,454 states reached, 2,442,853 step runs
+      order check: 2,268,173 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤6: 6,057,877,513,946,363,904 timelines (complete); with every net.read.eintr draw 0: 1,386,500,271,359,580; longest: 389 iterations (bound 6000: never reached), 362 decisions; 4,798,721 scheduler states (166380 ms)
+      violations: nothing
+Terminated: 15
+
+#### 2. Every schedule (hash-compaction DFS)
+== T3: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked: every schedule, depth first, states kept as 64+64-bit hash pairs (StateHash.lean)
+  logs ordered by client (canonMem)
+  complete: 3,174,744 states seen, 3,174,744 expanded, 14,872,458 step runs, deepest stack 580 (453211 ms)
+  final states: 245 reached (245 distinct hash pairs); with a violation: 0; step violations: 0; deadlocked states: 0
+  collision bound: a uniform 64-bit hash over 3,174,744 states collides with probability below 273191·10⁻¹² (n²/2⁶⁵)
+
+Second run: the same search with the logs' normal form reversed (clients in decreasing order), so every state is hashed
+through a different serialization; a collision in either run would make the two counts differ (unless matched exactly).
+== T3: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked: every schedule, depth first, states kept as 64+64-bit hash pairs (StateHash.lean)
+  logs ordered by client (clients in decreasing order)
+  complete: 3,174,744 states seen, 3,174,744 expanded, 14,872,458 step runs, deepest stack 580 (459724 ms)
+  final states: 245 reached (245 distinct hash pairs); with a violation: 0; step violations: 0; deadlocked states: 0
+  collision bound: a uniform 64-bit hash over 3,174,744 states collides with probability below 273191·10⁻¹² (n²/2⁶⁵)
+
+Third run (the DFS following any blocked step that changes the state; none did): identical.
+== T3: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked: every schedule, depth first, states kept as 64+64-bit hash pairs (StateHash.lean)
+  logs ordered by client (canonMem)
+  complete: 3,174,744 states seen, 3,174,744 expanded, 14,872,458 step runs, deepest stack 580 (553358 ms)
+  final states: 245 reached (245 distinct hash pairs); with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0
+  collision bound: a uniform 64-bit hash over 3,174,744 states collides with probability below 273191·10⁻¹² (n²/2⁶⁵)

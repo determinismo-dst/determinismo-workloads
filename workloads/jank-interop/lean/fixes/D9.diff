@@ -1,0 +1,16 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/oref.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/oref.hpp
+@@ -193,6 +193,13 @@
+     template <typename T>
+     T tag(f64 const d)
+     {
++      /* A NaN whose bits are at or above `max_real` (a negative quiet NaN, such as x86-64's
++       * default NaN 0xFFF8'0000'0000'0000 from ∞-∞ or 0/0) would read back as a tagged integer,
++       * a tagged pointer or neither. Store every such NaN as the canonical quiet NaN. */
++      if(max_real <= std::bit_cast<u64>(d)) [[unlikely]]
++      {
++        return std::bit_cast<T>(std::bit_cast<u64>(std::numeric_limits<f64>::quiet_NaN()));
++      }
+       return std::bit_cast<T>(d);
+     }
+ 

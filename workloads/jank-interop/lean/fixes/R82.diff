@@ -1,0 +1,23 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1002,14 +1002,13 @@
+   object_ref re_matches(object_ref const re, object_ref const s)
+   {
+     std::smatch match_results{};
+-    std::string const search_str{ try_object<obj::persistent_string>(s)->data.c_str() };
+-
+-    std::regex_search(search_str,
+-                      match_results,
+-                      try_object<obj::re_pattern>(re)->regex,
+-                      std::regex_constants::match_continuous);
++    auto const &data(try_object<obj::persistent_string>(s)->data);
++    /* The whole input, past any NUL byte. */
++    std::string const search_str{ data.data(), data.size() };
+ 
+-    if(!match_results.suffix().str().empty())
++    /* As Java's Matcher.matches: the pattern must match the whole input, trying every
++     * alternative; not the first match found from the start, then checked for length. */
++    if(!std::regex_match(search_str, match_results, try_object<obj::re_pattern>(re)->regex))
+     {
+       return {};
+     }

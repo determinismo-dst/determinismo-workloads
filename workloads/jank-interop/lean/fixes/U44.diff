@@ -1,0 +1,17 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+index 652e36f..a4b367b 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+@@ -20,8 +20,12 @@ namespace jank::runtime::obj
+   {
+   }
+ 
++  /* ex-message of a wrapped compiler error is its message (Clojure: the CompilerException's
++   * "Syntax error compiling at ..."), or its kind when it has none. */
+   exception_info::exception_info(error_ref error)
+     : object{ obj_type, obj_behaviors }
++    , message{ error->message.empty() ? jtl::immutable_string{ ::jank::error::kind_str(error->kind) }
++                                      : error->message }
+     , error{ error }
+   {
+   }

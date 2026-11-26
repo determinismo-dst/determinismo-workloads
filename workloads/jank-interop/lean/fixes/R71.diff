@@ -1,0 +1,35 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
+@@ -22,9 +22,31 @@
+ 
+   jtl::immutable_string re_pattern::to_code_string() const
+   {
++    /* As Clojure's print-method for a Pattern: a `"` is escaped (inside \Q...\E, by leaving the
++     * quote first), so the printed form reads back as the same pattern. */
+     jtl::string_builder buff;
+     buff("#\"");
+-    buff(pattern);
++    bool quoted{};
++    auto const size(pattern.size());
++    for(usize i{}; i < size; ++i)
++    {
++      auto const c(pattern[i]);
++      if(c == '\\' && i + 1 < size)
++      {
++        auto const next(pattern[++i]);
++        buff('\\');
++        buff(next);
++        quoted = quoted ? next != 'E' : next == 'Q';
++      }
++      else if(c == '"')
++      {
++        buff(quoted ? "\\E\\\"\\Q" : "\\\"");
++      }
++      else
++      {
++        buff(c);
++      }
++    }
+     buff('"');
+     return buff.release();
+   }

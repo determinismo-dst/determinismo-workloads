@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/equal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/equal.cpp
+@@ -23,6 +23,12 @@
+ 
+   i64 compare(object_ref const l, object_ref const r)
+   {
++    /* As Clojure's Util.compare: an object is equal to itself, comparable or not. */
++    if(l == r)
++    {
++      return 0;
++    }
++
+     if(l.is_some() && r.is_nil())
+     {
+       return 1;

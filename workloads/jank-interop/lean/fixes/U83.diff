@@ -1,0 +1,20 @@
+diff --git a/compiler+runtime/src/cpp/clojure/data/json_native.cpp b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+index 276e973..672a1bf 100644
+--- a/compiler+runtime/src/cpp/clojure/data/json_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+@@ -138,6 +138,15 @@ namespace clojure::data::json_native
+       case nlohmann::json::value_t::string:
+         return make_box<obj::persistent_string>(json.get<std::string>());
+       case nlohmann::json::value_t::number_unsigned:
++        {
++          /* data.json reads an integer past Long's range as a BigInt. */
++          auto const u(json.get<jtl::u64>());
++          if(u > static_cast<jtl::u64>(std::numeric_limits<jtl::i64>::max()))
++          {
++            return make_box(::jank::native_big_integer{ u });
++          }
++          return make_box(static_cast<jtl::i64>(u));
++        }
+       case nlohmann::json::value_t::number_integer:
+         return make_box(json.get<jtl::i64>());
+       case nlohmann::json::value_t::number_float:

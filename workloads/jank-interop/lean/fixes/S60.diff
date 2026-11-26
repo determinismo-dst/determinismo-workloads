@@ -1,0 +1,45 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
+index c2e24e5..c86fc51 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
+@@ -6,6 +6,7 @@
+ #include <jank/runtime/rtti.hpp>
+ #include <jank/runtime/obj/nil.hpp>
+ #include <jank/runtime/core/seq.hpp>
++#include <jank/runtime/core/make_box.hpp>
+ #include <jank/util/fmt.hpp>
+ 
+ namespace jank::runtime::obj
+@@ -46,11 +47,13 @@ namespace jank::runtime::obj
+ 
+   object_ref transient_array_map::get(object_ref const key, object_ref const fallback) const
+   {
++    assert_active();
+     return data.find(key).unwrap_or(fallback);
+   }
+ 
+   object_ref transient_array_map::find(object_ref const key) const
+   {
++    assert_active();
+     auto const res(data.find(key));
+     if(res.is_some())
+     {
+@@ -61,6 +64,7 @@ namespace jank::runtime::obj
+ 
+   bool transient_array_map::contains(object_ref const key) const
+   {
++    assert_active();
+     return data.find(key).is_some();
+   }
+ 
+@@ -152,7 +156,9 @@ namespace jank::runtime::obj
+   {
+     if(!active)
+     {
+-      throw std::runtime_error{ "transient used after it's been made persistent" };
++      /* An object, as Clojure's IllegalAccessError is one, so (catch object_ref …) and
++       * clojure.test's thrown? see it. */
++      throw make_box("transient used after it's been made persistent").erase();
+     }
+   }
+ }

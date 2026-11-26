@@ -1,0 +1,32 @@
+diff --git a/compiler+runtime/src/cpp/jank/read/lex.cpp b/compiler+runtime/src/cpp/jank/read/lex.cpp
+index 930f5a8..39da946 100644
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -1,3 +1,4 @@
++#include <limits>
+ #include <iostream>
+ #include <iomanip>
+ 
+@@ -1122,6 +1123,22 @@ namespace jank::read::lex
+             }
+             if(found_M)
+             {
++              /* Clojure's BigDecimal takes only an exponent that fits in an int ("Exponent
++               * overflow"); boost reads it with atoll and wraps it to 32 bits. */
++              for(auto i{ number_start }; i < number_end; ++i)
++              {
++                if(file[i] == 'e' || file[i] == 'E')
++                {
++                  errno = 0;
++                  auto const exponent{ std::strtoll(file.data() + i + 1, nullptr, 10) };
++                  if(errno == ERANGE || exponent > std::numeric_limits<int>::max()
++                     || exponent < std::numeric_limits<int>::min())
++                  {
++                    return error::lex_invalid_number("Exponent overflow.", { token_start, pos });
++                  }
++                  break;
++                }
++              }
+               auto const number_literal(
+                 found_beginning_negative
+                   ? jtl::immutable_string_view{ file.data() + number_start - 1,

@@ -1,0 +1,18 @@
+diff --git a/compiler+runtime/src/cpp/main.cpp b/compiler+runtime/src/cpp/main.cpp
+index 4aa2fca..7e0c9ad 100644
+--- a/compiler+runtime/src/cpp/main.cpp
++++ b/compiler+runtime/src/cpp/main.cpp
+@@ -90,6 +90,13 @@ namespace jank
+       __rt_ctx->load_module("clojure.core", module::origin::latest).expect_ok();
+     }
+ 
++    /* As clojure.main -m (its initialize does (in-ns 'user)) and as `jank run`: the target
++     * module is required, and -main called, from user. */
++    __rt_ctx->in_ns_var->deref().call(make_box<obj::symbol>("user"));
++    __rt_ctx->intern_var("clojure.core", "refer")
++      .expect_ok()
++      .call(make_box<obj::symbol>("clojure.core"));
++
+     {
+       profile::timer const timer{ "eval user code" };
+       __rt_ctx->load_module(opts.target_module, module::origin::latest).expect_ok();

@@ -1,0 +1,26 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+index 6298d83..25125ee 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+@@ -130,6 +130,21 @@ namespace jank::runtime
+ 
+   bool is_counted(object_ref const o)
+   {
++    /* Clojure's Counted: strings, arrays, and the seqs of hash and sorted maps and sets can
++     * count themselves but aren't Counted. Array map seqs are. */
++    switch(o.get_type())
++    {
++      case object_type::persistent_string:
++      case object_type::array:
++      case object_type::persistent_hash_map_sequence:
++      case object_type::persistent_sorted_map_sequence:
++      case object_type::persistent_hash_set_sequence:
++      case object_type::persistent_sorted_set_sequence:
++        return false;
++      default:
++        break;
++    }
++
+     /* TODO: Port visit_object: countable. */
+     return visit_object(
+       [=](auto const typed_o) -> bool {

@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/read/parse.cpp
++++ b/compiler+runtime/src/cpp/jank/read/parse.cpp
+@@ -1911,7 +1911,8 @@
+ 
+     auto const slash(sv.find('/'));
+     jtl::immutable_string ns, name;
+-    if(slash != jtl::immutable_string::npos)
++    /* `:/` is the keyword named `/`, as the symbol `/` is (see parse_symbol). */
++    if(slash != jtl::immutable_string::npos && sv.size() > 1)
+     {
+       if(resolved)
+       {

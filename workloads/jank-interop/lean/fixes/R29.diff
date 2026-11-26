@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+@@ -3498,7 +3498,10 @@
+         return analyze_cpp_call(o, source.data, current_frame, position, fn_ctx, needs_box);
+       }
+ 
+-      if(source->kind != expression_kind::local_reference)
++      /* A local, or a named fn's own name (a local in Clojure), shadows a macro of the same name:
++       * only a call through a var can be a macro call. */
++      if(source->kind != expression_kind::local_reference
++         && source->kind != expression_kind::recursion_reference)
+       {
+         object_ref expanded{ o };
+         jtl::ptr<error::base> expansion_error{};

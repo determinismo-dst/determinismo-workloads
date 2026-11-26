@@ -1,0 +1,19 @@
+--- a/compiler+runtime/src/cpp/jank/util/escape.cpp
++++ b/compiler+runtime/src/cpp/jank/util/escape.cpp
+@@ -176,14 +176,8 @@
+           sb('\\');
+           sb('"');
+           break;
+-        case '\a':
+-          sb('\\');
+-          sb('a');
+-          break;
+-        case '\v':
+-          sb('\\');
+-          sb('v');
+-          break;
++        /* As Clojure's printer, BEL and VT are written as they are: Clojure's reader has no
++         * `\a` or `\v` escape, so writing them would not read back. */
+         case '\f':
+           sb('\\');
+           sb('f');

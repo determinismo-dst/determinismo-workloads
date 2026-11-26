@@ -1,0 +1,21 @@
+--- a/compiler+runtime/src/cpp/jank/ir/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/ir/processor.cpp
+@@ -109,6 +109,10 @@
+ 
+   jtl::option<identifier> gen(analyze::expr::call_ref const expr, builder &b)
+   {
++    /* As Clojure (and jank's interpreted top level): the operator is evaluated first, then
++     * the arguments from left to right. */
++    auto const fn_ident{ gen(expr->source_expr, b).unwrap() };
++
+     native_vector<identifier> arg_idents;
+     arg_idents.reserve(expr->arg_exprs.size());
+     for(auto const arg_expr : expr->arg_exprs)
+@@ -116,7 +120,6 @@
+       arg_idents.emplace_back(gen(arg_expr, b).unwrap());
+     }
+ 
+-    auto const fn_ident{ gen(expr->source_expr, b).unwrap() };
+     return b.dynamic_call(expr->position, fn_ident, jtl::move(arg_idents));
+   }
+ 

@@ -1,0 +1,55 @@
+== A. index functions: every text of at most 6 code points over a - é € Ａ 😀 U+0301 (137257 texts), complete
+   op | cases | jank≠Clojure | byte indexing | code-point chars | separate | code-point design ≠ Clojure (BMP-only texts) | fix model: cases, ≠ Clojure (BMP-only, ASCII-only) | invalid UTF-8 results today, with R52a
+   count | 137257 | 137130 (99.9%) | 55860 | 81270 | 0 | 81270 (0) | 0, 0 (0, 0) | 0, -
+      first: (count "é"): Clojure 1, jank 2
+   nth | 2241867 | 1766480 (78.7%) | 1358924 | 407556 | 0 | 409464 (0) | 0, 0 (0, 0) | 1601334, -
+      first: (nth "é" 0): Clojure \é, jank \<byte c3>
+   get | 2241867 | 1766480 (78.7%) | 1358924 | 407556 | 0 | 409464 (0) | 0, 0 (0, 0) | 1601334, -
+      first: (get "é" 0): Clojure \é, jank \<byte c3>
+   contains? | 2241867 | 915048 (40.8%) | 915048 | 0 | 0 | 114381 (0) | 0, 0 (0, 0) | 0, -
+      first: (contains? "é" 1): Clojure false, jank true
+   subs/2 | 2241867 | 1775244 (79.1%) | 1347816 | 427428 | 0 | 427428 (0) | 0, 0 (0, 0) | 1029429, 0
+      first: (subs "é" 1): Clojure "", jank "\xa9" (invalid UTF-8)
+   subs/3 | 37606285 | 14439366 (38.3%) | 12351867 | 2087499 | 0 | 2203838 (0) | 0, 0 (0, 0) | 10861290, 0
+      first: (subs "é" 0 1): Clojure "é", jank "\xc3" (invalid UTF-8)
+   seq | 137257 | 81270 (59.2%) | 0 | 81270 | 0 | 81270 (0) | 0, 0 (0, 0) | 0, -
+      first: (seq "😀"): Clojure (\ud83d \ude00), jank (\😀)
+   count of seq | 137257 | 81270 (59.2%) | 0 | 81270 | 0 | 81270 (0) | 0, 0 (0, 0) | 0, -
+      first: (count (seq "😀")): Clojure 2, jank 1
+   int of first | 137257 | 19608 (14.2%) | 0 | 19608 | 0 | 19608 (0) | 0, 0 (0, 0) | 0, -
+      first: (int (first "😀")): Clojure 55357, jank 128512
+   index-of | 5490280 | 2133936 (38.8%) | 1523293 | 610643 | 0 | 624846 (0) | 5490280, 1895908 (624165, 0) | 0, -
+      first: (clojure.string/index-of "" "" -1): Clojure 0, jank nil
+   last-index-of | 5490280 | 1802502 (32.8%) | 1313644 | 488858 | 0 | 576655 (0) | 5490280, 1340165 (493604, 0) | 0, -
+      first: (clojure.string/last-index-of "" "" -1): Clojure nil, jank 0
+   escape | 960799 | 325080 (33.8%) | 325080 | 0 | 0 | 81270 (0) | 960799, 81270 (0, 0) | 0, -
+      first: (clojure.string/escape "é" {\é "X"}): Clojure "X", jank "é"
+   replace "" | 137257 | 137130 (99.9%) | 55860 | 81270 | 0 | 81270 (0) | 137257, 81270 (0, 0) | 137130, -
+      first: (clojure.string/replace "é" "" "-"): Clojure "-é-", jank "-\xc3-\xa9-" (invalid UTF-8)
+   reverse | 137257 | 0 (0.0%) | 0 | 0 | 0 | 0 (0) | 0, 0 (0, 0) | 0, -
+   (= x x) on a string seq | 137257 | 137130 (99.9%) | 0 | 0 | 137130 | 0 (0) | 137257, 0 (0, 0) | 0, -
+      first: (let [x (seq "é")] (= x x)): Clojure true, jank false
+   (= (seq s) (vec s)) | 137257 | 137130 (99.9%) | 0 | 0 | 137130 | 0 (0) | 137257, 0 (0, 0) | 0, -
+      first: (= (seq "é") (vec "é")): Clojure true, jank false
+   hash of (seq s) vs (vec s) | 137257 | 137256 (99.9%) | 0 | 0 | 137256 | 0 (0) | 137257, 0 (0, 0) | 0, -
+      first: (= (hash (seq "a")) (hash (vec "a"))): Clojure true, jank false
+== B. cut strings: every byte string of at most 4 bytes over 10 bytes (11111 strings), complete
+   seq walk past the end (UB): today 862, with R54a 0; "Invalid UTF-8 string.": today 8784, with R54a 8784
+   first: [195]: today undefined behavior (next() went past the end (index 2 of 1 bytes): first() reads out of bounds), R54a (\<byte c3>)
+== C. whitespace: trim/triml/trimr/blank? on every text of at most 4 code points over space a U+001F U+2003 U+00A0 U+3000 é U+2028 (4681 texts), complete
+   18724 cases: jank ≠ Clojure 9920; R59a/R59b ≠ Clojure 0
+   first: (trim "\u001f"): Clojure "", jank "\u001f"
+== D. capitalize: every text of at most 3 code points over a A é É ß Σ σ (400 texts), UTF-8 locale, complete
+   jank ≠ Clojure 299; R61a ≠ Clojure 99, all holding ß or Σ (R60's case mapping): true
+   first: (capitalize "é"): Clojure "É", jank "é"
+   R61a residual: (capitalize "ß"): Clojure "SS", R61a "ß"
+   R61a residual: (capitalize "ßa"): Clojure "SSa", R61a "ßa"
+   R61a residual: (capitalize "ßA"): Clojure "SSa", R61a "ßa"
+   R61a residual: (capitalize "ßé"): Clojure "SSé", R61a "ßé"
+== E. subs agreement conditions over walk A's texts (at most 6 code points), complete
+   (subs s i): 2241867 cases, 0 where agreement ≠ (i < 0 ∨ i ≤ asciiPrefix ∨ i > bytes) [proved: subs1_agrees_iff]
+   (subs s i j): 37606285 cases, 9392 where agreement ≠ (i < 0 ∨ j < i ∨ j > bytes ∨ j ≤ asciiPrefix ∨ (i = j ∧ j ≤ units)) (subs "éaa" 2 3) agrees=true
+== F. compare: every pair of texts of at most 2 code points over walk A's alphabet (57² = 3249 pairs), complete
+   strings: sign differs 142, value differs 3010 (StrA6-1), R57a value differs 0
+   first sign difference: (compare "Ａ" "😀"): Clojure 9956, jank -1
+   characters (BMP pairs, 36): value differs 28, R57b value differs 0

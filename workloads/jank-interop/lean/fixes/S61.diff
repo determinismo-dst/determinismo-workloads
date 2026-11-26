@@ -1,0 +1,37 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/detail/base_persistent_map.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/detail/base_persistent_map.cpp
+index a350d06..4f87086 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/detail/base_persistent_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/detail/base_persistent_map.cpp
+@@ -3,6 +3,7 @@
+ #include <jank/runtime/visit.hpp>
+ #include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/core/seq.hpp>
++#include <jank/runtime/sequence_range.hpp>
+ #include <jank/util/fmt.hpp>
+ 
+ namespace jank::runtime::obj::detail
+@@ -181,6 +182,24 @@ namespace jank::runtime::obj::detail
+ 
+     if(head.get_type() != object_type::persistent_vector)
+     {
++      /* Clojure's APersistentMap.cons also takes a seq of entries (an empty one included),
++       * and assocs each in turn. jank's map entries are two-element vectors. */
++      if(is_seqable(head))
++      {
++        object_ref acc{ ret };
++        for(auto const e : make_sequence_range(head))
++        {
++          if(e.get_type() != object_type::persistent_vector
++             || expect_object<obj::persistent_vector>(e)->count() != 2)
++          {
++            throw std::runtime_error{ util::format("invalid map entry: '{}'", e.to_code_string()) };
++          }
++          auto const entry(expect_object<obj::persistent_vector>(e));
++          acc = runtime::assoc(acc, entry->data[0], entry->data[1]);
++        }
++        return acc;
++      }
++
+       throw std::runtime_error{ util::format("invalid map entry: '{}'",
+                                              runtime::object_type_str(head.get_type())) };
+     }

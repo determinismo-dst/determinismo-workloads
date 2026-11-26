@@ -1,0 +1,17 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..9541e35 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -5630,7 +5630,11 @@
+         ;;     (list* `gen-class :name (.replace (str name) \- \_) :impl-ns name :main true (next gen-class-clause)))
+         references (remove #(= :gen-class (first %)) references)
+         ;ns-effect (clojure.core/in-ns name)
+-        name-metadata (meta name)]
++        ;; The reader's :jank/source position isn't the namespace's metadata (Clojure's
++        ;; reader puts none on the name symbol).
++        name-metadata (let [m (dissoc (meta name) :jank/source)]
++                        (when (seq m)
++                          m))]
+     `(do
+        (clojure.core/in-ns '~name)
+        ~@(when name-metadata

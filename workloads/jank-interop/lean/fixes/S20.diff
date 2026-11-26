@@ -1,0 +1,55 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
+@@ -168,11 +168,24 @@
+     return (o.data < data) - (data < o.data);
+   }
+ 
++  /* An arithmetic result on ratios (Numbers.divide(BigInteger, BigInteger), RatioOps): a
++   * BigInt when it is integral, never a long. ratio::create stays as the reader's (4/2 is 2). */
++  static object_ref arith_result(native_big_integer const &numerator,
++                                 native_big_integer const &denominator)
++  {
++    ratio_data const data{ numerator, denominator };
++    if(data.denominator == 1)
++    {
++      return make_box<big_integer>(data.numerator);
++    }
++    return make_box<ratio>(data);
++  }
++
+   object_ref operator+(ratio_data const &l, ratio_data const &r)
+   {
+     auto const denom{ l.denominator * r.denominator };
+     auto const num{ (l.numerator * r.denominator) + (r.numerator * l.denominator) };
+-    return ratio::create(num, denom);
++    return arith_result(num, denom);
+   }
+ 
+   ratio_data operator+(integer_ref const l, ratio_data const &r)
+@@ -199,7 +212,7 @@
+   {
+     auto const denom{ l.denominator * r.denominator };
+     auto const num{ (l.numerator * r.denominator) - (r.numerator * l.denominator) };
+-    return ratio::create(num, denom);
++    return arith_result(num, denom);
+   }
+ 
+   ratio_data operator-(integer_ref const l, ratio_data const &r)
+@@ -234,7 +247,7 @@
+ 
+   object_ref operator*(ratio_data const &l, ratio_data const &r)
+   {
+-    return ratio::create(l.numerator * r.numerator, l.denominator * r.denominator);
++    return arith_result(l.numerator * r.numerator, l.denominator * r.denominator);
+   }
+ 
+   object_ref operator*(integer_ref const l, ratio_data const &r)
+@@ -269,7 +282,7 @@
+ 
+   object_ref operator/(ratio_data const &l, ratio_data const &r)
+   {
+-    return ratio::create(l.numerator * r.denominator, l.denominator * r.numerator);
++    return arith_result(l.numerator * r.denominator, l.denominator * r.numerator);
+   }
+ 
+   object_ref operator/(integer_ref const l, ratio_data const &r)

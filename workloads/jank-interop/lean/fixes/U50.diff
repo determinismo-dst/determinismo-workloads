@@ -1,0 +1,18 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..c9a35ac 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -4739,7 +4739,12 @@
+         sym->var (ns-publics ns)
+         to-refer (if (= :all (get filters :refer))
+                    (keys sym->var)
+-                   (or (get filters :refer) (get filters :only) (keys sym->var)))]
++                   (or (get filters :refer) (get filters :only) (keys sym->var)))
++        only (or (get filters :refer) (get filters :only))]
++    ;; As Clojure's refer: a given :only or :refer must be sequential.
++    (when (and only (not= :all only) (not (sequential? only)))
++      (throw (ex-info ":only/:refer value must be a sequential collection of symbols"
++                      {:value only})))
+     ; TODO: Loop
+     (reduce (fn [acc sym]
+               (when (not (exclude? sym))

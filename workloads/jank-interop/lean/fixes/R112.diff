@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -818,8 +818,10 @@
+ 
+   object_ref in_ns(object_ref const sym)
+   {
+-    __rt_ctx->current_ns_var->set(__rt_ctx->intern_ns(try_object<obj::symbol>(sym))).expect_ok();
+-    return {};
++    /* As Clojure's in-ns, which returns the namespace. */
++    auto const found_ns(__rt_ctx->intern_ns(try_object<obj::symbol>(sym)));
++    __rt_ctx->current_ns_var->set(found_ns).expect_ok();
++    return found_ns;
+   }
+ 
+   object_ref intern_ns(object_ref const sym)

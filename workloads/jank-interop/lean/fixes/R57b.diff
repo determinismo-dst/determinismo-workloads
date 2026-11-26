@@ -1,0 +1,39 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/character.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/character.cpp
+@@ -96,9 +96,35 @@
+     return compare(*try_object<character>(runtime::detail::untagged(&o)));
+   }
+ 
++  /* The code point of a character's UTF-8 bytes (a stray byte: 0xDC00 + byte). */
++  static i64 code_point(jtl::immutable_string const &d)
++  {
++    if(d.empty())
++    {
++      return 0;
++    }
++    auto const b0(static_cast<u8>(d[0]));
++    usize const n{ b0 < 0x80               ? 1u
++                   : (b0 & 0xE0) == 0xC0 ? 2u
++                   : (b0 & 0xF0) == 0xE0 ? 3u
++                   : (b0 & 0xF8) == 0xF0 ? 4u
++                                         : 0u };
++    if(n == 0 || n > d.size())
++    {
++      return 0xDC00 + b0;
++    }
++    i64 cp{ n == 1 ? b0 : (b0 & (0x7F >> n)) };
++    for(usize k{ 1 }; k < n; ++k)
++    {
++      cp = (cp << 6) | (static_cast<u8>(d[k]) & 0x3F);
++    }
++    return cp;
++  }
++
++  /* java.lang.Character.compareTo: the difference of the two values. */
+   i64 character::compare(character const &s) const
+   {
+-    return data.compare(s.data);
++    return code_point(data) - code_point(s.data);
+   }
+ 
+   i64 character::to_integer() const

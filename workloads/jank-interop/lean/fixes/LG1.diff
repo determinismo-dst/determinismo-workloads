@@ -1,0 +1,373 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -30,7 +30,75 @@
+ 
+     template <typename T>
+     concept typed_object = (behavior::object_like<typename T::value_type>);
++
++    /* Clojure compares and divides numbers as longs and doubles. A native operand is widened
++     * before C++'s usual arithmetic conversions see it: otherwise an unsigned `usize` from
++     * `count` meets a negative number as a huge unsigned one (`(< -1 (count [1]))` is false,
++     * `(max (count [1]) -1)` is -1). A `usize` that wrapped below zero reads as the negative
++     * long it stands for, as boxing it does (convert<T>::into_object). */
++    template <typename T>
++    requires primitive_number<T>
++    [[gnu::always_inline, gnu::flatten, gnu::hot]]
++    auto widen(T const t)
++    {
++      if constexpr(std::is_integral_v<T>)
++      {
++        return static_cast<i64>(t);
++      }
++      else
++      {
++        return static_cast<f64>(t);
++      }
++    }
++
++    /* Clojure's min and max of two primitive numbers: they are compared as numbers, and the
++     * result is the chosen operand itself, so a long next to a double stays a long. */
++    template <typename L, typename R>
++    [[gnu::always_inline, gnu::flatten, gnu::hot]]
++    auto primitive_min(L const l, R const r)
++    {
++      auto const wl{ widen(l) };
++      auto const wr{ widen(r) };
++      if constexpr(std::is_same_v<decltype(wl), decltype(wr)>)
++      {
++        return std::min(wl, wr);
++      }
++      else
++      {
++        if constexpr(std::is_floating_point_v<decltype(wl)>)
++        {
++          if(std::isnan(wl))
++          {
++            return make_box(wl).erase();
++          }
++        }
++        return wl < wr ? make_box(wl).erase() : make_box(wr).erase();
++      }
++    }
+ 
++    template <typename L, typename R>
++    [[gnu::always_inline, gnu::flatten, gnu::hot]]
++    auto primitive_max(L const l, R const r)
++    {
++      auto const wl{ widen(l) };
++      auto const wr{ widen(r) };
++      if constexpr(std::is_same_v<decltype(wl), decltype(wr)>)
++      {
++        return std::max(wl, wr);
++      }
++      else
++      {
++        if constexpr(std::is_floating_point_v<decltype(wl)>)
++        {
++          if(std::isnan(wl))
++          {
++            return make_box(wl).erase();
++          }
++        }
++        return wr < wl ? make_box(wl).erase() : make_box(wr).erase();
++      }
++    }
++
+     template <typename T>
+     concept valid_boxed_math = (jtl::is_same<T, object_ref>
+                                 || jtl::is_any_same<T,
+@@ -354,17 +422,19 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l / typed_r->data).erase(); },
++        [](auto const typed_r, L const l) {
++          return make_box(detail::widen(l) / typed_r->data).erase();
++        },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l / r->data;
++      return detail::widen(l) / r->data;
+     }
+     else
+     {
+-      return l / r;
++      return detail::widen(l) / detail::widen(r);
+     }
+   }
+ 
+@@ -383,17 +453,19 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data / r).erase(); },
++        [](auto const typed_l, R const r) {
++          return make_box(typed_l->data / detail::widen(r)).erase();
++        },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data / r;
++      return l->data / detail::widen(r);
+     }
+     else
+     {
+-      return l / r;
++      return detail::widen(l) / detail::widen(r);
+     }
+   }
+ 
+@@ -402,7 +474,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto div(L const l, R const r)
+   {
+-    return l / r;
++    return detail::widen(l) / detail::widen(r);
+   }
+ 
+   template <typename L, typename R>
+@@ -577,17 +649,18 @@
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_r, L const l) { return l < typed_r->data; },
++      return visit_number_like(
++        [](auto const typed_r, L const l) { return detail::widen(l) < typed_r->data; },
+                                r,
+                                l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l < r->data;
++      return detail::widen(l) < r->data;
+     }
+     else
+     {
+-      return l < r;
++      return detail::widen(l) < detail::widen(r);
+     }
+   }
+ 
+@@ -605,17 +678,18 @@
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data < r; },
++      return visit_number_like(
++        [](auto const typed_l, R const r) { return typed_l->data < detail::widen(r); },
+                                l,
+                                r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data < r;
++      return l->data < detail::widen(r);
+     }
+     else
+     {
+-      return l < r;
++      return detail::widen(l) < detail::widen(r);
+     }
+   }
+ 
+@@ -624,7 +698,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool lt(L const l, R const r)
+   {
+-    return l < r;
++    return detail::widen(l) < detail::widen(r);
+   }
+ 
+   template <typename L, typename R>
+@@ -685,17 +759,18 @@
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_r, L const l) { return l <= typed_r->data; },
++      return visit_number_like(
++        [](auto const typed_r, L const l) { return detail::widen(l) <= typed_r->data; },
+                                r,
+                                l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l <= r->data;
++      return detail::widen(l) <= r->data;
+     }
+     else
+     {
+-      return l <= r;
++      return detail::widen(l) <= detail::widen(r);
+     }
+   }
+ 
+@@ -713,17 +788,18 @@
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data <= r; },
++      return visit_number_like(
++        [](auto const typed_l, R const r) { return typed_l->data <= detail::widen(r); },
+                                l,
+                                r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data <= r;
++      return l->data <= detail::widen(r);
+     }
+     else
+     {
+-      return l <= r;
++      return detail::widen(l) <= detail::widen(r);
+     }
+   }
+ 
+@@ -732,7 +808,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool lte(L const l, R const r)
+   {
+-    return l <= r;
++    return detail::widen(l) <= detail::widen(r);
+   }
+ 
+   template <typename L, typename R>
+@@ -803,20 +879,18 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? make_box(l).erase() : typed_r.erase();
++          return detail::widen(l) < typed_r->data ? make_box(detail::widen(l)).erase() : typed_r.erase();
+         },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r->data));
++      return detail::primitive_min(l, r->data);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_min(l, r);
+     }
+   }
+ 
+@@ -836,20 +910,18 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? typed_l.erase() : make_box(r).erase();
++          return typed_l->data < detail::widen(r) ? typed_l.erase() : make_box(detail::widen(r)).erase();
+         },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l->data), static_cast<C>(r));
++      return detail::primitive_min(l->data, r);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_min(l, r);
+     }
+   }
+ 
+@@ -858,8 +930,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto min(L const l, R const r)
+   {
+-    using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-    return std::min(static_cast<C>(l), static_cast<C>(r));
++    return detail::primitive_min(l, r);
+   }
+ 
+   template <typename L, typename R>
+@@ -930,20 +1001,18 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? typed_r.erase() : make_box(l).erase();
++          return detail::widen(l) < typed_r->data ? typed_r.erase() : make_box(detail::widen(l)).erase();
+         },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r->data));
++      return detail::primitive_max(l, r->data);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_max(l, r);
+     }
+   }
+ 
+@@ -963,20 +1032,18 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? make_box(r).erase() : typed_l.erase();
++          return typed_l->data < detail::widen(r) ? make_box(detail::widen(r)).erase() : typed_l.erase();
+         },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l->data), static_cast<C>(r));
++      return detail::primitive_max(l->data, r);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_max(l, r);
+     }
+   }
+ 
+@@ -985,8 +1052,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto max(L const l, R const r)
+   {
+-    using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-    return std::max(static_cast<C>(l), static_cast<C>(r));
++    return detail::primitive_max(l, r);
+   }
+ 
+   template <typename L>
+@@ -1191,7 +1257,7 @@
+       {
+         i64 res{};
+ 
+-        if(__builtin_add_overflow(l, 1ll, &res))
++        if(__builtin_add_overflow(detail::widen(l), 1ll, &res))
+         {
+           throw make_box("Overflow on increment.").erase();
+         }
+@@ -1269,7 +1335,7 @@
+       {
+         i64 res{};
+ 
+-        if(__builtin_sub_overflow(l, 1ll, &res))
++        if(__builtin_sub_overflow(detail::widen(l), 1ll, &res))
+         {
+           throw make_box("Overflow on increment.").erase();
+         }

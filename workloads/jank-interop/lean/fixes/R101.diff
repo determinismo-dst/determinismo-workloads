@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -612,7 +612,8 @@
+ 
+   object_ref get_method(object_ref const multifn, object_ref const dispatch_val)
+   {
+-    return try_object<obj::multi_function>(multifn)->get_fn(dispatch_val);
++    /* As Clojure's getMethod: nil when no method (and no default) applies. */
++    return try_object<obj::multi_function>(multifn)->get_method(dispatch_val);
+   }
+ 
+   object_ref prefers(object_ref const multifn)

@@ -1,0 +1,30 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -472,15 +472,21 @@
+       [](auto const typed_l, object_ref const r) -> bool {
+         return visit_number_like(
+           [](auto const typed_r, auto const &typed_l) -> bool {
+-            auto const data_l{ to_real(typed_l) };
+-            auto const data_r{ to_real(typed_r->data) };
+-
+-            using C
+-              = std::common_type_t<jtl::decay_t<decltype(data_l)>, jtl::decay_t<decltype(data_r)>>;
++            using LT = std::decay_t<decltype(typed_l)>;
++            using RT = std::decay_t<decltype(typed_r->data)>;
++            /* Numbers.equiv: through doubles only when a double takes part (DoubleOps);
++             * otherwise exactly, as `<` compares (LongOps, BigIntOps, RatioOps, BigDecimalOps). */
++            if constexpr(jtl::is_any_same<LT, f32, f64> || jtl::is_any_same<RT, f32, f64>)
++            {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wfloat-equal"
+-            return static_cast<C>(data_l) == static_cast<C>(data_r);
++              return to_real(typed_l) == to_real(typed_r->data);
+ #pragma clang diagnostic pop
++            }
++            else
++            {
++              return !(typed_l < typed_r->data) && !(typed_r->data < typed_l);
++            }
+           },
+           r,
+           typed_l->data);

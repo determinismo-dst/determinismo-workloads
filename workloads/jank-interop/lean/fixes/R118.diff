@@ -1,0 +1,34 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -3303,7 +3303,10 @@
+           (let [v (deref vv)
+                 result (if (empty? v)
+                          result
+-                         (unreduced (rf result v)))]
++                         ;; clear first, as Clojure does
++                         (do
++                           (vreset! vv [])
++                           (unreduced (rf result v))))]
+             (rf result)))
+          ([result input]
+           (let [pval (deref pv)
+@@ -3314,11 +3317,14 @@
+               (do
+                 (vswap! vv conj input)
+                 result)
+-              (let [v (deref vv)
+-                    ret (rf result v)]
+-                (when-not (reduced? ret)
+-                  (vreset! vv [input]))
+-                ret))))))))
++              (let [v (deref vv)]
++                ;; clear first, as Clojure does: after a reduced result the partition just
++                ;; sent must not be sent again by the completion step
++                (vreset! vv [])
++                (let [ret (rf result v)]
++                  (when-not (reduced? ret)
++                    (vreset! vv [input]))
++                  ret)))))))))
+   ([f coll]
+    (lazy-seq
+      (when-let [s (seq coll)]

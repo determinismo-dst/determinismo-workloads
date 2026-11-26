@@ -1,0 +1,94 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/big_decimal.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/big_decimal.hpp
+@@ -24,6 +24,22 @@
+   bool operator>(native_big_integer const &l, native_big_decimal const &r);
+   bool operator>=(native_big_decimal const &l, native_big_integer const &r);
+   bool operator>=(native_big_integer const &l, native_big_decimal const &r);
++
++  /* A BigDecimal with a double is double arithmetic and a double comparison in Clojure
++   * (Numbers' ops combine to DoubleOps). As non-templates these win over boost's mixed
++   * number/arithmetic operator templates. */
++  f64 operator+(native_big_decimal const &l, f64 r);
++  f64 operator+(f64 l, native_big_decimal const &r);
++  f64 operator-(native_big_decimal const &l, f64 r);
++  f64 operator-(f64 l, native_big_decimal const &r);
++  f64 operator*(native_big_decimal const &l, f64 r);
++  f64 operator*(f64 l, native_big_decimal const &r);
++  f64 operator/(native_big_decimal const &l, f64 r);
++  f64 operator/(f64 l, native_big_decimal const &r);
++  bool operator<(native_big_decimal const &l, f64 r);
++  bool operator<(f64 l, native_big_decimal const &r);
++  bool operator<=(native_big_decimal const &l, f64 r);
++  bool operator<=(f64 l, native_big_decimal const &r);
+ }
+ 
+ namespace jank::runtime::obj
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -4,6 +4,66 @@
+ 
+ namespace jank::runtime
+ {
++  f64 operator+(native_big_decimal const &l, f64 const r)
++  {
++    return l.convert_to<f64>() + r;
++  }
++
++  f64 operator+(f64 const l, native_big_decimal const &r)
++  {
++    return l + r.convert_to<f64>();
++  }
++
++  f64 operator-(native_big_decimal const &l, f64 const r)
++  {
++    return l.convert_to<f64>() - r;
++  }
++
++  f64 operator-(f64 const l, native_big_decimal const &r)
++  {
++    return l - r.convert_to<f64>();
++  }
++
++  f64 operator*(native_big_decimal const &l, f64 const r)
++  {
++    return l.convert_to<f64>() * r;
++  }
++
++  f64 operator*(f64 const l, native_big_decimal const &r)
++  {
++    return l * r.convert_to<f64>();
++  }
++
++  f64 operator/(native_big_decimal const &l, f64 const r)
++  {
++    return l.convert_to<f64>() / r;
++  }
++
++  f64 operator/(f64 const l, native_big_decimal const &r)
++  {
++    return l / r.convert_to<f64>();
++  }
++
++  bool operator<(native_big_decimal const &l, f64 const r)
++  {
++    return l.convert_to<f64>() < r;
++  }
++
++  bool operator<(f64 const l, native_big_decimal const &r)
++  {
++    return l < r.convert_to<f64>();
++  }
++
++  bool operator<=(native_big_decimal const &l, f64 const r)
++  {
++    return l.convert_to<f64>() <= r;
++  }
++
++  bool operator<=(f64 const l, native_big_decimal const &r)
++  {
++    return l <= r.convert_to<f64>();
++  }
++
+   native_big_decimal operator+(native_big_decimal const &l, native_big_integer const &r)
+   {
+     return l + native_big_decimal(r.str());

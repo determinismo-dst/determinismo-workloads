@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -290,8 +290,10 @@
+ 
+     if(throw_on_eof && eof_found)
+     {
+-      throw std::runtime_error{ "EOF was reached while reading. To override this behavior, provide "
+-                                "a value for the EOF case via the `:eof` reader option." };
++      /* Thrown as an object, as Clojure's reader throws an exception any catch sees. */
++      throw make_box("EOF was reached while reading. To override this behavior, provide "
++                     "a value for the EOF case via the `:eof` reader option.")
++        .erase();
+     }
+ 
+     return ret;

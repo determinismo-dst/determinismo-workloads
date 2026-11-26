@@ -1,0 +1,50 @@
+# Standalone check of the fixes' logic: .r6-scratch/str/extract.py copies the changed functions verbatim from the fixed
+# copies (.r6-scratch/str/fix/) into cpp/harness_fns.inc; cpp/harness.cpp checks them against Clojure 1.12.0's values.
+# clang++ -std=c++20 -Wall -Wextra (no warnings), and again with -fsanitize=address,undefined: 0 failures, no reports.
+compare e-acute ""                           got 1 want 1 ok
+compare e-acute e                            got 132 want 132 ok
+compare U+FF21 U+1F600                       got 9956 want 9956 ok
+compare U+1F600 U+FF21                       got -9956 want -9956 ok
+compare U+1F600 U+1F601                      got -1 want -1 ok
+compare ab a                                 got 1 want 1 ok
+compare a c                                  got -2 want -2 ok
+compare euro e-acute                         got 8131 want 8131 ok
+compare a e-acute                            got -136 want -136 ok
+compare e-acute ab                           got 136 want 136 ok
+compare e-acute e-grave                      got 1 want 1 ok
+compare equal                                got 0 want 0 ok
+compare U+1F600a U+1F600                     got 1 want 1 ok
+compare cut C3 vs e-acute (unequal)          got 1 want 1 ok
+char compare e-acute e                       got 132 want 132 ok
+char compare a c                             got -2 want -2 ok
+index-of a a -1                              got 0 want 0 ok
+index-of a "" 5                              got 1 want 1 ok
+index-of abc "" 2                            got 2 want 2 ok
+index-of a b 5                               got -1 want -1 ok
+index-of a a -3                              got 0 want 0 ok
+index-of aaa a 2^32+1 (unchecked-int)        got 1 want 1 ok
+last-index-of aa a -1                        got -1 want -1 ok
+last-index-of a "" 5                         got 1 want 1 ok
+last-index-of a "" -1                        got -1 want -1 ok
+last-index-of ab b 0                         got -1 want -1 ok
+last-index-of aa a 1                         got 1 want 1 ok
+trim em-space a em-space                     ok
+trim nbsp a (kept)                           ok
+trim U+001F a                                ok
+trim U+3000 a                                ok
+trim a U+2028                                ok
+trim e-acute keeps it                        ok
+trim all spaces                              ok
+blank? em-space                              got 1 want 1 ok
+blank? nbsp                                  got 0 want 0 ok
+blank? U+001F                                got 1 want 1 ok
+blank? cut E2 80                             got 0 want 0 ok
+replace e-acute "" -                         ok
+replace ab "" -                              ok
+capitalize e-acute a                         ok
+capitalize ab                                ok
+subs e-acute 0 1 refused                     got 1 want 1 ok
+subs e-acute 1 2 refused                     got 1 want 1 ok
+subs e-acute-e-grave 2 5 (byte 2 is a boundary) ok
+subs e-acute 0 2                             ok
+failures: 0

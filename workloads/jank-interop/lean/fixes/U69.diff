@@ -1,0 +1,16 @@
+diff --git a/compiler+runtime/src/jank/clojure/walk.jank b/compiler+runtime/src/jank/clojure/walk.jank
+index e891ea0..80f54a9 100644
+--- a/compiler+runtime/src/jank/clojure/walk.jank
++++ b/compiler+runtime/src/jank/clojure/walk.jank
+@@ -7,8 +7,9 @@
+   Recognizes all Clojure data structures. Consumes seqs as with doall."
+   [inner outer form]
+   (cond
+-    (list? form) (outer (apply list (map inner form)))
+-    (seq? form) (outer (doall (map inner form)))
++    ;; Clojure 1.12 keeps a list's or seq's metadata.
++    (list? form) (outer (with-meta (apply list (map inner form)) (meta form)))
++    (seq? form) (outer (with-meta (doall (map inner form)) (meta form)))
+     (coll? form) (outer (into (empty form) (map inner form)))
+     :else (outer form)))
+ 

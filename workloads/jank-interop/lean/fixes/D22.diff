@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1124,6 +1124,9 @@
+       auto const bindings{ ret->bindings };
+       auto const function{ ret->function };
+       __rt_ctx->push_thread_bindings(bindings).expect_ok();
++      /* Frames are keyed by thread id, and a later thread may get this thread's id: pop the
++       * conveyed frame when the thread ends, so no other thread starts from it. */
++      util::scope_exit const pop_bindings{ []() { __rt_ctx->pop_thread_bindings(); } };
+ 
+       try
+       {

@@ -1,0 +1,20 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -6312,6 +6312,17 @@
+      (binding [*in* s#]
+        ~@body)))
+ 
++; The one-argument pr-str above is what core needs before with-out-str exists. This is
++; Clojure's: any number of values, separated by spaces.
++(defn pr-str
++  "pr to a string, returning it"
++  ([] "")
++  ([x]
++   (.to_code_string x))
++  ([x & more]
++   (with-out-str
++     (apply pr x more))))
++
+ (defn prn-str
+   "prn to a string, returning it"
+   [& xs]

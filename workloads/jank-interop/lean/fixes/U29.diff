@@ -1,0 +1,23 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+index 6298d83..701934b 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+@@ -667,7 +667,8 @@ namespace jank::runtime
+ 
+         if(typed_o.has_behavior(object_behavior::indexable))
+         {
+-          return typed_o.nth(idx);
++          /* The truncated index, as Clojure's RT.nth(Object, int) receives it: (nth v 1.5) is (nth v 1). */
++          return typed_o.nth(make_box(index));
+         }
+         else if(typed_o.has_behavior(object_behavior::seqable) && behavior::sequential<T>)
+         {
+@@ -710,7 +711,7 @@ namespace jank::runtime
+ 
+         if(typed_o.has_behavior(object_behavior::indexable))
+         {
+-          return typed_o.nth(idx, fallback);
++          return typed_o.nth(make_box(index), fallback);
+         }
+         else if(typed_o.has_behavior(object_behavior::seqable) && behavior::sequential<T>)
+         {

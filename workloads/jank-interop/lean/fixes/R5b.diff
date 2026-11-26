@@ -1,0 +1,36 @@
+--- a/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+@@ -146,6 +146,12 @@
+           jtl::string_builder sb;
+           sb(o.to_real());
+           return sb.release();
++        }
++        /* -9223372036854775808 isn't a C++ literal: 9223372036854775808 fits no signed type. */
++        if(auto const i{ dyn_cast<obj::integer>(o) };
++           i.is_some() && i->data == std::numeric_limits<i64>::min())
++        {
++          return "(-9223372036854775807L - 1)";
+         }
+         return o.to_code_string();
+       }
+@@ -278,7 +284,19 @@
+           }
+           else if constexpr(jtl::is_any_same<T, obj::integer, obj::small_integer>)
+           {
+-            if(!is_boxed)
++            /* -9223372036854775808 isn't a C++ literal: 9223372036854775808 fits no signed type. */
++            if(static_cast<i64>(typed_o->data) == std::numeric_limits<i64>::min())
++            {
++              if(is_boxed)
++              {
++                util::format_to(buffer, "_jank_int(-9223372036854775807L - 1)");
++              }
++              else
++              {
++                util::format_to(buffer, "(-9223372036854775807L - 1)");
++              }
++            }
++            else if(!is_boxed)
+             {
+               util::format_to(buffer, "{}", typed_o->data);
+             }

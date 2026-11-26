@@ -1,0 +1,45 @@
+--- a/compiler+runtime/include/cpp/jtl/immutable_string.hpp
++++ b/compiler+runtime/include/cpp/jtl/immutable_string.hpp
+@@ -632,14 +632,40 @@
+     }
+ 
+     /*** Miscellaneous predicates. ***/
++    /* java.lang.Character.isWhitespace on each code point (clojure.string/blank?). Every non-ASCII
++     * whitespace character is 3 bytes: U+1680, U+2000-U+2006, U+2008-U+200A, U+2028, U+2029,
++     * U+205F, U+3000. */
+     constexpr bool is_blank() const noexcept
+     {
+-      for(auto const c : *this)
++      auto const d(data());
++      auto const length(size());
++      for(size_type i{}; i < length;)
+       {
+-        if(!std::isspace(c))
++        auto const c(static_cast<unsigned char>(d[i]));
++        if(c < 0x80)
++        {
++          if(!((c >= 0x09 && c <= 0x0D) || (c >= 0x1C && c <= 0x20)))
++          {
++            return false;
++          }
++          ++i;
++          continue;
++        }
++        if((c & 0xF0) != 0xE0 || length - i < 3
++           || (static_cast<unsigned char>(d[i + 1]) & 0xC0) != 0x80
++           || (static_cast<unsigned char>(d[i + 2]) & 0xC0) != 0x80)
++        {
++          return false;
++        }
++        auto const cp((static_cast<unsigned>(c & 0x0Fu) << 12)
++                      | (static_cast<unsigned>(static_cast<unsigned char>(d[i + 1]) & 0x3Fu) << 6)
++                      | static_cast<unsigned>(static_cast<unsigned char>(d[i + 2]) & 0x3Fu));
++        if(!(cp == 0x1680 || (cp >= 0x2000 && cp <= 0x2006) || (cp >= 0x2008 && cp <= 0x200A)
++             || cp == 0x2028 || cp == 0x2029 || cp == 0x205F || cp == 0x3000))
+         {
+           return false;
+         }
++        i += 3;
+       }
+       return true;
+     }

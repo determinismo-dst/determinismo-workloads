@@ -1,0 +1,20 @@
+--- a/compiler+runtime/src/cpp/jank/jit/processor_dynamic.cpp
++++ b/compiler+runtime/src/cpp/jank/jit/processor_dynamic.cpp
+@@ -943,8 +943,15 @@
+ 
+ 
+       auto const locked_interpreter{ prc.interpreter.lock() };
+-      llvm::cantFail(
+-        static_cast<clang::Interpreter &>(**locked_interpreter).LoadDynamicLibrary(path.data()));
++      /* dlopen can fail (a text file that isn't an ld script, an ELF it refuses, a missing
++       * file), so this is an error to report, not one to assume away with cantFail. */
++      if(auto err{
++           static_cast<clang::Interpreter &>(**locked_interpreter).LoadDynamicLibrary(path.data()) })
++      {
++        throw std::runtime_error{ util::format("Unable to load the dynamic library `{}`: {}",
++                                               path,
++                                               llvm::toString(jtl::move(err))) };
++      }
+     }
+   }
+ 

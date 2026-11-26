@@ -1,0 +1,14 @@
+if: 36 native sources, 2592 (then, else, taken) cases, complete
+  differ: 934; of them with an unsigned common type narrower than usize (new): 156; with R23.diff: 360; with R23.diff and the source switches (P6, R122, P7): 0
+    e.g. ((fn [c] (if c -2 (hash 0))) true): Clojure -2, jank 4294967294 (common type unsigned int (u32, uhash))
+    e.g. ((fn [c] (if c -2 (hash 1))) true): Clojure -2, jank 4294967294 (common type unsigned int (u32, uhash))
+    e.g. ((fn [c] (if c -2 (hash 2))) true): Clojure -2, jank 4294967294 (common type unsigned int (u32, uhash))
+    e.g. ((fn [c] (if c -2 (hash 2))) false): Clojure -971005196, jank 3323962100 (common type unsigned int (u32, uhash))
+    e.g. ((fn [c] (if c -2 (hash 3))) true): Clojure -2, jank 4294967294 (common type unsigned int (u32, uhash))
+    e.g. ((fn [c] (if c -2 (hash 3))) false): Clojure -1556392013, jank 2738575283 (common type unsigned int (u32, uhash))
+case: 2 branches and a default over 7 native sources, each taken: 1029 cases, complete
+  differ: 336; with R26.diff and the source switches: 0
+    e.g. ((fn [k] (case k 0 -1 1 -1 1.5)) 0): Clojure -1, jank -1.0
+    e.g. ((fn [k] (case k 0 -1 1 -1 1.5)) 1): Clojure -1, jank -1.0
+    e.g. ((fn [k] (case k 0 -1 1 -1 (hash 1))) 0): Clojure -1, jank 4294967295
+    e.g. ((fn [k] (case k 0 -1 1 -1 (hash 1))) 1): Clojure -1, jank 4294967295

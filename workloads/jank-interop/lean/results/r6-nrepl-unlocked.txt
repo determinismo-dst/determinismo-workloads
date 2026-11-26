@@ -1,0 +1,67 @@
+Round 6, area Q (nREPL): T9 and T3 on jank's real capture (no lock: capture.jank start/end swap fd 1 and 2 process-wide).
+T9f: round 3's full judge (R125 shows). T9u, T3u: R125's two properties ("eval output reaches its client", "stdout is restored
+after every eval") set aside (Graph.lean tJudgeNoOut, a copy of round 3's tJudge without them); every other property kept.
+All with the logs ordered by client and the order check at every step taken.
+
+== T9u: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — UNLOCKED (jank's capture), R125's properties set aside: interleavePB timelines counted with steps run on demand
+  logs ordered by client (canonMem), checked against the other order at every step taken
+  ≤0: 209 states reached, 229 step runs
+      order check: 224 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤0: 64 timelines (complete); with every net.read.eintr draw 0: 1; longest: 223 iterations (bound 6000: never reached), 6 decisions; 224 scheduler states (14 ms)
+      violations: nothing
+  ≤1: 9,270 states reached, 10,814 step runs
+      order check: 10,462 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤1: 51,264 timelines (complete); with every net.read.eintr draw 0: 600; longest: 226 iterations (bound 6000: never reached), 208 decisions; 10,813 scheduler states (775 ms)
+      violations: nothing
+  ≤2: 113,202 states reached, 155,121 step runs
+      order check: 149,270 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤2: 18,727,456 timelines (complete); with every net.read.eintr draw 0: 168,651; longest: 229 iterations (bound 6000: never reached), 210 decisions; 165,224 scheduler states (14543 ms)
+      violations: nothing
+  ≤3: 1,095,406 states reached, 1,595,085 step runs
+      order check: 1,527,184 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤3: 4,411,340,832 timelines (complete); with every net.read.eintr draw 0: 31,137,737; longest: 232 iterations (bound 6000: never reached), 212 decisions; 1,750,038 scheduler states (189929 ms)
+      violations: nothing
+
+== T9f: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — on jank's capture (no lock), round 3's full judge: interleavePB timelines counted with steps run on demand
+  logs ordered by client (canonMem), checked against the other order at every step taken
+  ≤0: 209 states reached, 229 step runs
+      order check: 224 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤0: 64 timelines (complete); with every net.read.eintr draw 0: 1; longest: 223 iterations (bound 6000: never reached), 6 decisions; 224 scheduler states (15 ms)
+      violations: nothing
+  ≤1: 9,270 states reached, 10,814 step runs
+      order check: 10,462 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤1: 51,264 timelines (complete); with every net.read.eintr draw 0: 600; longest: 226 iterations (bound 6000: never reached), 208 decisions; 10,813 scheduler states (766 ms)
+      violations: nothing
+  ≤2: 113,202 states reached, 155,121 step runs
+      order check: 149,270 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤2: 18,727,456 timelines (complete); with every net.read.eintr draw 0: 168,651; longest: 229 iterations (bound 6000: never reached), 210 decisions; 165,224 scheduler states (14355 ms)
+      stdout is restored after every eval: 131,904 (eintr 0: 2,061)
+        e.g. fd 1 is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-4")
+      eval output reaches its client: 120,768 (eintr 0: 1,887)
+        e.g. c1-2 eval "*1 (println b)": :out "", the eval printed "2\n"
+== T3u: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked — UNLOCKED (jank's capture), R125's properties set aside: interleavePB timelines counted with steps run on demand
+  logs ordered by client (canonMem), checked against the other order at every step taken
+  ≤0: 335 states reached, 367 step runs
+      order check: 358 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤0: 1,024 timelines (complete); with every net.read.eintr draw 0: 1; longest: 357 iterations (bound 6000: never reached), 10 decisions; 358 scheduler states (23 ms)
+      violations: nothing
+  ≤1: 17,734 states reached, 20,728 step runs
+      order check: 20,020 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤1: 1,303,552 timelines (complete); with every net.read.eintr draw 0: 978; longest: 360 iterations (bound 6000: never reached), 338 decisions; 20,582 scheduler states (1738 ms)
+      violations: nothing
+  ≤2: 283,733 states reached, 377,781 step runs
+      order check: 362,869 steps and final states run with the logs in the other order; 0 differ; 0 final states report another first violation
+  ≤2: 804,281,856 timelines (complete); with every net.read.eintr draw 0: 468,972; longest: 363 iterations (bound 6000: never reached), 340 decisions; 393,855 scheduler states (40253 ms)
+      violations: nothing
+  ≤3: STOPPED (bound 1,200,000 states or the time left, 1057 s): 1,200,174 states, 1,965,491 scheduler states (247409 ms)
+
+#### T9u under every schedule (hash-compaction DFS, StateHash.lean; stopped at the 1,700-s bound, not resumable):
+== T9u: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — UNLOCKED (jank's capture), R125's properties set aside: every schedule, depth first, states kept as 64+64-bit hash pairs (StateHash.lean)
+  logs ordered by client (canonMem)
+    … 3200000 expanded, 3200283 seen, stack 283 (388444 ms)
+    … 6400000 expanded, 6400248 seen, stack 248 (769840 ms)
+    … 9600000 expanded, 9600225 seen, stack 225 (1152025 ms)
+    … 12800000 expanded, 12800268 seen, stack 268 (1518569 ms)
+  STOPPED (state or time bound): 14,309,663 states seen, 14,309,376 expanded, 65,713,835 step runs, deepest stack 345 (1703196 ms)
+  final states: 1,046 reached (1046 distinct hash pairs); with a violation: 0; step violations: 0; deadlocked states: 0
+  collision bound: a uniform 64-bit hash over 14,309,663 states collides with probability below 5550205·10⁻¹² (n²/2⁶⁵)

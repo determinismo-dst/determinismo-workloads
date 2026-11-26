@@ -1,0 +1,73 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
+@@ -1,5 +1,7 @@
+ #include <limits>
+ #include <cmath>
++#include <cstdlib>
++#include <string>
+ 
+ #include <jank/runtime/obj/big_decimal.hpp>
+ #include <jank/runtime/obj/ratio.hpp>
+@@ -107,7 +109,61 @@
+ 
+   f64 ratio_data::to_real() const
+   {
+-    return static_cast<f64>(numerator) / static_cast<f64>(denominator);
++    /* Ratio.doubleValue: decimalValue(MathContext.DECIMAL64), the quotient rounded half even
++     * to 16 significant digits, then the nearest double to that decimal. */
++    if(numerator == 0)
++    {
++      return 0.0;
++    }
++    native_big_integer const n{ numerator < 0 ? native_big_integer{ -numerator } : numerator };
++    native_big_integer const ten{ 10 };
++    native_big_integer const low{ boost::multiprecision::pow(ten, 15u) };
++    native_big_integer const high{ boost::multiprecision::pow(ten, 16u) };
++    i64 k{ 16
++           - (static_cast<i64>(n.str().size()) - static_cast<i64>(denominator.str().size())) };
++    native_big_integer q, r, den;
++    while(true)
++    {
++      native_big_integer num{ n };
++      den = denominator;
++      if(k >= 0)
++      {
++        num *= boost::multiprecision::pow(ten, static_cast<unsigned>(k));
++      }
++      else
++      {
++        den *= boost::multiprecision::pow(ten, static_cast<unsigned>(-k));
++      }
++      q = num / den;
++      r = num % den;
++      if(q >= high)
++      {
++        --k;
++      }
++      else if(q < low)
++      {
++        ++k;
++      }
++      else
++      {
++        break;
++      }
++    }
++    native_big_integer const twice{ r * 2 };
++    if(twice > den || (twice == den && q % 2 == 1))
++    {
++      ++q;
++    }
++    if(q == high)
++    {
++      q = low;
++      --k;
++    }
++    std::string text{ numerator < 0 ? "-" : "" };
++    text += q.str();
++    text += 'e';
++    text += std::to_string(-k);
++    return std::strtod(text.c_str(), nullptr);
+   }
+ 
+   i64 ratio_data::to_integer() const

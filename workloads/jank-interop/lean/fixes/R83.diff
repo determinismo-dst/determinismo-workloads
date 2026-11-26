@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/re_matcher.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/re_matcher.cpp
+@@ -8,7 +8,8 @@
+   re_matcher::re_matcher(re_pattern_ref const re, jtl::immutable_string const &s)
+     : object{ obj_type, obj_behaviors }
+     , re{ re }
+-    , match_input{ s.c_str() }
++    /* The whole string: built from c_str() it would end at the first NUL byte. */
++    , match_input{ s.data(), s.size() }
+   {
+   }
+ 

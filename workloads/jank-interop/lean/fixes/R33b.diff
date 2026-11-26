@@ -1,0 +1,375 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -72,9 +72,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -118,9 +116,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -147,9 +143,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -186,9 +180,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -232,9 +224,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -261,9 +251,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -300,9 +288,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -346,9 +332,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -375,9 +359,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -412,9 +394,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -458,9 +438,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -487,9 +465,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     if constexpr(jtl::is_same<L, object_ref>)
+@@ -526,9 +502,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -570,9 +544,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -598,9 +570,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -634,9 +604,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -678,9 +646,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -706,9 +672,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -742,9 +706,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -794,9 +756,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -827,9 +787,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -869,9 +827,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -921,9 +877,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -954,9 +908,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1006,7 +958,7 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't abs a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't abs a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1048,7 +1000,7 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't tan a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't tan a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1071,7 +1023,7 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't sqrt a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't sqrt a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1091,9 +1043,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't pow a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't pow a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -1121,9 +1071,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -1147,9 +1095,7 @@
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     if constexpr(jtl::is_same<L, object_ref>)
+@@ -1205,7 +1151,7 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't increment a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't increment a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1283,7 +1229,7 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't increment a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't increment a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1350,8 +1296,8 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't check if a {} is zero.",
+-                                             detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't check if a {} is zero.",
++                                             detail::type_name(l))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1421,8 +1367,8 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L> && !std::same_as<L, obj::character_ref>)
+     {
+-      throw std::runtime_error{ util::format("Can't convert {} to integer.",
+-                                             detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't convert {} to integer.",
++                                             detail::type_name(l))).erase();
+       return 0;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1454,7 +1400,7 @@
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't convert {} to real.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't convert {} to real.", detail::type_name(l))).erase();
+       return 0.0;
+     }
+     else

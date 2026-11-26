@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp
+@@ -100,7 +100,8 @@
+     auto const s(seq());
+     if(s.is_nil())
+     {
+-      return 1;
++      /* The hash of an empty ordered collection, as for (), [] and every other empty seq. */
++      return hash::mix_collection_hash(1, 0);
+     }
+     return hash::ordered(s.erase());
+   }

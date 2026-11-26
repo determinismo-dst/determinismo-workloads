@@ -1,0 +1,468 @@
+Round 6, area W: strings and characters (exe jank6-str). jank main 94d32623 (upstream-r5/), compared
+with Clojure 1.12.0. Paths are upstream-r5/compiler+runtime/<path>. Every item is a hypothesis from a
+Lean replica re-read against the source; jank was not built or run. Every Clojure value below was run
+on Clojure 1.12.0 (results/r6-str-clojure.txt).
+
+The one-paragraph answer
+- jank strings are UTF-8 bytes (jtl::immutable_string); every function that takes or returns an index
+  counts bytes: count, nth, get, contains?, subs, clojure.string/index-of and last-index-of
+  (persistent_string.cpp, string_native.cpp). jank characters are code points (or whatever bytes they
+  were built from): seq/first/rest/vec/reverse walk code points (persistent_string_sequence.cpp).
+  Clojure counts and walks UTF-16 code units.
+- So there are two design choices: (A) byte indices, (B) code-point characters. LG3 is (A).
+  Round 2's R52 model predicts LG3 exactly (theorem lg3_model): jSubs "é-è" 2 = "-è".
+- (A) and (B) together give R53: jank's (count (seq s)) = (count s) iff s is ASCII (proved).
+- Everything else here is a separate defect inside jank's own model, mostly in functions that walk a
+  string (escape, replace "", trim, capitalize, the string seq's = and hash), each with a local fix
+  (11 diffs written), plus hash and naming defects found on the way (W7, W20).
+
+========================================================================================================
+(1) Deviations
+========================================================================================================
+Test file: .r6-scratch/str/tests.jank (ns jank-lean.strings-r6-test, 20 deftests, ASCII only: non-ASCII
+text written as \u escapes inside strings). Values pass through `identity`. nth/get/contains?/hash/
+first/count are :inline in core.jank, so called directly they compile to cpp/jank.runtime.*; the tests
+that matter also call them through `apply` (the defn). Both reach the same C++ functions here.
+Clojure translation: .r6-scratch/str/clj/jank_lean/strings_r6_test.clj, 20 tests and 38 assertions,
+all pass on 1.12.0. No test is jank-only and none needs native types. No test predicts a hang.
+(A first draft asserted (count (re-seq #"" "é")); that hangs in jank (R81: an empty match repeats
+forever), so it was dropped.)
+
+W1 (LG3; R52's subs) `subs` counts bytes.
+  (subs "é-è" 2): Clojure "è", jank "-è"; (subs "é-è" 0 2): Clojure "é-", jank "é".
+  Path: core.jank subs 1979-1985 -> core.cpp subs 398-422 -> persistent_string.cpp substring 133-155
+  (data.substr(start, end - start), byte offsets).
+  Test vW1-subs-indexes-characters (direct and through apply). Status: LG3 (confirmed by the generated
+  tests); R52 named subs, but b01's subs assertion never reported (the runner kept the first failure).
+  Confidence: high. Cause: design A.
+  Exact shape (proved, subs1_agrees_iff): (subs s i) gives the same answer on both sides iff i < 0, or
+  i <= the length of s's longest ASCII prefix, or i > jank's byte count (both throw). The 3-arity form
+  agrees iff i < 0, j < i, j > bytes, j <= ASCII prefix, or i = j <= units (an empty cut). The one
+  exception is a coincidence where both slices hold the same text from different places, e.g.
+  (subs "éaa" 2 3) is "a" on both sides: 9,392 of 37,606,285 cases at n <= 6 (searched, walk E).
+
+W2 (R52's nth, never reported alone) `nth` of a string returns one byte.
+  (nth "é" 0): Clojure \é, jank a character holding the byte 0xC3. (nth "éa" 2 :nf): Clojure :nf,
+  jank \a. Path: seq.cpp nth 648-696 -> persistent_string.cpp nth 107-126 (make_box<character>(data[i])).
+  Test vW2-nth-of-a-string-is-a-character (inline and apply). Status: extends R52. High. Cause: A.
+
+W3 (R52's get and contains?) (get "éa" 1): Clojure \a, jank the byte 0xA9 as a character;
+  (contains? "é" 1): Clojure false, jank true.
+  Path: persistent_string.cpp get 78-93, contains 95-105. Test vW3-get-and-contains-index-characters.
+  Status: extends R52. High. Cause: A.
+
+W4 (extends R52/R54) A cut makes invalid UTF-8, which the case functions take apart.
+  (clojure.string/upper-case (subs "é" 0 1)): Clojure "É", jank "" (the cut byte 0xC3 is silently
+  dropped). (upper-case (subs "é" 1)): Clojure "", jank throws std::range_error (an uncaught C++
+  exception).
+  Path: util/string.cpp to_uppercase 26-36 -> wstring_convert<codecvt_utf8<wchar_t>>::from_bytes.
+  libstdc++ 15.3.0 (fetched into deps/libstdcxx-15.3.0-codecvt): codecvt.cc read_utf8_code_point 252-
+  marks an incomplete last character as `partial` and a stray continuation byte as `invalid`;
+  locale_conv.h __do_str_codecvt 55-100 returns true for `partial`, and from_bytes 336-347 throws only
+  on `error`. Same for lower-case and capitalize.
+  Test vW4-upper-case-of-a-cut-string. Status: new consequence of R52's cut. This corrects round 2's
+  jUpper, which threw for both (theorems w4_values, w4_round2_model). High.
+  Cause: separate (invalid UTF-8 from a cut; see "cut" under (2)).
+
+W5 (extends R52) (clojure.string/reverse (subs "é" 1)): Clojure "", jank throws "Invalid UTF-8
+  string.". Path: string_native.cpp reverse 24-32 -> utf8.cpp utf8_iterator 79-84 (next_char_size
+  13-36 throws on a continuation byte) / prev_char_size 48-70. Test vW5-reverse-of-a-cut-string. New
+  consequence. High. Cause: separate (cut).
+
+W6 (R54, first test of its own) The seq of a string whose last character is cut walks past the end.
+  (let [s (str "a" (nth "é" 0))] (= (count (seq s)) (count (vec (seq s))))): Clojure true; jank throws
+  a C++ runtime_error.
+  Path: persistent_string_sequence.cpp next 128-138 (n == size: 1 + 2 = 3 != 2, so the walk goes on at
+  index 3), first 122-126 reads s[3] past the end, then substr(3, k) throws "position outside of string"
+  (immutable_string.hpp 162-169), unless next_char_size (utf8.cpp 13-36) throws "Invalid UTF-8 string."
+  first on that byte. count 78-88 stops at 2.
+  Correction to round 2: R54 said only "UB read"; every such walk ends in an exception after a 1-3 byte
+  over-read. So b03's "Invalid UTF-8 string." was the predicted path; it was not unclear.
+  Test vW6-a-cut-string-seq-has-its-count. The cut string comes from nth, so R52's subs plays no part.
+  Status: R54 (test new). High on "throws"; which message depends on the byte after the terminator.
+  Cause: separate.
+
+W7 (new) A character hashes as its code unit in Clojure (Character.hashCode).
+  (hash \a): Clojure 97, jank 1455541201. (hash (first "é")): Clojure 233, jank 958611385.
+  Path: core.jank hash 2476-2486 -> character.cpp to_hash 89-92 -> immutable_string.hpp to_hash 648-660
+  (31*h + byte, then hash::integer: Murmur3). Clojure: Util.hasheq -> o.hashCode() for a Character.
+  Test vW7-a-character-hashes-as-its-code (inline and apply). Status: new (round 1 checked long and
+  string hashes, never characters). High. Cause: separate. A local fix exists (character.cpp to_hash
+  returning the code point); it is not assigned to this area.
+
+W8 (new) (hash "é"): Clojure -1107437598 (Murmur3 of String.hashCode over units), jank 958611385
+  (over the bytes C3 A9). Path: immutable_string.hpp to_hash 648-660. Test vW8-hash-of-a-non-ascii-
+  string. New; ASCII strings agree (round 1). High. Cause: A.
+
+W9 (extends R57: the value, not only the sign) (compare "é" ""): Clojure 1 (units), jank 2 (bytes:
+  static_cast<int>(length - s_length)). (compare "é" "e"): Clojure 132 (0xE9 - 0x65), jank 94
+  (memcmp's 0xC3 - 0x65 on glibc; assumption StrA6-1).
+  Path: core.jank compare 5064-5071 -> core/equal.cpp compare 24-32 -> oref.hpp compare 829-881
+  (no normalization) -> persistent_string.cpp compare 63-71 -> immutable_string.hpp compare 576-584.
+  Test vW9-compare-of-strings-counts-units (first assertion certain). Status: extends R57; round 2's
+  model kept only the sign ("the docstring promises only the sign"), which round 6's rule 5 rejects:
+  Java documents compareTo's value. High.
+  Cause: value A (bytes); R57's sign is B (code-point order vs UTF-16 order).
+
+W10 (extends R57) (compare (first "é") \e): Clojure 132, jank 94 (StrA6-1). character.cpp compare
+  94-102. Test vW10-compare-of-characters-subtracts-units. High. Cause: as W9.
+
+W11 (R58's start handling, never reported alone; b07 stopped at its first assertion)
+  (index-of "a" "a" -1): Clojure 0, jank nil. (last-index-of "aa" "a" -1): Clojure nil, jank 1.
+  (index-of "a" "" 5): Clojure 1, jank nil.
+  Path: string.jank index-of 227-238 / last-index-of 240-251 -> string_native.cpp index_of 257-262
+  (the i64 goes to size_t: -1 is 2^64-1; immutable_string find 281-292 gives npos at or past the
+  end), last_index_of 264-269 (rfind clamps 2^64-1 to the last match).
+  Test vW11-index-of-starts-clamp-as-java. Status: R58. High. Cause: separate.
+
+W12 (extends R78/R62) (clojure.string/split "aéb" #""): Clojure ["a" "é" "b"], jank ["a" "\xC3"
+  "\xA9" "b"]. Path: string_native.cpp split 392-449 (cregex_iterator over bytes); libstdc++'s
+  regex_iterator steps an empty match by one byte (deps/libstdcxx-15.3.0/regex.tcc 556-584).
+  Test vW12-split-on-an-empty-pattern-keeps-characters. Status: extends R78 (a byte regex) and R62 (the
+  same cut as replace ""). High. Cause: separate (regex area; no fix here).
+
+W13 (new; B) A lone surrogate escape. (int (first "\ud83d")): Clojure 55357, jank 63 ("?").
+  Path: read/parse.cpp parse_escaped_string 2007-2020 -> util/escape.cpp unescape 46-68: a high
+  surrogate not followed by \u becomes "?" (sb('?')), and a lone low one goes through to_char(cp, "?"):
+  wcrtomb refuses a surrogate. Test vW13-a-lone-surrogate-escape-is-kept. New. High. Cause: B (UTF-8
+  holds no lone surrogate).
+
+W14 (extends R53; B) (int (first "😀")): Clojure 55357, jank 128512; (count (vec "😀")): 2 vs 1.
+  Path: persistent_string_sequence.cpp first 122-126 (4 bytes), character.cpp to_integer 104-110.
+  Test vW14-int-of-the-first-of-an-emoji. High. Cause: B.
+
+W15 (R64, first test) (int (char 55296)): Clojure 55296, jank throws "Unfinished character: 55296".
+  Path: core.jank char 5795-5798 -> core.cpp to_char 1311-1319 -> character.cpp 57-61 -> utf8.cpp
+  to_char 170-194 (wcrtomb of a surrogate fails). Test vW15-char-of-a-surrogate. High. Cause: B.
+
+W16 (R66 and R64's range, first test) (char -4294967231): Clojure throws, jank \A. (char 128512):
+  Clojure throws ("Value out of range for char"), jank returns the emoji character.
+  Path: utf8.cpp to_char 172 checks only ch > 0x10FFFF, then static_cast<wchar_t> keeps the low 32 bits.
+  Test vW16-char-past-its-range-throws. High. Cause: -4294967231 is separate (a wrap); 128512 is B.
+
+W17 (R65, first test) (namespace (keyword "a/b" "c")): Clojure "a/b", jank "a".
+  Path: core.cpp keyword 521- -> context.cpp intern_keyword 561-583 (joins "a/b" "/" "c") ->
+  symbol.cpp separate 8-20 (splits at the first '/'). Test vW17-keyword-keeps-a-slashed-namespace.
+  High. Cause: separate.
+
+W18 (R67, first test) (namespace (symbol nil "b/c")): Clojure nil, jank "b".
+  Path: core.jank symbol 520-530 (a nil ns calls (symbol o)) -> core.cpp to_unqualified_symbol 84-98 ->
+  symbol.cpp separate. Test vW18-symbol-with-a-nil-namespace. High. Cause: separate.
+
+W19 (new names; U74's class) char-name-string and char-escape-string are not defined in core.jank.
+  (char-name-string (char 32)): Clojure "space"; jank: an unresolved-symbol analysis error (an
+  error_ref, V7). Test vW19-char-name-and-escape-strings (through ev). High. Cause: unported.
+
+W20 (new) Keyword and symbol hashes. (hash :c): Clojure -1763192079, jank 1458033393;
+  (hash :b/c): Clojure -1763191981, jank 45199738; (hash 'b/c): Clojure -122660454, jank 1685731265.
+  13 of the 26 one-letter keywords :a-:z differ (results/r6-str-clojure.txt).
+  Path: hash.cpp combine 67-70 shifts a u32 (`seed >> 2`, a logical shift) where Clojure's
+  Util.hashCombine shifts an int (arithmetic): they differ whenever the name's Murmur3 hash is
+  negative as an int. symbol.cpp to_hash 152-155 also hashes the namespace with hash::string
+  (Murmur3), where Symbol.hasheq takes Util.hash(ns) = ns.hashCode() (String.hashCode). keyword.cpp
+  45-48 adds 0x9e3779b9 on both sides.
+  Test vW20-keyword-and-symbol-hashes. Status: new; round 1's Hash.lean models jank exactly, but no
+  round compared keyword or symbol hashes with Clojure. High (values from the replica of hash.cpp).
+  Cause: separate. Local fixes exist in hash.cpp and symbol.cpp; not assigned to this area.
+  Non-ASCII names add design A on top (bytes are hashed in pairs).
+
+Also checked and agreeing: clojure.string/reverse (Java's StringBuilder.reverse keeps surrogate pairs,
+jank reverses code points: 0 differences in walk A), trim-newline, starts-with?, ends-with?, includes?,
+join, split-lines, replace-first (string/string), replace (char/char), pr-str/print-str/str of
+non-ASCII strings and characters (both print the raw characters), char?/string? boundaries,
+(name :é)/(namespace (keyword "aé/bè")) (the '/' split is ASCII), sort of BMP characters, and
+first/last/rest/vec/into/apply str on BMP text (code point = unit there).
+Not new: (format "%5s" "é") is U65 (jank's format takes no % conversions at all); .charAt and
+other Java interop do not exist in jank (no counterpart to compare); re-quote-replacement is unported
+(R84).
+
+========================================================================================================
+(1b) One design choice, or separate? (the grouping of section 1)
+========================================================================================================
+Design A, byte indices (persistent_string's count/nth/get/contains/substring and string_native's
+index_of/last_index_of all work on jtl::immutable_string offsets): W1 (LG3), W2, W3, W8, the values in
+W9 and W10, and R52 and R58's byte results ((index-of "éa" "a") is 2). In walk A (n <= 6, 137,257
+texts) every disagreement of count/nth/get/contains?/subs/index-of/last-index-of without a
+supplementary character disappears under the code-point design (column "code-point design != Clojure
+(BMP-only texts)": 0 for every op).
+
+Design B, code-point characters (a jank character is a code point; Clojure's is a UTF-16 unit, so an
+emoji is one character in jank and two in Clojure, and a lone surrogate exists only in Clojure): W13,
+W14, W15, W16 (128512), R53's difference from Clojure on emoji, R57's sign (UTF-8 order puts a
+supplementary character after U+E000..U+FFFF; UTF-16 puts it before), R64's surrogates. These remain
+under any fix short of UTF-16 strings (cp_design_supplementary; walk A's residual column: every residual
+holds a supplementary character).
+
+A and B together: R53. jank's (count (seq s)) is the number of code points (seqCount_jstr, proved). It
+equals jank's (count s) iff s is ASCII (seqCount_eq_count_iff), and Clojure's (count (seq s)) iff s has
+no supplementary character (seqCount_eq_clojure_iff).
+
+Separate defects (a function inconsistent with jank's own model). Local fix in brackets:
+- the cut: subs (and nth/get) can split a character, and what follows differs by consumer: W4 (the case
+  functions drop it or throw), W5 (reverse throws), W6/R54 (the seq walks past the end) [R54a; R52a
+  was considered and withdrawn, see (11)];
+- R55, V48: the string seq's = compares its bytes with the other side's characters [R55a];
+- R56: the string seq hashes its raw bytes, not its characters [R56a];
+- R57 value and order [R57a strings, R57b characters: exact Java values];
+- R58/W11: negative or past-the-end starts [R58a];
+- R59: trim/blank? use C isspace [R59a trim, R59b blank?];
+- R60: per-code-point locale case mapping, no SpecialCasing (ß, final sigma) [no local fix written];
+- R61: capitalize upper-cases a byte [R61a];
+- R62: replace "" goes between bytes [R62a]; W12, the same cut in split [regex area];
+- R63: escape looks up bytes [R63a];
+- R64's C-locale part, R66 (the wrap), R65, R67, W7, W19, W20 [local fixes exist; not confirmed or
+  not assigned: described in (11)].
+
+========================================================================================================
+(2) Proofs (no sorry, no native_decide, no new axiom; results/r6-str-axioms.txt: only propext,
+    Classical.choice, Quot.sound)
+========================================================================================================
+Jank/R6/Str/Proofs.lean (on round 2's Jank.StrModel):
+* unitsToCps_cstr / unitsToBytes_cstr ★: for every valid text (scalar values), Clojure's UTF-16 units
+  read back as jank's UTF-8 bytes (surrogate pairs recombine). Every agreement statement rests on it.
+* unitsToBytes_drop_le ★: dropping j units of a valid text leaves at most bytes - j bytes (a cut pair
+  leaves 3 of 4).
+* subs1_agrees_iff ★: for every valid text and every i, jank's (subs s i) agrees with Clojure's iff
+  i < 0 or i <= asciiPrefix s or i > bytes. The "only if" uses the length bound for a passed character
+  and, for a cut surrogate pair, the first byte (a continuation byte vs 0xED).
+* lg3_model: round 2's jSubs predicts LG3 exactly.
+* cp_design_agrees_bmp ★: the code-point design (the smallest design change) gives Clojure's count,
+  nth and subs for every valid text without a supplementary character, at every index;
+  cp_design_supplementary: it still differs on one (count "😀").
+* byte_subs_count_coherent (every byte string: (subs s (count s)) = "") and mixed_design_incoherent
+  ((subs "é" (count "é")) throws if subs alone counted code points).
+Jank/R6/Str/SeqCount.lean:
+* nextCharSize_utf8 ★: next_char_size at the start of every valid character gives its UTF-8 length
+  (lead-byte facts by decide over the finite ranges of c >>> 6, 12, 18).
+* seqCount_jstr ★, seqCount_eq_count_iff ★ (R53 exact), seqCount_eq_clojure_iff ★ (as stated in (1b)).
+Jank/R6/Str/Fixes.lean:
+* jSeqFixed_no_ub ★ (R54a): for every byte string, the fixed walk never goes past the end.
+* jSeq_cut_ub / jSeqFixed_cut: today's walk on "a" + 0xC3 goes past the end; the fixed one returns
+  (\a <C3>).
+* w9_values, w11_values: the predicted values of W9 and W11, and the fixes' values.
+Jank/R6/Str/Cut.lean: w4_values (libstdc++'s partial vs error), w4_round2_model.
+What did not work or was not attempted:
+- The 3-arity subs condition is not an iff (coincidences, above), so it was searched, not proved.
+- R57a's "equal to Java's compareTo for every pair of valid texts" needs decodeLossless (utf8 c) = [c]
+  for every scalar value (bit arithmetic on 4 ranges). Not proved; searched (walk F) and checked in C++.
+- R59a/b, R61a, R62a, R63a and R58a are checked by complete walks only (C, D, A).
+- Nothing about the C++ of the diffs is proved; their logic is checked by a C++ harness (11).
+
+========================================================================================================
+(3) What was replicated (file -> what it mirrors)
+========================================================================================================
+- Jank/R6/Str/Proofs.lean: persistent_string.cpp substring 133-155 and count 179-182 (round 2's jSubs and
+  jCount); Java String.substring/length (cSubs, cCount); the code-point design (cpCount, cpNth, cpSubs).
+- Jank/R6/Str/SeqCount.lean: persistent_string_sequence.cpp count 78-88 with utf8.cpp next_char_size
+  13-36 (round 2's jSeqCount, nextCharSize).
+- Jank/R6/Str/Fixes.lean: each diff's function (jSeqFixed: persistent_string_sequence next 128-138 and
+  next_in_place 140-150 fixed; jankCompare: immutable_string.hpp compare 576-584 with StrA6-1;
+  jankCompareFixed/jankCharCompareFixed: R57a/R57b; jIndexOfFixed/jLastIndexOfFixed: R58a with
+  unchecked-int (Clojure string.clj 331-338, 352-359); jTrimFixed/jBlankFixed: R59a/b;
+  jCapitalizeFixed: R61a; jReplaceEmptyFixed: R62a; jEscapeFixed: R63a; jSubsFixed: the withdrawn R52a).
+- Jank/R6/Str/Cut.lean: libstdc++ 15.3.0 codecvt_utf8<wchar_t> through wstring_convert::from_bytes
+  (codecvt.cc 252-330, 468-475; locale_conv.h 55-100, 336-347), replacing round 2's jUpper decoder.
+- Jank/R6/Str/Search.lean + Run/R6/Str.lean: the walks (8).
+- Hash values (W7, W8, W20): round 1's Jank.Hash (hash.cpp integer, string, combine; immutable_string
+  to_hash; symbol.cpp/keyword.cpp to_hash), evaluated in .r6-scratch/str/lean/h*.lean.
+
+========================================================================================================
+(4) What is not exact
+========================================================================================================
+- memcmp's value (StrA6-1). Only W9's second and W10's assertions use it, and they fail for any value
+  other than 132.
+- Case mapping is round 2's small towupper/towlower table (RB5): a, A, é, É, ß, Σ/σ/ς, ａ/Ａ.
+- W6: which of the two exception texts appears depends on the byte stored after the terminator.
+- R59b is in a header (constexpr is_blank); the harness calls it as a free function.
+- Walk B models the read past the end as `.ub` (round 2's jSeq); in jank it is an over-read, then an
+  exception (W6).
+
+========================================================================================================
+(5) Still left out, and why
+========================================================================================================
+- R60 (SpecialCasing, final sigma, Turkish dotless i): a local fix needs Unicode's SpecialCasing data
+  for the JDK's Unicode version (about 100 unconditional mappings plus Final_Sigma's context). Not
+  written; a partial table would not be a fix.
+- R22 (C locale): the tests run under a UTF-8 locale. Not testable there; not confirmed.
+- jank's nREPL `abbreviate` (nrepl/server/util.jank 4-11) cuts strings by bytes ((subs x 0 n)), so an
+  abbreviated non-ASCII value can end in invalid UTF-8. Noted only (nREPL area; no Clojure counterpart).
+- The count of a string is a usize (LG1's path): (< -1 (count "é")) behaves as LG1 says. That is the
+  num area's item.
+- Regex positions beyond W12 belong to the regex areas (R78-R85, V35, V36).
+
+========================================================================================================
+(6) Assumptions (StrA6-n) and earlier ones replaced
+========================================================================================================
+- StrA6-1: glibc x86-64 memcmp returns the first differing bytes' difference for a 1-byte common length
+  (the movzbl/subl tails of __memcmp_avx2_movbe/__memcmp_evex_movbe). C guarantees only the sign.
+- StrA6-2: the tested jank links libstdc++ 15.3.0 (round 5's pin) and runs under a glibc UTF-8 locale
+  (round 2's RB5 for towupper, wcrtomb, mbrtowc).
+- StrA6-3: GC-allocated objects are zeroed, but a temporary small string's bytes after the terminator
+  are whatever was on the stack. That is why W6 names both exception texts.
+Replaced earlier assumptions:
+- Round 2: "Strings are UTF-8 bytes in jank (documented) ... R53 and R57 reduce to their inconsistency
+  with jank's own byte-based count". Clojure's behaviour is the property (rule 5). The book's note is a
+  note on the deviation, which is why LG3 and W2/W3 are tested now.
+- Round 2, R57: "Only the sign is kept: the docstring promises only negative, zero or positive." Java's
+  compareTo documents its value, and Clojure returns it: W9, W10.
+- Round 2, jUpper/jLower/jCapitalize: "invalid UTF-8 throws". With libstdc++ 15.3.0 only an `error`
+  throws; an incomplete last character is dropped (Cut.lean).
+- Round 2, R54: "UB read" becomes an over-read followed by an exception in every case (W6), so b03's
+  error confirms R54.
+- Round 1: "Long and ASCII-string hashes equal Clojure's." It still holds, but it never covered
+  characters (W7) or keywords and symbols (W20), which differ even for ASCII.
+
+========================================================================================================
+(7) Properties checked, with their sources
+========================================================================================================
+- java.lang.String substring, length, charAt, indexOf(String,int), lastIndexOf(String,int), compareTo,
+  replace(CharSequence,CharSequence), toUpperCase/toLowerCase (SpecialCasing), hashCode: the JDK
+  javadoc, run on the JVM (results/r6-str-clojure.txt).
+- java.lang.Character.isWhitespace, hashCode, compareTo; RT.charCast (char's range 0..0xFFFF).
+- Clojure 1.12.0 source: clojure-ref/src/clj/clojure/string.clj index-of 319-338, last-index-of 340-359
+  (unchecked-int from-index), capitalize 196-205, trim/triml/trimr 235-273, blank? 288-299, escape 301-317; core.clj subs,
+  count, nth, compare; Util.hasheq/hashCombine/hash (Util.java 158-184), Symbol.hasheq (Symbol.java
+  90-93), Keyword.hasheq.
+- jank's own model: persistent_string_sequence is_sequential (its = must agree with the vector of its
+  characters, as seq_ext.hpp 12-35 intends), hash consistent with = (CHAMP: V48).
+
+========================================================================================================
+(8) Search runs (plain enumeration, all complete; results/r6-str-search*.txt)
+========================================================================================================
+- A, the index functions: every text of at most n code points over {a, -, é, €, Ａ, 😀, U+0301}, every
+  index in -1..bytes+1, every (i, j) pair for subs/3, 5 needles x 8 starts for index-of and
+  last-index-of, every key for escape. Complete for n = 4 (2,801 texts), n = 5 (19,608 texts) and
+  n = 6 (137,257 texts; 37,606,285 subs/3 cases, 5,490,280 index-of cases).
+  At n = 6: count differs 137,130 times (55,860 design A, 81,270 B); nth 1,766,480; subs/2 1,775,244;
+  subs/3 14,439,366; index-of 2,133,936; last-index-of 1,802,502; escape 325,080; replace "" 137,130;
+  string-seq = and hash 137,130 / 137,256 (separate). The code-point design's residual on BMP-only
+  texts is 0 for every op. R58a's residual on ASCII texts is 0. R55a, R56a and R63a leave no BMP
+  residual. Invalid UTF-8 handed to the program: subs/3 10,861,290 times (0 under the withdrawn R52a).
+- B, cut strings: every byte string of at most 4 bytes over the 10 bytes of a, é, €, 😀 (11,111
+  strings). Today's walk goes past the end for 862; with R54a, 0.
+- C, whitespace: texts of at most 4 code points over space, a, U+001F, U+2003, U+00A0, U+3000, é,
+  U+2028 (4,681 texts x 4 functions = 18,724 cases). jank differs 9,920 times; R59a/R59b 0.
+- D, capitalize: texts of at most 3 code points over a, A, é, É, ß, Σ, σ (400 texts), UTF-8 locale.
+  jank differs 299 times. R61a differs 99 times, and every one holds ß or Σ (R60).
+- E, subs conditions: as in W1 (n = 4, 5, 6).
+- F, compare: every pair of texts of at most 2 code points over walk A's alphabet (3,249 pairs).
+  Sign differs 142 times, value 3,010 (StrA6-1); R57a 0. Characters (36 BMP pairs): value differs 28;
+  R57b 0.
+Runtime: n = 6 ran inside one job slot within minutes (well under the job's 1,750 s limit); the n = 2 sanity run used 7 MB.
+
+========================================================================================================
+(9) Theorems (★ new for-every-input proofs)
+========================================================================================================
+★ unitsToCps_cstr, ★ unitsToBytes_cstr, ★ unitsToBytes_drop_le, ★ subs1_agrees_iff,
+★ cp_design_agrees_bmp, ★ nextCharSize_utf8, ★ seqCount_jstr, ★ seqCount_eq_count_iff,
+★ seqCount_eq_clojure_iff, ★ jSeqFixed_no_ub; byte_subs_count_coherent (for every byte string);
+lg3_model, cp_design_supplementary, mixed_design_incoherent, jSeq_cut_ub, jSeqFixed_cut, w4_values,
+w4_round2_model, w9_values, w11_values (examples).
+
+========================================================================================================
+(10) Library gaps (sdk/lean untouched)
+========================================================================================================
+- None blocking. The walks are plain complete enumerations (textsOver, byteStrings) with a per-op
+  tally (Tally), not sdk `exhaust`: every case is already minimal at these bounds, and a census needs
+  counts, which `exhaust` (stop at the first counterexample) does not give.
+- Built here: UTF-16 recombination lemmas (unitsToCps_cstr), a lossless UTF-8 decoder (decodeLossless),
+  libstdc++'s from_bytes decoder (fromBytes), and Nat bit facts by `decide` over the small ranges of
+  c >>> k (the lead bytes), which avoids a Nat/BitVec bridge.
+
+========================================================================================================
+(11) Fixes written (fixes/<id>.diff; each applies alone and all 11 apply together to 94d32623,
+     `git -C upstream-r5 apply --check`; upstream-r5 stays clean)
+========================================================================================================
+Confirmed ids among R22, R52-R67: R52 (b01; LG3), R53, R55, R56, R57, R58, R59, R60, R61, R62, R63
+(round-1-2/round-4 evidence), and R54 (b03 failed with the exception W6 now predicts). R22 and
+R64-R67 never ran, so they get tests here (W15-W18) but no fix.
+
+The C++ logic of R57a, R57b, R58a, R59a, R59b, R61a and R62a was extracted verbatim
+(.r6-scratch/str/extract.py) and run against Clojure 1.12.0's values with the Mac's clang++
+-std=c++20 -Wall -Wextra (no warnings), and again with -fsanitize=address,undefined: 46 checks, 0
+failures (results/r6-str-fixes-check.txt). The harness found a bug in R59a's first draft:
+trimr stepped back into a character before an ASCII space. It is fixed in the diff.
+
+- R54a persistent_string_sequence.cpp next/next_in_place: `n >= size` ends the walk.
+  Test vW6. Read-checked: count already uses `<`; first() is never reached past the end.
+  Build must check: jank's sequence tests. Coherent: yes.
+- R55a persistent_string_sequence.cpp equal: runtime::sequence_equal(this, o), comparing the characters
+  the seq yields. Tests b04 (both assertions), v48.
+  Read-checked: sequence_equal (seq.cpp 881-) takes `l == r` first, then requires both sequential,
+  then compares elements by runtime::equal. It never calls back into this equal. untagged(this) and
+  untagged(&o) convert to object_ref as in seq() and seq_ext.hpp. Coherent: =, hash and CHAMP now
+  agree.
+- R56a persistent_string_sequence.cpp to_hash: hash::ordered(untagged(this)), the hash of a vector of
+  the same characters. Test b05.
+  Read-checked: hash.cpp ordered(oref) 156-172 walks make_sequence_range and calls visit(e) ->
+  character to_hash; persistent_vector hashes the same way. Coherent.
+- R57a persistent_string.cpp compare(persistent_string): UTF-16 code units as String.compareTo
+  (stray bytes become 0xDC00+b, so compare is 0 only for equal bytes). Tests b06, vW9.
+  Read-checked: only runtime compare (sorted collections, sort) reaches it; immutable_string's own
+  compare and operator< (internal maps) are unchanged. Coherent: yes; the order changes only between
+  supplementary characters and U+E000..U+FFFF.
+- R57b character.cpp compare: the code points' difference (no locale). Test vW10. Coherent.
+- R58a string_native.cpp index_of/last_index_of: Java's start rules after unchecked-int. Test vW11
+  (b07's later assertions too; b07's first, a byte index, stays). Coherent: byte indices unchanged.
+- R59a string_native.cpp trim/triml/trimr: Character.isWhitespace by code point.
+  R59b immutable_string.hpp is_blank: the same rule. Test b08 needs both (trim, then blank?).
+  Read-checked: is_blank's only caller is blank? (string.jank 205). jank's nREPL drops blank
+  :out/:err (handler/eval.jank 41-58), and with R59b that includes output made only of Unicode
+  spaces. Coherent.
+- R61a util/string.cpp capitalize: upper-cases the first character through to_uppercase. Test b10.
+  Read-checked: its only caller is string.jank capitalize 156-164, after to_lowercase. ß first stays
+  ß (R60).
+- R62a string_native.cpp replace (empty match): the replacement goes around characters. Test b11.
+  Supplementary characters stay whole, where Java splits the pair (B).
+- R63a string.jank escape: walks (seq s). Test b12. Coherent with jank's characters; a cut string now
+  goes through the seq (R54a).
+Considered and not written:
+- LG3 / R52 (byte indices): no coherent local fix. A code-point subs beside the byte count breaks
+  (subs s (count s)) (mixed_design_incoherent). It also breaks (subs s (index-of s x)), because
+  index-of returns bytes, and jank's own byte arithmetic: the nREPL's bencode (nth-byte, subs+ in
+  nrepl/server/bencode.jank 3-17, which must stay in bytes) and abbreviate.
+  The smallest design change is code-point indexing everywhere a Clojure program sees an index:
+  persistent_string.cpp count, get, nth, contains, substring (a code-point walk or a cached index);
+  string_native.cpp index_of/last_index_of (code-point starts and results) and replace ""
+  (R62a); string.jank escape (R63a; last-index-of's default (count s) follows); re_matcher's nth on a
+  match (U36). jank-internal byte users (bencode) would switch to an explicit byte API.
+  It gives Clojure's answers on every text without a supplementary character
+  (cp_design_agrees_bmp; walk A's BMP residual 0) and still differs on emoji and lone surrogates.
+  Exact agreement needs UTF-16 indexing, which the rules exclude.
+- R52a (subs refuses a cut inside a character): written and checked, then withdrawn as not coherent.
+  jank's own nREPL abbreviate (nrepl/server/util.jank 4-11) calls (subs x 0 n) with a byte count, so
+  any long non-ASCII value would make it throw, and no Clojure test could pass with it.
+- R53 (seq by bytes, or count by code points): either breaks the other half of the design.
+- R60: see (5).
+- Not confirmed or not assigned, local fixes described only: R66 (utf8.cpp to_char 170-194: reject ch < 0;
+  the 0x10000..0x10FFFF part of R64 is design B); R65 (core.cpp keyword: intern ns and
+  name separately); R67 (core.jank symbol: a nil ns makes an unqualified symbol of the whole name);
+  R22 (decode with jtl instead of mbrtowc); W7 (character.cpp to_hash: the code point); W20 (hash.cpp
+  combine: an arithmetic shift; symbol.cpp: hash ns as String.hashCode).
+Tests: the existing b04, b05, b06, b08, b10, b11, b12 and v48 should pass with the diffs named. Of the
+new ones, vW6, vW9, vW10 and vW11 should pass. vW1-vW5, vW7, vW8 and vW12-vW20 keep failing: they are
+design A/B, or their fixes are out of scope.
+
+========================================================================================================
+(12) Model errors of earlier rounds corrected
+========================================================================================================
+- Round 2 jUpper/jLower/jCapitalize: an incomplete last character is dropped, not thrown
+  (libstdc++ 15.3.0). Corrected in Jank/R6/Str/Cut.lean (fromBytes, jUpper6).
+- Round 2 R54: the read past the end always ends in an exception (substr's position check), so the
+  test's "Invalid UTF-8 string." confirms R54. Walk B keeps the `.ub` label for the over-read.
+- Round 2 R57: the value was dropped; the exact values are in Fixes.lean (jankCompare, javaCompare).
+- Round 1: hash agreement did not cover characters or keywords (W7, W20).
+- Round 2 R52's model was right about subs (lg3_model); only its test never reached the subs assertion.
+
+Files
+- Lean: Jank/R6/Str/Proofs.lean, SeqCount.lean, Fixes.lean, Cut.lean, Search.lean; Run/R6/Str.lean
+  (`lake build jank6-str` succeeds; `lake exe jank6-str 6` reruns everything).
+- Results: results/r6-str-report.txt (this file), r6-str-search.txt (n = 4), r6-str-search-n5.txt,
+  r6-str-search-n6.txt, r6-str-axioms.txt, r6-str-clojure.txt, r6-str-fixes-check.txt.
+- Tests: .r6-scratch/str/tests.jank; Clojure translation .r6-scratch/str/clj/jank_lean/
+  strings_r6_test.clj (20 tests, 38 assertions, 0 failures on 1.12.0).
+- Fixes: fixes/R54a, R55a, R56a, R57a, R57b, R58a, R59a, R59b, R61a, R62a, R63a .diff.
+- Scratch: .r6-scratch/str/ (probes, fixed copies under fix/, the harness sources, the diff helper
+  mkdiff.sh, fixu.py: the tool layer rewrites typed \u escapes, so the files use a placeholder).
+- Fetched (pinned): deps/libstdcxx-15.3.0-codecvt/{locale_conv.h, codecvt.cc} from GCC
+  releases/gcc-15.3.0.

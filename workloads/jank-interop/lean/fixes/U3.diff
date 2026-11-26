@@ -1,0 +1,50 @@
+diff --git a/compiler+runtime/src/cpp/jank/analyze/pass/strip_source_meta.cpp b/compiler+runtime/src/cpp/jank/analyze/pass/strip_source_meta.cpp
+index 71498ff..10552e4 100644
+--- a/compiler+runtime/src/cpp/jank/analyze/pass/strip_source_meta.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/pass/strip_source_meta.cpp
+@@ -1,8 +1,12 @@
++#include <jtl/trait/predicate.hpp>
++
+ #include <jank/analyze/pass/strip_source_meta.hpp>
+ #include <jank/analyze/pass/walk.hpp>
+ #include <jank/analyze/visit.hpp>
+ #include <jank/runtime/core/meta.hpp>
+ #include <jank/runtime/visit.hpp>
++#include <jank/runtime/context.hpp>
++#include <jank/runtime/core/seq.hpp>
+ 
+ namespace jank::analyze::pass
+ {
+@@ -20,16 +24,30 @@ namespace jank::analyze::pass
+ 
+           if constexpr(jtl::is_same<T, expr::primitive_literal>)
+           {
++            static auto const source_kw{
++              runtime::__rt_ctx->intern_keyword("jank/source").expect_ok()
++            };
+             /* TODO: Port visit_object: metadatable. */
+             runtime::visit_object(
+-              [](auto const typed_obj) {
++              [&](auto const typed_obj) {
+                 using O = typename decltype(typed_obj)::value_type;
+ 
+-                if constexpr(runtime::behavior::metadatable<O>)
++                /* References (vars, namespaces, atoms) can't be copied: as before. */
++                if constexpr(jtl::is_any_same<O, runtime::var, runtime::ns, runtime::obj::atom>)
+                 {
+                   runtime::reset_meta(typed_obj,
+                                       runtime::strip_source_from_meta(typed_obj->get_meta()));
+                 }
++                else if constexpr(runtime::behavior::metadatable<O>)
++                {
++                  /* Strip what the reader added, on a copy: a quoted value made at run time
++                   * (eval of (list 'quote v)) keeps its own metadata, as in Clojure. */
++                  auto const meta(typed_obj->get_meta());
++                  if(runtime::contains(meta, source_kw))
++                  {
++                    typed_e->data = typed_obj->with_meta(runtime::strip_source_from_meta(meta));
++                  }
++                }
+               },
+               typed_e->data);
+           }

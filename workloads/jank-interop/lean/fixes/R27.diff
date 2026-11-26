@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+@@ -1945,6 +1945,12 @@
+                         bool const)
+   {
+     auto const pop_macro_expansions{ push_macro_expansions(*this, full_list) };
++
++    /* A fn starts a new recur target: a `recur` in its body targets the fn, even when the fn
++     * is written inside a loop. The enclosing loop's details come back when the fn is done. */
++    auto const old_loop_details{ loop_details };
++    loop_details = none;
++    util::scope_exit const restore_loop_details{ [&]() { loop_details = old_loop_details; } };
+ 
+     auto const length(full_list->count());
+     if(length < 2)

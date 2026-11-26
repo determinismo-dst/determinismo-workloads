@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1326,7 +1326,10 @@
+   obj::exception_info_ref
+   ex_info(jtl::immutable_string const &message, object_ref const data, object_ref const cause)
+   {
+-    auto const ret{ make_box<obj::exception_info>(message, data) };
++    /* As Clojure's ExceptionInfo, nil data is the empty map. */
++    auto const ret{ make_box<obj::exception_info>(
++      message,
++      data.is_nil() ? obj::persistent_array_map::empty().erase() : data) };
+     ret->raw_trace = std::make_unique<cpptrace::raw_trace>(cpptrace::generate_raw_trace());
+     if(cause.is_some())
+     {

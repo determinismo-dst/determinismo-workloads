@@ -1,0 +1,32 @@
+--- a/compiler+runtime/src/cpp/jank/read/parse.cpp
++++ b/compiler+runtime/src/cpp/jank/read/parse.cpp
+@@ -1853,10 +1853,12 @@
+       if(shorthand.is_some() && name.starts_with('%'))
+       {
+         auto const after_percent(name.substr(1));
+-        bool all_digits{ true };
++        /* %n for any n >= 1, as Clojure: only a leading 0 is rejected, so %10 and %20 are
++         * parameters (the analyzer then enforces the parameter limit). */
++        bool all_digits{ after_percent.empty() || after_percent[0] != '0' };
+         for(auto const c : after_percent)
+         {
+-          all_digits &= (std::isdigit(c) != 0) && (c != '0');
++          all_digits &= (std::isdigit(c) != 0);
+         }
+         if(all_digits)
+         {
+@@ -1868,7 +1870,13 @@
+             name = "%1";
+           }
+ 
+-          num = std::strtol(name.c_str() + 1, nullptr, 10);
++          auto const parsed_num{ std::strtol(name.c_str() + 1, nullptr, 10) };
++          if(parsed_num > std::numeric_limits<u8>::max())
++          {
++            return error::parse_invalid_shorthand_function_parameter(
++              { start_token.start, latest_token.end });
++          }
++          num = static_cast<u8>(parsed_num);
+           auto &max_fixed_arity(shorthand.unwrap().max_fixed_arity);
+           if(max_fixed_arity.is_none() || max_fixed_arity.unwrap() < num)
+           {

@@ -1,0 +1,56 @@
+diff --git a/compiler+runtime/src/cpp/jank/read/lex.cpp b/compiler+runtime/src/cpp/jank/read/lex.cpp
+index 930f5a8..c12679e 100644
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -902,17 +902,29 @@ namespace jank::read::lex
+                                  { denominator.expect_ok().start, denominator.expect_ok().end } });
+                 }
+                 auto const &denominator_token(denominator.expect_ok());
+-                native_big_integer numerator{};
+-                if(radix == 8 && *(file.data() + token_start) == '0')
+-                {
+-                  numerator.assign(
+-                    std::string_view{ file.data() + token_start + 1, slash_pos - token_start - 1 });
+-                }
+-                else
+-                {
+-                  numerator.assign(
+-                    std::string_view{ file.data() + token_start, slash_pos - token_start });
+-                }
++                /* Clojure reads both parts of a ratio as decimal (new BigInteger(s)). boost
++                 * reads a leading 0 as octal, so drop the leading zeros first. */
++                auto const decimal([](std::string_view s) {
++                  std::string digits;
++                  if(!s.empty() && (s[0] == '-' || s[0] == '+'))
++                  {
++                    if(s[0] == '-')
++                    {
++                      digits.push_back('-');
++                    }
++                    s.remove_prefix(1);
++                  }
++                  while(s.size() > 1 && s[0] == '0')
++                  {
++                    s.remove_prefix(1);
++                  }
++                  digits.append(s);
++                  native_big_integer ret{};
++                  ret.assign(digits);
++                  return ret;
++                });
++                auto const numerator(
++                  decimal(std::string_view{ file.data() + token_start, slash_pos - token_start }));
+                 if(denominator.expect_ok().kind == token_kind::integer)
+                 {
+                   return ok(token(
+@@ -929,9 +941,7 @@ namespace jank::read::lex
+                     pos,
+                     token_kind::ratio,
+                     { .numerator = numerator,
+-                      /* We need to explicitly construct a string_view here or boost does
+-                       * some weird shit with our number.  */
+-                      .denominator = native_big_integer(std::string_view{
++                      .denominator = decimal(std::string_view{
+                         std::get<lex::big_integer>(denominator_token.data).number_literal }) }));
+                 }
+               }

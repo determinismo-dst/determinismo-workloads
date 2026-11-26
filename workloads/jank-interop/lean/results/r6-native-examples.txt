@@ -1,0 +1,54 @@
+(< -1 (count [0]))  [inlined]
+    Clojure true; jank false; with LG1.diff true
+((fn [x] (< x (count [0]))) -1)  [inlined]
+    Clojure true; jank false; with LG1.diff true
+(apply < [-1 (count [0])])  [fn value]
+    Clojure true; jank true; with LG1.diff true
+(> (count [0]) -1)  [inlined]
+    Clojure true; jank false; with LG1.diff true
+(<= -1 (count [0]))  [inlined]
+    Clojure true; jank false; with LG1.diff true
+(max (count [0]) -1)  [inlined]
+    Clojure 1; jank -1; with LG1.diff 1
+((fn [x] (max (count [0]) x)) -1)  [inlined]
+    Clojure 1; jank -1; with LG1.diff 1
+(min (count [0 0 0]) -1)  [inlined]
+    Clojure -1; jank 3; with LG1.diff -1
+(/ (count [0 0 0]) -1)  [inlined]
+    Clojure -3; jank 0; with LG1.diff -3
+(/ -2 (count [0 0 0]))  [inlined]
+    Clojure -2/3; jank 6148914691236517204; with LG1.diff 0
+(< (int -1) (count [0]))  [inlined]
+    Clojure true; jank false; with LG1.diff true
+(< (bit-and -1 -1) (count [0]))  [inlined]
+    Clojure true; jank false; with LG1.diff true
+(< -1 (alength (long-array 2)))  [inlined]
+    Clojure true; jank false; with LG1.diff true
+(< (hash 2) 0)  [inlined]
+    Clojure true; jank false; with LG1.diff false
+(- (hash 0) 1)  [inlined]
+    Clojure -1; jank 4294967295; with LG1.diff 4294967295
+(* (hash 1) 2)  [inlined]
+    Clojure 2785983112; jank 2785983112; with LG1.diff 2785983112
+(max 1 0.5)  [inlined]
+    Clojure 1; jank 1.0; with LG1.diff 1
+(min 1 2.5)  [inlined]
+    Clojure 1; jank 1.0; with LG1.diff 1
+(apply max [1 1.0])  [fn value]
+    Clojure 1.0; jank 1; with LG1.diff 1
+(+ (float 0.1) 2.5)  [inlined]
+    Clojure 2.6000000014901161; jank 2.6000000000000000; with LG1.diff 2.6000000000000000
+(+ (aget (float-array [0.1]) 0) 1)  [inlined]
+    Clojure 1.1000000014901161; jank 1.1000000238418579; with LG1.diff 1.1000000238418579
+(+ (nil? nil) 1)  [inlined]
+    Clojure throws ClassCastException; jank 2; with LG1.diff 2
+(+ (aget (char-array "a") 0) 1)  [inlined]
+    Clojure throws ClassCastException; jank 98; with LG1.diff 98
+(< (aget (byte-array [-1]) 0) 0)  [inlined]
+    Clojure true; jank false; with LG1.diff false
+(+ 2147483647 1)  [inlined]
+    Clojure 2147483648; jank -2147483648; with LG1.diff -2147483648
+(* (count [0 0 0]) -2)  [inlined]
+    Clojure -6; jank -6; with LG1.diff -6
+(+ (count [0]) -3)  [inlined]
+    Clojure -2; jank -2; with LG1.diff -2

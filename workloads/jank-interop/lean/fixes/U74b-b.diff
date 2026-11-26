@@ -1,0 +1,15 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..f544b14 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -7018,8 +7018,8 @@ fails, attempts to require sym's namespace and retries."
+ (defn indexed?
+   "Return true if coll implements Indexed, indicating efficient lookup by index"
+   [coll]
+-  ;; (instance? clojure.lang.Indexed coll)
+-  (throw (ex-info "TODO: port indexed?"  {})))
++  ;; (instance? clojure.lang.Indexed coll): vectors (map entries are vectors in jank).
++  (vector? coll))
+ 
+ (defn trampoline
+   "trampoline can be used to convert algorithms requiring mutual

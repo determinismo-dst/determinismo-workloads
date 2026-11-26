@@ -1,0 +1,56 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -246,6 +246,32 @@
+             if constexpr(is_float)
+             {
+               return make_box(rem(to_real(typed_l_data), to_real(typed_r->data))).erase();
++            }
++            else if constexpr(is_big_decimal)
++            {
++              /* BigDecimalOps wins over RatioOps (Numbers' combine): a ratio operand becomes a
++               * decimal, not an integer. */
++              auto const to_decimal = [](auto const &v) -> native_big_decimal {
++                if constexpr(std::is_same_v<std::decay_t<decltype(v)>, obj::ratio_data>)
++                {
++                  return native_big_decimal(v.numerator) / native_big_decimal(v.denominator);
++                }
++                else
++                {
++                  return native_big_decimal{ v };
++                }
++              };
++              auto const l_dec{ to_decimal(typed_l_data) };
++              auto const r_dec{ to_decimal(typed_r->data) };
++              if(r_dec == 0)
++              {
++                throw std::runtime_error{ "Division by zero is not permitted." };
++              }
++
++              auto const result{ boost::multiprecision::fmod(abs(l_dec), abs(r_dec)) };
++
++              /* boost::multiprecision::fmod doesn't account for negatives, so we need to do it manually */
++              return make_box<obj::big_decimal>(l_dec < 0 ? -result : result).erase();
+             }
+             else if constexpr(is_ratio)
+             {
+@@ -269,20 +295,6 @@
+                 return rem(l, typed_r->data);
+               }
+             }
+-            else if constexpr(is_big_decimal)
+-            {
+-              if(typed_r->data == 0)
+-              {
+-                throw std::runtime_error{ "Division by zero is not permitted." };
+-              }
+-
+-              auto const result{ boost::multiprecision::fmod(
+-                abs(native_big_decimal{ typed_l_data }),
+-                abs(native_big_decimal{ typed_r->data })) };
+-
+-              /* boost::multiprecision::fmod doesn't account for negatives, so we need to do it manually */
+-              return make_box<obj::big_decimal>(typed_l_data < 0 ? -result : result).erase();
+-            }
+             else if constexpr(is_big_integer)
+             {
+               if(typed_r->data == 0)

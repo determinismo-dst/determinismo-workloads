@@ -1,0 +1,42 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/context.cpp b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+index c4444fc..cf39429 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -6,6 +6,7 @@
+ #include <jank/runtime/core/munge.hpp>
+ #include <jank/runtime/core/meta.hpp>
+ #include <jank/runtime/core/call.hpp>
++#include <jank/runtime/sequence_range.hpp>
+ #include <jank/analyze/processor.hpp>
+ #include <jank/analyze/expr/primitive_literal.hpp>
+ #include <jank/analyze/pass/optimize.hpp>
+@@ -693,13 +694,26 @@ namespace jank::runtime
+ 
+   jtl::string_result<void> context::push_thread_bindings(object_ref const bindings)
+   {
+-    if(bindings.get_type() != object_type::persistent_hash_map)
++    if(bindings.get_type() == object_type::persistent_hash_map)
+     {
+-      return err(util::format("invalid thread binding map (must be hash map): {}",
++      return push_thread_bindings(expect_object<obj::persistent_hash_map>(bindings));
++    }
++
++    /* Clojure's Var.pushThreadBindings takes any map (an array map from `binding`, a sorted
++     * map, ...), so copy its entries into a hash map. */
++    if(!is_map(bindings))
++    {
++      return err(util::format("invalid thread binding map (must be a map): {}",
+                               bindings.to_code_string()));
+     }
+ 
+-    return push_thread_bindings(expect_object<obj::persistent_hash_map>(bindings));
++    auto m(obj::persistent_hash_map::empty());
++    for(auto const e : make_sequence_range(bindings))
++    {
++      auto const entry(e.seq());
++      m = m->assoc(entry.first(), entry.next().first());
++    }
++    return push_thread_bindings(m);
+   }
+ 
+   jtl::string_result<void>

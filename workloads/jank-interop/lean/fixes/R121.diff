@@ -1,0 +1,60 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+@@ -470,44 +470,32 @@
+       m);
+   }
+ 
++  /* As Clojure's get-in: `get` through each key, from any value (get of a value without lookup
++   * is nil, or the fallback), so no keys give back the value itself. */
+   object_ref get_in(object_ref const m, object_ref const keys)
+   {
+-    if(m.has_behavior(object_behavior::get))
++    object_ref ret{ m };
++    for(auto const e : make_sequence_range(keys))
+     {
+-      object_ref ret{ m };
+-      for(auto const e : make_sequence_range(keys))
+-      {
+-        ret = get(ret, e);
+-      }
+-      return ret;
++      ret = get(ret, e);
+     }
+-    else
+-    {
+-      return {};
+-    }
++    return ret;
+   }
+ 
+   object_ref get_in(object_ref const m, object_ref const keys, object_ref const fallback)
+   {
+     static auto const sentinel(make_box<obj::reduced>(jank_true));
+ 
+-    if(m.has_behavior(object_behavior::get))
+-    {
+-      object_ref ret{ m };
+-      for(auto const &e : make_sequence_range(keys))
++    object_ref ret{ m };
++    for(auto const &e : make_sequence_range(keys))
++    {
++      ret = get(ret, e, sentinel);
++      if(ret == sentinel)
+       {
+-        ret = get(ret, e, sentinel);
+-        if(ret == sentinel)
+-        {
+-          return fallback;
+-        }
++        return fallback;
+       }
+-      return ret;
+     }
+-    else
+-    {
+-      return {};
+-    }
++    return ret;
+   }
+ 
+   object_ref find(object_ref const s, object_ref const key)

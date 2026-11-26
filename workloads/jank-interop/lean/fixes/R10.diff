@@ -1,0 +1,36 @@
+--- a/compiler+runtime/src/cpp/jank/read/parse.cpp
++++ b/compiler+runtime/src/cpp/jank/read/parse.cpp
+@@ -1800,7 +1800,9 @@
+     return object_source_info{ make_box<obj::persistent_list>(
+                                  source_to_meta(start_token.start, latest_token.end),
+                                  std::in_place,
+-                                 make_box<obj::symbol>("deref"),
++                                 /* As Clojure's reader: qualified, so no local named `deref`
++                                  * captures it. */
++                                 make_box<obj::symbol>("clojure.core", "deref"),
+                                  val_result.expect_ok().unwrap().ptr)
+                                  .erase(),
+                                start_token,
+--- a/compiler+runtime/test/cpp/jank/read/parse.cpp
++++ b/compiler+runtime/test/cpp/jank/read/parse.cpp
+@@ -1182,7 +1182,7 @@
+           auto const r(p.next());
+           CHECK(equal(r.expect_ok().unwrap().ptr,
+                       make_box<obj::persistent_list>(std::in_place,
+-                                                     make_box<obj::symbol>("deref"),
++                                                     make_box<obj::symbol>("clojure.core", "deref"),
+                                                      make_box<obj::symbol>("foo"))));
+         }
+ 
+@@ -1194,9 +1194,9 @@
+           CHECK(equal(r.expect_ok().unwrap().ptr,
+                       make_box<obj::persistent_list>(
+                         std::in_place,
+-                        make_box<obj::symbol>("deref"),
++                        make_box<obj::symbol>("clojure.core", "deref"),
+                         make_box<obj::persistent_list>(std::in_place,
+-                                                       make_box<obj::symbol>("deref"),
++                                                       make_box<obj::symbol>("clojure.core", "deref"),
+                                                        make_box<obj::symbol>("foo")))));
+         }
+       }

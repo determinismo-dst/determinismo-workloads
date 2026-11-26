@@ -1,0 +1,240 @@
+# Clojure 1.12.0 (JVM, -Dfile.encoding=UTF-8): the area's probes (.r6-scratch/str/probe.clj, probe2.clj) and the translated tests.
+# probe.clj: char literals there were mangled by the tool layer (lines printing '(hash é)' etc. are not valid probes); probe2.clj redoes them.
+
+## probe.clj
+(subs "é-è" 2) => "è"  units=1 cps=1
+(subs "é-è" 0 2) => "é-"  units=2 cps=2
+(subs "é" 0 1) => "é"  units=1 cps=1
+(subs "a😀" 2) => "?"  units=1 cps=1
+(count (subs "a😀" 2)) => 1 
+(int (first (subs "a😀" 2))) => 56832 
+(count "😀") => 2 
+(int (nth "😀" 0)) => 55357 
+(int (first "😀")) => 55357 
+(count (seq "😀")) => 2 
+(hash \a) => 97 
+(hash é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:9:23). 
+(hash "a") => 1455541201 
+(hash "é") => -1107437598 
+(hash :é) => 123053248 
+(hash (quote a)) => -482876059 
+(hash :a) => -2123407586 
+(compare "é" "e") => 132 
+(compare é \e) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:10:31). 
+(compare "é" "") => 1 
+(compare "ab" "a") => 1 
+(compare "a" "c") => -2 
+(compare \a \c) => -2 
+(compare "Ａ" "😀") => 9956 
+(compare "😀" "😁") => -1 
+(compare "😀" "Ａ") => -9956 
+(s/index-of "é-è" "è") => 2 
+(s/last-index-of "é-è" "é") => 0 
+(s/index-of "a" "a" -1) => 0 
+(s/last-index-of "aa" "a" -1) => nil 
+(s/index-of "a" "" 5) => 1 
+(s/index-of "abc" "" 2) => 2 
+(s/last-index-of "a" "" 5) => 1 
+(s/last-index-of "a" "" -1) => nil 
+(s/index-of "a" "b" 5) => nil 
+(s/index-of "a" \a -3) => 0 
+(s/last-index-of "ab" "b" 0) => nil 
+(s/upper-case (subs "é" 0 1)) => "É"  units=1 cps=1
+(s/upper-case (subs "😀" 0 1)) => "?"  units=1 cps=1
+(s/reverse (subs "é" 1)) => ""  units=0 cps=0
+(s/reverse "a😀") => "😀a"  units=3 cps=2
+(s/replace "😀" "" "-") => "-?-?-"  units=5 cps=5
+(s/replace "é" "" "-") => "-é-"  units=3 cps=3
+(s/replace "ab" "" "-") => "-a-b-"  units=5 cps=5
+(s/escape "é" {é "X"}) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:17:13). 
+(s/escape "aéb" {\a "1", \b "2"}) => "1é2"  units=3 cps=3
+(s/capitalize "éa") => "Éa"  units=2 cps=2
+(s/capitalize "ÉA") => "Éa"  units=2 cps=2
+(s/capitalize "ßa") => "SSa"  units=3 cps=3
+(s/split "é" #"") => ["é"] 
+(s/split "ab" #"") => ["a" "b"] 
+(count (re-seq #"" "é")) => 2 
+(count (re-seq #"" "ab")) => 3 
+(s/trim " a ") => "a"  units=1 cps=1
+(s/blank? " ") => true 
+(s/trim " a") => " a"  units=2 cps=2
+(s/blank? " ") => false 
+(s/trim "a") => "a"  units=1 cps=1
+(s/triml "　a") => "a"  units=1 cps=1
+(s/trimr "a ") => "a"  units=1 cps=1
+(s/trim-newline "é\r\n") => "é"  units=1 cps=1
+(s/starts-with? "éa" "é") => true 
+(s/ends-with? "aé" "é") => true 
+(s/includes? "aéb" "éb") => true 
+(s/join "é" ["a" "b"]) => "aéb"  units=3 cps=3
+(s/split-lines "é\na") => ["é" "a"] 
+(s/replace-first "éé" "é" "e") => "eé"  units=2 cps=2
+(s/replace "éaé" é \e) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:21:90). 
+(s/re-quote-replacement "$1") => "\\$1"  units=3 cps=3
+char-escape-string => {\newline "\\n", \tab "\\t", \return "\\r", \" "\\\"", \\ "\\\\", \formfeed "\\f", \backspace "\\b"} 
+char-name-string => {\newline "newline", \tab "tab", \space "space", \backspace "backspace", \formfeed "formfeed", \return "return"} 
+(char-name-string \newline) => "newline"  units=7 cps=7
+(char-escape-string \") => "\\\""  units=2 cps=2
+(s/upper-case "ß") => "SS"  units=2 cps=2
+(s/lower-case "AΣ") => "aς"  units=2 cps=2
+(s/lower-case "Σ") => "σ"  units=1 cps=1
+(s/upper-case "ŉ") => "ʼN"  units=2 cps=2
+(char 233) => \é 
+(char 55357) => \? 
+(int (char 55357)) => 55357 
+(char 128512) => THROWS:java.lang.IllegalArgumentException:Value out of range for char: 128512 
+(char -1) => THROWS:java.lang.IllegalArgumentException:Value out of range for char: -1 
+(char -4294967231) => THROWS:java.lang.IllegalArgumentException:Value out of range for char: -4294967231 
+(str (char 55357) (char 56832)) => "😀"  units=2 cps=1
+(apply str (seq "😀")) => "😀"  units=2 cps=1
+(reverse "a😀") => (\? \? \a) 
+(vec "éa") => [\é \a] 
+(into [] "é") => [\é] 
+(sort "😀Ａ") => (\? \? \Ａ) 
+(sort ["Ａ" "😀"]) => ("😀" "Ａ") 
+(last "aé") => \é 
+(rest "éa") => (\a) 
+(count (rest "éa")) => 1 
+(nth "é" 0) => \é 
+(get "é" 1) => nil 
+(contains? "é" 1) => false 
+(nth "éa" 1) => \a 
+(get "éa" 1) => \a 
+(nth "éa" 2 :nf) => :nf 
+(contains? "éa" 2) => false 
+(pr-str "é") => "\"é\""  units=3 cps=3
+(pr-str é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:28:26). 
+(print-str "é") => "é"  units=1 cps=1
+(str é) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:28:53). 
+(str "é" è) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:28:61). 
+(count (str "?")) => 1 
+(int (first "?")) => 55357 
+(= "?" (str (char 55357))) => true 
+(string? (seq "a")) => false 
+(char? (first "é")) => true 
+(count (name :é)) => 1 
+(namespace :é/b) => "é"  units=1 cps=1
+(name (symbol "é" "è")) => "è"  units=1 cps=1
+(s/index-of "éa" "a") => 1 
+(s/index-of "éa" \a) => 1 
+(s/last-index-of "éa" "a") => 1 
+(format "%5s|" "é") => "    é|"  units=6 cps=6
+(format "%-3s|" "😀") => "😀 |"  units=4 cps=3
+(= (seq "é") (seq "é")) => true 
+(= (seq "é") [é]) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:33:37). 
+(= (hash (seq "é")) (hash [é])) => THROWS:clojure.lang.Compiler$CompilerException:Syntax error compiling at (./.r6-scratch/str/probe.clj:33:75). 
+(let [s (subs "aé" 0 2)] [(count (seq s)) (count (vec (seq s)))]) => [2 2] 
+(let [s "é"] (every? (set s) (seq (subs s 0 1)))) => true 
+(max-key count "é" "ab") => "ab"  units=2 cps=2
+(sort-by count ["é" "ab"]) => ("é" "ab") 
+(s/split "aéb" #"é") => ["a" "b"] 
+(s/split "éaé" #"a") => ["é" "é"] 
+(s/index-of "😀a" "a") => 2 
+(s/last-index-of "😀" "") => 2 
+(subs "😀" 1) => "?"  units=1 cps=1
+(count (subs "😀" 1)) => 1 
+
+## probe2.clj
+(hash \é) => 233 
+(hash (char 233)) => 233 
+(hash (first "é")) => 233 
+(compare \é \e) => 132 
+(compare (first "é") \e) => 132 
+(s/escape "é" {\é "X"}) => "X"  units=1 cps=1
+(s/replace "éaé" \é \e) => "eae"  units=3 cps=3
+(pr-str \é) => "\\é"  units=2 cps=2
+(str \é) => "é"  units=1 cps=1
+(str "é" \è) => "éè"  units=2 cps=2
+(= (seq "é") [\é]) => true 
+(= (hash (seq "é")) (hash [\é])) => true 
+(= (hash (seq "a")) (hash [\a])) => true 
+(hash (seq "a")) => 873615215 
+(hash [\a]) => 873615215 
+(hash "é") => -1107437598 
+(hash "aé") => -869791670 
+(hash :a) => -2123407586 
+(hash :b/c) => -1763191981 
+(hash (quote a)) => -482876059 
+(hash (quote b/c)) => -122660454 
+(hash (keyword "é")) => 123053248 
+(compare \é \è) => 1 
+(compare "é" "è") => 1 
+(compare "€" "é") => 8131 
+(compare "a" "é") => -136 
+(compare "é" "ab") => 136 
+(int (first "é")) => 233 
+(int (first "€")) => 8364 
+(int (first "😀")) => 55357 
+(int \€) => 8364 
+(s/replace "é" "" "-") => "-e-́-"  units=5 cps=5
+(count "é") => 2 
+(count (seq "é")) => 2 
+(s/reverse "éa") => "áe"  units=3 cps=3
+(s/upper-case "é") => "É"  units=2 cps=2
+(s/capitalize "́a") => "́a"  units=2 cps=2
+(sort [\é \e \€ \a]) => (\a \e \é \€) 
+(sort ["é" "e" "€" "a" "Ａ" "😀"]) => ("a" "e" "é" "€" "😀" "Ａ") 
+(sorted-set "Ａ" "😀") => #{"😀" "Ａ"} 
+(first (sorted-set "Ａ" "😀")) => "😀"  units=2 cps=1
+(max "a" "b") => THROWS:java.lang.ClassCastException:class java.lang.String cannot be cast to class java.lang.Number (java.lang.String and java.lang.Number are in module java.base of loader 'bootstrap') 
+(s/escape "a😀" {\a "1"}) => "1😀"  units=3 cps=2
+(s/escape "€" (fn [c] (when (= c \€) "E"))) => "E"  units=1 cps=1
+(pr-str (first "😀")) => "\\?"  units=2 cps=2
+(count (pr-str "?")) => 3 
+(s/index-of "€€" "€" 1) => 1 
+(s/last-index-of "€€" "€") => 1 
+(s/index-of "aé" \é) => 1 
+(s/last-index-of "éaé" \é) => 2 
+(subs "€-" 1) => "-"  units=1 cps=1
+(subs "aé" 0 2) => "aé"  units=2 cps=2
+(= "é" (subs "aé" 1)) => true 
+(s/split "aéb" #"") => ["a" "é" "b"] 
+(s/join (s/split "aé" #"")) => "aé"  units=2 cps=2
+(let [m (re-matcher #"\u00e9" "aé")] (re-find m) (nth m 0)) => "é"  units=1 cps=1
+(re-find #"a.c" "aéc") => "aéc"  units=3 cps=3
+(re-matches #".." "éa") => "éa"  units=2 cps=2
+(re-find #"[\u00e9]" "é") => "é"  units=1 cps=1
+(vec (re-seq #"." "éa")) => ["é" "a"] 
+(count (str (first "😀"))) => 1 
+(str (first "😀") (second "😀")) => "😀"  units=2 cps=1
+(symbol "é") => é 
+(name (keyword "aé/bè")) => "bè"  units=2 cps=2
+(namespace (keyword "aé/bè")) => "aé"  units=2 cps=2
+(char-escape-string (first "\"")) => "\\\""  units=2 cps=2
+(char-name-string (first " ")) => "space"  units=5 cps=5
+(s/upper-case "é") => "É"  units=1 cps=1
+(s/lower-case "É") => "é"  units=1 cps=1
+(s/upper-case "ａ") => "Ａ"  units=1 cps=1
+(s/lower-case "İ") => "i̇"  units=2 cps=2
+(s/upper-case "ǆ") => "Ǆ"  units=1 cps=1
+(s/capitalize "ǆa") => "Ǆa"  units=2 cps=2
+(= \é (first "é")) => true 
+(identical? (first "a") (first "a")) => true 
+
+## keyword and symbol hashes (Clojure), then jank's (the Lean replica of hash.cpp/symbol.cpp/keyword.cpp)
+[-2123407586 1482224470 -1763192079 1972142424 1381269198 -1597136552 1738089905 1109658740 -1386841315 -1397974765 -2146297393 1395893423 1632677161 562130025 -1350007228 151049309 689001697 -471384190 1705939918 -1397832519 -1156634785 21465059 354169001 2099068185 -1757859776 -789527183]
+[-482876059 -1172211299 -122660552 -682293345 -1273166571 43394975 -916345864 -1544777029 253690212 242556762]
+-839573926 -1232035677 1268894036 -1385541733 -1757859896 -1763105499
+
+## .r6-scratch/str/tests.jank translated (.r6-scratch/str/clj/jank_lean/strings_r6_test.clj), run with .r6-scratch/clj-run.sh
+:clojure 1.12.0
+
+Testing jank-lean.strings-r6-test
+
+Ran 20 tests containing 38 assertions.
+0 failures, 0 errors.
+:summary {:test 20, :pass 38, :fail 0, :error 0}
+[-2123407586, 1482224470, 1458033393, 1972142424, 307527374, -523394728, -1483135567, 1109658740, -1386841315,
+ 1823250707, -2146297393, -1825332049, 1632677161, 562130025, -276265404, 151049309, 1762743521, -471384190, 632198094,
+ -1397832519, -1156634785, 1095206883, 354169001, 1025326361, 1463365696, -1863269007]
+[-482876059, -1172211299, -1196402376, -682293345, 1948058901, 1117136799, 157395960, -1544777029, 253690212,
+ -831185062]
+[-839573926, -1232035677, 1268894036, -1385541733, 834335020]
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): 1455541201
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): 958611385
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): 1455541201
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): 1455541201
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): -2123407586
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): -482876059
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): 45199738
+jank model (integer32 97, \é bytes, "a", "a", :a, (quote a), :b/c, hash::string ""): 0

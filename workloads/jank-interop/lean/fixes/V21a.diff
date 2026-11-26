@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/cpp/jank/c_api.cpp
++++ b/compiler+runtime/src/cpp/jank/c_api.cpp
+@@ -434,6 +434,11 @@
+   {
+     object_ref const ns_obj(reinterpret_cast<object *>(ns));
+     object_ref const name_obj(reinterpret_cast<object *>(name));
++    /* A nil namespace makes an unqualified symbol, as clojure.lang.Symbol/intern does. */
++    if(ns_obj.is_nil())
++    {
++      return make_box<obj::symbol>("", name_obj.to_string()).erase().raw();
++    }
+     return make_box<obj::symbol>(ns_obj, name_obj).erase().raw();
+   }
+ 

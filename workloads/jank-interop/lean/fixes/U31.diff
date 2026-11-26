@@ -1,0 +1,16 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp
+index cee5110..712dacf 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp
+@@ -186,6 +186,11 @@ namespace jank::runtime::obj
+       };
+     }
+ 
++    /* Clojure's PersistentList.pop gives EMPTY.withMeta(meta) for a one-element list. */
++    if(data.size() == 1)
++    {
++      return make_box<persistent_list>(meta, data.rest());
++    }
+     return make_box<persistent_list>(data.rest());
+   }
+ }

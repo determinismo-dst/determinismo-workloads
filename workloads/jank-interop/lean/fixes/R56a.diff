@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
+@@ -71,7 +71,8 @@
+ 
+   uhash persistent_string_sequence::to_hash() const
+   {
+-    return hash::ordered(str->data.begin() + index, str->data.end());
++    /* Hash the characters this sequence yields, as a vector of them hashes, not the raw bytes. */
++    return hash::ordered(runtime::detail::untagged(this));
+   }
+ 
+   /* behavior::countable */

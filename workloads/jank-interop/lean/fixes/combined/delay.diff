@@ -1,0 +1,106 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp b/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
+index cee78e0..ee80168 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
+@@ -1,8 +1,11 @@
+ #pragma once
+ 
++#include <atomic>
++#include <exception>
+ #include <mutex>
+ 
+ #include <jank/runtime/object.hpp>
++#include <jank/error.hpp>
+ 
+ namespace jank::runtime::obj
+ {
+@@ -25,8 +28,17 @@ namespace jank::runtime::obj
+ 
+     /*** XXX: Everything here is thread-safe. ***/
+     mutable std::mutex mutex;
++    /* A native exception the body threw. Every later deref rethrows it as it is, as Clojure's
++     * Delay rethrows the same exception. */
++    std::exception_ptr native_error;
+     object_ref val{};
+     object_ref fn{};
+     object_ref error{};
++    /* A read, analysis or load error the body threw, rethrown at every later deref. */
++    jtl::option<error_ref> jank_error;
++    /* Whether the body has run, returning (nil included) or throwing. Written under the mutex,
++     * read by is_realized without it: Clojure's isRealized takes no lock, so the delay's own body
++     * (or a thread it waits on) can ask (realized? d). */
++    std::atomic<bool> realized{};
+   };
+ }
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
+index ba2d550..399af55 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
+@@ -19,36 +19,57 @@ namespace jank::runtime::obj
+   object_ref delay::deref()
+   {
+     std::lock_guard<std::mutex> const lock{ mutex };
+-    if(val.is_some())
++    /* As Clojure's Delay: the body runs once, whatever it returns (nil included) or throws, and
++     * `fn` is cleared once it has run, which is what makes the delay realized. */
++    if(realized)
+     {
++      if(native_error)
++      {
++        std::rethrow_exception(native_error);
++      }
++      if(jank_error.is_some())
++      {
++        throw jank_error.unwrap();
++      }
++      if(error.is_some())
++      {
++        throw error;
++      }
+       return val;
+     }
+ 
+-    if(error.is_some())
+-    {
+-      throw error;
+-    }
+-
+     try
+     {
+       val = fn.call();
+     }
+-    catch(std::exception const &e)
++    catch(std::exception const &)
+     {
+-      error = make_box(e.what());
++      native_error = std::current_exception();
++      realized = true;
++      fn = jank_nil;
+       throw;
+     }
+     catch(object_ref const e)
+     {
+       error = e;
++      realized = true;
++      fn = jank_nil;
+       throw;
+     }
++    catch(error_ref const e)
++    {
++      jank_error = e;
++      realized = true;
++      fn = jank_nil;
++      throw;
++    }
++    realized = true;
++    fn = jank_nil;
+     return val;
+   }
+ 
+   bool delay::is_realized() const
+   {
+-    std::lock_guard<std::mutex> const lock{ mutex };
+-    return val.is_some();
++    return realized.load(std::memory_order_acquire);
+   }
+ }

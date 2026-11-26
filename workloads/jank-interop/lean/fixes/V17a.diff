@@ -1,0 +1,18 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -300,7 +300,14 @@
+   object_ref context::read_string(jtl::immutable_string const &code, object_ref const reader_opts)
+   {
+     /* The Clojure `read` & similar functions always read the first form in a string
+-     * containing more than one form. */
++     * containing more than one form. As in Clojure, reaching the end of the text without a
++     * form throws, unless the options give an `:eof` value (nil included). */
++    static auto const eof_kw{ __rt_ctx->intern_keyword("", "eof").expect_ok() };
++    static auto const eof_throw_kw{ __rt_ctx->intern_keyword("", "eofthrow").expect_ok() };
++    if(is_map(reader_opts) && !runtime::contains(reader_opts, eof_kw))
++    {
++      return read_string(code, runtime::assoc(reader_opts, eof_kw, eof_throw_kw), /* nth_form */ 1);
++    }
+     return read_string(code, reader_opts, /* nth_form */ 1);
+   }
+ 

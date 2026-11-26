@@ -1,0 +1,69 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp b/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp
+index e6dbf9f..a438951 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <jank/runtime/object.hpp>
++#include <jank/runtime/lazy_meta.hpp>
+ #include <jank/runtime/behavior/seqable.hpp>
+ 
+ namespace jank::runtime::obj
+@@ -46,6 +47,11 @@ namespace jank::runtime::obj
+     /* behavior::sequence_like_in_place */
+     object_ref next_in_place() override;
+ 
++    /* behavior::metadatable */
++    iterator_ref with_meta(object_ref const m) const;
++    object_ref get_meta() const;
++    void set_meta(object_ref const o);
++
+     /*** XXX: Everything here is immutable after initialization. ***/
+     /* TODO: Support chunking. */
+     object_ref fn{};
+@@ -54,5 +60,6 @@ namespace jank::runtime::obj
+ 
+     /*** XXX: Everything here is thread-safe. ***/
+     mutable std::atomic<iterator *> cached_next;
++    lazy_meta meta{};
+   };
+ }
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp
+index d044027..d0ab64c 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp
+@@ -2,6 +2,7 @@
+ #include <jank/runtime/core.hpp>
+ #include <jank/runtime/core/call.hpp>
+ #include <jank/runtime/visit.hpp>
++#include <jank/runtime/behavior/metadatable.hpp>
+ 
+ namespace jank::runtime::obj
+ {
+@@ -98,4 +99,25 @@ namespace jank::runtime::obj
+   {
+     return persistent_list::empty();
+   }
++
++  iterator_ref iterator::with_meta(object_ref const m) const
++  {
++    auto const meta(behavior::detail::validate_meta(m));
++    auto const ret(make_box<iterator>(fn, current));
++    /* Share the realized next, as Clojure's Iterate.withMeta does, so fn isn't called again. */
++    ret->cached_next.store(cached_next.load());
++    ret->meta = meta;
++    return ret;
++  }
++
++  object_ref iterator::get_meta() const
++  {
++    return meta.get();
++  }
++
++  void iterator::set_meta(object_ref const o)
++  {
++    auto const new_meta(behavior::detail::validate_meta(o));
++    meta.set(new_meta);
++  }
+ }

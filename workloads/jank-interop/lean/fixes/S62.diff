@@ -1,0 +1,17 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/atom.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/atom.cpp
+index ab72348..5df0e7c 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/atom.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/atom.cpp
+@@ -260,7 +260,10 @@ namespace jank::runtime::obj
+ 
+   void atom::validate(object_ref const val)
+   {
+-    auto const locked_validator(validator.rlock());
+-    do_validate(*locked_validator, val);
++    /* Call the validator without holding the lock, as Clojure reads its volatile validator
++     * once: a validator may call set-validator! on its own atom, and another thread may set
++     * one while this validator runs. */
++    auto const vf{ get_validator() };
++    do_validate(vf, val);
+   }
+ }

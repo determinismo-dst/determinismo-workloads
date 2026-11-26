@@ -1,0 +1,49 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/re_matcher.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/re_matcher.cpp
+index 06a580a..4d3c466 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/re_matcher.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/re_matcher.cpp
+@@ -1,5 +1,7 @@
+ #include <jank/runtime/obj/re_matcher.hpp>
+ #include <jank/runtime/core/seq.hpp>
++#include <jank/runtime/core/math.hpp>
++#include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/rtti.hpp>
+ #include <jank/util/fmt.hpp>
+ 
+@@ -12,13 +14,36 @@ namespace jank::runtime::obj
+   {
+   }
+ 
++  /* Clojure's RT.nth on a Matcher is m.group(n): without a current match it throws, and a
++   * pattern without groups has only group 0, the match, which re-find keeps as a string. */
+   object_ref re_matcher::nth(object_ref const index) const
+   {
++    if(groups.is_nil())
++    {
++      throw make_box("No match found").erase();
++    }
++    if(groups.get_type() == object_type::persistent_string)
++    {
++      auto const i(to_int(index));
++      if(i == 0)
++      {
++        return groups;
++      }
++      throw make_box(util::format("No group {}", i)).erase();
++    }
+     return runtime::nth(groups, index);
+   }
+ 
+   object_ref re_matcher::nth(object_ref const index, object_ref const fallback) const
+   {
++    if(groups.is_nil())
++    {
++      throw make_box("No match found").erase();
++    }
++    if(groups.get_type() == object_type::persistent_string)
++    {
++      return to_int(index) == 0 ? groups : fallback;
++    }
+     return runtime::nth(groups, index, fallback);
+   }
+ }

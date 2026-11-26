@@ -1,0 +1,24 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core.cpp b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+index ebea535..e5f551f 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -773,7 +773,18 @@ namespace jank::runtime
+ 
+   object_ref get_thread_bindings()
+   {
+-    return __rt_ctx->get_thread_bindings();
++    /* Clojure's Var.getThreadBindings maps each var to its value. The frame maps each var to
++     * its binding box, which futures and var lookups need, so unbox a copy here. */
++    auto const bindings{ __rt_ctx->get_thread_bindings() };
++    auto ret{ obj::persistent_hash_map::empty() };
++    for(auto const &e : bindings->data)
++    {
++      auto const val(e.second.get_type() == object_type::var_thread_binding
++                       ? expect_object<var_thread_binding>(e.second)->value
++                       : e.second);
++      ret = ret->assoc(e.first, val);
++    }
++    return ret;
+   }
+ 
+   bool is_var(object_ref const o)

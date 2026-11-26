@@ -1,0 +1,62 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core.cpp b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+index ebea535..3b54256 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -138,6 +138,20 @@ namespace jank::runtime
+     return reinterpret_cast<FILE *>(out_box->data.data);
+   }
+ 
++  /* print writes a pattern as #"…", as Clojure's print-method for Pattern does whatever
++   * *print-readably* is; str keeps the pattern's bare text. */
++  static void print_one(object_ref const o, jtl::string_builder &buff)
++  {
++    if(o.get_type() == object_type::re_pattern)
++    {
++      buff(o.to_code_string());
++    }
++    else
++    {
++      o.to_string(buff);
++    }
++  }
++
+   object_ref print(object_ref const args)
+   {
+     if(args.is_nil())
+@@ -148,11 +162,11 @@ namespace jank::runtime
+     auto const out{ get_stdout() };
+ 
+     jtl::string_builder buff;
+-    args.first().to_string(buff);
++    print_one(args.first(), buff);
+     for(auto const e : make_sequence_range(args).skip(1))
+     {
+       buff(' ');
+-      e.to_string(buff);
++      print_one(e, buff);
+     }
+     std::fwrite(buff.data(), 1, buff.size(), out);
+     return {};
+@@ -161,7 +175,7 @@ namespace jank::runtime
+   object_ref print1(object_ref const o)
+   {
+     jtl::string_builder buff;
+-    o.to_string(buff);
++    print_one(o, buff);
+     std::fwrite(buff.data(), 1, buff.size(), get_stdout());
+     return {};
+   }
+@@ -177,11 +191,11 @@ namespace jank::runtime
+     else
+     {
+       jtl::string_builder buff;
+-      args.first().to_string(buff);
++      print_one(args.first(), buff);
+       for(auto const e : make_sequence_range(args).skip(1))
+       {
+         buff(' ');
+-        e.to_string(buff);
++        print_one(e, buff);
+       }
+       std::fwrite(buff.data(), 1, buff.size(), out);
+       std::putc('\n', out);

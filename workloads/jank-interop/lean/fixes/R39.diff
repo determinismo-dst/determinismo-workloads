@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/ir/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/ir/processor.cpp
+@@ -531,6 +531,12 @@
+     if(expr->loop_kind == analyze::expr::let::loop_kind::loop_with_recur)
+     {
+       auto loop_local{ b.local(expr->get_type()) };
++      /* This loop's shadows hold only within it. Once it is done, a `recur` to an enclosing loop
++       * (or fn) that rebinds a name this loop also binds must find the enclosing shadow again. */
++      auto old_loop_shadows{ b.local_to_loop_shadow };
++      util::scope_exit const restore_loop_shadows{ [&] {
++        b.local_to_loop_shadow = jtl::move(old_loop_shadows);
++      } };
+       native_vector<inst::loop::binding_shadow_details> shadows;
+       shadows.reserve(expr->pairs.size());
+       for(auto const &pair : expr->pairs)

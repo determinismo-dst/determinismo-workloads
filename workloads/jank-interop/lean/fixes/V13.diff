@@ -1,0 +1,13 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1144,7 +1144,9 @@
+       {
+         auto const locked_state{ ret->state.wlock() };
+         locked_state->status = obj::future_status::done;
+-        locked_state->error = make_box(e.what());
++        /* As Clojure's deref throws an exception (an ExecutionException), not a string, the
++         * native error's message travels in an exception object. */
++        locked_state->error = make_box<obj::exception_info>(e.what(), jank_nil);
+       }
+       /* When we cancel, pthread will implicitly throw this force unwind. We want to intercept
+        * that so we can mark our thread as cancelled. We then rethrow, since pthread is excepting

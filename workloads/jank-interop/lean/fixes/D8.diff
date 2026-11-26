@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -151,7 +151,8 @@
+     }
+ 
+     auto const typed_o(expect_object<big_decimal>(runtime::detail::untagged(&o)));
+-    return abs(data - typed_o->data) < std::numeric_limits<f64>::epsilon();
++    /* Numbers.equal of two BigDecimals: compareTo == 0, the exact values. */
++    return data == typed_o->data;
+   }
+ 
+   jtl::immutable_string big_decimal::to_string() const

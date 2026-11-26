@@ -1,0 +1,21 @@
+diff --git a/compiler+runtime/src/cpp/jank/read/parse.cpp b/compiler+runtime/src/cpp/jank/read/parse.cpp
+index a59e11f..853b6f1 100644
+--- a/compiler+runtime/src/cpp/jank/read/parse.cpp
++++ b/compiler+runtime/src/cpp/jank/read/parse.cpp
+@@ -819,13 +819,10 @@ namespace jank::read::parse
+       return error::parse_invalid_reader_var({ start_token.start, latest_token.end },
+                                              "A value after `#'` must be present.");
+     }
+-    else if(sym_result.expect_ok().unwrap().ptr.get_type() != object_type::symbol)
+-    {
+-      return error::parse_invalid_reader_var({ start_token.start, latest_token.end },
+-                                             "A value after `#'` must be a symbol.");
+-    }
+ 
+-    auto const sym(expect_object<obj::symbol>(sym_result.expect_ok().unwrap().ptr));
++    /* As Clojure's VarReader, #'x reads as (var x) for any form x; analyzing `var` is what
++     * requires a symbol. */
++    auto const sym(sym_result.expect_ok().unwrap().ptr);
+     auto const sym_end(sym_result.expect_ok().unwrap().end);
+ 
+     auto const wrapped(

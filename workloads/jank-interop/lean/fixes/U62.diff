@@ -1,0 +1,54 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/core.hpp b/compiler+runtime/include/cpp/jank/runtime/core.hpp
+index bcfbbf6..89371b6 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/core.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core.hpp
+@@ -199,7 +199,7 @@ namespace jank::runtime
+   obj::exception_info_ref
+   ex_info(jtl::immutable_string const &message, object_ref const data, object_ref const cause);
+ 
+-  jtl::immutable_string ex_message(object_ref const o);
++  object_ref ex_message(object_ref const o);
+   object_ref ex_data(object_ref const o);
+   obj::exception_info_ref ex_cause(object_ref const o);
+   obj::persistent_array_map_ref ex_map(object_ref const o);
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core.cpp b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+index ebea535..720e65a 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1335,19 +1335,32 @@ namespace jank::runtime
+     return ret;
+   }
+ 
+-  jtl::immutable_string ex_message(object_ref const o)
++  /* Clojure's ex-message, ex-data and ex-cause give nil for anything but an exception. */
++  object_ref ex_message(object_ref const o)
+   {
+-    return try_object<obj::exception_info>(o)->message;
++    if(o.get_type() != object_type::exception_info)
++    {
++      return {};
++    }
++    return make_box(expect_object<obj::exception_info>(o)->message);
+   }
+ 
+   object_ref ex_data(object_ref const o)
+   {
+-    return try_object<obj::exception_info>(o)->data;
++    if(o.get_type() != object_type::exception_info)
++    {
++      return {};
++    }
++    return expect_object<obj::exception_info>(o)->data;
+   }
+ 
+   obj::exception_info_ref ex_cause(object_ref const o)
+   {
+-    return try_object<obj::exception_info>(o)->cause;
++    if(o.get_type() != object_type::exception_info)
++    {
++      return {};
++    }
++    return expect_object<obj::exception_info>(o)->cause;
+   }
+ 
+   obj::persistent_array_map_ref ex_map(object_ref const o)

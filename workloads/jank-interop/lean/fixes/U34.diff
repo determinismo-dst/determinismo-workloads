@@ -1,0 +1,44 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/obj/persistent_array_map.hpp b/compiler+runtime/include/cpp/jank/runtime/obj/persistent_array_map.hpp
+index 9f286ec..854f083 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/persistent_array_map.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/persistent_array_map.hpp
+@@ -70,7 +70,8 @@ namespace jank::runtime::obj
+                                             sizeof...(args));
+     }
+ 
+-    static persistent_array_map_ref create_from_seq(object_ref const seq);
++    /* An array map, or a hash map past max_size entries. */
++    static object_ref create_from_seq(object_ref const seq);
+ 
+     /* behavior::get */
+     [[gnu::always_inline, gnu::flatten, gnu::hot]]
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
+index 5ca52d7..eb78de6 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
+@@ -33,9 +33,11 @@ namespace jank::runtime::obj
+   {
+   }
+ 
+-  persistent_array_map_ref persistent_array_map::create_from_seq(object_ref const seq)
++  object_ref persistent_array_map::create_from_seq(object_ref const seq)
+   {
+-    transient_array_map transient{};
++    /* assoc_in_place promotes to a transient hash map once max_size entries are held, so keep
++     * the transient it returns: every pair is kept, as Clojure's array-map keeps them. */
++    object_ref transient{ make_box<transient_array_map>() };
+     auto const r{ make_sequence_range(seq) };
+     for(auto it(r.begin()); it != r.end(); ++it)
+     {
+@@ -47,9 +49,9 @@ namespace jank::runtime::obj
+                                                seq.to_code_string()) };
+       }
+       auto const val(*it);
+-      transient.assoc_in_place(key, val);
++      transient = runtime::assoc_in_place(transient, key, val);
+     }
+-    return transient.to_persistent();
++    return runtime::persistent(transient);
+   }
+ 
+   object_ref persistent_array_map::find(object_ref const key) const

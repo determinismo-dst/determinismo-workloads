@@ -1,0 +1,63 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
+@@ -28,5 +28,7 @@
+     object_ref val{};
+     object_ref fn{};
+     object_ref error{};
++    /* Whether the body has run, returning (nil included) or throwing. */
++    bool realized{};
+   };
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
+@@ -19,16 +19,17 @@
+   object_ref delay::deref()
+   {
+     std::lock_guard<std::mutex> const lock{ mutex };
+-    if(val.is_some())
++    /* As Clojure's Delay: the body runs once, whatever it returns (nil included) or throws, and
++     * `fn` is cleared once it has run, which is what makes the delay realized. */
++    if(realized)
+     {
++      if(error.is_some())
++      {
++        throw error;
++      }
+       return val;
+     }
+ 
+-    if(error.is_some())
+-    {
+-      throw error;
+-    }
+-
+     try
+     {
+       val = fn.call();
+@@ -36,19 +37,25 @@
+     catch(std::exception const &e)
+     {
+       error = make_box(e.what());
++      realized = true;
++      fn = jank_nil;
+       throw;
+     }
+     catch(object_ref const e)
+     {
+       error = e;
++      realized = true;
++      fn = jank_nil;
+       throw;
+     }
++    realized = true;
++    fn = jank_nil;
+     return val;
+   }
+ 
+   bool delay::is_realized() const
+   {
+     std::lock_guard<std::mutex> const lock{ mutex };
+-    return val.is_some();
++    return realized;
+   }
+ }

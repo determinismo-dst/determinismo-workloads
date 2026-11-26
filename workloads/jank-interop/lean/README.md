@@ -22,14 +22,19 @@ on the real jank.
   class templates, collection objects, regex captures and matchers, the nREPL's positions and the
   terminal REPL, module loading, AOT and the CLI, the clojure.core functions and bundled
   namespaces no round covered, jank.shell and clojure.pprint (U1–U92). [REPORT-4.md](REPORT-4.md).
-- **Round 5** (main 94d32623, whose compiler and runtime are byte-identical to 7135b7708: every
-  earlier prediction holds at the same lines): native object loading (ld scripts, `-l`, object
-  modules' initializers), errors as a program sees them, the C API, jank.math, C++ operators'
-  value categories, Java regex's Unicode boundaries, the nREPL's interrupt, `#inst` and CHAMP
-  (V1–V48, 49 tests); proofs for every input of the regex executor's invariant (U35), the
-  nREPL's chunking independence (T7) and CHAMP's count laws, and codegen's depth-2 world size
-  (354,197,993,668, proved). Corrections to earlier rounds' models (U47, the load replica, the
-  reader on an empty text). [REPORT-5.md](REPORT-5.md).
+- **Round 5** (main 94d32623, whose compiler+runtime tree is 7135b7708's): the catch-up (no
+  replicated function changed), native object and ld-script loading, what a program sees of an
+  error, the C API, jank.math, C++ operator templates and value categories, Unicode in regex, the
+  nREPL's interrupt, `#inst`, CHAMP laws, and proofs for the codegen control, the nREPL's T7 and the
+  regex executor (V1–V48). Tests: [tests/jank_lean/deviations_r5_test.jank](tests/jank_lean/deviations_r5_test.jank).
+- **Round 6** (main 94d32623): the lesson of three deviations the generated differential tests found
+  (LG1: `count`'s unsigned `usize` in `<`, `min`, `max`; LG2: long overflow; LG3: `subs` on bytes),
+  the numeric tower whole on every path a number takes (literal, `let`, fn value, native producers
+  such as `count`, `hash`, `int`, `float`), strings and characters against UTF-16, CHAMP's `get` of
+  another key and iteration (proved), the nREPL's T7, T3 and T9 by exact state graphs, and 181 local
+  fixes for confirmed deviations of rounds 1–5 and LG1–LG2 as diffs against 94d32623 (`fixes/`, with one combined
+  patch in `fixes/combined/`). LG1–LG3 extended, V49–V85. [REPORT-6.md](REPORT-6.md). Tests:
+  [tests/jank_lean/deviations_r6_test.jank](tests/jank_lean/deviations_r6_test.jank).
 
 ## What the real jank said
 
@@ -73,30 +78,21 @@ on the real jank.
     U59) and 3 with a cut text (U72, U73, U74b), each where an error was predicted; U74's
     evidence was another test's, and U88-U90 (jank.shell) failed with an error, none predicted.
   - U64, U79, U80, U81, U82 left no result: a failure text spanning lines broke the runner's
-    report and swallowed the next testcase (fixed since).
-  - The rerun (2026-11-25): those, the errors without text, and round 3's four (S1, S36, S37,
-    S42), 24 tests with the runner reporting jank's error text, each failing in all 3 of its
-    timelines. 16 confirmed their prediction (U5, U6, U12, U17, U21, U22, U48, U59, U64, U72,
-    U73, U74, U74b, U79, U80, U81); U82 failed on another bug first (reading any `#inst` needs
-    the `en_US.UTF-8` locale: inst.cpp 41), its own prediction untested; U88-U90 couldn't load
-    `jank.shell` in the test image ("Unable to compile C++ source": the coverage image lacked the
-    Boost headers jank's package depends on); round 3's four errors are the ones predicted.
-  - U88-U90 rerun with Boost in the image, each failing in all 3 of its timelines as predicted:
-    U88 `(sh "echo" "a\" b")` printed `a\ b"`; U89 still running after 120 s; U90 threw
-    "persistent_string expected, small_integer provided". U82's own prediction is still untested.
-  - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt),
-    the rerun's [validation/round-4b-evidence.txt](validation/round-4b-evidence.txt).
+    report and swallowed the next testcase (fixed since). They, and the errors without text,
+    are rerun with the runner reporting jank's error text.
+  - Each test's evidence: [validation/round-4-evidence.txt](validation/round-4-evidence.txt).
 
-- **Round 5**: 49 tests run on jank main 7135b7708 (the coverage build; 94d32623's compiler and
-  runtime), each in its own process with a 120 s limit, directly in podman (not through
-  determinismo-ci): all 40 predictions with a test behave as predicted. 47 tests fail with the
-  value or error predicted, v12 aborts the process (`std::terminate`, V12), and the control v19b
-  passes. V1, V2, V4-V6, V20, V22 and V23 have no test here (linking, AOT and C setups). Homebrew's
-  jank 0.1 package (macOS) gave the same failures for V3-V37; it predates main's `#inst` reader.
-  Evidence: [validation/round-5-evidence.txt](validation/round-5-evidence.txt).
+- **Round 5**: its 40 predictions with a test, run on jank main 7135b7708 (compiler+runtime
+  byte-identical to 94d32623; a coverage build on Linux, each test in its own process): all behaved as
+  predicted.
+- **Generated differential tests** (random clojure.core forms against Clojure 1.12) found three
+  deviations no round's test had shown: LG1 (`count`'s `usize` compared unsigned in `<`, `>`, `min`,
+  `max`), LG2 (long overflow wraps or gives a BigInt where Clojure throws) and LG3 (`subs` indexes
+  bytes; round 2's R52 had predicted it, but its test recorded only its first assertion). Round 6
+  starts from that lesson.
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
-jankifier's [specs/repros.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/repros.md#found-by-a-lean-replica-of-jank).
+jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
 
 ## Building and running
 
@@ -110,13 +106,19 @@ lake exe jank-reader         # round 2's drivers: jank-<component>
 lake exe jank3-boost         # round 3's: jank3-<area>
 lake exe jank4-runtime       # round 4's: jank4-<area> (feedback, runtime, interop, immer, regex,
                              # nrepl, modules, core)
+lake exe jank5-errors        # round 5's: jank5-<area> (native, errors, codegen, nrepl, regex,
+                             # interop, core, coord)
+lake exe jank6-coord         # round 6's: jank6-<area> (num, native, str, champ, nrepl, coord)
 ```
 
 `./fetch-sources.sh` puts the sources the replica translates next to it, at the commits it was
-written against (git-ignored): jank in `upstream/` (f3d82d654) and `upstream-main/` (7135b7708),
+written against (git-ignored): jank in `upstream/` (f3d82d654), `upstream-main/` (7135b7708) and
+`upstream-r5/` (94d32623),
 and in `deps/` the libraries jank pins (immer 282629d0, boost-multiprecision 2b3ab082, bdwgc
 327ef1f8, CppInterOp 28b0830d, folly e54ca53d, and since round 4 boost-process e4d0d405, json
-02dfbea3, stduuid 3afe7193) and libstdc++ 15.3.0's regex files. Only
+02dfbea3, stduuid 3afe7193), libstdc++ 15.3.0's regex, (since round 5) `<chrono>` and (since round 6)
+`codecvt` files, and
+GNU ld 2.45's script grammar. Only
 `jank3-boost`'s header check reads one of them at run time; the others are for following the
 reports' line numbers. The LLVM 23.1.0 files CppInterOp reaches are read only (llvm-project at
 llvmorg-23.1.0).
@@ -135,6 +137,8 @@ once `cpp/jank.runtime.object_ref` becomes `Throwable` and `(thrown? (…))` bec
 ## License
 
 Mozilla Public License 2.0 ([LICENSE](LICENSE)), as jank's. The regex replica
-(`Jank/R3/Regex/`, `Run/R3/Regex.lean`) translates libstdc++ and is under GPL-3.0-or-later with
-the GCC Runtime Library Exception (that folder's README.md). [NOTICE.md](NOTICE.md) lists every
+(`Jank/R3/Regex/`, `Jank/R4/Regex/`, `Jank/R5/Regex/` and their drivers) and the `#inst` replica
+(`Jank/R5/Core/Inst.lean`, `InstSearch.lean`, `Run/R5/Core.lean`) and the `codecvt` replica
+(`Jank/R6/Str/Cut.lean`, `Search.lean`, `Run/R6/Str.lean`) translate libstdc++ and are under
+GPL-3.0-or-later with the GCC Runtime Library Exception (each folder's README.md). [NOTICE.md](NOTICE.md) lists every
 project translated here.

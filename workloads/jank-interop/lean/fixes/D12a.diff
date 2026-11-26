@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/hash.cpp
++++ b/compiler+runtime/src/cpp/jank/hash.cpp
+@@ -115,6 +115,12 @@
+ 
+   u32 real(f64 const input)
+   {
++    /* -0.0 equals 0.0, so it must hash as 0.0 does. */
++    if(input == 0.0)
++    {
++      return 0;
++    }
++
+     if constexpr(8 == sizeof(i64))
+     {
+       auto const v(*reinterpret_cast<u64 const *>(&input));

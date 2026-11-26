@@ -1,0 +1,34 @@
+--- a/compiler+runtime/src/jank/jank/math.jank
++++ b/compiler+runtime/src/jank/jank/math.jank
+@@ -1,22 +1,14 @@
+-(ns jank.math)
++(ns jank.math
++  (:refer-clojure :exclude [abs]))
+ 
+ (defn tan [o]
+-  (native/raw "__value = make_box(std::tan(to_real(~{ o })));"))
++  (cpp/jank.runtime.tan o))
+ 
+-(defn
+-  ^{:arities {1 {:supports-unboxed-input? true
+-                 :unboxed-output? true}}}
+-  sqrt [o]
+-  (native/raw "__value = make_box(std::sqrt(to_real(~{ o })));"))
++(defn sqrt [o]
++  (cpp/jank.runtime.sqrt o))
+ 
+-(defn
+-  ^{:arities {1 {:supports-unboxed-input? true
+-                 :unboxed-output? true}}}
+-  abs [o]
+-  (native/raw "__value = runtime::abs(~{ o });"))
++(defn abs [o]
++  (cpp/jank.runtime.abs o))
+ 
+-(defn
+-  ^{:arities {2 {:supports-unboxed-input? true
+-                 :unboxed-output? true}}}
+-  pow [x y]
+-  (native/raw "__value = make_box(std::pow(to_real(~{ x }), to_real(~{ y })));"))
++(defn pow [x y]
++  (cpp/jank.runtime.pow x y))

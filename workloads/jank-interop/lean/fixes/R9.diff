@@ -1,0 +1,21 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -640,7 +640,8 @@
+               break;
+             }
+             auto const c(oc.expect_ok().character);
+-            if(c == '\n')
++            /* As Clojure's comment reader, a comment ends at a line feed or a carriage return. */
++            if(c == '\n' || c == '\r')
+             {
+               break;
+             }
+@@ -1416,7 +1417,7 @@
+                     break;
+                   }
+                   auto const c(oc.expect_ok().character);
+-                  if(c == '\n')
++                  if(c == '\n' || c == '\r')
+                   {
+                     break;
+                   }

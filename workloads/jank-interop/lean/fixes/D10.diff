@@ -1,0 +1,165 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -1,4 +1,7 @@
+ #include <random>
++#include <cctype>
++#include <string>
++#include <string_view>
+ 
+ #include <jank/runtime/core/math.hpp>
+ #include <jank/runtime/visit.hpp>
+@@ -674,12 +677,123 @@
+       o);
+   }
+ 
++  /* Long/valueOf's grammar, which parse-long documents: [+-]?[0-9]+, nothing else. */
++  static bool is_long_text(std::string_view const s)
++  {
++    usize i{};
++    if(i < s.size() && (s[i] == '+' || s[i] == '-'))
++    {
++      ++i;
++    }
++    if(i == s.size())
++    {
++      return false;
++    }
++    for(; i < s.size(); ++i)
++    {
++      if(s[i] < '0' || s[i] > '9')
++      {
++        return false;
++      }
++    }
++    return true;
++  }
++
++  /* Double/valueOf's grammar (java.lang.Double#valueOf): trimmed of characters <= ' ', an
++   * optional sign, then NaN, Infinity, a decimal (digits, an optional fraction, an optional
++   * exponent) or a hex float with a binary exponent, then an optional f/F/d/D. Returns the
++   * text strtod should read, or none. */
++  static jtl::option<std::string> java_double_text(std::string_view s)
++  {
++    while(!s.empty() && static_cast<unsigned char>(s.front()) <= ' ')
++    {
++      s.remove_prefix(1);
++    }
++    while(!s.empty() && static_cast<unsigned char>(s.back()) <= ' ')
++    {
++      s.remove_suffix(1);
++    }
++    usize i{};
++    std::string sign;
++    if(i < s.size() && (s[i] == '+' || s[i] == '-'))
++    {
++      sign = s[i];
++      ++i;
++    }
++    auto const rest{ s.substr(i) };
++    if(rest == "NaN" || rest == "Infinity")
++    {
++      return sign + (rest == "NaN" ? "nan" : "inf");
++    }
++    auto body{ rest };
++    if(!body.empty()
++       && (body.back() == 'f' || body.back() == 'F' || body.back() == 'd' || body.back() == 'D'))
++    {
++      body.remove_suffix(1);
++    }
++    auto const digits_at = [&](usize j, bool const hex) {
++      usize n{};
++      while(j + n < body.size()
++            && (hex ? std::isxdigit(static_cast<unsigned char>(body[j + n]))
++                    : std::isdigit(static_cast<unsigned char>(body[j + n]))))
++      {
++        ++n;
++      }
++      return n;
++    };
++    bool const hex{ body.size() >= 2 && body[0] == '0' && (body[1] == 'x' || body[1] == 'X') };
++    usize j{ hex ? 2u : 0u };
++    auto const int_digits{ digits_at(j, hex) };
++    j += int_digits;
++    usize frac_digits{};
++    if(j < body.size() && body[j] == '.')
++    {
++      ++j;
++      frac_digits = digits_at(j, hex);
++      j += frac_digits;
++    }
++    if(int_digits + frac_digits == 0)
++    {
++      return jtl::none;
++    }
++    bool const has_exponent{ j < body.size()
++                             && (hex ? (body[j] == 'p' || body[j] == 'P')
++                                     : (body[j] == 'e' || body[j] == 'E')) };
++    if(hex && !has_exponent)
++    {
++      return jtl::none;
++    }
++    if(has_exponent)
++    {
++      ++j;
++      if(j < body.size() && (body[j] == '+' || body[j] == '-'))
++      {
++        ++j;
++      }
++      auto const exp_digits{ digits_at(j, false) };
++      if(exp_digits == 0)
++      {
++        return jtl::none;
++      }
++      j += exp_digits;
++    }
++    if(j != body.size())
++    {
++      return jtl::none;
++    }
++    return sign + std::string{ body };
++  }
++
+   /* TODO: Rename these to match the type name. */
+   object_ref parse_long(object_ref const o)
+   {
+     auto const typed_o{ dyn_cast<obj::persistent_string>(o) };
+     if(typed_o.is_some())
+     {
++      if(!is_long_text({ typed_o->data.data(), typed_o->data.size() }))
++      {
++        return jank_nil;
++      }
+       auto const str_size{ static_cast<size_t>(typed_o->data.size()) };
+       size_t parsed_upto{};
+       i64 parsed_long{};
+@@ -714,25 +828,14 @@
+     auto const typed_o{ dyn_cast<obj::persistent_string>(o) };
+     if(typed_o.is_some())
+     {
+-      auto const str_size{ static_cast<size_t>(typed_o->data.size()) };
+-      size_t parsed_upto{};
+-      f64 parsed_double{};
+-
+-      try
++      auto const text{ java_double_text({ typed_o->data.data(), typed_o->data.size() }) };
++      if(text.is_none())
+       {
+-        parsed_double = std::stod(typed_o->data, &parsed_upto);
+-      }
+-      catch(...)
+-      {
+         return jank_nil;
+       }
+-
+-      if(parsed_upto != str_size)
+-      {
+-        return jank_nil;
+-      }
+-
+-      return make_box(parsed_double);
++      /* strtod, unlike stod, keeps an overflow (inf) and an underflow (0 or a subnormal),
++       * as Double/valueOf does. */
++      return make_box(std::strtod(text.unwrap().c_str(), nullptr));
+     }
+     else
+     {

@@ -1,0 +1,70 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/obj/deferred_cpp_function.hpp b/compiler+runtime/include/cpp/jank/runtime/obj/deferred_cpp_function.hpp
+index 3b2940a..0d56c37 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/deferred_cpp_function.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/deferred_cpp_function.hpp
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <atomic>
+ #include <mutex>
+ 
+ #include <jank/runtime/object.hpp>
+@@ -27,8 +28,7 @@ namespace jank::runtime::obj
+    * expensive task.
+    *
+    * When this function is called, it will JIT compile the C++ code, get a real function
+-   * object, replace the root of the var with that object, and then continue to proxy
+-   * calls to that object for anyone who still has a handle to this one. */
++   * object, and then proxy every call to that object. The var's root is not replaced. */
+   struct deferred_cpp_function : object
+   {
+     static constexpr object_type obj_type{ object_type::deferred_cpp_function };
+@@ -119,6 +119,8 @@ namespace jank::runtime::obj
+     /*** XXX: Everything here is thread-safe. ***/
+     lazy_meta meta;
+     mutable std::recursive_mutex compilation_mutex;
++    /* Set once compiled_fn is ready, so calls after the first take no lock. */
++    mutable std::atomic<bool> realized{};
+     mutable object_ref compiled_fn;
+     mutable jtl::immutable_string declaration_code;
+     mutable callable_arity_flags arity_flags{};
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/deferred_cpp_function.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/deferred_cpp_function.cpp
+index e5a5b25..70e83bb 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/deferred_cpp_function.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/deferred_cpp_function.cpp
+@@ -45,6 +45,11 @@ namespace jank::runtime::obj
+ 
+   void deferred_cpp_function::realize() const
+   {
++    if(realized.load(std::memory_order_acquire))
++    {
++      return;
++    }
++
+     std::lock_guard<std::recursive_mutex> const lock{ compilation_mutex };
+     /* It's possible that we're called again, even after we've compiled our actual function.
+      * This can happen if the value of this function is captured, rather than used directly
+@@ -60,18 +65,17 @@ namespace jank::runtime::obj
+     //  (name.get_type() == object_type::nil ? "unknown" : try_object<persistent_string>(name)->data));
+ 
+     /* On the first invocation, we don't have a compiled_fn. We compile our C++ code, get a fn,
+-     * rebind the root of the var, and then apply our args to the new fn.*/
++     * and then apply our args to the new fn. The var's root is left alone: this object stays
++     * the fn's value, as a Clojure fn is one value, so a root the program changed meanwhile
++     * (alter-var-root, with-redefs, a redefinition) stays, the fn keeps its identity, and no
++     * var lock is taken here (alter-var-root holds it while its fn runs). */
+     __rt_ctx->jit_prc.eval_string(declaration_code);
+     compiled_fn = __rt_ctx->jit_prc.create_function(arity_flags, base_name, arities, is_variadic);
+     reset_meta(compiled_fn, meta.get());
+ 
+-    if(var.is_some())
+-    {
+-      var->bind_root(compiled_fn);
+-    }
+-
+     /* Clear these just to free up some memory. */
+     declaration_code = "";
++    realized.store(true, std::memory_order_release);
+   }
+ 
+   object_ref deferred_cpp_function::call() const

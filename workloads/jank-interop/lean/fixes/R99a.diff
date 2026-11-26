@@ -1,0 +1,23 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -182,7 +182,19 @@
+   i64 big_decimal::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A BigDecimal against a double compares as doubles (Numbers' DoubleOps). */
++        if constexpr(jtl::is_any_same<T, real, small_real>)
++        {
++          auto const d{ to_real() };
++          return (typed_o->data < d) - (d < typed_o->data);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format("not comparable: {}", object_type_str(o.type)) };
+       },

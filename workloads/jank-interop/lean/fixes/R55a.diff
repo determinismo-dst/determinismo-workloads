@@ -1,0 +1,13 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
+@@ -33,7 +33,9 @@
+   /* behavior::object_like */
+   bool persistent_string_sequence::equal(object const &o) const
+   {
+-    return runtime::equal(o, str->data.begin() + index, str->data.end());
++    /* Compare the characters this sequence yields (code points, from first/next), not the
++     * string's bytes: a byte never equals a character of two or more bytes. */
++    return runtime::sequence_equal(runtime::detail::untagged(this), runtime::detail::untagged(&o));
+   }
+ 
+   void persistent_string_sequence::to_string(jtl::string_builder &buff) const

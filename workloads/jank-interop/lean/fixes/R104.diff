@@ -1,0 +1,32 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_sorted_set.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_sorted_set.cpp
+@@ -67,13 +67,26 @@
+           return false;
+         }
+ 
+-        for(auto const &entry : data)
++        /* As Clojure's PersistentTreeSet.equiv: when a lookup can't compare the keys (a
++         * ClassCastException in Clojure), the sets are unequal. */
++        try
+         {
+-          if(!typed_o->contains(entry))
++          for(auto const &entry : data)
+           {
+-            return false;
++            if(!typed_o->contains(entry))
++            {
++              return false;
++            }
+           }
+         }
++        catch(std::runtime_error const &)
++        {
++          return false;
++        }
++        catch(object_ref const)
++        {
++          return false;
++        }
+ 
+         return true;
+       },

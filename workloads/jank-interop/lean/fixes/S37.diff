@@ -1,0 +1,82 @@
+diff --git a/compiler+runtime/src/cpp/jank/analyze/processor.cpp b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+index a986565..84df368 100644
+--- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+@@ -1463,7 +1463,6 @@ namespace jank::analyze
+                                          latest_expansion(macro_expansions));
+     }
+     auto const default_expr_obj{ it.first().unwrap() };
+-    auto default_expr{ analyze(default_expr_obj, current_frame, position, fn_ctx, needs_box) };
+ 
+     it = it.rest();
+     if(it.first().is_none())
+@@ -1480,10 +1479,8 @@ namespace jank::analyze
+       native_vector<expression_ref> exprs{};
+     };
+ 
+-    auto needs_conversion{ false };
+-    auto chosen_type{ cpp_util::expression_type(default_expr.expect_ok()) };
+-    auto has_recur{ resolve_tail_expression(default_expr.expect_ok())->kind
+-                    == expression_kind::recur };
++    /* As Clojure's CaseExpr.Parser, the clauses are analyzed before the default. Analysis
++     * has effects (a def interns its var), so the order decides what names mean. */
+     auto keys_exprs{ visit_map_like(
+       [&](auto const typed_imap_obj) -> jtl::string_result<keys_and_exprs> {
+         keys_and_exprs ret{};
+@@ -1503,22 +1500,6 @@ namespace jank::analyze
+             return err(expr.expect_err()->message);
+           }
+ 
+-          has_recur = has_recur
+-            || resolve_tail_expression(expr.expect_ok())->kind == expression_kind::recur;
+-          auto const branch_common_type_result{
+-            cpp_util::find_branch_common_type(expr.expect_ok(), default_expr.expect_ok(), has_recur)
+-          };
+-
+-          if(branch_common_type_result.is_err())
+-          {
+-            return branch_common_type_result.expect_err();
+-          }
+-
+-          auto const branch_common_type{ branch_common_type_result.expect_ok() };
+-
+-          needs_conversion = needs_conversion || branch_common_type.then_needs_conversion
+-            || branch_common_type.else_needs_conversion;
+-          chosen_type = branch_common_type.type;
+           ret.keys.push_back(key);
+           ret.exprs.push_back(expr.expect_ok());
+         }
+@@ -1536,7 +1517,33 @@ namespace jank::analyze
+                                          latest_expansion(macro_expansions));
+     }
+ 
++    auto default_expr{ analyze(default_expr_obj, current_frame, position, fn_ctx, needs_box) };
++
+     auto pairs{ keys_exprs.expect_ok() };
++    auto needs_conversion{ false };
++    auto chosen_type{ cpp_util::expression_type(default_expr.expect_ok()) };
++    auto has_recur{ resolve_tail_expression(default_expr.expect_ok())->kind
++                    == expression_kind::recur };
++    for(auto const &expr : pairs.exprs)
++    {
++      has_recur = has_recur || resolve_tail_expression(expr)->kind == expression_kind::recur;
++      auto const branch_common_type_result{
++        cpp_util::find_branch_common_type(expr, default_expr.expect_ok(), has_recur)
++      };
++
++      if(branch_common_type_result.is_err())
++      {
++        return error::analyze_invalid_case(branch_common_type_result.expect_err(),
++                                           meta_source(o->get_meta()),
++                                           latest_expansion(macro_expansions));
++      }
++
++      auto const branch_common_type{ branch_common_type_result.expect_ok() };
++
++      needs_conversion = needs_conversion || branch_common_type.then_needs_conversion
++        || branch_common_type.else_needs_conversion;
++      chosen_type = branch_common_type.type;
++    }
+     native_vector<expression_ref> converted_exprs{};
+     converted_exprs.reserve(pairs.exprs.size());
+ 

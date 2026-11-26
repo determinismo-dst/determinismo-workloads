@@ -1,0 +1,18 @@
+jank6-coord: the brief's observations of the real jank, put to round 6's replica
+== LG1 (area P's model)
+(< -1 (count [1]))
+    real jank false; replica false (agrees); Clojure true
+(max (count [1]) -1)
+    real jank -1; replica -1 (agrees); Clojure 1
+(min (count [1 2 3]) -1)
+    real jank 3; replica 3 (agrees); Clojure -1
+(< -1 (long (count [1])))
+    real jank true; replica true (agrees); Clojure true
+== LG2 (area N's model)
+(* -3 9223372036854775807)
+    real jank -9223372036854775805; replica -9223372036854775805 (agrees); Clojure throws (long overflow)
+(dec -9223372036854775808)
+    real jank -9223372036854775809N; replica -9223372036854775809N (agrees); Clojure throws (long overflow)
+== LG3 (area W's model)
+(subs "é-è" 2)
+    real jank "-è" = "-è"; replica "-è" (agrees); Clojure "è"

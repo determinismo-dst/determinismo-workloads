@@ -1,0 +1,38 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/object.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/object.cpp
+@@ -333,23 +333,25 @@
+                                               object_source(runtime::detail::untagged(this)));
+   }
+ 
++  /* The constant pools share one object between literals that are very equal, so `=` is not
++   * enough: [[]] and ['()] are `=`, as are 0.0 and -0.0, yet they are distinct values. Very
++   * equal values also print alike, which tells those apart (the nested types, the sign of
++   * zero). */
++  static bool same_value(object_ref const lhs, object_ref const rhs)
++  {
++    return lhs.get_type() == rhs.get_type() && equal(lhs, rhs)
++      && lhs.to_code_string() == rhs.to_code_string();
++  }
++
+   bool very_equal_to::operator()(object_ref const lhs, object_ref const rhs) const noexcept
+   {
+-    if(lhs.get_type() != rhs.get_type())
+-    {
+-      return false;
+-    }
+-    return equal(lhs, rhs);
++    return same_value(lhs, rhs);
+   }
+ 
+   bool
+   very_equal_to_with_meta::operator()(object_ref const lhs, object_ref const rhs) const noexcept
+   {
+-    if(lhs.get_type() != rhs.get_type())
+-    {
+-      return false;
+-    }
+-    return equal(lhs, rhs) && equal(meta(lhs), meta(rhs));
++    return same_value(lhs, rhs) && equal(meta(lhs), meta(rhs));
+   }
+ 
+   bool operator==(object const * const lhs, object_ref const rhs)

@@ -1,0 +1,115 @@
+--- a/compiler+runtime/src/cpp/clojure/string_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/string_native.cpp
+@@ -213,6 +213,70 @@
+                                 obj::character_ref const replacement)
+   {
+     return replace(s, match->data, replacement->data);
++  }
++
++  /* Appends a replacement string's expansion for one match, by the rules of Java's
++   * Matcher.appendReplacement, which clojure.string/replace follows: `\x` is a literal x, and
++   * `$n` is group n, taking further digits while the number names a group. An unmatched group
++   * expands to nothing. */
++  static void append_replacement(jtl::string_builder &buff,
++                                 std::smatch const &match_results,
++                                 jtl::immutable_string const &replacement)
++  {
++    auto const size(replacement.size());
++    auto const group_count(match_results.size() - 1);
++    usize i{};
++    while(i < size)
++    {
++      auto const c(replacement[i]);
++      if(c == '\\')
++      {
++        ++i;
++        if(i == size)
++        {
++          throw std::runtime_error{ "character to be escaped is missing" };
++        }
++        buff(replacement[i]);
++        ++i;
++      }
++      else if(c == '$')
++      {
++        ++i;
++        if(i == size)
++        {
++          throw std::runtime_error{ "Illegal group reference: group index is missing" };
++        }
++        if(replacement[i] < '0' || replacement[i] > '9')
++        {
++          throw std::runtime_error{ "Illegal group reference" };
++        }
++        auto group(static_cast<usize>(replacement[i] - '0'));
++        ++i;
++        while(i < size && replacement[i] >= '0' && replacement[i] <= '9')
++        {
++          auto const next_group((group * 10) + static_cast<usize>(replacement[i] - '0'));
++          if(group_count < next_group)
++          {
++            break;
++          }
++          group = next_group;
++          ++i;
++        }
++        if(group_count < group)
++        {
++          throw std::runtime_error{ util::format("No group {}", group) };
++        }
++        if(match_results[group].matched)
++        {
++          buff(match_results[group].str());
++        }
++      }
++      else
++      {
++        buff(c);
++        ++i;
++      }
++    }
+   }
+ 
+   jtl::immutable_string replace(jtl::immutable_string const &s,
+@@ -220,8 +284,27 @@
+                                 jtl::immutable_string const &replacement)
+   {
+     std::string const s_str{ s.c_str() };
+-    std::string const replacement_str{ replacement.c_str() };
+-    return std::regex_replace(s_str, match->regex, replacement_str);
++    std::sregex_iterator const end{};
++    std::sregex_iterator it(s_str.begin(), s_str.end(), match->regex);
++
++    if(it == end)
++    {
++      return s;
++    }
++
++    std::string suffix{};
++    jtl::string_builder buff{};
++
++    for(; it != end; ++it)
++    {
++      buff((*it).prefix().str());
++      append_replacement(buff, *it, replacement);
++      suffix = (*it).suffix().str();
++    }
++
++    buff(suffix);
++
++    return buff.release();
+   }
+ 
+   jtl::immutable_string replace(jtl::immutable_string const &s,
+@@ -243,8 +326,9 @@
+     for(; it != end; ++it)
+     {
+       buff((*it).prefix().str());
+-      auto const match_str(make_box<obj::persistent_string>((*it)[0].str()));
+-      auto const replacement_value(replacement.call(make_box<obj::persistent_string>(match_str)));
++      /* As Clojure's replace-by: the fn gets re-groups' result, the match string when the pattern
++       * has no group and the vector of the match and its groups when it has some. */
++      auto const replacement_value(replacement.call(runtime::smatch_to_vector(*it)));
+       buff(try_object<obj::persistent_string>(replacement_value)->data);
+       suffix = (*it).suffix().str();
+     }

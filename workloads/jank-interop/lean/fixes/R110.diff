@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -834,7 +834,24 @@
+ 
+   object_ref find_var(object_ref const sym)
+   {
+-    return __rt_ctx->find_var(try_object<obj::symbol>(sym));
++    /* As Clojure's Var.find: the symbol must be namespace-qualified, its namespace must exist,
++     * and only a var interned in that namespace is found, not one it refers to. */
++    auto const typed_sym(try_object<obj::symbol>(sym));
++    if(typed_sym->ns.empty())
++    {
++      throw make_box("Symbol must be namespace-qualified").erase();
++    }
++    auto const found_ns(__rt_ctx->find_ns(make_box<obj::symbol>("", typed_sym->ns)));
++    if(found_ns.is_nil())
++    {
++      throw make_box(util::format("No such namespace: {}", typed_sym->ns)).erase();
++    }
++    auto const found_var(found_ns->find_var(make_box<obj::symbol>("", typed_sym->name)));
++    if(found_var.is_nil() || found_var->n->name->name != typed_sym->ns)
++    {
++      return {};
++    }
++    return found_var;
+   }
+ 
+   object_ref remove_ns(object_ref const sym)

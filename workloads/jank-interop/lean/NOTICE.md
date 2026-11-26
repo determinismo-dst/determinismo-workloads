@@ -8,12 +8,15 @@ README.md). Each part follows its project's license:
 - **libstdc++** (GCC 15.3.0, GPL-3.0-or-later with the GCC Runtime Library Exception 3.1): the
   regex replica, `Jank/R3/Regex/`, `Jank/R4/Regex/`, `Jank/R5/Regex/`, `Run/R3/Regex.lean`,
   `Run/R4/Regex.lean` and `Run/R5/Regex.lean`, and the `#inst` replica of `<chrono>`'s parser,
-  `Jank/R5/Core/Inst.lean`, `Jank/R5/Core/InstSearch.lean` and `Run/R5/Core.lean`, under those terms
-  (each folder's README.md, LICENSE and COPYING.RUNTIME).
+  `Jank/R5/Core/Inst.lean`, `Jank/R5/Core/InstSearch.lean` and `Run/R5/Core.lean`, and (round 6)
+  the replica of `wstring_convert<codecvt_utf8<wchar_t>>::from_bytes`, `Jank/R6/Str/Cut.lean` with
+  `Jank/R6/Str/Search.lean` and `Run/R6/Str.lean`, under those terms (each folder's README.md,
+  LICENSE and COPYING.RUNTIME).
 - **Boost.Multiprecision** (Boost Software License 1.0): `Jank/R3/Boost/` (cpp_int and
   cpp_dec_float).
 - **immer** (Boost Software License 1.0): `Jank/R3/Immer/` and `Jank/R4/Immer/` (the RRB vector
-  and CHAMP, and their `_mut` paths); `Jank/R5/Core/Champ*.lean` prove laws over round 3's CHAMP.
+  and CHAMP, and their `_mut` paths); `Jank/R5/Core/Champ*.lean` and `Jank/R6/Champ/` prove laws over
+  round 3's CHAMP.
 - **folly** (Apache License 2.0): `Jank/R3/Runtime/` (SharedMutex, fbvector), reused by
   `Jank/R4/Runtime/`.
 - **bdwgc** (the Boehm-Demers-Weiser GC license, MIT-style): `Jank/R3/Runtime/` (reachability,

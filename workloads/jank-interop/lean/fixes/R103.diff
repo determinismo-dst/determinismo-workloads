@@ -1,0 +1,17 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -839,7 +839,13 @@
+ 
+   object_ref remove_ns(object_ref const sym)
+   {
+-    return __rt_ctx->remove_ns(try_object<obj::symbol>(sym));
++    auto const typed_sym(try_object<obj::symbol>(sym));
++    /* As Clojure's Namespace.remove. */
++    if(typed_sym->ns.empty() && typed_sym->name == "clojure.core")
++    {
++      throw make_box("Cannot remove clojure namespace").erase();
++    }
++    return __rt_ctx->remove_ns(typed_sym);
+   }
+ 
+   bool is_ns(object_ref const ns_or_sym)

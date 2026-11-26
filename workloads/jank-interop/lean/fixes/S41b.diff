@@ -1,0 +1,72 @@
+diff --git a/compiler+runtime/src/cpp/jank/evaluate.cpp b/compiler+runtime/src/cpp/jank/evaluate.cpp
+index 43591ea..c3f753a 100644
+--- a/compiler+runtime/src/cpp/jank/evaluate.cpp
++++ b/compiler+runtime/src/cpp/jank/evaluate.cpp
+@@ -456,6 +456,19 @@ namespace jank::evaluate
+         array_box.data[i++] = eval(e.first);
+         array_box.data[i++] = eval(e.second);
+       }
++      /* in_place_unique trusts the keys to be distinct. Clojure's RT.map throws, after every
++       * key and value is evaluated, when keys computed at run time collide. */
++      for(usize k{}; k < i; k += 2)
++      {
++        for(usize l{ k + 2 }; l < i; l += 2)
++        {
++          if(runtime::equal(array_box.data[k], array_box.data[l]))
++          {
++            throw make_box(util::format("Duplicate key: {}", array_box.data[l].to_code_string()))
++              .erase();
++          }
++        }
++      }
+ 
+       if(expr->meta.is_some())
+       {
+@@ -473,10 +486,21 @@ namespace jank::evaluate
+     }
+     else
+     {
+-      runtime::detail::native_transient_hash_map trans;
++      native_vector<std::pair<object_ref, object_ref>> pairs;
++      pairs.reserve(size);
+       for(auto const &e : expr->data_exprs)
+       {
+-        trans.insert({ eval(e.first), eval(e.second) });
++        auto const key(eval(e.first));
++        pairs.emplace_back(key, eval(e.second));
++      }
++      runtime::detail::native_transient_hash_map trans;
++      for(auto const &p : pairs)
++      {
++        if(trans.count(p.first) != 0)
++        {
++          throw make_box(util::format("Duplicate key: {}", p.first.to_code_string())).erase();
++        }
++        trans.insert(p);
+       }
+ 
+       if(expr->meta.is_some())
+@@ -492,10 +516,21 @@ namespace jank::evaluate
+ 
+   object_ref eval(expr::set_ref const expr)
+   {
+-    runtime::detail::native_transient_hash_set ret;
++    native_vector<object_ref> elems;
++    elems.reserve(expr->data_exprs.size());
+     for(auto const &e : expr->data_exprs)
+     {
+-      ret.insert(eval(e));
++      elems.emplace_back(eval(e));
++    }
++    /* Clojure's RT.set throws when elements computed at run time collide. */
++    runtime::detail::native_transient_hash_set ret;
++    for(auto const &elem : elems)
++    {
++      if(ret.count(elem) != 0)
++      {
++        throw make_box(util::format("Duplicate key: {}", elem.to_code_string())).erase();
++      }
++      ret.insert(elem);
+     }
+     if(expr->meta.is_some())
+     {

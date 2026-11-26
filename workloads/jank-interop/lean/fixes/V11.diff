@@ -1,0 +1,44 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
+@@ -3,6 +3,7 @@
+ #include <mutex>
+ 
+ #include <jank/runtime/object.hpp>
++#include <jank/error.hpp>
+ 
+ namespace jank::runtime::obj
+ {
+@@ -28,5 +29,7 @@
+     object_ref val{};
+     object_ref fn{};
+     object_ref error{};
++    /* A read, analysis or load error the body threw, rethrown at every later deref. */
++    jtl::option<error_ref> jank_error;
+   };
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
+@@ -29,6 +29,11 @@
+       throw error;
+     }
+ 
++    if(jank_error.is_some())
++    {
++      throw jank_error.unwrap();
++    }
++
+     try
+     {
+       val = fn.call();
+@@ -43,6 +48,11 @@
+       error = e;
+       throw;
+     }
++    catch(error_ref const e)
++    {
++      jank_error = e;
++      throw;
++    }
+     return val;
+   }
+ 

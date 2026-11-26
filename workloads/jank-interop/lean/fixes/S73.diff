@@ -1,0 +1,19 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/ns.cpp b/compiler+runtime/src/cpp/jank/runtime/ns.cpp
+index 180ff46..d3949c7 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/ns.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/ns.cpp
+@@ -220,9 +220,13 @@ namespace jank::runtime
+     return name->to_string();
+   }
+ 
++  /* pr of a namespace is an #object form, as Clojure's print-method for Object prints it;
++   * str keeps the bare name. */
+   jtl::immutable_string ns::to_code_string() const
+   {
+-    return to_string();
++    jtl::string_builder buff;
++    util::format_to(buff, "#object[ns {} \"{}\"]", static_cast<void const *>(this), to_string());
++    return buff.release();
+   }
+ 
+   void ns::to_string(jtl::string_builder &buff) const

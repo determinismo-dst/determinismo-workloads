@@ -1,0 +1,50 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -1,4 +1,6 @@
+ #include <random>
++#include <charconv>
++#include <array>
+ 
+ #include <jank/runtime/core/math.hpp>
+ #include <jank/runtime/visit.hpp>
+@@ -743,6 +745,15 @@
+     }
+   }
+ 
++  /* BigDecimal.valueOf(double): the decimal of the double's shortest text (Double.toString),
++   * which std::to_chars gives, rather than the double's binary value. */
++  static native_big_decimal shortest_decimal(f64 const d)
++  {
++    std::array<char, 64> buf{};
++    auto const res{ std::to_chars(buf.data(), buf.data() + buf.size(), d) };
++    return native_big_decimal{ std::string{ buf.data(), res.ptr }.c_str() };
++  }
++
+   bool is_big_integer(object_ref const o)
+   {
+     return o.get_type() == object_type::big_integer;
+@@ -766,8 +777,14 @@
+         {
+           return make_box<obj::big_integer>(typed_o->data);
+         }
+-        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::big_decimal>)
++        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
+         {
++          /* core.clj bigint: (bigint (BigDecimal/valueOf x)). */
++          auto const d{ shortest_decimal(typed_o->data) };
++          return make_box<obj::big_integer>(d.template convert_to<native_big_integer>());
++        }
++        else if constexpr(jtl::is_same<T, obj::big_decimal>)
++        {
+           auto const d{ native_big_decimal(typed_o->data) };
+           return make_box<obj::big_integer>(d.convert_to<native_big_integer>());
+         }
+@@ -814,7 +831,7 @@
+             throw make_box("`##Inf` cannot be converted to a `big_decimal`.").erase();
+           }
+ 
+-          return make_box<obj::big_decimal>(typed_o->data);
++          return make_box<obj::big_decimal>(shortest_decimal(typed_o->data));
+         }
+         else if constexpr(jtl::is_any_same<T,
+                                            obj::big_integer,

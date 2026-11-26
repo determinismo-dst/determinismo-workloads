@@ -1,0 +1,138 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -60,6 +60,51 @@
+     }
+   }
+ 
++  namespace detail
++  {
++    template <typename T>
++    concept integral_operand = (std::is_integral_v<T> && !jtl::is_same<T, bool>);
++
++    template <typename T>
++    concept exact_integer_operand = (integral_operand<T> || jtl::is_same<T, native_big_integer>);
++
++    /* Clojure's `/` on integers (Numbers.divide): the exact quotient, a ratio unless it
++     * divides; a long from two longs (LongOps.divide), a BigInt when a BigInt takes part
++     * (BigIntOps.divide); dividing by zero throws. Other operand types keep their `/`. */
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_div(L const &l, R const &r)
++    {
++      if constexpr(exact_integer_operand<L> && exact_integer_operand<R>)
++      {
++        if(r == 0)
++        {
++          throw make_box("Divide by zero").erase();
++        }
++        native_big_integer const n{ l }, d{ r };
++        obj::ratio_data const data{ n, d };
++        if(data.denominator != 1)
++        {
++          return make_box<obj::ratio>(data).erase();
++        }
++        if constexpr(integral_operand<L> && integral_operand<R>)
++        {
++          /* LongOps.divide hands Long/MIN_VALUE to BigIntOps. */
++          native_big_integer const min{ std::numeric_limits<i64>::min() };
++          if(n != min && d != min)
++          {
++            return make_box(static_cast<i64>(data.numerator)).erase();
++          }
++        }
++        return make_box<obj::big_integer>(data.numerator).erase();
++      }
++      else
++      {
++        return l / r;
++      }
++    }
++  }
++
+   /* Only for fixed integer sizes (i.e. integer and small_integer). */
+   i64 to_i64(object_ref const o);
+   /* Only for fixed real sizes (i.e. real and small_real). */
+@@ -311,7 +356,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data / typed_r->data).erase();
++              return make_box(detail::checked_div(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -322,20 +367,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data / r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_div(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data / typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_div(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data / r->data;
++      return detail::checked_div(l->data, r->data);
+     }
+   }
+ 
+@@ -354,17 +399,17 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l / typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_div(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l / r->data;
++      return detail::checked_div(l, r->data);
+     }
+     else
+     {
+-      return l / r;
++      return detail::checked_div(l, r);
+     }
+   }
+ 
+@@ -383,17 +428,17 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data / r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_div(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data / r;
++      return detail::checked_div(l->data, r);
+     }
+     else
+     {
+-      return l / r;
++      return detail::checked_div(l, r);
+     }
+   }
+ 
+@@ -402,7 +447,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto div(L const l, R const r)
+   {
+-    return l / r;
++    return detail::checked_div(l, r);
+   }
+ 
+   template <typename L, typename R>

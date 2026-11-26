@@ -1,0 +1,44 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/var.hpp b/compiler+runtime/include/cpp/jank/runtime/var.hpp
+index 4267917..360f79a 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/var.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/var.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include <atomic>
+ #include <functional>
++#include <mutex>
+ #include <folly/SharedMutex.h>
+ 
+ #include <jtl/result.hpp>
+@@ -143,7 +144,9 @@ namespace jank::runtime
+ 
+     /*** XXX: Everything here is thread-safe. ***/
+   private:
+-    folly::SharedMutex write_mutex;
++    /* Recursive, as Clojure's synchronized alter-var-root is re-entrant: an alter-var-root
++     * whose fn alters (or defs) the same var on the same thread doesn't deadlock. */
++    std::recursive_mutex write_mutex;
+     std::atomic<object_ref> root;
+     lazy_meta meta;
+ 
+diff --git a/compiler+runtime/src/cpp/jank/runtime/var.cpp b/compiler+runtime/src/cpp/jank/runtime/var.cpp
+index 48376ab..8409f3b 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/var.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/var.cpp
+@@ -98,14 +98,14 @@ namespace jank::runtime
+   var_ref var::bind_root(object_ref const r)
+   {
+     profile::timer const timer{ "var bind_root" };
+-    std::lock_guard<folly::SharedMutex> const write_lock{ write_mutex };
++    std::lock_guard<std::recursive_mutex> const write_lock{ write_mutex };
+     root.store(r);
+     return detail::untagged(this);
+   }
+ 
+   object_ref var::alter_root(object_ref const f, object_ref const args)
+   {
+-    std::lock_guard<folly::SharedMutex> const write_lock{ write_mutex };
++    std::lock_guard<std::recursive_mutex> const write_lock{ write_mutex };
+     auto const new_root{ apply_to(f, cons(root.load(), args)) };
+     root.store(new_root);
+     return new_root;

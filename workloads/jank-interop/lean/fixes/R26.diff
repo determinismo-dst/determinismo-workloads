@@ -1,0 +1,25 @@
+--- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+@@ -1537,6 +1537,22 @@
+     }
+ 
+     auto pairs{ keys_exprs.expect_ok() };
++
++    /* Clojure keeps the value of whichever branch runs. The loop above keeps only the last
++     * branch's common type with the default, so when the branches don't all have the default's
++     * type, box them all. */
++    auto const default_type{ cppinterop::get_canonical_type(
++      cpp_util::expression_type(default_expr.expect_ok())) };
++    for(auto const expr : pairs.exprs)
++    {
++      if(cppinterop::get_canonical_type(cpp_util::expression_type(expr)) != default_type)
++      {
++        needs_conversion = true;
++        chosen_type = cpp_util::untyped_object_ref_type();
++        break;
++      }
++    }
++
+     native_vector<expression_ref> converted_exprs{};
+     converted_exprs.reserve(pairs.exprs.size());
+ 

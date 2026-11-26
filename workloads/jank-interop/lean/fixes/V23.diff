@@ -1,0 +1,10 @@
+--- a/compiler+runtime/src/cpp/jank/c_api.cpp
++++ b/compiler+runtime/src/cpp/jank/c_api.cpp
+@@ -64,7 +64,6 @@
+ 
+   jank_object_ref jank_eval_file_c(char const * const path)
+   {
+-    jank::util::println("jank_eval_file_c {}", path);
+     jank_object_ref ret{ jank_const_nil() };
+     cpptrace::try_catch([&] { ret = __rt_ctx->eval_file(path).unwrap_or(jank_nil).erase().raw(); },
+                         [&](std::exception const &e) { jank::util::print_exception(e); },

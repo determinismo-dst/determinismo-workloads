@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/detail/base_persistent_map_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/detail/base_persistent_map_sequence.cpp
+@@ -83,7 +83,8 @@
+   template <typename PT, typename IT>
+   uhash base_persistent_map_sequence<PT, IT>::to_hash() const
+   {
+-    return hash::unordered(runtime::detail::untagged(this));
++    /* A map's seq is sequential: it equals the vector or list of its entries, so it hashes as they do. */
++    return hash::ordered(runtime::detail::untagged(this));
+   }
+ 
+   template <typename PT, typename IT>

@@ -1,0 +1,274 @@
+ROUND 6, AREA Q: THE nREPL (jank main 94d32623; compiler+runtime identical to 7135b7708)
+Files: Jank/R6/Nrepl/{StateEq,Graph,Lazy,Sim,StateHash,Theorems}.lean, Run/R6/Nrepl.lean (exe jank6-nrepl),
+results/r6-nrepl-{t7,t9,t3,unlocked,validate,axioms}.txt, .r6-scratch/nrepl/ (scratch outputs, axioms.lean).
+jank paths: upstream-r5/compiler+runtime/src/jank/jank/nrepl/server/...
+
+SUMMARY
+- T7 is decided under EVERY schedule, on round 3's T7 itself (partial reads), with no reduction argued:
+  its state graph has 1,239 states, one final state, no violation, no deadlock. Exact interleavePB counts:
+  ≤4 complete at 2,017,674,…,763,584 (about 2.0·10⁸⁷ timelines), nothing; ≤0 … ≤6, ≤8 and ≤10 all complete.
+  The whole-read world (round 5's reduction) ≤4: 119,937,952; with the unused eintr draw held at 0:
+  1,805,188 (round 5's walk stopped at 688,909 of these).
+- Round 5's reduction steps 1–5 are replaced by a check at every reachable state (a stuttering simulation,
+  16,080 steps, 0 failures) and the eintr draw by a theorem (★ eintr_draw_unused).
+- T9 is decided under every schedule (433,374 states, 42 final states, nothing). Exact counts ≤0 … ≤8 and ≤10
+  complete (≤2: 21,112,352; ≤4: 1,013,473,635,216; ≤10: 964,799,610,952,390,196,352,156), nothing.
+- T3: exact counts ≤0 … ≤6 complete (≤1: 1,358,848; ≤6: 6,057,877,513,946,363,904), nothing. Every
+  schedule searched (not decided: states kept as hashes): 3,174,744 states, 245 final states, nothing,
+  the same in two runs hashing different serializations.
+- On jank's real (unlocked) capture, with R125's two properties set aside, T9 ≤0 … ≤3
+  (T3 ≤0 … ≤2) find nothing else: R125 is the only cross-connection effect these scripts reach there.
+- No new deviation. Rounds 4–5's size estimates of these worlds were low by up to 70 orders of magnitude
+  (section 12).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+None new. Every search below ended with nothing beyond the known classes it was built to set aside
+(R125 with the capture unlocked; R126, R139, R1, S76 in their control scenarios, reproduced exactly).
+No tests are added (.r6-scratch/nrepl/tests.jank is not written: there is no surviving deviation).
+
+======================================================================
+2. PROOFS
+======================================================================
+(a) ★ eintr_draw_unused (Theorems.lean). Round 3's tConnStep (Threads.lean 251) draws net.read.eintr on
+  every read that finds the inbox empty and open, even with EINTR off, because Lean lifts the
+  `(← decideRare …)` out of `m.cfg.eintr && …`. For EVERY connection, remainder, instruction tail, eval
+  state, bindings and process state with that remainder parsing to nil, the socket's inbox empty and not
+  closed, and EINTR off: whatever the draw gives, the step returns `.blocked` and the process's memory
+  and threads are unchanged — or the timeline ends at its decision limit (`.limit`; lemma
+  next_error_limit: the sdk's Decisions.next fails only with `.limit`). Round 5's nREPLA5-4 is now a
+  theorem; holding the draw at 0 (round 5's `whole0` walks, the "eintr 0" counts here) loses nothing.
+  Also checked at every reachable state of T7 and T7w: 34 (state, thread) steps draw it, both values
+  lead to the same state (results/r6-nrepl-t7.txt).
+(b) The log ordering (Graph.lean byCid/orderMem/canonMem), for every input:
+  ★ byCid_bucket: for every log, every client c ≤ n and either order, client c's part of the ordered
+    log is its part of the original log, same entries in the same order.
+  ★ byCid_append: ordering, appending, ordering = ordering the appended log (appends commute with the
+    ordering, so a log built by any interleaving of per-client appends orders to one canonical log).
+  ★ byCid_filter_sub, byCid_find?_sub, byCid_any_sub: any filter / find? / any whose predicate keeps
+    only one client's entries gives the same result on the ordered log.
+  ★ The World T readers themselves, for every state and either order (orderMem d):
+    tRepliesOf_orderMem (Threads.lean 547–548, the judge's replies of a request; the client's `.wait`
+    step filters the same way, 512), evalsFind_orderMem (tJudge 587), handlerErrorsFind_orderMem
+    (tJudge 597), hungAny_orderMem (tConnStep 356).
+  Lemmas: bucket_unique, bucket_of_key, filter_flatMap_bucket, cidsOf_spec, flatMap_congr'.
+  Not proved: the cross-client order in tJudge's loop over `sent` (it picks WHICH violation a timeline
+  reports first, never whether it has one) and in tStuck's detail text; and that the steps write the
+  logs only by appending (read from Threads.lean 231, 309, 358, 422, 483, 506). Those are checked at
+  every step taken (section 8: 0 differences over 8,708,758 step runs and final states).
+(c) What did not work, and why.
+  - A proof that the state-graph counter (Graph.lean countFrom) equals the sdk walk over interleavePB:
+    interleavePB is a `for` loop in ProcessM with mutable locals, and countFrom a partial memoized
+    recursion; relating them needs a loop invariant over EStateM that the sdk does not provide. Instead
+    the counter reproduced EVERY complete walk count of rounds 3–5 exactly: 17 timeline counts and 4
+    violation counts (results/r6-nrepl-validate.txt: T1, T2, T4, T5, T6, T8, T9, T10, T7 three ways).
+  - A proof that the derived BEq is identity (LawfulBEq) for the 30-odd state types: not attempted;
+    derived structural BEq on plain data compares every field (NV's Float by its bits).
+  - A proof of round 5's reduction (α a stuttering simulation) for every input: the steps are not
+    small enough to reason about in Lean (tConnStep is over 200 lines over EStateM); it is checked on the
+    complete reachable set instead (section 8), which decides T7, the only world it was for.
+
+======================================================================
+3. WHAT WAS REPLICATED (nothing new of jank's; tools over round 3's World T)
+======================================================================
+World T (round 3: Jank/R3/Nrepl/Threads.lean, ThreadSearch.lean) replicates, as before:
+  core.jank handle-client 79–106 and read-message 58–70; capture.jank start/end/readback/with-capture
+  18–74; handler/eval.jank do-eval 22–64 and :eval/:load-file 66–80; handler.jank's dispatch; the clone,
+  close, describe, lookup and completions handlers; bencode.jank (round 2's replica).
+New this round (all over round 3's step function `tProg`, its judge `tJudge` and its deadlock rule
+`tStuck`, unchanged):
+- StateEq.lean: structural BEq for every type a World T process holds (32 derived instances, plus NV by its Float bits and Except by hand),
+  `PKey` (memory + threads) with a summary hash used only for buckets.
+- Graph.lean:
+  - iterStep: one iteration of interleavePB's loop body after the choice (ThreadSearch.lean 50–60);
+  - branchesOf: every value sequence of a step's own decisions, in nextPath order;
+  - build: the graph of every state ANY schedule reaches (the sdk's `interleave`), optionally with
+    the logs ordered by client and the order check;
+  - countFrom/count: exact interleavePB timeline counts by dynamic programming over (state, cur,
+    blocked set, budget left[, partial reads left]), with violations by property, eintr-0 counts,
+    longest timeline (iterations, decisions);
+  - reach/longestPaths: every-schedule verdicts, deadlocks, cycle check, longest progress path;
+  - eintrCheck; tJudgeNoOut: round 3's tJudge (Threads.lean 568–605) without its output property, for
+    runs on jank's unlocked capture where R125 would otherwise be every timeline's first violation.
+- Lazy.lean: the same count with steps run on demand (only states ≤ b preemptions reach).
+- Sim.lean: α (round 5's abstraction, made precise) and the stuttering-simulation check of T7 by T7w.
+- StateHash.lean: derived Hashable for every state type; a depth-first every-schedule search keeping
+  64+64-bit hash pairs (for T3, whose exact graph outgrows the memory bound).
+- Theorems.lean: section 2.
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- World T's own abstractions stand (round 3's NA1–NA9, round 4's EA4-*): NA4 granularity (a form's read,
+  analysis and evaluation are one step each) matters only in the unlocked runs; NA7 (the core subset).
+- Logs ordered by client (T3, T9, T3u, T9u, T9f): states that differ only in how the clients' entries
+  interleave in the six logs are merged. tJudge's loop over `sent` is the one reader of the cross-client
+  order, and only for WHICH violation a timeline reports first; with the ordering, per-property counts
+  could move between properties, never in or out of "some violation". The order check counted 0 final
+  states whose first violation changes, and T9's ≤1 … ≤3 counts equal the raw-state counts exactly.
+- The hash-compaction searches (T3 and T9u, every schedule): a collision between two different states would drop
+  the second one's successors. Bound stated with the result (n²/2⁶⁵ for a uniform 64-bit hash); the
+  derived hash is not proved uniform. On T7 and T9 it found exactly the exact graphs' states (1,239,
+  433,374) and final states (1, 42).
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- T3 exact counts beyond ≤6: ≤6 held 733,454 states and 4.8 million scheduler states (about 3.6 GB);
+  ≤7 would exceed the few-GB bound per process. Under every schedule T3 is searched with hash
+  compaction (section 8), not decided exactly: its exact graph (3,174,744 states at about 3.8 KB) is
+  past the memory bound.
+- T3u/T9u (unlocked) beyond the bounds in section 8: the unlocked world is about 10× larger (fd-table
+  interleavings); T9u's every-schedule search stopped at 14.3 million states, T3u's ≤3 count at its
+  1.2-million-state bound.
+- Diverging evals inside World T (its evaluator has fuel), interrupt (R128/V37), stdin: as round 5.
+- A for-every-input proof of the counter (section 2c), and of the steps' append-only log writes and
+  the judge's first-violation order (section 2b): read and checked, not proved.
+
+======================================================================
+6. ASSUMPTIONS (IDs nREPLA6-n) AND EARLIER ONES REPLACED
+======================================================================
+Round 3's NA1–NA9, round 4's EA4-1..6 and round 5's nREPLA5-1, -2 stand.
+Replaced:
+- nREPLA5-3 (round 5's reduction steps 3–5, argued) → no longer needed for T7's verdict (T7 is decided
+  in itself, every schedule and every bound counted); the reduction's claim is CHECKED at every
+  reachable state (section 8).
+- nREPLA5-4 (net.read.eintr unused) → ★ eintr_draw_unused.
+- nREPLA5-5 (chunked runs stay within the 6,000-round bound) → checked: T7's longest preemption-bounded
+  timeline is 615 iterations at ≤10, and its longest run under any schedule 597 progress steps (≤3
+  threads live, so at most 1,791 scheduler rounds).
+New:
+- nREPLA6-1. A World T step's result is a function of the process's memory and threads, the thread
+  index and the values of the decisions it draws. Read from Threads.lean: steps use only tmem/tset/
+  tnote/decide*/`modify threads`; Process.note writes only the log, read by nothing; no step reads
+  `decisions.taken`, `steps` or `log`. Confirmed by the exact reproduction of 21 earlier walk results.
+- nREPLA6-2. Derived structural BEq on these types is equality (plain data, no functions; Float only in
+  NV, compared by bits).
+- nREPLA6-3. The six process-wide logs (replies, sent, evals, handlerErrors, connEnded, hung) are
+  written only by appending, and read only through one client's part (Threads.lean 472–483, 512, 548,
+  573–597, 356, 611–619), except tJudge's choice of the first violation to report and tStuck's text.
+  The readers' order-independence is proved for every state (section 2b); the rest is read from the
+  code and checked at every step taken (0 differences).
+- nREPLA6-4. The hash-compaction searches (T3 and T9u every schedule) had no collision (probabilistic; for T3 two runs hashing different serializations agree exactly).
+
+======================================================================
+7. PROPERTIES CHECKED (with sources)
+======================================================================
+Round 3's World T judge (Threads.lean tJudge, tStuck, runTWith), unchanged:
+- every request gets replies with its id and session, ending in exactly one done (nREPL's protocol:
+  every reply carries the request's id and session; a request ends with "done" — nREPL 1.8.0
+  transport/middleware, as rounds 2–3 cite);
+- no hang or deadlock; the process stays up;
+- each eval's :out is what that eval printed (nREPL's per-session *out*, session.clj);
+- each client's values, :ns and eval-errors are those of its script run alone by the spec (Clojure 1.12
+  Compiler.load / load-string mode), with round 3's set-asides of known deviations (allAside);
+- fd 1 is the terminal again after every eval.
+On the unlocked runs (T3u, T9u): all of the above except the output and fd 1 properties (R125's).
+New checks of the model itself: α simulation (Sim.lean), eintr (Graph.lean eintrCheck), log order
+(Graph.lean build/Lazy.lean lStep), blocked steps never change the state (G.blockedMoves = 0 in every whole-graph build: T7, T7w, T8, T9).
+
+======================================================================
+8. SEARCH RUNS (exact bounds; "complete n" = every timeline within the bound counted)
+======================================================================
+T7 (one client, partial reads, every op; results/r6-nrepl-t7.txt):
+- Every schedule: 1,239 states, 16,080 step runs, acyclic, 1 final state (equal to T7w's), no violation,
+  no deadlock, longest run 597 progress steps.
+- interleavePB, complete (eintr held at 0 in brackets), nothing at every bound, one final state:
+  ≤0 3,705,346,855,594,118,253,554,271,520,278,013,051,304,639,509,300,498,049,262,642,688,253,220,148,477,952
+     (= 2²⁵⁵·64: every chunking of the 261 request bytes, 6 messages, times 2⁶ eintr draws)
+  ≤1 1,252,407,237,190,811,969,701,343,773,853,968,411,340,968,154,143,568,340,650,773,228,629,588,410,185,547,776
+  ≤2 211,701,287,247,514,352,298,569,749,039,563,997,673,239,273,724,374,655,546,571,827,350,659,479,963,139,309,568
+  ≤3 23,861,990,961,076,878,055,758,208,855,143,730,827,842,247,535,473,846,027,734,532,026,549,491,496,390,267,764,736
+  ≤4 2,017,674,253,673,646,775,061,131,880,781,786,416,659,010,311,266,051,046,097,575,828,688,661,381,704,508,541,763,584
+  ≤5, ≤6, ≤8, ≤10: in the file.
+- T7 with ≤1 partial read (round 5's cuts walk): ≤0 16,384, ≤1 1,392,512 (= round 5's).
+- T7w (whole reads): every schedule 219 states, 1 final; ≤0 64, ≤1 5,312, ≤2 218,400, ≤3 5,934,304,
+  ≤4 119,937,952, ≤5 1,923,801,376, ≤6 25,512,381,680, ≤8 2,815,511,942,852, ≤10 186,805,642,078,730;
+  eintr held at 0: ≤2 3,335, ≤3 89,835, ≤4 1,805,188, ≤5 28,886,324, ≤10 2,922,711,841,516.
+- Stuttering simulation of T7 by T7w under α, every reachable T7 state and step: 1,239 states, 16,080
+  steps: 14,688 stutter steps, 1,392 matched by a whole-read step by the same thread with the same
+  result, 0 unmatched; α of every state is a T7w state; the final state's verdict equal.
+- eintr check: 34 draw sites in T7, 34 in T7w, 0 differ.
+T9 (two connections, two evals each, capture locked; results/r6-nrepl-t9.txt):
+- Every schedule (logs ordered by client, order check on 1,889,126 steps and finals: 0 differ):
+  433,374 states, 2,019,280 step runs, acyclic, 42 final states, no violation, no step violation, no
+  deadlock, longest run 228 progress steps (≤5 threads: at most 1,140 rounds, bound 6,000).
+- interleavePB, complete, nothing: ≤0 64; ≤1 53,312 (= round 3); ≤2 21,112,352; ≤3 5,398,067,072;
+  ≤4 1,013,473,635,216; ≤5 149,978,349,473,920; ≤6 18,291,300,231,192,808;
+  ≤7 1,895,377,013,635,848,240; ≤8 170,597,045,864,972,409,024; ≤10 964,799,610,952,390,196,352,156.
+- Raw states (no log ordering), steps on demand: ≤0 … ≤3 equal to the above (59,390 states at ≤2,
+  373,429 at ≤3, against 16,196 and 37,048 ordered).
+T3 (two connections, 4 evals + 3 evals and a completions, capture locked; results/r6-nrepl-t3.txt):
+- interleavePB, logs ordered, order check at every step taken (0 differ), complete, nothing:
+  ≤0 1,024; ≤1 1,358,848; ≤2 884,608,512; ≤3 377,378,112,512; ≤4 118,916,805,223,424;
+  ≤5 29,577,136,869,748,736; ≤6 6,057,877,513,946,363,904 (733,454 states).
+- Every schedule (hash-compaction DFS, logs ordered by client): complete, 3,174,744 states, 14,872,458
+  step runs, 245 final states, no violation, no step violation, no deadlock, deepest stack 580. A
+  second run hashing a different serialization (the logs' normal form reversed) found the same
+  3,174,744 states and 245 final states; a third run that also follows blocked steps that change
+  the state found none (0) and the same counts. Collision bound for a uniform 64-bit hash: 2.7·10⁻⁷.
+Unlocked capture (jank's real code; results/r6-nrepl-unlocked.txt):
+- T9f (round 3's full judge): ≤0 64 and ≤1 51,264 nothing; ≤2 18,727,456 with 131,904 "stdout is restored"
+  and 120,768 "eval output reaches its client" (R125).
+- T9u (R125's two properties set aside): ≤0 64, ≤1 51,264, ≤2 18,727,456, ≤3 4,411,340,832: nothing.
+  Every schedule (hash-compaction DFS): stopped at the 1,700-s bound after 14,309,663 states (65,713,835
+  step runs, 1,046 final states reached): nothing. (Blocked steps there cannot change the state: the
+  one that does, R1's hang mark, Threads.lean 354–359, needs a NUL in the code.)
+- T3u: ≤0 1,024, ≤1 1,303,552, ≤2 804,281,856, complete, nothing; ≤3 stopped at the 1,200,000-state bound
+  (1,200,174 states, 1,965,491 scheduler states, about 4 GB).
+Validation (results/r6-nrepl-validate.txt): the counter reproduces T1 ≤1/≤2, T2 ≤2, T4 ≤1, T5 ≤1, T6 ≤1,
+T8 ≤2, T9 ≤1, T10 ≤1/≤2 (round 3) and T7w ≤0/≤1/≤2, eintr-0 ≤2/≤3, T7 cuts ≤0/≤1 (round 5) exactly,
+including T1's 16,224 + 4,800, T8's 3,145 and T10's 864 violations.
+
+======================================================================
+9. THEOREMS (★ = for every input; axioms: results/r6-nrepl-axioms.txt, propext/Classical.choice/
+   Quot.sound only; no sorry, no native_decide)
+======================================================================
+- ★ eintr_draw_unused (Theorems.lean): section 2a.
+- next_error_limit: Decisions.next fails only with .limit.
+- ★ byCid_bucket, ★ byCid_append, ★ byCid_filter_sub, ★ byCid_find?_sub, ★ byCid_any_sub: section 2b.
+- ★ tRepliesOf_orderMem, ★ evalsFind_orderMem, ★ handlerErrorsFind_orderMem, ★ hungAny_orderMem:
+  round 3's readers of the logs give the same answer in either order, for every state.
+- bucket_unique, bucket_of_key, filter_flatMap_bucket, cidsOf_spec, flatMap_congr' (lemmas).
+
+======================================================================
+10. LIBRARY GAPS (built in the project; sdk/lean untouched)
+======================================================================
+- State equality for a Process: derived BEq/Hashable over the world's types (round 5 thought World T had
+  none; it is plain data).
+- A state graph of a Program under every schedule, with each step's own decisions enumerated.
+- Exact counting of preemption-bounded timelines (round 3's interleavePB) by dynamic programming on the
+  graph, whole or on demand — the sdk's exhaust/nextPath can only enumerate them one by one.
+- Stuttering-simulation checking between two worlds' graphs.
+- Hash-compaction reachability for graphs past the memory bound.
+- Symmetry-like state merging (per-client log order) with a run-time check of its premise.
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+None (none assigned; no deviation found).
+
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- T7's size. Rounds 4–5 estimated T7 at ≈3.2·10¹¹ timelines at ≤1 and ≈1.2·10¹³ at ≤2 (Knuth's
+  estimator, Seg.lean). Exact: 1.25·10⁸¹ at ≤1, 2.1·10⁸³ at ≤2. Cause: Seg.estimate draws each decision
+  BY WEIGHT (the sdk's random source: net.read.split weights [6, 1]), while Knuth's estimator is unbiased
+  only for uniform choices; partial reads (the huge subtrees) were drawn 1 time in 7. Even ≤0 has
+  2²⁵⁵·64 timelines (every chunking of 261 bytes). The whole-read estimates (no weighted split) were
+  unbiased but too spread: T7w ≤2 6,201 vs 218,400, ≤3 78,705 vs 5,934,304; T3 ≤1 12,236 (round 4) vs
+  1,358,848; T9 ≤2 10,414 (round 4) vs 21,112,352; round 3's "~10M" for T9 ≤2 vs 21,112,352.
+- Where the earlier walks stopped, as fractions now known: round 5's T7w ≤3 (5,774,800 of 5,934,304,
+  97%), T7w eintr-0 ≤4 (688,909 of 1,805,188, 38%); round 4's T3 ≤1 (1,206,000 of 1,358,848, 89%);
+  round 3's T9 ≤2 (853,000 of 21,112,352, 4%); round 3/4's T7 ≤1 and ≤2 (1.5 million of 1.25·10⁸¹ and 2.1·10⁸³).
+- Round 5's "World T's states have no decidable equality" (Reduce.lean, report section 9): they are plain
+  data with derivable structural equality (StateEq.lean).
+- Round 5's α (Reduce.lean header): "a connection's .top none shown as .readMsg" is true only after an
+  incomplete read (a nonempty remainder); as written it also rewrote a new connection's first
+  instruction and the empty remainder an end-of-file read leaves. The check found exactly those
+  (2 states, 4 steps) before the definition was made precise; no verdict changes.
+- Re-read "agrees" verdicts resting on an assumption (rule 5): T3's and T9's "nothing" rested on the
+  capture lock (fixCapture, R125 set aside). On jank's real capture, with only R125's two properties set
+  aside, T9 ≤3 and T3 (section 8) still find nothing: the lock hid R125 and nothing else. Round 3's other
+  set-asides are known deviations (R111, R112, R127, R131, R136, R138, S71–S74, S76).

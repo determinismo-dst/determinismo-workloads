@@ -1,0 +1,43 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/integer_range.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/integer_range.cpp
+@@ -110,22 +110,36 @@
+     return make_box(start);
+   }
+ 
++  /* Whether there is an element after `start`, and which. Checked by stepping once, not by
++   * counting: `count` throws on a span wider than an i64 (such as (range Long/MAX_VALUE)),
++   * where Clojure's range steps on. A step past the i64 range ends the range. */
++  static bool next_start(i64 const start,
++                         i64 const end,
++                         i64 const step,
++                         integer_range::bounds_check_t const bounds_check,
++                         i64 &out)
++  {
++    return !__builtin_add_overflow(start, step, &out) && !bounds_check(out, end);
++  }
++
+   object_ref integer_range::next() const
+   {
+-    if(count() <= 1)
++    i64 next_value{};
++    if(!next_start(start, end, step, bounds_check, next_value))
+     {
+       return {};
+     }
+-    return make_box<integer_range>(start + step, end, step, bounds_check);
++    return make_box<integer_range>(next_value, end, step, bounds_check);
+   }
+ 
+   object_ref integer_range::next_in_place()
+   {
+-    if(count() <= 1)
++    i64 next_value{};
++    if(!next_start(start, end, step, bounds_check, next_value))
+     {
+       return {};
+     }
+-    start += step;
++    start = next_value;
+     return runtime::detail::untagged(this);
+   }
+ 

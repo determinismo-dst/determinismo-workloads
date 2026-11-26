@@ -1,0 +1,686 @@
+ROUND 6, FIXES-3: LOCAL FIXES FOR ROUND 5'S DEVIATIONS (V1-V48)
+jank main 94d32623 (upstream-r5/). Paths are under upstream-r5/compiler+runtime/ unless they start with
+fixes/, results/, tests/ or .r6-scratch/. Line numbers are 94d32623's.
+
+Summary
+- 21 diffs in fixes/: V3, V8, V10, V11, V12, V13, V14, V16, V17a, V17b, V19, V20, V21a, V21b, V22, V23,
+  V24, V38 (also V39, V40, V45), V41 (also V42), V43, V44.
+- V48 has no diff of its own: its fix is the same change as fixes/R55a.diff (another fix agent's; the
+  code line is identical, checked). V48's test v48 should pass with R55a.diff.
+- Each diff applies alone: `git -C upstream-r5 apply --check ../fixes/<id>.diff` passes for all 21.
+- All 21 also apply together, in alphabetical order and in reverse. Checked by applying them for real,
+  one after another, in a throwaway git copy of the touched files under my scratch dir.
+  (`git apply --check A B` does not test A then B: it passed for V12.diff given twice.)
+- Against the other fix agents' diffs on the same files:
+  - V10 and V11 conflict with D19.diff: the same lines of delay::deref.
+    A merged diff (D19 + V10 + V11) is .r6-scratch/fix3/merged/D19+V10+V11.diff. It applies alone to
+    94d32623.
+  - V8 was written so it also applies after U51.diff. Its hunk avoids the `(load lib ...)` line that
+    U51 changes.
+  - No other pair conflicts, in either order. Checked: V12, V13 and V16 with D22, R101, R103, R110,
+    R112, U15, U39, U59b, U62 and U71; V17a and V17b with R30 and U17; V44 with R10, R12, R16, R19 and
+    S1; V8 with the 21 core.jank diffs.
+- upstream-r5 is clean: `git -C upstream-r5 status --short` is empty.
+- No jank build: jank can't be built here. Standalone checks on the Mac's clang:
+  - V22: the header compiled as C.
+  - V38: the new #inst parser against Clojure 1.12.0 itself.
+  - V41 and V43: the floor and compare logic.
+- "Confirmed" means round 5's test failed on the real jank as predicted. V20, V22 and V23 had no test;
+  their diffs are marked "not confirmed by a run".
+
+======================================================================
+1. DIFFS
+======================================================================
+
+----------------------------------------------------------------------
+V3: a library dlopen refuses ends in llvm::cantFail
+----------------------------------------------------------------------
+File: src/cpp/jank/jit/processor_dynamic.cpp, load_dynamic_library_impl (897-948).
+
+Change:
+- `llvm::cantFail(Interpreter::LoadDynamicLibrary(path))` (946-947) becomes a check of the returned
+  llvm::Error.
+- On failure it throws std::runtime_error "Unable to load the dynamic library `<path>`: <LLVM's message>".
+
+Why it is safe:
+- On success nothing changes.
+- On failure, a release build had undefined behavior (cantFail is llvm_unreachable) and a debug build
+  aborted. Now it is an error.
+- The form copies the same file's own llvm::Error check at 662-669 (`if(auto err{ ... })`, then a
+  std::runtime_error). The same function's other two failures (ld-script depth, self-reference) are
+  also std::runtime_error.
+- The -l startup path (processor ctor 432-435 -> load_libs 873-895 -> here) now reports the error
+  through the process's top-level handlers, instead of UB.
+
+Test:
+- Round 5's v03-loading-a-file-that-is-not-a-library-is-an-error asserts `thrown?`. In jank, `thrown?`
+  catches only objects (clojure/test.jank 493-504, V7). With this fix v03 reports an uncaught native
+  exception instead of passing.
+- New variant that should pass: v03-fix-loading-a-file-that-is-not-a-library-throws in
+  .r6-scratch/fix3/tests.jank. It is the same program, observed with a handler per kind; it expects
+  :native. Jank only: it calls the JIT processor through cpp/raw.
+- I kept the throw native on purpose. It matches the function and its C++ callers. Making it an object
+  would be V7's decision, not this one's.
+
+Read-checked:
+- load_dynamic_library's callers are only load_libs (890) and the recursion (936).
+- llvm::toString and jtl::move are used in jank already (util/clang_format.cpp 73; this file 668).
+- The test's path: cpp/raw -> jit_prc.load_dynamic_library -> impl.
+  - On Linux the text file isn't ELF, so parse_ld_script runs and finds no INPUT/GROUP (none).
+  - That reaches the changed lines.
+
+Build must check:
+- that it compiles: llvm::Error's bool test inside if-init with braces, as at 662;
+- that the variant test gives :native;
+- that a failing `-l` at startup prints the error.
+
+Not touched: load_static_library's cantFail (960) and load_object's (675). Neither is V3's path.
+
+----------------------------------------------------------------------
+V8: a failed require leaves the namespace it created
+----------------------------------------------------------------------
+File: src/jank/clojure/core.jank, load-lib (4836-4873).
+
+Change:
+- A second handler after the object one: `(catch cpp/jank.error_ref e ...)`.
+- It does the same thing: remove-ns when the namespace was undefined on entry, then rethrow.
+
+Why it is safe:
+- context::load_module turns every failure into an error_ref (context.cpp 340-353), and load's
+  .expect_ok throws it (core.jank 4810-4812). So the existing object handler never ran for a failed
+  module.
+- The rethrown error_ref is the same value, so callers see exactly what they saw before.
+- Catching jank.error_ref in bundled jank code has precedent: jank/nrepl/server/core.jank 101 and 139.
+- Round 5's own vb-outcome uses `(catch cpp/jank.error_ref _ ...)`, and it compiled and ran on the
+  real jank (v07's results).
+- `(throw e)` of a native value is supported: analyze_throw 2865-2910; codegen emits `throw e;`
+  (cpp_processor.cpp 1024-1051).
+
+Test: v08-a-failed-require-removes-the-namespace-it-created.
+- require -> load-libs -> load-lib -> load-one -> load -> expect_ok throws.
+- The new handler runs, remove-ns runs (undefined-on-entry? is true), and the test's vb-outcome sees
+  [:error]. Then find-ns is nil.
+
+Read-checked:
+- load-lib is the only place a namespace is removed on failure.
+- remove-ns exists (4610-4614).
+- Clojure's load-lib 5999-6007 does the same for any Exception.
+
+Build must check: clojure.core compiles with the new handler (jank::error_ref is declared through
+context.hpp in the prelude).
+
+----------------------------------------------------------------------
+V10: a failed delay throws a native error first and a string after
+----------------------------------------------------------------------
+Files: include/cpp/jank/runtime/obj/delay.hpp and src/cpp/jank/runtime/obj/delay.cpp (delay::deref
+19-47). One unit: the members deref uses.
+
+Change:
+- The std::exception handler keeps `std::current_exception()` in a new member
+  `std::exception_ptr native_error`, instead of boxing e.what() into a string.
+- Later derefs `std::rethrow_exception(native_error)`: the same exception every time, as Clojure's
+  Delay does.
+
+Why it is safe:
+- The exception object lives in C++ exception memory and holds no GC pointers (jank's std exceptions
+  are std::runtime_error and invalid_arity, native_function_wrapper.hpp 54).
+- The exception_ptr's refcount keeps it alive.
+- Rethrowing one exception_ptr from several threads is defined (it refcounts).
+
+Test: v10-a-failed-delay-throws-the-same-kind-each-deref.
+- nth's out-of-bounds is a std::runtime_error (persistent_vector.cpp 329).
+- Both derefs give :native.
+
+Read-checked:
+- delay is used only by core.cpp delay/force (1253-1264) and deref (core.jank 1094).
+- error is read only in deref.
+- is_realized is unchanged.
+
+Build must check: compiles; v10 passes.
+
+Note: a delay is GC-allocated, and its destructor may never run, so a failed delay's exception can
+leak (one per failed delay). The struct's std::mutex has the same property today.
+
+Conflict: D19.diff (another agent's). Merged version: .r6-scratch/fix3/merged/D19+V10+V11.diff.
+
+----------------------------------------------------------------------
+V11: a delay whose body raises an error_ref runs it at every deref
+----------------------------------------------------------------------
+Files: delay.hpp and delay.cpp, as V10.
+
+Change:
+- A handler `catch(error_ref const e)` keeps the error in a new member `jtl::option<error_ref>
+  jank_error`, which later derefs throw.
+- It is kept as an error_ref, not only inside an exception_ptr, so the GC sees the error::base it
+  points to. error::base is GC-allocated (jtl::make_ref, ref.hpp 147); BDWGC is built without malloc
+  redirection, so exception memory isn't scanned.
+- This is the pattern exception_info.hpp 55 uses (`jtl::option<error_ref> error`).
+- delay.hpp now includes <jank/error.hpp>, as exception_info.hpp does.
+
+Test: v11-a-delay-whose-body-fails-to-read-runs-once. The body runs once; n = 1.
+
+Read-checked:
+- error_ref = jtl::ref<error::base> (error.hpp 293).
+- The member named `error` doesn't shadow the alias name `error_ref`.
+- jtl::option supports `= error_ref` (option.hpp 133).
+- V10 and V11 apply together in either order (checked).
+
+Build must check: compiles (the new include in delay.hpp); v11 passes.
+
+----------------------------------------------------------------------
+V12: a future whose body raises an error_ref ends the process
+----------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, future (1091-1171).
+
+Change:
+- A `catch(error_ref const e)` in the thread function, before catch(...).
+- It records `make_box<obj::exception_info>(e)` as the future's error.
+- catch(...) rethrows out of the std::thread function (1163-1169), which calls std::terminate.
+
+Why it is safe:
+- exception_info(error_ref) is the constructor evaluate.cpp 750 uses for *e.
+- The handler takes the same lock and sets the same fields as its neighbors.
+- catch(...) and the __forced_unwind handler are untouched.
+
+Test: v12-a-future-whose-body-fails-to-read-can-be-dereferenced.
+- Deref throws the exception_info object (future.cpp 26-29), so the result is :object.
+
+Read-checked:
+- exception_info.hpp is reached through visit.hpp (core.cpp already makes exception_info in ex_info).
+- error_ref is visible in jank::runtime.
+- The handler sits after the object_ref handler, so V12 and V13 apply together in either order.
+
+Build must check: v12 passes, and the process no longer aborts.
+
+----------------------------------------------------------------------
+V13: a failed future's deref throws a string
+----------------------------------------------------------------------
+File: core.cpp, future: the std::exception handler (1143-1148).
+
+Change: the handler records `make_box<obj::exception_info>(e.what(), jank_nil)` instead of
+`make_box(e.what())`. That is an exception object carrying the native error's message, with nil data,
+as Clojure's ExecutionException has no ex-data.
+
+Why it is safe:
+- Only what a failed future throws at deref changes: an exception_info instead of a string.
+- ex-message gives the same text.
+
+Test: v13-a-failed-futures-deref-throws-an-exception-not-a-string (:object, and not a string).
+
+Read-checked:
+- The constructor exception_info(immutable_string const&, object_ref) (exception_info.cpp 16).
+- jank_nil is obj::nil_ref (nil.hpp 70).
+- No jank test asserts a future's error is a string (test/bash/parallelism's futures never fail).
+
+Build must check: v13 passes.
+
+----------------------------------------------------------------------
+V14: a top-level def whose value throws keeps the def's metadata
+----------------------------------------------------------------------
+File: src/cpp/jank/evaluate.cpp, eval(def) (333-362).
+
+Change:
+- `var->set_meta(meta)` moves after the root is bound: in the no-value branch before its return, and
+  at the end.
+- Meta evaluation and set_dynamic stay where they were (before the value).
+
+Why it is safe:
+- It matches Clojure's DefExpr.eval (Compiler.java 456-479: bindRoot, then setMeta).
+- It also matches jank's own generated code for def (ir/processor.cpp 82-95; cpp_processor.cpp
+  528-556 emits bind_root(...)->with_lazy_meta(...)->set_dynamic(...)).
+- Evaluating the value doesn't read the var's metadata:
+  - deferred_cpp_function takes the fn's own meta and the var (deferred_cpp_function.cpp 17-70);
+  - eval(function) 522-554 uses expr->meta.
+
+Test: v14-a-def-whose-value-throws-sets-no-metadata.
+
+Read-checked:
+- jank's def tests (form/def/pass-meta.jank, pass-declare.jank) set and replace meta on defs with
+  values: unchanged.
+- current_def_var's reset is unchanged.
+
+Build must check: v14 and test/jank/form/def pass.
+
+----------------------------------------------------------------------
+V16: (ex-data (ex-info "m" nil)) is nil, not {}
+----------------------------------------------------------------------
+File: core.cpp, ex_info (3-arity, 1326-1336). The 2-arity calls it.
+
+Change: nil data becomes obj::persistent_array_map::empty(), as Clojure 1.12's ExceptionInfo
+constructor does.
+
+Why it is safe:
+- ex_info is the only place that builds exception_info from a message and data
+  (grep: core.cpp 1329; the other construction is evaluate.cpp 750's error_ref one).
+
+Test: v16-ex-info-with-nil-data-has-empty-data.
+
+Read-checked:
+- persistent_array_map::empty() (persistent_array_map.hpp 48-52).
+- .erase() gives object_ref, so the ternary has one type.
+- jank's tests always pass {} or a map.
+
+Build must check: v16 passes.
+
+----------------------------------------------------------------------
+V17a and V17b: read-string of a text without a form returns nil
+----------------------------------------------------------------------
+File: src/cpp/jank/runtime/context.cpp. Two causes, one diff each. The tests need both.
+
+V17a (the cause), context::read_string(code, reader_opts) (300-305):
+- When the options are a map without :eof, it reads with :eof :eofthrow.
+- Clojure: LispReader.read 196-208 uses valAt(OPT_EOF, EOFTHROW), so a present :eof, nil included,
+  returns that value. jank's own `read` docstring (core.jank 5919-5920) says the same.
+- This overload is called only by core.cpp read_string (1295), the path of clojure.core/read-string,
+  and by the 1-arity overload, which already passes :eofthrow.
+- read_file's whole-file read (context_dynamic.cpp 209) uses the 3-arity and is untouched.
+
+V17b (how the error is thrown), the 3-arity's EOF throw (291-295):
+- `throw std::runtime_error{...}` becomes `throw make_box("...").erase()`: the same message, as an
+  object, the way inst.cpp 53 throws its read errors.
+- With V17a alone, (read-string "") would throw a native error, which `thrown?` and the test's object
+  handler don't see (V7's family).
+- Nothing in jank catches this std::runtime_error: grep finds no other "EOF was reached" or :eofthrow
+  user.
+
+Tests:
+- v17-read-string-of-an-empty-text-throws, v17b-read-string-of-a-comment-throws and
+  v17c-read-string-with-options-but-no-eof-throws.
+- Each expects :object and needs both diffs.
+
+Read-checked:
+- With :eofthrow, a text with a form still returns it. The loop counts 1 and breaks before EOF.
+- "(" is still a parse error (error_ref, v07 unchanged).
+- read-string's other callers in bundled code: none (grep src/jank).
+- runtime::contains and runtime::assoc (core/seq.hpp 98, 115) are qualified, as context.cpp 653
+  qualifies assoc.
+- V17a and V17b apply together.
+
+Build must check: the three tests pass; v07 still gives [:error].
+
+----------------------------------------------------------------------
+V19: jank_call2 swallows the fn's exception (and V20's dynamic runtime)
+----------------------------------------------------------------------
+File: src/cpp/jank/c_api.cpp, jank_call2 (168-181).
+
+Change: the cpptrace::try_catch with printing handlers goes. jank_call2 is
+`return f_obj.call(a1_obj, a2_obj).erase().raw();` like jank_call0, jank_call1 and jank_call3-11.
+That is its body before cf163ef8 (the embedding commit that added the catch).
+
+Why it is safe:
+- The callers are the generated AOT main (aot/processor.cpp 124) and C API users.
+- In the AOT main, the exception now reaches jank_init_dynamic's handlers (c_api_dynamic.cpp
+  103-129). They print it (it is still printed, once) and set the status to 1.
+- That is V20's fix for the dynamic runtime: `-main` throwing exits 1, as clojure.main does.
+
+Test: v19-c-api-call2-lets-the-fns-exception-reach-the-caller. Control v19b is unchanged.
+
+Read-checked:
+- No other jank code calls jank_call2 (grep).
+- jank's AOT bash tests (test/bash/ahead-of-time/pass-test) don't throw from -main and check only
+  output.
+
+Build must check: v19 and v19b pass, and an AOT -main that throws exits 1 on the dynamic runtime.
+
+Note: an embedding app that relied on jank_call2 printing and returning nil now gets the exception, as
+from every other jank_callN.
+
+----------------------------------------------------------------------
+V20 (static runtime; not confirmed by a run)
+----------------------------------------------------------------------
+File: c_api.cpp, jank_init_static (1133-1169). This is also round 4's U47 line.
+
+Change: `return 0;` (1168) becomes `return ret;`.
+
+Why:
+- ret is set by fn's result and to 1 in every handler, then ignored.
+- History: until 9cd54e5b the function returned fn's result from the try and 1 from the catch, so
+  this `return 0` was unreachable. 9cd54e5b moved to try_catch lambdas that set ret and left
+  `return 0;`. jank_init_dynamic returns ret.
+
+Test: none (an exit status). REPORT-5's V20 shell steps, built with the static runtime and with
+V19.diff, should print 1.
+
+Build must check: the shell steps on both runtimes give 1, and a normal AOT program still exits 0.
+
+----------------------------------------------------------------------
+V21a and V21b: the C API's nil namespace is the namespace "nil"
+----------------------------------------------------------------------
+File: c_api.cpp. Two functions, one diff each.
+
+V21a: jank_symbol_create (433-438). A nil ns gives make_box<obj::symbol>("", name).
+- The symbol is unqualified: namespace_ returns nil for an empty ns (core.cpp 494).
+- No '/' split, as Symbol.intern(null, name).
+- Test: v21-c-api-symbol-with-a-nil-namespace-is-unqualified.
+
+V21b: jank_keyword_intern (139-147). A nil ns gives intern_keyword(name), as core.cpp's own `keyword`
+does for a nil ns (521-542).
+- Test: v21b-c-api-keyword-with-a-nil-namespace-is-unqualified.
+
+Read-checked:
+- make_box<obj::symbol>("literal", immutable_string) already appears at ns_dynamic.cpp 35.
+- No codegen emits these C API calls (grep codegen/).
+- The non-nil paths are unchanged.
+
+Build must check: both tests pass.
+
+----------------------------------------------------------------------
+V22: c_api.h is not C (not confirmed by a run; checked by compiling)
+----------------------------------------------------------------------
+File: include/cpp/jank/c_api.h.
+
+Change: `#include <stdbool.h>` under `#ifndef __cplusplus`, before the extern "C" block. The header
+uses `bool` at 358 and 367.
+
+Checked with the Mac's clang (.r6-scratch/fix3/check-v22/result.txt):
+- the fixed header compiles as C11, C17 and gnu17, -Wall -Wextra clean, and as C++20;
+- the original gives the two "unknown type name 'bool'" errors.
+
+----------------------------------------------------------------------
+V23: jank_eval_file_c prints a debug line (not confirmed by a run)
+----------------------------------------------------------------------
+File: c_api.cpp, jank_eval_file_c (65-75).
+
+Change: the `jank::util::println("jank_eval_file_c {}", path);` line goes.
+
+The header is still used: the file's other code uses util::print_exception.
+
+----------------------------------------------------------------------
+V24: the bundled jank.math cannot load
+----------------------------------------------------------------------
+File: src/jank/jank/math.jank.
+
+Change:
+- The four bodies, `(native/raw ...)` (a special form removed in 529718a6), become calls to jank's
+  runtime math templates. These compute exactly what the old raw C++ did:
+  `(cpp/jank.runtime.tan o)`, `sqrt`, `abs`, `(cpp/jank.runtime.pow x y)` (math.hpp 994-1176).
+- The unused `:arities` metadata goes; grep finds no reader of :supports-unboxed-input? or
+  :unboxed-output?.
+- `(:refer-clojure :exclude [abs])`: clojure.core has an abs, and ns.cpp 89-97 would print a
+  "replaced" warning otherwise.
+
+Why it is safe:
+- clojure.core already calls these templates the same way, with object arguments:
+  - abs is `(cpp/jank.runtime.abs a)` (core.jank 1827);
+  - `+` calls jank.runtime.add (1381). add has the same four constrained overloads as pow (math.hpp
+    69-175 vs 1088-1176). So overload resolution among constrained templates already works for core.
+- For an object_ref argument, tan, sqrt and pow return make_box(std::f(to_real ...)), the old bodies'
+  values.
+
+Test: v24-jank-math-loads ((jank.math/sqrt 4.0) is 2.0).
+
+Build must check: v24 passes; tan, abs and pow give the old values.
+
+----------------------------------------------------------------------
+V38 (also V39, V40, V45): #inst is read through std::chrono::parse with four formats
+----------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/inst.cpp, inst_from_string (31-57), in the non-libc++ branch.
+
+Shared cause: one function reads #inst with "%FT%T%Oz", "%FT%T%z", "%FT%T" and "%F" instead of
+Clojure's grammar. Each id is a different symptom of that one method:
+- V38: no format reads Z;
+- V39: from_stream rejects a leap second;
+- V40: %S stops at 9 fraction digits and %Oz takes the rest;
+- V45: every format needs %F, then nothing or T%T.
+One replacement fixes all four, so one diff.
+
+Change: inst_from_string is replaced by a direct reader of clojure.instant's grammar and checks
+(instant.clj 50-51 parse-timestamp, 139-156 validated):
+
+    yyyy[-MM[-dd[Thh[:mm[:ss[.fraction]]]]]][Z|(+|-)hh:mm]
+
+- It matches as Clojure's regex does: the most fields after which an offset ends the text, so
+  "2020-05:00" is year 2020 at -05:00.
+- Fraction digits past 9 are dropped (zero-fill-right).
+- The validated ranges: month, day per month and leap year, hour, minute, second ≤ 60 only at minute
+  59, offset ≤ 23:59.
+- A leap second rolls into the next minute, as the lenient GregorianCalendar does.
+- The instant is sys_days + h:m:s - offset, then the nanoseconds.
+- Text outside the grammar is "Unrecognized date/time syntax: …", thrown as an object (unchanged).
+- New: an instant outside the 64-bit nanosecond range of jank's time point (the years 1678-2261) is a
+  read error. Before, that conversion could overflow silently.
+- It no longer builds std::locale("en_US.utf-8") per read, so #inst no longer depends on that locale
+  being installed (round 5's coreA5-1).
+- The libc++ branch is untouched. The new reader needs no std::chrono::parse, so #inst could work on
+  macOS too; that is left out of this diff.
+
+Checked (.r6-scratch/fix3/inst-parse/):
+- The parser text (inst_parse.inc, pasted verbatim into the diff) compiled with clang -std=c++20
+  -Wall -Wextra -Wshadow: no warnings. jank's types are shimmed (harness.cpp), with a nanosecond
+  time_point as libstdc++'s system_clock.
+- Run against Clojure 1.12.0's own reader, (inst-ms (read-string "#inst \"…\"")) (clj-inst.clj):
+  - 64 hand-picked inputs (inputs.txt): every round-5 test literal, Clojure's defaults, offsets,
+    leap seconds, each range limit, and 30 errors. All 64 identical (jank-fix.txt vs clj.txt).
+  - 30,000 generated inputs (gen.py, seed 20261125: timestamps of every shape with random edits;
+    14,718 accepted by Clojure). 29,821 identical. All 179 differences are years outside 1678-2261,
+    where Clojure reads and jank now refuses (rfix.txt vs rclj.txt).
+
+Tests:
+- v38-inst-reads-a-z-offset (both asserts);
+- v39-inst-reads-a-leap-second;
+- v40-inst-fraction-of-more-than-nine-digits (both);
+- v45-inst-reads-an-offset-after-a-date (both).
+The harness gives Clojure's value for each of these literals.
+
+Read-checked:
+- inst_from_string's only caller is inst::inst(string) (60-64). Its creators are parse.cpp 963 and
+  c_api.cpp 461.
+- jank's reader tests read "2025-09-01T20:47:03.713-00:00", "…713" and "2025-09-01" (all accepted, same
+  values), and fail on #inst "" (still an error).
+- std::chrono::year/month/day/sys_days are C++20 and in libstdc++.
+- Lines are within jank's 100-column limit.
+
+Build must check (Linux, libstdc++):
+- the four tests pass;
+- test/jank/reader-macro/instant passes;
+- clang-format leaves it.
+
+----------------------------------------------------------------------
+V41 (also V42): an inst keeps sub-millisecond precision a Clojure #inst doesn't
+----------------------------------------------------------------------
+File: inst.cpp, inst::inst(immutable_string) (60-64).
+
+Change: the parsed time point is floored to milliseconds at construction.
+
+Why one cause:
+- A Clojure #inst is a java.util.Date. construct-calendar sets MILLISECOND to (quot nanos 1000000)
+  (instant.clj 247), which floors the instant, before 1970 too.
+- jank kept the nanoseconds. inst-ms (core.cpp 1064) and printing (inst.cpp 79-80) then truncated
+  toward zero: V41, 1 ms off before 1970.
+- equal compared nanoseconds: V42.
+- Floored at construction, inst-ms, printing, = and the hash (to_hash 104-107 counts the same value)
+  all agree with Date, to the millisecond.
+
+Tests:
+- v41-inst-before-1970-keeps-its-millisecond (both asserts);
+- v42-inst-equality-is-to-the-millisecond (both: = to the ms, and the read of the printed form).
+
+Checked: .r6-scratch/fix3/inst-floor/floor.cpp, with the Mac's clang and a nanosecond time point.
+- 1969-12-31T23:59:59.9995 gives -1.
+- 1969-01-01T00:00:00.0001 gives -31536000000.
+- 2020-01-01T00:00:00.0001 = 2020-01-01: true.
+
+Read-checked:
+- The default inst() (now) is not reached from jank code (grep: no make_box<obj::inst>() callers);
+  left as is.
+- floor<milliseconds> converts back to the nanosecond time point exactly.
+
+Build must check: both tests pass.
+
+----------------------------------------------------------------------
+V43: insts don't compare
+----------------------------------------------------------------------
+Files: include/cpp/jank/runtime/obj/inst.hpp and inst.cpp. One unit: the declaration and definition
+of the new member.
+
+Change:
+- inst gets object_behavior::compare and `i64 compare(object const &) const override` plus
+  `compare(inst const &)`, modeled on character's (character.cpp 94-102).
+- It compares floor<milliseconds> of both values (java.util.Date.compareTo) and returns -1, 0 or 1.
+
+Why it is safe:
+- object::compare threw "unsupported" for insts (object.cpp 228-233).
+- runtime::compare (core/equal.cpp 24-32) and sort (core/seq.cpp 1098-1131) reach the override.
+- Comparing with a non-inst throws, through try_object, as Clojure's ClassCastException.
+
+Test: v43-insts-compare (compare gives -1; sort orders them).
+
+Checked: floor.cpp above (compare gives -1, 1 and 0 for the same ms).
+
+Build must check: v43 passes.
+
+----------------------------------------------------------------------
+V44: *default-data-reader-fn* takes #inst and #uuid first
+----------------------------------------------------------------------
+File: src/cpp/jank/read/parse.cpp, parse_reader_macro_tagged (1008-1124).
+
+Change:
+- The built-in tags (uuid, inst, cpp) are tried before *default-data-reader-fn*.
+- The unsupported-tag error stays last.
+
+Why it is safe:
+- It is Clojure's order: LispReader.readTagged 1435-1451 checks *data-readers*, then default data
+  readers, then the default fn.
+- It is jank's own docstring: the default fn is for "When no data reader is found" (core.jank
+  7699-7703).
+- *data-readers* stays first, so a user reader still overrides a built-in.
+- #cpp moves with them: it is a built-in reader too. A bound default fn no longer turns #cpp forms
+  into tagged literals.
+
+Test: v44-default-data-reader-fn-leaves-inst-and-uuid.
+
+Read-checked:
+- No jank test binds *default-data-reader-fn* (grep test/, src/jank).
+- The suppressed/preservation branch (1029-1033) is unchanged.
+
+Build must check: v44 and test/cpp/jank/read/parse.cpp pass.
+
+----------------------------------------------------------------------
+V48: same change as fixes/R55a.diff (no separate diff)
+----------------------------------------------------------------------
+- persistent_string_sequence::equal (34-37) compares the string's bytes with the other side's
+  characters (seq_ext.hpp 13-34; R55, confirmed by b04).
+- R55a.diff replaces this with runtime::sequence_equal(this, o), the way cons, range and the others do
+  (cons.cpp 47).
+- I had written the same line. I dropped my copy, since one fix is written once, under the first id.
+
+Read-checked for V48's path:
+- sequence_equal (seq.cpp 881-906) returns true at once for the same object.
+- So CHAMP's get compares the stored value with the query and finds it (contains? true, get 1).
+- do_add's equality check now succeeds, so no collision node and count 1.
+- is_sequential is true for string seqs (persistent_string_sequence.hpp 20).
+
+Test: v48-a-set-finds-its-own-string-seq should pass with R55a.diff.
+
+R56 is untouched: a string seq still hashes its bytes, unlike an equal vector.
+
+======================================================================
+2. NOT FIXED, BY REASON
+======================================================================
+Not run, and not certain from reading alone (rule 8):
+- V1: parse_ld_script returns one path (jtl::option). Loading several files needs a list from the
+  parser and a loop in load_dynamic_library_impl: two functions in two files, and never run.
+- V2 (low): ld's quoting and comment rules (ldlex.l) against read_token/strip_comments. Local, but
+  not run and not certain without ld at hand.
+- V4: whether the JIT should search directory by directory (ld's rule) or the AOT link should change
+  is a choice, and it was not run.
+- V5: aot/processor.cpp 389-391 could pass a path-like -l as an input file. Plausible but untested.
+- V37's never-answered case: see V37.
+
+Design, not local (V7's family: read, analysis and load errors are error_ref values):
+- V7: every read, analysis and load error is a jank::error_ref. Making them objects every catch sees
+  is the error design itself.
+- V9: two sites turn a thrown ex-info into an error_ref with its printed text: load_module 346-349 and
+  the analyzer's macro expansion 3502-3530 with error/analyze.cpp. Keeping the object would need
+  error::base to carry a cause object, or the loader and analyzer to rethrow objects and give up
+  their source and expansion notes.
+- V18: exception_info(error_ref) has no data and no cause (exception_info.cpp 23-27). Clojure's *e
+  carries :clojure.error/phase etc. and a cause exception. jank's analysis errors have no cause
+  object to give, so this needs a mapping from error::base to data and causes.
+  (U44.diff, another agent's, fills in the message only.)
+
+Representation, not local:
+- V15: exception_info's message is an immutable_string. A nil message must stay distinguishable from
+  "" for ex-message to return nil, so it needs exception_info's message to become optional
+  (exception_info.hpp/.cpp, ex_info and ex_message in core.cpp and core.hpp, to_map, printing).
+
+U39's root, no local fix that matches Clojure everywhere:
+- V46: one to_string serves both `str` and `print`.
+  - Clojure prints an inst with its tag but `str`s it differently (Date.toString).
+  - Changing inst::to_string would change `str`.
+  - A hook in print/print1/println, like U39.diff's print_one for patterns (one more type there),
+    would still miss insts inside collections, which jank prints through each element's to_string.
+
+A port, not a fix:
+- V47: clojure.instant is a whole namespace to write (read-instant-date, -calendar, -timestamp,
+  parse-timestamp, validated). V38's parser is its parse-timestamp in C++.
+
+C++ interop, one family. Value categories are decided in jank's analyzer and emitted by its codegen;
+part of the overload machinery is CppInterOp's:
+- V25, V26, V29: build_cpp_call 565-572 makes a class argument T& and leaves builtins as prvalues. A
+  local change there would choose rvalue overloads the emitted code can't call, since codegen passes
+  named temporaries (V27's failure). It needs a value-category model for jank expressions, shared by
+  analysis and codegen (analyze/processor.cpp and codegen/cpp_processor.cpp).
+- V27, V28: codegen gen(cpp_member_call) 1730-1775 passes arguments as named lvalues. Moving them
+  needs the same model: which arguments are rvalues.
+- V30: CppInterOp GetBuiltinOperatorType 7080-7087 makes every operand an lvalue, and codegen
+  1794-1821 assigns to a named copy. Rejecting a prvalue left operand needs the same lvalue notion.
+- V31: CppInterOp GetOperator 7022-7031 drops the UsingShadowDecl. That is in the pinned CppInterOp
+  source under deps/, outside jank's repo.
+- V32: CppInterOp GetOperator plus AddMethodCandidate's acting context. Outside jank's repo.
+- V33: surrogate call functions ([over.call.object]/2). Neither jank's build_indirect_cpp_call nor
+  CppInterOp's BestOverloadMatch adds them; needs new overload candidates.
+- V34: built-in operator candidates for [] through a conversion. BestOverloadMatch adds none
+  (CppInterOp); needs new candidates.
+
+Regex (libstdc++, not jank's source):
+- V35: libstdc++'s _M_word_boundary tests bytes with ctype<char> (regex_executor.tcc 551-571).
+- V36: _AnyMatcher for char excludes only \n and \r (regex_compiler.h 368-398); $ is R79.
+- Both come from jank using std::regex over UTF-8 bytes. A fix is a different regex engine.
+
+nREPL:
+- V37: jank's nREPL has no interrupt op (handler.jank 5-8, describe.jank).
+  - Clojure's answers depend on whether the session has a running eval, and an interrupt must stop
+    it. On the eval's own connection, jank reads the next message only after the eval returns (core.jank
+    handle-client 79-106).
+  - Answering session-idle and session-ephemeral alone would mis-answer a running eval's interrupt
+    from a second connection. Needs per-session eval tracking and cancellation.
+
+Fixed through another id's diff:
+- V20 (dynamic runtime): V19.diff. V20.diff covers the static runtime.
+- V39, V40, V45: V38.diff.
+- V42: V41.diff.
+- V48: R55a.diff (another agent's, same change).
+
+Not native-object loading fixes:
+- V6: a module loaded from its .o never runs its global constructors. jank's own comment
+  (processor_dynamic.cpp 672-673) says this waits for the ORC runtime. Design, not local.
+
+======================================================================
+3. WHAT I COULD NOT CHECK
+======================================================================
+- No diff was compiled inside jank or run against jank's test suite. jank can't be built here.
+- Only V22's header, V38's parser and V41/V43's logic were compiled, standalone, on the Mac's clang
+  and libc++. The parser's shims mirror libstdc++'s nanosecond system_clock.
+- V3: whether llvm::toString's message is useful, and whether LoadDynamicLibrary's error for every
+  V3 input (non-ELF, refused ELF, missing entry) is an llvm::Error, not an abort inside LLVM.
+  Read only: OrcIncrementalExecutor.cpp 108-120 returns an Error.
+- V8, V24: that clojure.core and jank.math compile with the new forms. The same forms compile
+  elsewhere in jank: the nREPL catches jank.error_ref, round 5's tests ran (catch cpp/jank.error_ref),
+  and core calls jank.runtime.abs and add.
+- V10 and V11 merged with D19: .r6-scratch/fix3/merged/D19+V10+V11.diff applies to 94d32623, but is
+  read-checked only.
+- V19, V20: the exit statuses need a built AOT binary.
+
+Files:
+- results/r6-fix3-report.txt (this report);
+- fixes/V3.diff, V8.diff, V10.diff, V11.diff, V12.diff, V13.diff, V14.diff, V16.diff, V17a.diff,
+  V17b.diff, V19.diff, V20.diff, V21a.diff, V21b.diff, V22.diff, V23.diff, V24.diff, V38.diff,
+  V41.diff, V43.diff, V44.diff;
+- .r6-scratch/fix3/tests.jank: the V3 variant test (jank only, no Clojure translation possible);
+- .r6-scratch/fix3/inst-parse/: the V38 parser, harness, inputs and outputs, Clojure script and
+  generator;
+- .r6-scratch/fix3/inst-floor/floor.cpp: the V41 and V43 check;
+- .r6-scratch/fix3/check-v22/: the V22 compile check;
+- .r6-scratch/fix3/merged/D19+V10+V11.diff;
+- .r6-scratch/fix3/mkdiff.sh and prep.sh: the diff helpers.

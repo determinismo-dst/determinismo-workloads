@@ -1,0 +1,67 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -1,4 +1,5 @@
+ #include <random>
++#include <string_view>
+ 
+ #include <jank/runtime/core/math.hpp>
+ #include <jank/runtime/visit.hpp>
+@@ -816,12 +817,53 @@
+ 
+           return make_box<obj::big_decimal>(typed_o->data);
+         }
+-        else if constexpr(jtl::is_any_same<T,
+-                                           obj::big_integer,
+-                                           obj::small_real,
+-                                           obj::ratio,
+-                                           obj::persistent_string>)
++        else if constexpr(jtl::is_any_same<T, obj::big_integer, obj::small_real, obj::ratio>)
+         {
++          return make_box<obj::big_decimal>(typed_o->data);
++        }
++        else if constexpr(jtl::is_same<T, obj::persistent_string>)
++        {
++          /* new BigDecimal(String): [+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?,
++           * nothing else (no inf, nan, empty exponent, lone point). */
++          std::string_view const text{ typed_o->data.data(), typed_o->data.size() };
++          usize i{};
++          auto const digits_from = [&](usize const j) {
++            usize n{};
++            while(j + n < text.size() && text[j + n] >= '0' && text[j + n] <= '9')
++            {
++              ++n;
++            }
++            return n;
++          };
++          if(i < text.size() && (text[i] == '+' || text[i] == '-'))
++          {
++            ++i;
++          }
++          auto const int_digits{ digits_from(i) };
++          i += int_digits;
++          usize frac_digits{};
++          if(i < text.size() && text[i] == '.')
++          {
++            ++i;
++            frac_digits = digits_from(i);
++            i += frac_digits;
++          }
++          bool valid{ int_digits + frac_digits > 0 };
++          if(valid && i < text.size() && (text[i] == 'e' || text[i] == 'E'))
++          {
++            ++i;
++            if(i < text.size() && (text[i] == '+' || text[i] == '-'))
++            {
++              ++i;
++            }
++            auto const exp_digits{ digits_from(i) };
++            valid = exp_digits > 0;
++            i += exp_digits;
++          }
++          if(!valid || i != text.size())
++          {
++            throw make_box(util::format("Invalid BigDecimal: \"{}\"", typed_o->data)).erase();
++          }
+           return make_box<obj::big_decimal>(typed_o->data);
+         }
+         else if constexpr(std::same_as<T, obj::big_decimal>)

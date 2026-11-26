@@ -1,0 +1,76 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -1316,10 +1316,9 @@
+         /* Strings. */
+       case '"':
+         {
+-          if(auto &&e(check_whitespace(found_space)); e.is_some())
+-          {
+-            return err(std::move(e.unwrap()));
+-          }
++          /* `"` ends the token before it in Clojure, so a string needs no whitespace before it,
++           * and none after it. */
++          require_space = false;
+           auto const token_start(pos);
+           bool escaped{}, contains_escape{};
+           while(true)
+@@ -1347,7 +1346,6 @@
+             }
+             pos += oc.expect_ok().len;
+           }
+-          require_space = true;
+           ++pos;
+ 
+           /* Unescaped strings can be read right from memory, but escaped strings require
+@@ -1363,11 +1361,7 @@
+         /* Meta hints. */
+       case '^':
+         {
+-          auto &&e(check_whitespace(found_space));
+-          if(e.is_some())
+-          {
+-            return err(std::move(e.unwrap()));
+-          }
++          /* `^` is a terminating macro character in Clojure: it needs no whitespace before it. */
+           ++pos;
+           require_space = false;
+ 
+@@ -1444,11 +1438,7 @@
+         /* Syntax quoting. */
+       case '`':
+         {
+-          auto &&e(check_whitespace(found_space));
+-          if(e.is_some())
+-          {
+-            return err(std::move(e.unwrap()));
+-          }
++          /* A backquote is a terminating macro character in Clojure: it needs no whitespace before it. */
+           ++pos;
+           require_space = false;
+ 
+@@ -1457,11 +1447,7 @@
+         /* Syntax unquoting. */
+       case '~':
+         {
+-          auto &&e(check_whitespace(found_space));
+-          if(e.is_some())
+-          {
+-            return err(std::move(e.unwrap()));
+-          }
++          /* `~` is a terminating macro character in Clojure: it needs no whitespace before it. */
+           require_space = false;
+           auto const result(peek());
+           auto const [character, len](result.unwrap_or(codepoint{ ' ', 1 }));
+@@ -1479,11 +1465,7 @@
+         /* Deref macro. */
+       case '@':
+         {
+-          auto &&e(check_whitespace(found_space));
+-          if(e.is_some())
+-          {
+-            return err(std::move(e.unwrap()));
+-          }
++          /* `@` is a terminating macro character in Clojure: it needs no whitespace before it. */
+           ++pos;
+           require_space = false;
+ 

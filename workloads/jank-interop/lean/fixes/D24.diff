@@ -1,0 +1,42 @@
+--- a/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+@@ -1071,15 +1071,28 @@
+ 
+       b.instruction_index = instruction_index;
+       b.block_index = block_index;
++
++      /* The finally's try encloses the catch handlers too. A handler that throws then runs the
++       * finally here, outside any destructor, so a throwing finally replaces the handler's
++       * exception (as on the JVM). Run by the guard's destructor during unwinding instead, it
++       * would call std::terminate. */
++      util::format_to(b.body_buffer, "try {\n");
+     }
+ 
+-    util::format_to(b.body_buffer, "try {\n");
++    auto const has_catches{ !inst->catches.empty() };
++    if(has_catches || !has_finally)
++    {
++      util::format_to(b.body_buffer, "try {\n");
++    }
+ 
+     auto const &jump_block{ has_finally ? inst->finally_block : inst->merge_block };
+ 
+     gen_until_jump(jump_block, b);
+ 
+-    util::format_to(b.body_buffer, "}\n");
++    if(has_catches || !has_finally)
++    {
++      util::format_to(b.body_buffer, "}\n");
++    }
+     for(auto const &catch_details : inst->catches)
+     {
+       b.enter_block(catch_details.second);
+@@ -1090,7 +1103,7 @@
+     {
+       auto const finally_name{ util::format("{}_fn", finally_guard_name) };
+       util::format_to(b.body_buffer,
+-                      "catch(...) { {}.release(); {}(); throw; } {}.release(); {}(); }\n",
++                      "}\ncatch(...) { {}.release(); {}(); throw; } {}.release(); {}(); }\n",
+                       finally_guard_name,
+                       finally_name,
+                       finally_guard_name,

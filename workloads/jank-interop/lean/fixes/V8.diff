@@ -1,0 +1,17 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -4863,7 +4863,13 @@
+         (catch cpp/jank.runtime.object_ref e
+           (when undefined-on-entry?
+             (remove-ns lib))
+-          (throw e)))
++          (throw e))
++        ; A module that fails to load, whatever it threw, reaches us as a jank::error_ref
++        ; (context::load_module), which the handler above doesn't see.
++        (catch cpp/jank.error_ref e
++          (when undefined-on-entry?
++            (remove-ns lib))
++          (throw e)))
+       (throw-if (and need-ns? (not (find-ns lib)))
+                 (str "namespace " lib " not found")))
+     (when as

@@ -1,0 +1,31 @@
+diff --git a/compiler+runtime/src/cpp/clojure/data/json_native.cpp b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+index 276e973..33daa0e 100644
+--- a/compiler+runtime/src/cpp/clojure/data/json_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+@@ -197,6 +197,26 @@ namespace clojure::data::json_native
+ 
+   object_ref read_str(jtl::immutable_string const &string, read_options const &opts)
+   {
++    /* data.json reads nothing but JSON whitespace as the end of the stream: the eof-value,
++     * or an EOF error when eof-error? is set. nlohmann throws a parse error for either. */
++    bool at_eof{ true };
++    for(auto const c : string)
++    {
++      if(c != ' ' && c != '\t' && c != '\n' && c != '\r')
++      {
++        at_eof = false;
++        break;
++      }
++    }
++    if(at_eof)
++    {
++      if(opts.eof_error)
++      {
++        throw make_box("JSON error (end-of-file)").erase();
++      }
++      return opts.eof_value;
++    }
++
+     auto const json(nlohmann::json::parse(string));
+     return read(json, opts);
+   }

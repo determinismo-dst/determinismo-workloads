@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -463,6 +463,12 @@
+     else if(std::cmp_equal(len, static_cast<size_t>(-2)))
+     {
+       return error::lex_invalid_unicode("The Unicode character literal is invalid.", pos);
++    }
++    else if(len == 0)
++    {
++      /* mbrtowc returns 0 for a NUL, which is one byte long. A length of 0 would leave every
++       * loop that advances by it stuck on the NUL. */
++      return ok(codepoint{ U'\0', 1 });
+     }
+     return ok(codepoint{ static_cast<char32_t>(wc), static_cast<u8>(len) });
+   }

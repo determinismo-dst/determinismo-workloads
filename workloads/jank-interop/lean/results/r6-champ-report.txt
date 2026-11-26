@@ -1,0 +1,263 @@
+ROUND 6, AREA H (CHAMP): GET OF ANOTHER KEY AND ITERATION, FOR EVERY INPUT; WHAT JANK'S = AND HASH DO TO THEM
+jank main 94d32623 (upstream-r5/compiler+runtime, = 7135b7708's tree); immer as pinned (deps/immer).
+Every jank path below is under upstream-r5/compiler+runtime/. Nothing here was run on jank.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+H1 (extends D12; corrects D12's third example). An equal key with another hash is found or not
+    depending on unrelated elements: an unrelated conj or disj flips contains?, get, disj, count
+    and set =.
+    (let [z (id 0.0) nz (id -0.0) two (id 2.0) s1 (hash-set z) s2 (conj s1 two) s3 (disj s2 two)]
+      [(contains? s1 nz) (contains? s2 nz) (contains? s3 nz)        ; jank [true false true]
+       (count (disj s2 nz))                                         ; jank 2
+       [(count (conj s1 nz)) (count (conj s2 nz))]                  ; jank [1 3]
+       (get (hash-map z :a two :b) nz)                              ; jank nil
+       (= (hash-set z two) (hash-set nz two))])                     ; jank false
+      Clojure 1.12.0: [true true true] 1 [1 2] :a true.
+    Why: 0.0 and -0.0 are = (number.cpp real::equal 267-282, small_real::equal 385-400; tagged
+      reals oref.hpp equal 402-436: C++ ==), but hash::real (hash.cpp 116-127, v ^ (v >> 32) of the
+      bits) gives 0 and 2^31. These share their low 30 bits, i.e. the chunks of CHAMP levels 0-5.
+      immer's get (champ.hpp get 537-) walks the QUERY's hash 5 bits a level and compares the
+      first data slot it meets (Equal{}(stored, query) = runtime::equal, core/equal.cpp 19-22). In
+      #{0.0}, 0.0 sits at the root's slot 0 and -0.0 reaches it. 2.0 (hash 2^30) has the same six
+      chunks as 0.0, so conj 2.0 runs make_merged (champ.hpp 609, node.hpp 993-1019) down to level
+      6, where 0.0 takes slot 0, 2.0 slot 1 and -0.0 asks for slot 2: not found. disj 2.0 collapses
+      the chain (do_sub 1206-1276: the singleton passed up and inlined at the root) and -0.0 finds
+      0.0 again. 1.0 (hash 0x3FF00000) splits from 0.0 at level 4 where -0.0 still agrees with 0.0,
+      so (contains? (hash-set 0.0 1.0) -0.0) is true. hash-set/hash-map build CHAMPs at every size
+      (persistent_hash_set.cpp create_from_seq 45-53, conj 149, contains 186, disj 191;
+      persistent_hash_map.cpp get 74/84, assoc 110, dissoc 116; set = calls contains, 55-81).
+      Transients the same (transient_hash_set.cpp conj_in_place 43, disjoin_in_place 103; champ.hpp
+      do_add_mut 645-, do_sub_mut 1346-).
+    Correction: round 1's D12 lists (contains? #{0.0} -0.0) as false on jank. Round 1 abstracted
+      immer as "same full hash and equal" (Jank/Equality.lean containsH); round 3's CHAMP replica,
+      run with round 1's own values (jank6-champ show), says true: D12's third assertion would
+      PASS on jank. (D12's test failed on its first assertion, so the third never ran; nothing
+      confirmed is contradicted.) Round 5's "(disj #{0.0 2.0} -0.0) keeps 0.0" is right and is one
+      side of H1.
+    Law broken: law 1 (get of another key after add / after remove), both directions, and with it
+      law 2 against Clojure (the keys iteration yields are Clojure's, but get/contains? of an =
+      key disagrees with them, and count after conj of an = key depends on the path).
+    Theorems: Breaks.negzero_compat_fails, negzero_found_alone, negzero_lost_after_add,
+      negzero_found_after_sub, negzero_found_with_one, negzero_disj (kernel-checked on the replica).
+    Tests: vH1-an-unrelated-element-hides-an-equal-key (persistent, values through a fn),
+      vH1b-a-transient-hides-an-equal-key-too (transient conj!/disj!).
+    Status: extends D12 (same cause: hash::real hashes -0.0 apart from 0.0; one fix: hash -0.0 as
+      0.0, as Clojure's Numbers.hasheq does); corrects D12's third example. Confidence: high (the
+      replica is round 3's, cited line by line; the walk below and the kernel facts agree; the
+      Clojure side ran).
+
+H2 (extends V48: another value, another cause). The same ##NaN object is never found, is stored
+    twice, and is never removed.
+    (defn f [x] [(contains? (hash-set x) x) (count (hash-set x x)) (get (hash-map x 1) x)
+                 (count (disj (hash-set x 3) x)) (= (hash-set x) (hash-set x))])
+    (f ##NaN)   Clojure [true 1 1 1 true]   jank [false 2 nil 2 false]
+    Why: ##NaN is jank_nan, a tagged small_real (read/parse.cpp 874-876, number.cpp 512);
+      runtime::equal on two tagged reals is C++ == (oref.hpp 414-419), false for NaN, and immer's
+      Equal (std::equal_to<object_ref> -> runtime::equal) has no identity test. Clojure's =
+      is also false on NaN, but PersistentHashSet/Map compare keys with Util.equiv, whose first
+      test is k1 == k2 (the same object). do_add finds no Equal value, so the two copies (same
+      hash) go through make_merged to one collision node at the last level; get and do_sub never
+      match. count and (count (seq s)) agree (2): see 2's count_eq_seq_*.
+    Test: vH2-a-set-finds-its-own-nan (value through a fn, so Clojure's side is one boxed object;
+      with a let-bound primitive double Clojure boxes twice and also gives false/2).
+    Status: extends V48 (V48: a value jank finds unequal to itself, (seq "é"), via R55). The CHAMP
+      consequence is the same (Breaks.nan_stored_twice, nan_never_found = R5's r55_stored_twice
+      for this value); the cause differs: jank's (= ##NaN ##NaN) agrees with Clojure, the
+      missing identity shortcut in the collections does not. A fix for R55 does not fix H2; an
+      identity test in the champ's equality (or runtime::equal) fixes H2 and masks V48.
+    Confidence: high.
+
+Shared causes: H1 shares D12's (hash::real); H2 shares V48's CHAMP path but not its cause. H1 and
+H2 are separate.
+
+Checked, not reported (each in an existing class):
+- 1 / 1N, () / (lazy-seq nil): their hashes differ in the root chunk (1: 1392991556 & 31 = 4,
+  1N: 2654435770 & 31 = 26), so the miss is static at every size: D12 as stated.
+- Asymmetric = (R55: (= (seq "é") v) false while (= [\é] (seq "é")) compares by elements) and
+  BigDecimal's non-transitive = (D8): reachable only together with R56/D8's hash differences;
+  nothing beyond those classes found or searched.
+- count vs (count (seq s)): never differ, for every hash and equality (proved, 2), so no program
+  sees them disagree through conj/disj/conj!/disj!.
+- "a collision node keeping two equal keys": impossible unless = is not reflexive (H2/V48); under
+  the hash-path invariant (proved) two values in one collision node share all 65 hash bits get
+  reads, so D12 pairs never meet there.
+- "disj removes the wrong one": disj removes the value its walk finds Equal; with D12 that may be
+  the =-key's twin (Clojure would remove it too) or nothing (H1); never a value not = to the key.
+
+======================================================================
+2. PROOFS (no sorry, no native_decide, no new axiom; axioms in results/r6-champ-axioms.txt)
+======================================================================
+Over round 3's replica of immer's champ.hpp (Jank/R3/Immer/Champ.lean), for every node that
+satisfies round 3's wfNode.
+
+The hash-path invariant (Ops.HP): in every inner node r+1 levels above the collision level, the
+value in bit d's data slot has d as its hash's chunk at that level (idxAt h (65 - 5(r+1))), every
+value under bit d's child has d there too, recursively; collision nodes only at the last level
+(wfNode). So every value sits at the path its hash's chunks name, and two values in one collision
+node agree on the 65 bits get reads.
+
+For every hash function and every equality (nothing assumed):
+- ★ Slots.getLoop_walk: get k = find? (Equal · k) of the list the walk on k's hash reaches.
+- ★ Slots.iter_slots / iter_split: a node's iteration is (up to order) its 32 slots' values.
+- ★ Slots.edit_* (8 lemmas, one per node.hpp constructor: copy_inner_replace, _replace_value,
+  _insert_value, _replace_merged, _replace_inline, _remove_value, the root collapse, empty()):
+  the result is well formed and differs from the source in exactly one slot.
+- ★ Ops.add_step: do_add keeps wfNode and HP; its iteration is the old one with v added (added) or
+  with one stored value Equal to v replaced by v (not added).
+- ★ Ops.sub_step: do_sub returns nothing; a value passed up from a subtree holding exactly it and
+  one value Equal to the key; or a tree that keeps wfNode and HP and iterates as the old one minus
+  one value Equal to the key. Every collapse case: collision node shrunk / collapsed to one value,
+  data slot removed, two-value node collapsed and inlined by the first ancestor that keeps other
+  entries, the root's two-value collapse, empty().
+- ★ Mut.addMut_step, ★ Mut.subMut_step: the same for do_add_mut and do_sub_mut on every branch
+  (in-place child write, in-place value write after ensure_mutable_values, in-place collision write
+  (which keeps the collision order where do_add moves v to the front), moves, copies, owner tokens).
+- ★ Ops.HP_makeMerged, wf_makeMerged, iter_makeMerged (with or without an owner).
+- ★ Laws.count_eq_seq_add, ★ count_eq_seq_sub: count (immer's size) = the iteration's length after
+  add/sub, whatever the equality: (count s) = (count (seq s)) for every champ built by conj/disj.
+- ★ Laws.walk_complete, get_sound, get_complete: under HP every stored value is on its own hash's
+  walk; get only returns stored values Equal to the key.
+
+For every equality that is an equivalence compatible with the hash (Laws.Lawful: Equal reads one
+key per value (Prod.fst for maps), refl, symm, trans, Equal keys hash alike):
+- ★ Laws.inv_add, ★ inv_sub: well formed, HP, no two stored values Equal, size = iteration length.
+- ★ Laws.get_iff: get k = some x iff x is stored and Equal to k (so get_sub's premise "at most one
+  stored value Equal to k" holds for every champ built by these operations).
+- ★ Laws.get_add_other, ★ get_sub_other (law 1): get of a key not Equal to the one added/removed
+  is unchanged.
+- ★ Laws.keys_add, ★ keys_sub, ★ build_keys, ★ build_from_empty (law 2): for every sequence of
+  add/sub from champ::empty(), iteration yields each key once and exactly the keys Clojure's model
+  holds (present iff the last add/sub naming an = key was an add).
+
+What these make complete: rounds 3-5 searched get of other keys and iteration only to 3-4 steps
+(M4-2 complete 61,642; S3-3 complete 838,319; M5 7,572,128); they now hold for every length, under
+Lawful. Round 5's get_sub premise is discharged.
+
+What did not close / was not done:
+- get_add_other and get_sub_other are stated for champs meeting the invariant (Inv: HP and
+  uniqueness), i.e. every champ built by these operations, not for an arbitrary wfNode champ. A
+  direct walk-based proof of get_add_other for every wfNode champ (which needs no HP, only Lawful)
+  was planned, not written.
+- The sequence theorem (build_keys) covers persistent add/sub. addMut_step/subMut_step give the
+  transient steps the same invariants (wf, HP, iteration), and R5's added_doAddMut ties add_mut's
+  flag to get; a sequence theorem with transient steps also needs "do_sub_mut of a key get finds is
+  never nothing" (R5 proved it for do_sub only), not written.
+- Transients agree with the persistent ops as multisets of values (both meet AddOut/SubOut); the
+  node-by-node shape (collision order) differs and is not compared.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+No new jank C++ replicated: everything is over round 3's replica of immer champ.hpp (get 537-,
+do_add 572-, add 629, do_add_mut 645-, add_mut 740, do_sub 1206-1276, sub 1281-1293, do_sub_mut
+1346-) and node.hpp (make_merged 993-, make_merged_e 1021-, copy_* / move_*), and round 1's value
+model (Jank/Equality.lean: to_hash and equal per type), joined by round 3's Objects.setCfg/mapCfg.
+- Jank/R6/Champ/Slots.lean: a node as 32 slots; positions popcount(m & (2^d-1)) (node.hpp
+  children_count/data_count); get as find? over its walk; constructor edits.
+- Jank/R6/Champ/Ops.lean: HP; add_step, sub_step; make_merged lemmas; owners.
+- Jank/R6/Champ/Mut.lean: addMut_step, subMut_step.
+- Jank/R6/Champ/Laws.lean: Lawful, Inv, the two laws, sequences.
+- Jank/R6/Champ/Breaks.lean: jank's doubles (hash::real hash.cpp 116-127, real::equal number.cpp
+  267-282 as IEEE == on bit patterns) on the replica, kernel-checked.
+- Run/R6/Champ.lean (jank6-champ show | walk N): the same programs and a complete walk with round
+  1's full value model, beside Clojure's set (Util.equiv with identity).
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- Breaks.dbl is jank's equality on doubles as IEEE == on bits (kernel-evaluable); round 1's model
+  (Float.ofBits ==) is used in the driver; both give the same answers on the values used.
+- Clojure's side of the walk: membership by Util.equiv with identity, each pool value one object.
+  Clojure's hasheq is not modeled (its sets are correct by construction for these values).
+- Round 3's replica's own assumptions stand (IMA1-IMA7); no new ones about immer.
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- The direct (no-invariant) get_add_other and the transient sequence theorem (section 2).
+- Array maps (persistent_array_map, <= 8 entries via {} literals and assoc): linear search with =,
+  no hash; not CHAMP. (get {0.0 :a 2.0 :b} -0.0) is :a on jank (array map), so H1's map form needs
+  hash-map.
+- Equalities that are not symmetric or transitive (R55/R56, D8) with hashes: not searched beyond
+  their existing classes.
+
+======================================================================
+6. ASSUMPTIONS
+======================================================================
+- champA6-1. ##NaN is jank_nan = static_cast<f64>(NAN), a positive quiet NaN (0x7FF8...), which is
+  a tagged small_real on x86-64 and AArch64 (round 1's D9: only the negative default NaN misdecodes).
+- champA6-2. -0.0 read from source is the IEEE negative zero (strtod); through `id` both values are
+  objects from a fn parameter.
+- Round 3's IMA1-IMA7 and round 4's IMMA4-n stand.
+- Replaced: round 1's containsH abstraction of immer ("same full hash and =") for hash sets is
+  replaced by round 3's CHAMP walk; this changes D12's third example (section 1).
+
+======================================================================
+7. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- (contains? s k) iff some element of s is = to k; get of another key unaffected by conj/disj;
+  (count s) = (count (seq s)); seq yields each element once; disj k removes exactly the element =
+  to k: clojure.core docstrings of contains?, conj, disj, count, seq; PersistentHashSet /
+  APersistentSet (contains -> impl.containsKey, setEquals), PersistentHashMap (BitmapIndexedNode
+  find/without with Util.equiv, which starts with k1 == k2), Util.equiv (clojure-ref).
+- Clojure 1.12.0's actual results: .r6-scratch/champ/clj/run-1.12.0.txt and the probe
+  (.r6-scratch/champ/probe/probe.clj).
+
+======================================================================
+8. SEARCH RUNS (complete = every input within the bounds)
+======================================================================
+- jank6-champ walk 3 (results/r6-champ-walk3.txt) and walk 4 (results/r6-champ-walk4.txt): every
+  sequence of at most N conj/disj over 11 pool values (0.0 -0.0 2.0 1.0 1 1N ##NaN 3 () (lazy-seq nil)
+  []; 22 operations) from #{}, after each step comparing count, (count (seq s)) and contains? of all
+  11 values with Clojure's set. Complete 3: 11,155 states; complete 4: 245,411 states.
+  walk 4 disagreements: nan 43,842 (H2/V48), static 184,450 (D12 as stated: the same miss on the
+  one-element set), path 8,628 (H1: found on the one-element set, missed here), count 28,095
+  (count after conj of a D12 twin; includes H1's path-dependent counts), count-vs-seq 0 (as proved).
+  First path case listed (depth-first order): #{} (conj 0.0) (conj 0.0) (conj 0.0) (conj 2.0)
+  (contains? s -0.0): jank false, Clojure true; the shortest is #{} (conj 0.0) (conj 2.0).
+- jank6-champ show (results/r6-champ-show.txt): H1 and H2's programs on round 1's full model.
+
+======================================================================
+9. THEOREMS (★ = for every input)
+======================================================================
+Slots.lean: ★ getLoop_walk, ★ getLoop_slot, ★ iter_slots, ★ iter_split, ★ walk_sub, ★ edit_replace,
+  ★ edit_replaceValue, ★ edit_insertValue, ★ edit_replaceMerged, ★ edit_replaceInline,
+  ★ edit_removeValue, ★ edit_rootCollapse, ★ edit_empty; helpers pos_*, getD_*, perm_eraseAt,
+  perm_insertAt, perm_setL, map_getD_filter, perm_flatMap_split, flatMap_slots, only_bit.
+Ops.lean: ★ add_step, ★ sub_step, ★ HP_makeMerged, ★ wf_makeMerged, ★ iter_makeMerged, ★ HP_edit,
+  ★ iter_edit, iter_only, iter_two, owner lemmas.
+Mut.lean: ★ addMut_step, ★ subMut_step, ★ edit_setChild, ★ edit_writeValue, addOut_*/subOut_*.
+Laws.lean: ★ walk_complete, ★ get_sound, ★ get_complete, ★ get_iff, ★ get_none_iff,
+  ★ count_eq_seq_add, ★ count_eq_seq_sub, ★ inv_add, ★ inv_sub, ★ get_add_other, ★ get_sub_other,
+  ★ keys_add, ★ keys_sub, ★ build_keys, ★ build_from_empty, inv_empty.
+Breaks.lean (single inputs, decide +kernel): negzero_compat_fails, negzero_found_alone,
+  negzero_lost_after_add, negzero_found_after_sub, negzero_found_with_one, negzero_disj,
+  nan_stored_twice, nan_never_found.
+Axioms: propext, Classical.choice, Quot.sound (Breaks: propext); no sorryAx.
+
+======================================================================
+10. LIBRARY GAPS (built here; sdk/lean untouched)
+======================================================================
+- Bit positions in a packed bitmap: popcount(m & (2^d-1)) as List.countP over range d, with its
+  monotonicity, insert/clear shifts and list getD at those positions (Slots.lean).
+- List.Perm helpers for erase/insert/set at an index and a flatMap split around one element.
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+None (none assigned).
+
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 1, D12's third example ((contains? #{0.0} -0.0) false on jank): true by the CHAMP replica.
+  The miss needs another element sharing 0.0's first six hash chunks (H1).
+- Round 5's verdict "every break found is in an existing class" for CHAMP under jank's equality:
+  the path dependence (law 1 broken by an unrelated conj/disj) was not named; it is H1.
+- Round 5's "Not proved: get of another key, iteration": proved here under Lawful (section 2).
+
+Files: Jank/R6/Champ/{Slots,Ops,Mut,Laws,Breaks}.lean; Run/R6/Champ.lean; results/r6-champ-report.txt,
+r6-champ-axioms.txt, r6-champ-show.txt, r6-champ-walk3.txt, r6-champ-walk4.txt;
+.r6-scratch/champ/tests.jank, clj/ (translation and run-1.12.0.txt), probe/, axioms.lean, chk.sh.

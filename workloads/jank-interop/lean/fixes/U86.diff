@@ -1,0 +1,24 @@
+diff --git a/compiler+runtime/src/cpp/clojure/data/json_native.cpp b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+index 276e973..e4e7e3b 100644
+--- a/compiler+runtime/src/cpp/clojure/data/json_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+@@ -50,6 +50,19 @@ namespace clojure::data::json_native
+           return {};
+         }
+ 
++        if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++        {
++          /* data.json's write-double refuses what JSON can't hold; nlohmann writes null. */
++          if(std::isinf(typed_o->data))
++          {
++            throw make_box("JSON error: cannot write infinite Double").erase();
++          }
++          if(std::isnan(typed_o->data))
++          {
++            throw make_box("JSON error: cannot write Double NaN").erase();
++          }
++        }
++
+         if constexpr(jtl::is_any_same<T,
+                                       obj::boolean,
+                                       obj::persistent_string,

@@ -1,0 +1,25 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp
+index 776d488..66d51e3 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp
+@@ -137,7 +137,9 @@ namespace jank::runtime::obj
+   persistent_hash_map_ref multi_function::reset_cache()
+   {
+     std::lock_guard<std::recursive_mutex> const lock{ mutex };
+-    cached_hierarchy = hierarchy;
++    /* As Clojure's MultiFn: cache the hierarchy's value, not the reference holding it. The
++     * dispatch below (is_a, is_dominant, is_preferred) works on that value. */
++    cached_hierarchy = hierarchy.deref();
+     method_cache = method_table;
+     return method_cache;
+   }
+@@ -221,7 +223,8 @@ namespace jank::runtime::obj
+     static object_ref const isa{
+       __rt_ctx->intern_var("clojure.core", "isa?").expect_ok()->deref()
+     };
+-    return truthy(isa.call(hierarchy.deref(), x, y));
++    /* The hierarchy is a value here (the cached one), as for is_preferred. */
++    return truthy(isa.call(hierarchy, x, y));
+   }
+ 
+   bool multi_function::is_dominant(object_ref const hierarchy,

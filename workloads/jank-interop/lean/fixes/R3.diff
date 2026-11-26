@@ -1,0 +1,17 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -1027,9 +1027,12 @@
+                   return error::lex_invalid_number("This integer literal ended unexpectedly.",
+                                                    { token_start, pos });
+                 }
+-                if(pos == token_start && file[token_start] == '0')
++                if((pos == token_start && file[token_start] == '0')
++                   || (file[token_start] == '-' && pos == token_start + 1llu
++                       && file[token_start + 1llu] == '0'))
+                 {
+-                  /* handle the case of a single digit 0 */
++                  /* handle the case of a single digit 0, or -0 (the `-0` branch above has
++                   * already stepped past the `-`) */
+                   radix = 10;
+                   expecting_more_digits = false;
+                 }

@@ -1,0 +1,44 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/inst.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/inst.hpp
+@@ -12,7 +12,7 @@
+   struct inst : object
+   {
+     static constexpr object_type obj_type{ object_type::inst };
+-    static constexpr object_behavior obj_behaviors{ object_behavior::none };
++    static constexpr object_behavior obj_behaviors{ object_behavior::compare };
+     static constexpr bool pointer_free{ true };
+ 
+     inst();
+@@ -25,6 +25,12 @@
+     jtl::immutable_string to_code_string() const override;
+     uhash to_hash() const override;
+ 
++    /* behavior::comparable */
++    i64 compare(object const &) const override;
++
++    /* behavior::comparable extended */
++    i64 compare(inst const &) const;
++
+     /*** XXX: Everything here is immutable after initialization. ***/
+     inst_time_point value;
+   };
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/inst.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/inst.cpp
+@@ -105,4 +105,17 @@
+   {
+     return static_cast<uhash>(value.time_since_epoch().count());
+   }
++
++  i64 inst::compare(object const &o) const
++  {
++    return compare(*try_object<inst>(runtime::detail::untagged(&o)));
++  }
++
++  /* As java.util.Date's compareTo, to the millisecond. */
++  i64 inst::compare(inst const &i) const
++  {
++    auto const l{ std::chrono::floor<std::chrono::milliseconds>(value) };
++    auto const r{ std::chrono::floor<std::chrono::milliseconds>(i.value) };
++    return (r < l) - (l < r);
++  }
+ }

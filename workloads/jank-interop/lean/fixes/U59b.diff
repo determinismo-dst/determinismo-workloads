@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core.cpp b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+index ebea535..e9eb7f5 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1358,7 +1358,8 @@ namespace jank::runtime
+   object_ref compile(object_ref const path)
+   {
+     __rt_ctx->compile_module(path.to_string()).expect_ok();
+-    return {};
++    /* Clojure's compile returns the lib. */
++    return path;
+   }
+ 
+   object_ref eval(object_ref const expr)

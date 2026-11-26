@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/cpp/jank/read/parse.cpp
++++ b/compiler+runtime/src/cpp/jank/read/parse.cpp
+@@ -1486,7 +1486,10 @@
+         }
+         sym = expect_object<obj::symbol>(gensym);
+       }
+-      else if(sym->ns.empty() && sym->name != "&")
++      /* As Clojure's resolveSymbol, an unqualified name with a `.` after its first character
++       * (a namespace or class name, such as `clojure.set`) is left unqualified. */
++      else if(sym->ns.empty() && sym->name != "&"
++              && (sym->name.find('.') == jtl::immutable_string::npos || sym->name.find('.') == 0))
+       {
+         auto const var(__rt_ctx->find_var(sym));
+         if(var.is_nil())

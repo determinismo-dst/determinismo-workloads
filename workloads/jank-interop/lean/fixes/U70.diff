@@ -1,0 +1,22 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/tagged_literal.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/tagged_literal.cpp
+index 0b4d2c7..755bbdd 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/tagged_literal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/tagged_literal.cpp
+@@ -47,9 +47,16 @@ namespace jank::runtime::obj
+     return buff.release();
+   }
+ 
++  /* pr writes the form readably, as Clojure's print-method for TaggedLiteral does through
++   * print-method of the form: (pr-str (tagged-literal 'foo "bar")) is #foo "bar". */
+   jtl::immutable_string tagged_literal::to_code_string() const
+   {
+-    return to_string();
++    jtl::string_builder buff;
++    buff('#');
++    tag.to_string(buff);
++    buff(' ');
++    buff(form.to_code_string());
++    return buff.release();
+   }
+ 
+   uhash tagged_literal::to_hash() const

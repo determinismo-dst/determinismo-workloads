@@ -1,0 +1,19 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp
+index cee5110..6ab7507 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_list.cpp
+@@ -99,7 +99,13 @@ namespace jank::runtime::obj
+ 
+   object_ref persistent_list::seq() const
+   {
+-    return fresh_seq();
++    /* A non-empty list is its own seq, as in Clojure, so it keeps its metadata. Callers that
++     * iterate in place take fresh_seq(). */
++    if(data.empty())
++    {
++      return {};
++    }
++    return runtime::detail::untagged(this);
+   }
+ 
+   object_ref persistent_list::fresh_seq() const

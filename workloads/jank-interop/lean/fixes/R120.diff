@@ -1,0 +1,41 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/cons.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/cons.hpp
+@@ -8,6 +8,7 @@
+ namespace jank::runtime::obj
+ {
+   using cons_ref = oref<struct cons>;
++  using persistent_list_ref = oref<struct persistent_list>;
+ 
+   struct cons : object
+   {
+@@ -43,6 +44,10 @@
+     /* behavior::conjable */
+     cons_ref conj(object_ref const head) const;
+ 
++    /* behavior::collection_like: a cons is a collection (Clojure's Cons is an
++     * IPersistentCollection), whose empty is (). */
++    static persistent_list_ref empty();
++
+     /*** XXX: Everything here is immutable after initialization. ***/
+     object_ref head{};
+     object_ref tail{};
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/cons.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/cons.cpp
+@@ -1,4 +1,5 @@
+ #include <jank/runtime/obj/cons.hpp>
++#include <jank/runtime/obj/persistent_list.hpp>
+ #include <jank/runtime/core.hpp>
+ #include <jank/runtime/visit.hpp>
+ #include <jank/util/fmt.hpp>
+@@ -17,6 +18,11 @@
+   {
+   }
+ 
++  persistent_list_ref cons::empty()
++  {
++    return persistent_list::empty();
++  }
++
+   object_ref cons::seq() const
+   {
+     return runtime::detail::untagged(this);

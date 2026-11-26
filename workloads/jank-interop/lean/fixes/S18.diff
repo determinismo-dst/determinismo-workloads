@@ -1,0 +1,13 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -773,7 +773,9 @@
+         }
+         else if constexpr(jtl::is_same<T, obj::ratio>)
+         {
+-          return make_box<obj::big_integer>(typed_o->to_integer());
++          /* Ratio.bigIntegerValue: the truncated quotient, without going through i64. */
++          return make_box<obj::big_integer>(
++            native_big_integer{ typed_o->data.numerator / typed_o->data.denominator });
+         }
+         else
+         {

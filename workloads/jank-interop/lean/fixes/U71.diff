@@ -1,0 +1,31 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core.cpp b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+index ebea535..dfe8bb3 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1021,9 +1021,25 @@ namespace jank::runtime
+   {
+     if(o.get_type() == object_type::persistent_string)
+     {
++      auto const &s(expect_object<obj::persistent_string>(o)->data);
++      /* Clojure's parse-uuid is java.util.UUID/fromString, which needs exactly four dashes
++       * and takes no braces. stduuid also takes 32 bare hex digits and a {braced} form. */
++      usize dashes{};
++      for(usize i{}; i < s.size(); ++i)
++      {
++        if(s.data()[i] == '-')
++        {
++          ++dashes;
++        }
++      }
++      if(dashes != 4 || (!s.empty() && s.data()[0] == '{'))
++      {
++        return {};
++      }
++
+       try
+       {
+-        return make_box<obj::uuid>(expect_object<obj::persistent_string>(o)->data);
++        return make_box<obj::uuid>(s);
+       }
+       catch(...)
+       {

@@ -1,0 +1,27 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -199,13 +199,20 @@
+   boolean
+   (fn* boolean [o]
+     (cpp/jank.runtime.truthy o)))
++; Like RT.intCast: a number outside the int range throws (to_int alone truncates, and casting
++; an out-of-range double is undefined in C++). A character gives its code. `long` keeps to_int.
+ (def ^{:arglists '([x])
+-       :doc "Coerce to int"
+-       :inline (fn* [o]
+-                 (list 'cpp/jank.runtime.to_int o))}
++       :doc "Coerce to int"}
+   int
+   (fn* int [o]
+-    (cpp/jank.runtime.to_int o)))
++    (if (cpp/jank.runtime.is_char o)
++      (cpp/jank.runtime.to_int o)
++      (let* [d (cpp/jank.runtime.to_real o)]
++        (if (if (cpp/jank.runtime.lt d -2147483648.0)
++              true
++              (cpp/jank.runtime.lt 2147483647.0 d))
++          (throw (ex-info "Value out of range for int" {:value o}))
++          (cpp/jank.runtime.to_int o))))))
+ (def ^{:arglists '([x])
+        :doc "Coerce to float"
+        :inline (fn* [o]

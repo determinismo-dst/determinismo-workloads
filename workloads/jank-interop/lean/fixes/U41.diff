@@ -1,0 +1,16 @@
+diff --git a/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank b/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank
+index fd68c1b..f8ec340 100644
+--- a/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank
++++ b/compiler+runtime/src/jank/jank/nrepl/server/handler/completions.jank
+@@ -59,7 +59,10 @@
+    (ns-map ns)
+    (keep (fn [[k v]]
+            (when (starts-with? k prefix)
+-             {:ns        (str ns)
++             ;; nREPL names the namespace each var belongs to, not the one searched.
++             {:ns        (if (var? v)
++                           (namespace (symbol v))
++                           (str ns))
+               :type      (candidate-type v)
+               :candidate (str k)})))))
+ 

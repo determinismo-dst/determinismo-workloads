@@ -1,0 +1,48 @@
+--- a/compiler+runtime/src/cpp/jank/util/escape.cpp
++++ b/compiler+runtime/src/cpp/jank/util/escape.cpp
+@@ -31,6 +31,16 @@
+     return ok(codepoint);
+   }
+ 
++  /* Where Clojure's reader ends an octal escape early: whitespace (or a comma) or a macro
++   * character. */
++  static bool ends_octal_escape(char const c)
++  {
++    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v' || c == ','
++      || (c >= '\x1c' && c <= '\x1f') || c == '"' || c == ';' || c == '\'' || c == '@' || c == '^'
++      || c == '`' || c == '~' || c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}'
++      || c == '\\' || c == '%' || c == '#';
++  }
++
+   /* Converts escape sequences starting with backslash to their mapped character. e.g., \" => " */
+   jtl::result<jtl::immutable_string, unescape_error> unescape(jtl::immutable_string const &input)
+   {
+@@ -98,6 +108,28 @@
+         }
+         ++i;
+       }
++      else if(c >= '0' && c <= '7')
++      {
++        /* An octal escape, as Clojure's reader reads it: up to three digits, ended early only by
++         * the end of the string, whitespace or a macro character, and at most \377. */
++        i64 codepoint{ c - '0' };
++        ++i;
++        for(usize digits{ 1 }; digits < 3 && i < size && !ends_octal_escape(input[i]); ++digits)
++        {
++          if(input[i] < '0' || input[i] > '7')
++          {
++            return err(unescape_error{ util::format("Invalid digit: {}", input[i]) });
++          }
++          codepoint = (codepoint * 8) + (input[i] - '0');
++          ++i;
++        }
++        if(codepoint > 0377)
++        {
++          return err(unescape_error{ "Octal escape sequence must be in range [0, 377]." });
++        }
++        sb(jtl::to_char(codepoint, "?"));
++        escape = false;
++      }
+       else
+       {
+         switch(c)

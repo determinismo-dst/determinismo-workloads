@@ -1,0 +1,47 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/meta.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/meta.hpp
+@@ -15,6 +15,8 @@
+   object_ref with_meta(object_ref const o, object_ref const m);
+   object_ref with_meta_graceful(object_ref const o, object_ref const m);
+   object_ref reset_meta(object_ref const o, object_ref const m);
++  /* (apply f (meta o) args), then reset-meta!, atomically. */
++  object_ref alter_meta(object_ref const o, object_ref const f, object_ref const args);
+ 
+   read::source meta_source(object_ref const meta);
+   read::source object_source(object_ref const o);
+--- a/compiler+runtime/src/cpp/jank/runtime/core/meta.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/meta.cpp
+@@ -1,5 +1,8 @@
++#include <mutex>
++
+ #include <jank/runtime/visit.hpp>
+ #include <jank/runtime/core/meta.hpp>
++#include <jank/runtime/core/call.hpp>
+ #include <jank/runtime/core/math.hpp>
+ #include <jank/runtime/core/seq.hpp>
+ #include <jank/runtime/core/make_box.hpp>
+@@ -81,8 +84,24 @@
+       m);
+   }
+ 
++  /* Clojure's reset-meta! and alter-meta! are synchronized on the reference. One lock for every
++   * object serializes them per object, as Clojure does (and across objects too). It is recursive:
++   * alter-meta! resets under it, and its fn may alter another object's metadata. */
++  static std::recursive_mutex &meta_mutex()
++  {
++    static std::recursive_mutex m;
++    return m;
++  }
++
++  object_ref alter_meta(object_ref const o, object_ref const f, object_ref const args)
++  {
++    std::lock_guard<std::recursive_mutex> const lock{ meta_mutex() };
++    return reset_meta(o, apply_to(f, cons(meta(o), args)));
++  }
++
+   object_ref reset_meta(object_ref const o, object_ref const m)
+   {
++    std::lock_guard<std::recursive_mutex> const lock{ meta_mutex() };
+     /* TODO: Port visit_object: metadatable. */
+     return visit_object(
+       [](auto const typed_o, object_ref const m) -> object_ref {

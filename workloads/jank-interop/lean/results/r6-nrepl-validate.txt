@@ -1,0 +1,101 @@
+Round 6, area Q (nREPL): the state-graph counter checked against every complete World T walk of rounds 3-5.
+
+Each number below was produced by a complete depth-first walk in an earlier round (one timeline at a
+time). The same number, computed by Graph.lean `count` (whole graph) or Lazy.lean `countLazy` (steps run
+on demand) on round 3's own step function (`tProg`) and judge, is printed after it. All agree exactly,
+violation counts included.
+
+  scenario, bound                  earlier round (complete walk)           round 6
+  T1 <=1                           6,640, nothing (r3)                     6,640, nothing
+  T1 <=2                           1,197,488; 16,224 wrong :out,           1,197,488; 16,224 "eval output reaches its client",
+                                   4,800 fd 1 left redirected (r3)          4,800 "stdout is restored after every eval"
+  T2 <=2                           1,344,960, nothing (r3)                 1,344,960, nothing
+  T4 <=1                           2,016, all hang (r3)                    2,016, all "every request gets a done reply (no hang)"
+  T5 <=1                           34,496, all R126 (r3)                   34,496, all "eval value: error"
+  T6 <=1                           48,384, nothing (r3)                    48,384, nothing
+  T8 <=2                           7,669; 3,145 R139 (r3)                  7,669; 3,145 "every request gets a done reply"
+  T9 <=1                           53,312, nothing (r3)                    53,312, nothing (raw and with logs ordered)
+  T10 <=1                          6,800, nothing (r3)                     6,800, nothing
+  T10 <=2                          1,304,752; 864 N6 (r3)                  1,304,752; 864 "eval output reaches its client"
+  T7 whole reads <=0/<=1/<=2       64 / 5,312 / 218,400 (r5)               64 / 5,312 / 218,400
+  T7 whole, eintr held 0, <=2/<=3  3,335 / 89,835 (r5)                     3,335 / 89,835
+  T7 partial reads, <=1 cut, <=0   16,384 (r5)                             16,384
+  T7 partial reads, <=1 cut, <=1   1,392,512 (r5)                          1,392,512
+  T9 <=2, logs ordered by client   -                                       21,112,352 (graph) = 21,112,352 (lazy, raw logs)
+
+Outputs follow (T8 from Graph.lean `count`; the rest from `lazy` with raw logs).
+
+== T8: T8 control: EINTR on a blocked read_some (R139): interleavePB timelines counted on the state graph
+  graph: 251 states, 608 step runs, complete (every reachable state); blocked steps that moved: 0 (15 ms)
+  ≤0: 5 timelines (complete); with every net.read.eintr draw 0: 1; longest: 80 iterations (bound 6000: never reached), 4 decisions; 101 scheduler states (0 ms)
+      every request gets a done reply (no hang): 3 (eintr 0: 0)
+        e.g. client 0 waits for the done of c0-3; conn 0's loop ended while its client is connected
+  ≤1: 257 timelines (complete); with every net.read.eintr draw 0: 68; longest: 82 iterations (bound 6000: never reached), 71 decisions; 326 scheduler states (0 ms)
+      every request gets a done reply (no hang): 122 (eintr 0: 0)
+        e.g. client 0 waits for the done of c0-3; conn 0's loop ended while its client is connected
+  ≤2: 7,669 timelines (complete); with every net.read.eintr draw 0: 2,292; longest: 84 iterations (bound 6000: never reached), 72 decisions; 626 scheduler states (1 ms)
+      every request gets a done reply (no hang): 3,145 (eintr 0: 0)
+        e.g. client 0 waits for the done of c0-3; conn 0's loop ended while its client is connected
+  ≤3: 157,865 timelines (complete); with every net.read.eintr draw 0: 51,195; longest: 86 iterations (bound 6000: never reached), 73 decisions; 1,065 scheduler states (0 ms)
+      every request gets a done reply (no hang): 57,246 (eintr 0: 0)
+        e.g. client 0 waits for the done of c0-3; conn 0's loop ended while its client is connected
+
+== T1: T1 R125: two connections printing (real code), random schedules: interleavePB timelines counted with steps run on demand
+  ≤0: 113 states reached, 127 step runs
+  ≤0: 16 timelines (complete); with every net.read.eintr draw 0: 1; longest: 123 iterations (bound 6000: never reached), 4 decisions; 124 scheduler states (6 ms)
+      violations: nothing
+  ≤1: 3,366 states reached, 4,068 step runs
+  ≤1: 6,640 timelines (complete); with every net.read.eintr draw 0: 312; longest: 126 iterations (bound 6000: never reached), 110 decisions; 4,103 scheduler states (205 ms)
+      violations: nothing
+  ≤2: 33,581 states reached, 47,454 step runs
+  ≤2: 1,197,488 timelines (complete); with every net.read.eintr draw 0: 44,377; longest: 129 iterations (bound 6000: never reached), 112 decisions; 51,263 scheduler states (2866 ms)
+      stdout is restored after every eval: 4,800 (eintr 0: 300)
+        e.g. fd 1 is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0")
+      eval output reaches its client: 16,224 (eintr 0: 1,014)
+        e.g. c1-1 eval "(print \"b\")": :out "", the eval printed "b"
+== T2: T2 R125 set aside (capture under a lock): the same: interleavePB timelines counted with steps run on demand
+  ≤0: 117 states reached, 131 step runs
+  ≤0: 16 timelines (complete); with every net.read.eintr draw 0: 1; longest: 127 iterations (bound 6000: never reached), 4 decisions; 128 scheduler states (6 ms)
+      violations: nothing
+  ≤1: 2,080 states reached, 2,798 step runs
+  ≤1: 6,896 timelines (complete); with every net.read.eintr draw 0: 324; longest: 130 iterations (bound 6000: never reached), 114 decisions; 2,882 scheduler states (116 ms)
+      violations: nothing
+  ≤2: 11,550 states reached, 20,305 step runs
+  ≤2: 1,344,960 timelines (complete); with every net.read.eintr draw 0: 48,606; longest: 133 iterations (bound 6000: never reached), 116 decisions; 23,175 scheduler states (953 ms)
+      violations: nothing
+== T10: T10 N6 across connections: a lazy value printed after its capture, the other connection capturing; capture locked: interleavePB timelines counted with steps run on demand
+  ≤0: 115 states reached, 129 step runs
+  ≤0: 16 timelines (complete); with every net.read.eintr draw 0: 1; longest: 125 iterations (bound 6000: never reached), 4 decisions; 126 scheduler states (6 ms)
+      violations: nothing
+  ≤1: 2,046 states reached, 2,752 step runs
+  ≤1: 6,800 timelines (complete); with every net.read.eintr draw 0: 318; longest: 128 iterations (bound 6000: never reached), 112 decisions; 2,832 scheduler states (112 ms)
+      violations: nothing
+  ≤2: 11,481 states reached, 20,160 step runs
+  ≤2: 1,304,752 timelines (complete); with every net.read.eintr draw 0: 46,713; longest: 131 iterations (bound 6000: never reached), 114 decisions; 22,934 scheduler states (967 ms)
+      eval output reaches its client: 864 (eintr 0: 54)
+        e.g. c1-1 eval "(print \"b\")": :out "b1\n2\n", the eval printed "b"
+== T4: T4 R1 through nREPL: a NUL in one connection's code, the other printing: interleavePB timelines counted with steps run on demand
+  ≤0: 84 states reached, 100 step runs
+  ≤0: 8 timelines (complete); with every net.read.eintr draw 0: 1; longest: 97 iterations (bound 6000: never reached), 3 decisions; 98 scheduler states (3 ms)
+      every request gets a done reply (no hang): 8 (eintr 0: 1)
+        e.g. client 0 waits for the done of c0-1; conn 0 never returns from the reader (HANG string loop (lex.cpp:1325)); fd 1 (stdout) is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0")
+  ≤1: 1,279 states reached, 1,690 step runs
+  ≤1: 2,016 timelines (complete); with every net.read.eintr draw 0: 234; longest: 101 iterations (bound 6000: never reached), 82 decisions; 1,875 scheduler states (72 ms)
+      every request gets a done reply (no hang): 2,016 (eintr 0: 234)
+        e.g. client 0 waits for the done of c0-1; conn 0 never returns from the reader (HANG string loop (lex.cpp:1325)); fd 1 (stdout) is left on some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0")
+== T5: T5 R126: a value that throws while printed, then more evals on the connection; capture locked: interleavePB timelines counted with steps run on demand
+  ≤0: 196 states reached, 216 step runs
+  ≤0: 64 timelines (complete); with every net.read.eintr draw 0: 1; longest: 210 iterations (bound 6000: never reached), 6 decisions; 211 scheduler states (10 ms)
+      eval value: error: 64 (eintr 0: 1)
+        e.g. c0-1: eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank eval-error false, spec [Jank.R3.Nrepl.SpecItem.error] (Jank.R3.Nrepl.SpecMode.loadString)
+  ≤1: 3,924 states reached, 4,996 step runs
+  ≤1: 34,496 timelines (complete); with every net.read.eintr draw 0: 436; longest: 213 iterations (bound 6000: never reached), 196 decisions; 5,113 scheduler states (317 ms)
+      eval value: error: 34,496 (eintr 0: 436)
+        e.g. c0-1: eval "(map (fn [_] (throw (ex-info \"p\" {}))) [1])" ns=user: jank eval-error false, spec [Jank.R3.Nrepl.SpecItem.error] (Jank.R3.Nrepl.SpecMode.loadString)
+== T6: T6 macros defined on one connection used by the other (shared namespace); capture locked: interleavePB timelines counted with steps run on demand
+  ≤0: 198 states reached, 218 step runs
+  ≤0: 64 timelines (complete); with every net.read.eintr draw 0: 1; longest: 212 iterations (bound 6000: never reached), 6 decisions; 213 scheduler states (10 ms)
+      violations: nothing
+  ≤1: 5,336 states reached, 6,773 step runs
+  ≤1: 48,384 timelines (complete); with every net.read.eintr draw 0: 567; longest: 215 iterations (bound 6000: never reached), 197 decisions; 6,880 scheduler states (388 ms)
+      violations: nothing

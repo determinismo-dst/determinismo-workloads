@@ -1,0 +1,19 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -960,7 +960,15 @@
+ 
+           for(auto const s : match_results)
+           {
+-            vec.emplace_back(make_box<obj::persistent_string>(s.str()));
++            /* As Java's Matcher.group: a group that took no part in the match is nil, not "". */
++            if(s.matched)
++            {
++              vec.emplace_back(make_box<obj::persistent_string>(s.str()));
++            }
++            else
++            {
++              vec.emplace_back(object_ref{});
++            }
+           }
+ 
+           return make_box<obj::persistent_vector>(

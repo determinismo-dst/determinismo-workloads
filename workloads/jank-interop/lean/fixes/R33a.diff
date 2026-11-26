@@ -1,0 +1,32 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -25,8 +25,10 @@ namespace jank::runtime
+ 
+   namespace detail
+   {
++    /* `bool` is integral to C++ but not a number to Clojure: `(+ true 1)` throws. */
+     template <typename T>
+-    concept primitive_number = (std::is_integral_v<T> || std::is_floating_point_v<T>);
++    concept primitive_number
++      = ((std::is_integral_v<T> && !jtl::is_same<T, bool>) || std::is_floating_point_v<T>);
+ 
+     template <typename T>
+     concept typed_object = (behavior::object_like<typename T::value_type>);
+@@ -492,7 +494,7 @@ namespace jank::runtime
+       };
+       return object_ref{};
+     }
+-    if constexpr(jtl::is_same<L, object_ref>)
++    else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) { return make_box(typed_l->data * r).erase(); },
+@@ -1152,7 +1154,7 @@ namespace jank::runtime
+       };
+       return object_ref{};
+     }
+-    if constexpr(jtl::is_same<L, object_ref>)
++    else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return make_box(std::pow(l.to_real(), static_cast<f64>(r))).erase();
+     }

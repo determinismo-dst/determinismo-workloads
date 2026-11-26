@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..345b250 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -5750,7 +5750,8 @@
+   using, e.g., Integer/TYPE."
+   ([aseq]
+     ;;  (clojure.lang.RT/seqToTypedArray (seq aseq))
+-   (throw (ex-info "TODO: port into-array"  {})))
++   ;; jank's arrays of objects hold any value, so the component type is object.
++   (to-array aseq))
+   ([type aseq]
+     ;;  (clojure.lang.RT/seqToTypedArray type (seq aseq))
+    (throw (ex-info "TODO: port into-array"  {}))))

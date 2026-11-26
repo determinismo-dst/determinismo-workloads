@@ -1,0 +1,45 @@
+--- a/compiler+runtime/src/cpp/clojure/string_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/string_native.cpp
+@@ -254,18 +254,40 @@
+     return buff.release();
+   }
+ 
++  /* java.lang.String.indexOf after clojure.string's (unchecked-int from-index): a negative start
++   * is 0, and at or past the end only an empty value is found, at the end. */
+   i64 index_of(jtl::immutable_string const &s,
+                jtl::immutable_string const &value,
+                i64 const from_index)
+   {
+-    return static_cast<i64>(s.find(value, from_index));
++    auto const from{ static_cast<i64>(static_cast<i32>(from_index)) };
++    auto const size{ static_cast<i64>(s.size()) };
++    if(from >= size)
++    {
++      return value.empty() ? size : -1;
++    }
++    auto const found{ s.find(value, from < 0 ? 0 : static_cast<usize>(from)) };
++    return found == jtl::immutable_string::npos ? -1 : static_cast<i64>(found);
+   }
+ 
++  /* java.lang.String.lastIndexOf after (unchecked-int from-index): the start is at most
++   * size - value size, and below 0 nothing is found. */
+   i64 last_index_of(jtl::immutable_string const &s,
+                     jtl::immutable_string const &value,
+                     i64 const from_index)
+   {
+-    return static_cast<i64>(s.rfind(value, from_index));
++    auto const right{ static_cast<i64>(s.size()) - static_cast<i64>(value.size()) };
++    auto from{ static_cast<i64>(static_cast<i32>(from_index)) };
++    if(from > right)
++    {
++      from = right;
++    }
++    if(from < 0)
++    {
++      return -1;
++    }
++    auto const found{ s.rfind(value, static_cast<usize>(from)) };
++    return found == jtl::immutable_string::npos ? -1 : static_cast<i64>(found);
+   }
+ 
+   static jtl::immutable_string::size_type triml_index(jtl::immutable_string const &s)

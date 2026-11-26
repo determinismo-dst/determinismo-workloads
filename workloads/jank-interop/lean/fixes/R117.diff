@@ -1,0 +1,34 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/cons.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/cons.hpp
+@@ -40,6 +40,9 @@
+     object_ref first() const override;
+     object_ref next() const override;
+ 
++    /* behavior::sequence_like_in_place */
++    object_ref next_in_place() override;
++
+     /* behavior::conjable */
+     cons_ref conj(object_ref const head) const;
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/cons.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/cons.cpp
+@@ -42,6 +42,19 @@
+     return tail.seq();
+   }
+ 
++  object_ref cons::next_in_place()
++  {
++    /* next() gives the tail itself, which this cons and every copy of it share (fresh_seq
++     * copies only the cons). next_in_place's caller owns what it gets and steps it in place
++     * (doseq does), so it gets a fresh seq of the tail, never the shared one. */
++    if(tail.is_nil())
++    {
++      return {};
++    }
++
++    return tail.fresh_seq();
++  }
++
+   bool cons::equal(object const &o) const
+   {
+     return runtime::sequence_equal(runtime::detail::untagged(this), runtime::detail::untagged(&o));

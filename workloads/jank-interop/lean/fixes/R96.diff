@@ -1,0 +1,24 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
+@@ -55,14 +55,13 @@
+ 
+   i64 boolean::compare(object const &o) const
+   {
+-    return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
+-      [&]() -> i64 {
+-        throw std::runtime_error{ util::format(
+-          "Objects of type `{}` are not comparable to `boolean`.",
+-          object_type_str(o.type)) };
+-      },
+-      runtime::detail::untagged(&o));
++    /* Boolean.compareTo: booleans compare with booleans (false < true), nothing else. */
++    if(o.type == object_type::boolean)
++    {
++      return compare(*expect_object<boolean>(runtime::detail::untagged(&o)));
++    }
++    throw std::runtime_error{ util::format("Objects of type `{}` are not comparable to `boolean`.",
++                                           object_type_str(o.type)) };
+   }
+ 
+   i64 boolean::compare(boolean const &o) const

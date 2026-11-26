@@ -1,0 +1,57 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..072965d 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -4785,6 +4785,12 @@
+     :doc "A stack of paths currently being loaded by this thread"}
+   *pending-paths* ())
+ 
++(defonce
++  ^{:private true
++    :dynamic true
++    :doc "True while a verbose load is pending"}
++  *loading-verbosely* false)
++
+ (defn- check-cyclic-dependency
+   "Detects and rejects non-trivial cyclic load dependencies. The
+   exception message shows the dependency chain with the cycle
+@@ -4816,6 +4822,16 @@
+    namespace exists after loading. If `require?`, records the load so any
+    duplicate loads can be skipped."
+   [lib need-ns? require?]
++  ;; Clojure's load prints the lib's root resource while *loading-verbosely*.
++  (when *loading-verbosely*
++    (println (str "(clojure.core/load \"/"
++                  (apply str (map (fn [c]
++                                    (case c
++                                      \. \/
++                                      \- \_
++                                      c))
++                                  (str lib)))
++                  "\")")))
+   (load lib)
+   (throw-if (and need-ns? (not (find-ns lib)))
+             (str "namespace " lib " not found after loading " lib))
+@@ -4858,7 +4874,8 @@
+         undefined-on-entry? (not (find-ns lib))]
+     (if load
+       (try
+-        (load lib need-ns? require)
++        (binding [*loading-verbosely* (or *loading-verbosely* verbose)]
++          (load lib need-ns? require))
+         (catch cpp/jank.runtime.object_ref e
+           (when undefined-on-entry?
+             (remove-ns lib))
+@@ -6969,12 +6986,6 @@
+   ;;         (. clojure.lang.Var (popThreadBindings))))))
+   (throw (ex-info "TODO: port with-loading-context"  {})))
+ 
+-(defonce
+-  ^{:private true
+-    :dynamic true
+-    :doc "True while a verbose load is pending"}
+-  *loading-verbosely* false)
+-
+ (defn- serialized-require
+   "Like 'require', but serializes loading.
+   Interim function preferred over 'require' for known asynchronous loads.

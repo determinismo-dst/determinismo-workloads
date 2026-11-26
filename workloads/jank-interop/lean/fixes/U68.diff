@@ -1,0 +1,21 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+index 6298d83..d25560f 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+@@ -1181,7 +1181,15 @@ namespace jank::runtime
+       [](auto const typed_coll) -> object_ref {
+         using T = typename jtl::decay_t<decltype(typed_coll)>::value_type;
+ 
+-        if constexpr(!behavior::collection_like<T> || behavior::map_like<T>)
++        /* Clojure's shuffle copies any java.util.Collection, which every seq is (cons,
++         * repeat, sort's result, ...), but not a map, a string or an array. */
++        if constexpr(behavior::map_like<T>)
++        {
++          throw std::runtime_error{ util::format("Objects of type `{}` cannot be shuffled.",
++                                                 object_type_str(typed_coll.get_type())) };
++        }
++        if(typed_coll.get_type() == object_type::persistent_string
++           || typed_coll.get_type() == object_type::array)
+         {
+           throw std::runtime_error{ util::format("Objects of type `{}` cannot be shuffled.",
+                                                  object_type_str(typed_coll.get_type())) };

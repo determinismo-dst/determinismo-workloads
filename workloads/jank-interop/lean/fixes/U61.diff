@@ -1,0 +1,35 @@
+diff --git a/compiler+runtime/src/jank/clojure/data.jank b/compiler+runtime/src/jank/clojure/data.jank
+index fe5791f..3c10d48 100644
+--- a/compiler+runtime/src/jank/clojure/data.jank
++++ b/compiler+runtime/src/jank/clojure/data.jank
+@@ -63,11 +63,28 @@
+                        (if (vector? b) b (vec b))
+                        (range (max (count a) (count b)))))))
+ 
++;; Clojure's EqualityPartition and Diff protocols, extended to nil, Set, List, Map and
++;; Object, as one dispatch on jank's predicates (sequential? stands for java.util.List).
+ (defn- equality-partition [o]
+-  :atom)
++  (cond
++    (nil? o) :atom
++    (set? o) :set
++    (map? o) :map
++    (sequential? o) :sequential
++    :else :atom))
++
++(defn- diff-set
++  [a b]
++  [(not-empty (set/difference a b))
++   (not-empty (set/difference b a))
++   (not-empty (set/intersection a b))])
+ 
+ (defn- diff-similar [lhs rhs]
+-  (atom-diff lhs rhs))
++  (case (equality-partition lhs)
++    :set (diff-set lhs rhs)
++    :sequential (diff-sequential lhs rhs)
++    :map (diff-associative lhs rhs (set/union (set (keys lhs)) (set (keys rhs))))
++    (atom-diff lhs rhs)))
+ 
+ (defn diff
+   "Recursively compares a and b, returning a tuple of

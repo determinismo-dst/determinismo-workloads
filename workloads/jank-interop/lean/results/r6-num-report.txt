@@ -1,0 +1,291 @@
+Round 6, area N (numbers): jank's numeric tower on boxed and native values, at main 94d32623
+====================================================================================================
+Paths are under upstream-r5/compiler+runtime/. Clojure is 1.12.0 (clojure-ref/ and the jar). Every item is a
+hypothesis from the Lean replica, re-read against the source; jank was not built or run.
+
+How a Clojure arithmetic form reaches math.hpp (what everything below rests on; read, not assumed):
+- `+ - * / < <= > >= min max` with two arguments inline to `cpp/jank.runtime.<op>` (clojure/core.jank 1371-1434,
+  1566-1660, `:inline-arities #{2}`); `inc dec zero? pos? neg? quot rem abs int float ==` inline too; `-'`, `+'`,
+  `*'`, `inc'`, `dec'`, `long`, `double`, `bigint`, `bigdec`, `compare`, `=` never do. Other arities run the defn.
+- A long literal is a C++ `int` when it fits i32, else a `long` (analyze/cpp_util.cpp literal_type 630-643, 652-658),
+  emitted as `auto tN(<digits>);` (codegen/cpp_processor.cpp gen(cpp_literal) 1278-1285, lift_constant 131-149).
+  A double literal is a `double`; BigInt, ratio and BigDecimal literals are `object_ref`s.
+- A let-bound local keeps its init's C++ type (analyze/processor.cpp analyze_let 2370-2421; a loop binding too,
+  mutable_type 1064-1089 erases only typed objects).
+- A fn parameter or any value passed through a fn is an `object_ref`: a `small_integer` (i32 data) when it fits i32,
+  else an `integer` (i64), by make_box (core/make_box.hpp 89-101; visit.hpp visit_number_like 463-498).
+- The literal -9223372036854775808 is a `big_integer` (round 2's R5: read/lex.cpp 1143-1157, strtoll of the digits
+  after `-` gets ERANGE).
+- math.hpp computes `l OP r` in the operands' C++ types: int OP int is 32-bit, anything with a long is 64-bit, both
+  wrapping (-fwrapv); `inc`/`dec` check with __builtin_*_overflow (math.hpp 1186-1340).
+- Clojure: two primitive longs (literals or let-bound literals) call Numbers.add/minus/multiply(long, long) =
+  Math.addExact etc. ("long overflow"); any Object operand calls the Object overloads (Numbers.java 154-178), where
+  `minus(x, y)` is `add(x, negate(y))` and `negate(Long/MIN_VALUE)` throws.
+
+(1) Deviations
+--------------
+N1. Long overflow wraps silently on every path with a long operand (LG2, extended to every path).
+  Programs (each compiled inside a fn):
+    (* -3 9223372036854775807)                     [literals: mul(int, long)]   jank -9223372036854775805
+    (let [a 9223372036854775807 b 2] (* a b))      [let]                        jank -2
+    ((fn [a b] (* a b)) 3037000500 3037000500)     [fn: integer x integer]      jank -9223372036709301616
+    ((fn [a] (+ a 9223372036854775807)) 1)         [literal + parameter]        jank -9223372036854775808
+    ((fn [a] (- a)) (dec' -9223372036854775807))   [(- x) is (- 0 x)]           jank -9223372036854775808
+  Clojure: ArithmeticException "long overflow" for each.
+  Which pairs: exactly those whose true result leaves i64, for every operator and every mix of `long`-typed native
+  and `integer` object operands (theorem i64_pair_verdict); always "a value where Clojure throws".
+  Path: math.hpp add 68-178, sub 182-292, mul 408-518: `make_box(typed_l->data OP typed_r->data)` (object/object),
+  `make_box(l OP typed_r->data)` (native/object), `return l OP r` (native/native). inc/dec are checked (1194-1199,
+  1272-1277) and agree (theorem incdec_fixed_agree).
+  Tests: vN1-long-overflow-throws-with-literals, vN1b-…-with-let-bound-literals, vN1c-…-through-fn-parameters,
+  vN1d-…-with-a-literal-and-a-parameter, vN1e-negating-long-min-throws.
+  Status: LG2 (the brief's `*` with literals), extended to let-bound locals, fn parameters, mixed operands, `+`, `-`
+  and unary `-`. Confidence: high. Shared cause with N3/D1/R25: math.hpp computes in the operands' C++ type.
+
+N2. Arithmetic on the literal -9223372036854775808 gives BigInts (R5's consequence; LG2's second example).
+    (dec -9223372036854775808)                      jank -9223372036854775809N; Clojure throws
+    (let [x -9223372036854775808] (* x 2) (- x 2))  jank -18446744073709551616N, -9223372036854775810N; Clojure throws
+    (pr-str (inc -9223372036854775808))             jank "-9223372036854775807N"; Clojure "-9223372036854775807"
+    (pr-str (* -9223372036854775808 0))             jank "0N"; Clojure "0"
+  Path: read/lex.cpp 1143-1157 (R5) → literal_type's default (cpp_util.cpp 855-859: object_ref) → math.hpp's
+  visit_number_like big_integer branches (exact cpp_int). Test: vN2-arithmetic-on-the-long-minimum-literal [literals,
+  let]. Status: R5 (the literal) + LG2; the arithmetic is exact cpp_int and is right for a BigInt. High.
+
+N3. Two `int` operands are added as C++ `int`s, also when let-bound (extends R25; D1's class).
+    (let [a 65536 b 2147483647] [(* a a) (+ b 1)])  jank [0 -2147483648]; Clojure [4294967296 2147483648]
+  Theorem i32_pair_verdict: wrong exactly when the true result leaves i32; Clojure never throws there.
+  Test: vN3-let-bound-int-arithmetic-is-long [let]. Status: extends R25 (literals) and D1 (objects). High.
+
+N4. `-'` overflow is wrapped (D3 holds; round 1's test could not see it).
+    (-' (dec' -9223372036854775807) 1)   Clojure -9223372036854775809N; jank 9223372036854775807N
+  Round 1's test d03 wrote `(-' -9223372036854775808 1)`: that literal is a BigInt in jank (R5), so promoting_sub's
+  BigInt branch answered exactly and the test passed ("refuted"). With a long operand the i64 branch runs.
+  Path: core/math.cpp promoting_sub 102-134 (line 126 boxes `l_val - typed_r->data`, an i64 difference).
+  Theorem promoting_sub_wrong_iff. Test: vN4-promoting-subtraction-overflow-of-a-long [fn]. Status: D3, corrects the
+  refutation. High.
+
+N5 (low). Subtraction through a fn with Long/MIN_VALUE as the subtrahend.
+    ((fn [a b] (- a b)) -1 Long/MIN_VALUE)   Clojure throws "long overflow"; jank 9223372036854775807
+    ((fn [a b] (-' a b)) -1 Long/MIN_VALUE)  Clojure 9223372036854775807N (BigInt); jank 9223372036854775807 (long)
+  Clojure's Object `minus` negates its second operand first (Numbers.java 162-172, LongOps.negate 651-654,
+  negateP 656-661); with literals Clojure gives 9223372036854775807 (Long). It is Clojure's own path inconsistency;
+  stated because Clojure 1.12's behavior is the property. Theorem fixed_vs_object_sub (even the fixed jank differs
+  exactly there). Test: vN5-subtracting-long-min-through-a-fn [fn]. Status: new, low. Separate cause (none in jank).
+
+N6. min and max with a NaN operand return the other operand.
+    ((fn [a b] (min a b)) ##NaN 1)   ((fn [a b] (max a b)) 1 ##NaN)   (apply max [1.0 ##NaN])
+       Clojure ##NaN each; jank 1, 1, 1.0
+    (min 1.0 ##NaN)   (max 1 ##NaN)   [literals]   Clojure ##NaN; jank 1.0, 1.0
+  Path: math.hpp min 738-865 (`l < r ? l : r`) and max 865-992 (`l < r ? r : l`): NaN loses whenever it is min's
+  first or max's second operand; native/native `std::min/max` likewise. Clojure: Numbers.min/max check isNaN first
+  (4044-4228), and Math.min/max propagate NaN. Walk: 112 of 3,364 min questions and 112 of 3,364 max questions.
+  Tests: vN6-min-and-max-with-nan-through-fns [fn], vN6b-min-and-max-with-nan-literals [literals]. Status: new. High.
+
+N7. On a tie, jank's max returns its first operand, Clojure's its second.
+    ((fn [a b] (max a b)) 1 1.0)    Clojure 1.0;  jank 1
+    ((fn [a b] (max a b)) 1 1N)     Clojure 1N;   jank 1
+    ((fn [a b] (max a b)) 0.0 -0.0) Clojure -0.0; jank 0.0
+  Path: math.hpp max 880-905 (`typed_l->data < typed_r->data ? typed_r : typed_l`); Clojure max(Object, Object)
+  `gt(x, y) ? x : y` (4124-4136). min agrees (both return the second on a tie). Walk: 140 max questions.
+  Test: vN7-max-of-a-tie-is-the-second-operand [fn]. Status: new. High.
+
+N8. min/max of a long literal and a double literal return a double (the common C++ type), and min of zeros differs.
+    (min 1 2.5)                    Clojure 1;                 jank 1.0
+    (max 9007199254740993 1.0)     Clojure 9007199254740993;  jank 9.007199254740992E15 (precision lost)
+    (min 0.0 -0.0)                 Clojure -0.0 (Math.min);   jank 0.0 (std::min(a, b) = b < a ? b : a)
+  Path: math.hpp min 855-863 / max 982-990 (native/native: `std::min/max(static_cast<C>(l), static_cast<C>(r))`).
+  Walk: 50 min and 80 max literal questions (kind or value). Test: vN8-min-and-max-of-literals-return-an-operand
+  [literals]. Status: new; the native typing of the literals is area P's (LG1's class), the common-type choice is
+  math.hpp's. High.
+
+N9 (extends S20). A ratio operation with an integral result is a long; Clojure gives a BigInt.
+    (pr-str (+ 1/2 1/2))  (pr-str (* 1/2 2))  (pr-str (apply - [3/2 1/2]))   Clojure "1N" each; jank "1"
+  Path: obj/ratio.cpp operator+ 172-176, operator- 198-203, operator* 235-238, operator/ 270-273 → ratio::create
+  88-101 (narrows to a long). Clojure: RatioOps → Numbers.divide(BigInteger, BigInteger) → BigInt (387-401).
+  Test: vN9-ratio-arithmetic-with-an-integral-result-is-a-bigint [literals, fn]. Status: extends S20 (which had a
+  BigInt operand) to every operand. High.
+
+N10 (extends S40, S12). `long` of a double outside the long range.
+    ((fn [x] (long x)) 1e20), (long ##Inf)   Clojure IllegalArgumentException "Value out of range for long";
+    jank static_cast<i64> of an out-of-range double (undefined; -9223372036854775808 on x86-64)
+  Path: core.jank long 5773-5776 → math.hpp to_int 1411-1431 → obj/number.cpp real::to_integer 358-366.
+  Test: vN10-long-of-an-out-of-range-double-throws [fn]. Status: extends S40 (int, typed params) and S12 (BigDecimal).
+
+N11 (low). numerator, denominator (and biginteger) print with N.
+    (pr-str (numerator 1/2))   Clojure "1" (a BigInteger); jank "1N"
+  Path: math.cpp numerator 594-597 returns native_big_integer, boxed as a big_integer. Round 3 noted it without an
+  item. Test: vN11-numerator-prints-as-a-biginteger [fn]. Status: new as an item, low.
+
+Re-found, already reported (not re-reported): D1 (objects), R25 (literals), D2/S19 (`/` truncates), D4 (quot through
+doubles; also `(quot 7N 2)` is 3, `(quot 7.5M 2)` 3, `(quot 7/2 1)` 3: "always a long"), D5 (`==` through doubles,
+also long vs BigInt: `(== 9007199254740992 9007199254740993N)` true), D6, D7, D8, D10, R99 and its BigInt-vs-double
+extension (round 3; also moves min/max: `(max 9007199254740993N 9007199254740992.0)` Clojure 9.007199254740992E15,
+jank 9007199254740993N), S3 (ratio vs BigDecimal comparisons where Clojure throws non-terminating: 64 questions per
+comparison in the walk). U74 covers the unported unchecked-* and rationalize; unchecked-inc agrees.
+
+Shared causes: N1, N3, D1, R25 = math.hpp's arithmetic in the operands' C++ type (one fix, LG2a). N2 = R5 (reader).
+N4 = D3 (promoting_sub). N6, N7 = math.hpp min/max's operand choice. N8 = math.hpp's native min/max common type.
+N9 = S20 (ratio::create). N10 = S40/S12's unchecked casts (different functions). N5, N11 separate.
+
+(2) Proofs
+----------
+For every input (Lean, Jank/R6/Num/Int.lean; omega and the BitVec toInt lemmas; no bv_decide needed):
+- ★ cpp_int_op, cpp_long_op, cpp_int_long_op: C++ `int OP int`, `long OP long` and `int OP long` with -fwrapv
+  (BitVec 32/64, sign extension) are `wrap 32/64` of the exact result — ties the model to C++.
+- ★ wrap32_eq_iff, wrap64_eq_iff: wrapping changes a value exactly when it leaves the range.
+- ★ i32_exact_fits_i64: every exact + - * of two i32 values fits i64 (Clojure never throws there).
+- ★ i32_pair_verdict: two `int` operands: jank agrees iff the true result fits i32, else a wrong value (N3/D1/R25).
+- ★ i64_pair_verdict: any fixed pair with a `long`: jank agrees iff the true result fits i64, else "value where
+  Clojure throws" (N1/LG2), for + - * and every mix of literal, let-bound and object operands.
+- ★ fixed_eq_static: the fixed arithmetic (LG2a) is Clojure's static path for every fixed pair and operator.
+- ★ fixed_vs_object_sub: the fixed jank differs from Clojure's Object `-` exactly when y = Long/MIN_VALUE and x - y
+  fits (N5).
+- ★ incdec_fixed_agree: inc/dec agree (throw and value) for every fixed integer not read as R5's BigInt.
+- ★ abs_fixed_agree: abs agrees for every fixed integer, Long/MIN_VALUE included.
+- ★ promoting_add_mul_agree: +' and *' agree with Clojure's static and Object paths for every fixed pair.
+- ★ promoting_sub_wrong_iff: -' is wrong exactly when the true difference leaves i64 (D3/N4).
+Axioms: results/r6-num-axioms.txt (propext, Classical.choice, Quot.sound only).
+Not proved, searched instead: comparisons, min/max, == and compare across double/ratio/BigInt/BigDecimal (Float
+is opaque to the kernel's decision procedures; the walk is complete over the value set, section 8). bv_decide on
+a 64-bit multiplication overflow timed out (`small_mul_fits`); the Int/omega route replaced it.
+
+(3) What was replicated
+-----------------------
+- Jank/R6/Num/Int.lean: the C++ operand types (literal_type, analyze_let, make_box, R5's reader), math.hpp
+  add/sub/mul (68-518, every overload), unary - (core.jank 1393-1394), inc/dec (1186-1340), abs (994-1040),
+  math.cpp promoting_add/sub/mul (50-175), promoting_inc/dec (352-403), rem (226-304); Numbers.java's static and
+  Object paths (add/minus/multiply, negate, inc/dec, addP/minusP/multiplyP, incP/decP, abs, remainder, quotient);
+  the fixed jank (LG2a + R5a) for the comparison walk.
+- Jank/R6/Num/MinMax.lean: math.hpp lt/lte (522-736) for every kind pair (ratio.hpp 241-311 templates, ratio to_real
+  108-111, round 3's jLt for boost pairs), min/max (738-992) object and native/native branches (std::min/max on the
+  common type), compare (number.cpp, ratio.cpp 149-164, round 3's jCompare), is_equiv; Clojure's min/max
+  overloads (Numbers.java 4044-4228) with Math.min/max's NaN and -0.0 rules, cLt/cLe/cCompare/cEquiv (round 3).
+- Jank/R6/Num/Search.lean, Run/R6/Num.lean (`jank6-num int | fixed | minmax | tests`).
+
+(4) What is not exact
+---------------------
+- The literal -2147483648 is left out of the integer walk: the analyzer types it `int` but the emitted text is a C++
+  `long` (round 3's correction), so its result depends on how codegen materializes the result.
+- jank's quot is round 1's model (x86-64's out-of-range cast). BigInt-vs-double `<` is round 3's (decimal bridge).
+- Exceptions are compared by "throws", not by class or message (jank throws strings or std::runtime_error).
+
+(5) Left out
+------------
+- Division and comparison involving BigDecimals in depth (S2-S4: round 3's replica stands); unchecked-*-int,
+  rationalize (unported, U74). Bit operations beyond U75. Hashes (D12, area of round 1/3).
+
+(6) Assumptions
+---------------
+- NA6-1: a deftest body is compiled (its forms inline), as rules say for code inside fns.
+- NA6-2: libstdc++/libc++ std::min(a, b) is `b < a ? b : a`, std::max(a, b) `a < b ? b : a` (both libraries).
+- NA6-3: `##NaN` as a native literal is a positive quiet NaN (string_builder prints NAN; oref decodes it as a real).
+Replaced: round 1's A2 (overflow is documented, not flagged) — N1 is flagged; round 1's A6 (values pass through fn
+parameters) — the literal and let-bound paths are modeled and tested separately.
+
+(7) Properties checked, with sources
+------------------------------------
+- + - * inc dec -' +' *' inc' dec' abs quot rem on integers equal Clojure 1.12 on the same path (Numbers.java).
+- min/max return the operand Clojure returns (kind and value, -0.0 by bits), NaN wins (Numbers.java 4044-4228).
+- < <= compare == agree with Numbers' combined ops.
+- Each prediction's Clojure side was run: .r6-scratch/num/probe/probe1.out (121 forms on 1.12.0).
+
+(8) Search runs (complete walks)
+--------------------------------
+- Integer walk, results/r6-num-int.txt: complete, 33,152 questions = 14 operators × 23 values × 3 sources
+  (literal, literal through a fn, computed value through a fn) per operand. Disagreements: * 1,465; + 835; - 858;
+  -' 507; quot 1,029 (D4); rem 222 (R5 kinds); abs 2, dec 2, inc 2, inc' 2, *' 24, +' 132 (all R5 literal kinds).
+- The same walk against the fixed jank (LG2a + R5a), results/r6-num-fixed.txt: + * +' *' inc dec inc' dec' abs rem
+  all agree (4,096 each binary); `-` 85 left (N5, Clojure's quirk); -' 619 (D3/N4 and N5); quot 1,029 (D4's fix not
+  in that model).
+- Mixed kinds, results/r6-num-minmax.txt: complete, 29 values (long, double incl. ±0.0, NaN, ±Inf, BigInt, ratio,
+  BigDecimal) × 2 paths per operand, 3,364 questions per op: min 230 disagree, max 406, < 68, <= 68, compare 72,
+  == 80 (classes in the file).
+- Test forms on the replica: results/r6-num-tests.txt (every test's exact form, predicted as written).
+
+(9) Theorems (★ = new for-every-input)
+--------------------------------------
+★ cpp_int_op, ★ cpp_long_op, ★ cpp_int_long_op, ★ wrap32_eq_iff, ★ wrap64_eq_iff, ★ i32_exact_fits_i64,
+★ i32_pair_verdict, ★ i64_pair_verdict, ★ fixed_eq_static, ★ fixed_vs_object_sub, ★ incdec_fixed_agree,
+★ abs_fixed_agree, ★ promoting_add_mul_agree, ★ promoting_sub_wrong_iff; lemmas bmod32_eq_iff, bmod64_eq_iff,
+inI32_iff, inI64_iff, jRepFixed_val, jRepFixed_not_big, jArithFixed_fixed, jArithP_fixed.
+
+(10) Library gaps
+-----------------
+- sdk/lean has no Int-level bridge for C++ wrapping: wrap/bmod lemmas built here (omega on Int.bmod).
+- bv_decide times out on 64-bit signed multiplication overflow; the Int route avoids it.
+
+(11) Fixes written (each applies alone to 94d32623: `git -C upstream-r5 apply --check`; upstream-r5 stays clean)
+--------------------------------------------------------------------------------------------------------
+LG2 needs LG2a + R5a + R5b + LG2c together for every path; each part's test is named.
+- LG2a.diff (include/cpp/jank/runtime/core/math.hpp): detail::checked_add/sub/mul — every pair of fixed integers
+  (int, long, small_integer, integer data, in every overload: 33 sites) is computed in i64 with
+  __builtin_*_overflow and throws the string "integer overflow"; bool and non-integer types keep their operators
+  (operands taken by reference, so a boost expression template refers to the same objects as before). Covers LG2's
+  first example, N1, N3, D1, R25 (literals), unary `-` of Long/MIN_VALUE. Tests: vN1*, vN3, d01, r25. A standalone
+  clang check of the helpers (results/r6-num-cppcheck-lg2a.txt): 2147483647+1 = 2147483648, -3·MAX throws,
+  0-MIN throws, usize 0 - 1 = -1, true + 1 = 2 (R33 unchanged), cpp_int operands exact. Read-checked: every caller
+  of add/sub/mul gets a value or an object throw; int+int now has type i64 (the analyzer infers `auto`).
+  Build must check: the template instantiations; that `(loop [acc 0] … (recur (+ acc i)))` still truncates into the
+  `int` loop local (R24/R86, analyzer, not this fix); the throw from an always_inline template.
+- R5a.diff (src/cpp/jank/read/lex.cpp): reads the magnitude with strtoull; -9223372036854775808 (and the radix forms
+  of 2^63) is an `integer`. Standalone check: results/r6-num-cppcheck-r5.txt. Tests: a05, vN2 (with R5b).
+- R5b.diff (src/cpp/jank/codegen/cpp_processor.cpp): emits Long/MIN_VALUE as `(-9223372036854775807L - 1)` in
+  lift_constant and gen_constant (9223372036854775808 is no signed C++ literal), as it already does for i32's MIN.
+  Needed with R5a for any compiled use of the literal. Tests: vN2, a05. R5's ratio half (9223372036854775808/2 read
+  as a long) is not fixed: parse.cpp 1975 uses ratio::create; it needs the token's big-ness.
+- LG2c.diff (math.cpp promoting_sub): boxes `l - typed_r->data` with the native_big_integer `l` it already built.
+  Covers D3/N4. Test: vN4.
+- D2.diff (math.hpp div, 11 sites): checked_div — two integers (fixed or BigInt) divide exactly: a ratio unless it
+  divides, a long from two longs (Long/MIN_VALUE goes to BigInt as LongOps.divide does), a BigInt when a BigInt takes
+  part; "Divide by zero" thrown. Covers D2, D2b, S19. Tests: d02, d02b, s19.
+- D4.diff (math.cpp quot): doubles → Numbers.quotient(double, double) (a double); longs → Java `/` (MIN/-1 = MIN);
+  BigInt → BigInt; ratio → BigInt; BigDecimal → trunc of the boost quotient (a BigDecimal); ratio with decimal keeps
+  the old double path. Tests: d04, d04b.
+- D5.diff (math.cpp is_equiv): through doubles only when a double takes part, else `!(a < b) && !(b < a)`. Test d05.
+- D6.diff (math.hpp abs object branch): std::fabs for real/small_real. Test d06.
+- D7.diff (math.cpp to_big_decimal): integers construct the decimal from i64 exactly. Test d07.
+- U2.diff (math.cpp to_big_decimal and to_big_integer real branches): the double's shortest text (std::to_chars) as
+  the decimal (BigDecimal.valueOf), also for bigint. Covers U2 and S9. Test u02.
+- D8.diff (obj/big_decimal.cpp equal): exact `==`. Covers D8 and S10's instance (exactly equal cpp_dec_float values
+  are one representation; a build must confirm no negative-zero representation hashes apart). Tests d08, s10.
+- D10.diff (math.cpp parse_long, parse_double): Long/valueOf's and Double/valueOf's grammars checked first;
+  parse-double reads with strtod (overflow ##Inf, underflow 0). Tests d10, d10b.
+- R96.diff (obj/number.cpp boolean::compare): booleans compare with booleans only. Test c01.
+- R99a.diff (obj/big_decimal.cpp compare): against a double, compare doubles. Test c04.
+- R99b.diff (obj/number.cpp real/small_real compare): the reverse operand order.
+- S6.diff (obj/big_decimal.hpp/.cpp): non-template f64 operators + - * / < <= for (decimal, double) and (double,
+  decimal), which win over boost's templates in math.hpp's lookup (jank::runtime). Test s06. It also makes
+  big_decimal::compare and real::compare against doubles double comparisons (so R99's test passes with it too).
+  Build must check: overload resolution against boost's mixed-arithmetic templates; no other jank::runtime code
+  relied on a decimal result from decimal OP double.
+- S8.diff (math.cpp rem): the BigDecimal branch before the ratio branch; a ratio operand becomes a decimal. Test s08.
+- S11.diff (obj/big_decimal.cpp to_real): strtod of the full scientific text (one rounding, subnormals). Test s11.
+- S12.diff (obj/big_decimal.cpp to_integer): RT.longCast — through the double, "Value out of range for long" thrown
+  as an object outside the range. Test s12. (Also matches Clojure's precision loss within range.)
+- S14.diff (math.cpp to_big_decimal string branch): BigDecimal(String)'s grammar first. Test s14.
+- S15.diff (math.cpp to_big_integer string branch): BigInteger(String)'s grammar, leading zeros decimal. Test s15.
+- S18.diff (math.cpp to_big_integer ratio branch): numerator / denominator in cpp_int. Test s18.
+- S20.diff (obj/ratio.cpp): arithmetic results go through a BigInt-returning helper; ratio::create (the reader's,
+  4/2 → 2) is unchanged. Covers S20 and N9. Tests s20, vN9.
+- S21.diff (obj/ratio.cpp ratio_data::to_real): DECIMAL64 (16 digits, half even) then strtod. Standalone check against
+  Clojure 1.12.0, identical bits on 10 ratios (results/r6-num-cppcheck-s21.txt). Test s21.
+- U75.diff (math.cpp bit operations): a bit_operand that rejects big_integer (Numbers.bitOpsCast); to_i64 itself is
+  unchanged (vector indexes use it). Test u75.
+Not written (not local, or the cause is a representation):
+- S2/U1, S3, S4, S7: BigDecimal is cpp_dec_float<100> (128 digits, no scale); exact quotients, the non-terminating
+  check and an exact remainder need exact decimal arithmetic (a new representation, or a rational bridge in every
+  decimal operator).
+- S5: Java's toString needs the scale the representation lacks (R72).
+Each diff was read against its callers and every overload its test reaches; none was compiled inside jank.
+
+(12) Model errors of earlier rounds corrected
+---------------------------------------------
+- Round 1's D3 "refutation": the test's operand was R5's BigInt; D3 holds (N4, theorem promoting_sub_wrong_iff).
+- Round 1's "inc/dec agree" holds for every fixed integer (incdec_fixed_agree) but not for the literal Long/MIN_VALUE.
+- Round 1's jankIntOp saw only objects; Jank/R6/Num/Int.lean's jArith/jRep add the native literal and let paths.
+- Round 1's A2 hid N1 (LG2); A6 hid N3's let path and N8.
+
+Files: Jank/R6/Num/{Int,MinMax,Search}.lean, Run/R6/Num.lean, results/r6-num-{int,fixed,minmax,tests,axioms,
+cppcheck-lg2a,cppcheck-r5,cppcheck-s21}.txt, .r6-scratch/num/tests.jank, .r6-scratch/num/clj/ (16 tests, 40
+assertions pass on Clojure 1.12.0), .r6-scratch/num/probe/, .r6-scratch/num/cppcheck/, fixes/{LG2a,LG2c,R5a,R5b,
+D2,D4,D5,D6,D7,D8,D10,R96,R99a,R99b,S6,S8,S11,S12,S14,S15,S18,S20,S21,U2,U75}.diff.

@@ -1,0 +1,24 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -1,3 +1,5 @@
++#include <cstdlib>
++
+ #include <jank/runtime/obj/big_decimal.hpp>
+ #include <jank/runtime/visit.hpp>
+ #include <jank/util/fmt.hpp>
+@@ -196,7 +198,14 @@
+ 
+   f64 big_decimal::to_real() const
+   {
+-    return data.convert_to<f64>();
++    /* BigDecimal.doubleValue: the nearest double, subnormals included. strtod rounds the
++     * full decimal text once (convert_to<f64> rounds to 19 digits first and flushes below
++     * DBL_MIN). */
++    if(!(boost::multiprecision::isfinite)(data))
++    {
++      return data.convert_to<f64>();
++    }
++    return std::strtod(data.str(0, std::ios_base::scientific).c_str(), nullptr);
+   }
+ 
+   object_ref big_decimal::create(jtl::immutable_string const &val)

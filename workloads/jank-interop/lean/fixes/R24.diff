@@ -1,0 +1,18 @@
+--- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
+@@ -1063,6 +1063,15 @@
+ 
+   jtl::ptr<void> mutable_type(jtl::ptr<void> const type)
+   {
++    /* A loop local takes whatever `recur` gives it. In Clojure a primitive local that `recur`
++     * gives another type is boxed, so a native number or bool local is an object here: a local
++     * that starts at `0` keeps a `1.5` from `recur`, and a sum past 32 bits doesn't wrap.
++     * int => object_ref, double const & => object_ref, void => object_ref */
++    if(cppinterop::is_builtin(cppinterop::get_non_reference_type(type)))
++    {
++      return untyped_object_ref_type();
++    }
++
+     /* foo_ref => object_ref */
+     if(is_typed_object_ref(type))
+     {

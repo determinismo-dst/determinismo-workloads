@@ -1,0 +1,33 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -1,5 +1,6 @@
+ #include <jank/runtime/obj/big_decimal.hpp>
+ #include <jank/runtime/visit.hpp>
++#include <jank/runtime/core/make_box.hpp>
+ #include <jank/util/fmt.hpp>
+ 
+ namespace jank::runtime
+@@ -191,7 +192,22 @@
+ 
+   i64 big_decimal::to_integer() const
+   {
+-    return data.convert_to<i64>();
++    /* RT.longCast of a BigDecimal: through doubleValue, then "Value out of range for long"
++     * outside the long range; within it, Java's (long) truncation. */
++    auto const d{ to_real() };
++    if(std::isnan(d))
++    {
++      return 0;
++    }
++    if(d < -9223372036854775808.0 || d > 9223372036854775807.0)
++    {
++      throw make_box(util::format("Value out of range for long: {}", d)).erase();
++    }
++    if(d >= 9223372036854775807.0)
++    {
++      return std::numeric_limits<i64>::max();
++    }
++    return static_cast<i64>(d);
+   }
+ 
+   f64 big_decimal::to_real() const

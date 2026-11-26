@@ -1,0 +1,84 @@
+--- a/compiler+runtime/src/cpp/clojure/string_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/string_native.cpp
+@@ -266,19 +266,62 @@
+                     i64 const from_index)
+   {
+     return static_cast<i64>(s.rfind(value, from_index));
++  }
++
++  /* java.lang.Character.isWhitespace, which clojure.string's trim functions test. */
++  static bool is_java_whitespace(u32 const c)
++  {
++    return (c >= 0x09 && c <= 0x0D) || (c >= 0x1C && c <= 0x20) || c == 0x1680
++      || (c >= 0x2000 && c <= 0x2006) || (c >= 0x2008 && c <= 0x200A) || c == 0x2028
++      || c == 0x2029 || c == 0x205F || c == 0x3000;
+   }
+ 
++  /* The size of the whitespace character starting at byte i (0 if there is none there). Every
++   * non-ASCII whitespace character is 3 bytes in UTF-8. */
++  static usize whitespace_at(jtl::immutable_string const &s, usize const i)
++  {
++    auto const b0(static_cast<u8>(s[i]));
++    if(b0 < 0x80)
++    {
++      return is_java_whitespace(b0) ? 1 : 0;
++    }
++    if((b0 & 0xF0) != 0xE0 || s.size() - i < 3)
++    {
++      return 0;
++    }
++    auto const b1(static_cast<u8>(s[i + 1]));
++    auto const b2(static_cast<u8>(s[i + 2]));
++    if((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80)
++    {
++      return 0;
++    }
++    return is_java_whitespace(((b0 & 0x0Fu) << 12) | ((b1 & 0x3Fu) << 6) | (b2 & 0x3Fu)) ? 3 : 0;
++  }
++
++  /* The size of the whitespace character ending just before byte r (0 if there is none). */
++  static usize whitespace_before(jtl::immutable_string const &s, usize const r)
++  {
++    if(static_cast<u8>(s[r - 1]) < 0x80)
++    {
++      return whitespace_at(s, r - 1);
++    }
++    /* Not ASCII: only a whole 3-byte whitespace character ending here counts. */
++    return r >= 3 && whitespace_at(s, r - 3) == 3 ? 3 : 0;
++  }
++
+   static jtl::immutable_string::size_type triml_index(jtl::immutable_string const &s)
+   {
+     auto const s_size(s.size());
+     jtl::immutable_string::size_type i{ 0 };
+ 
+-    for(; i < s_size; ++i)
++    while(i < s_size)
+     {
+-      if(!std::isspace(s[i]))
++      auto const n(whitespace_at(s, i));
++      if(n == 0)
+       {
+         break;
+       }
++      i += n;
+     }
+ 
+     return i;
+@@ -306,12 +349,14 @@
+     auto const s_size(s.size());
+     jtl::immutable_string::size_type i{ s_size };
+ 
+-    for(; i > 0; --i)
++    while(i > 0)
+     {
+-      if(!std::isspace(s[i - 1]))
++      auto const n(whitespace_before(s, i));
++      if(n == 0)
+       {
+         break;
+       }
++      i -= n;
+     }
+ 
+     return i;

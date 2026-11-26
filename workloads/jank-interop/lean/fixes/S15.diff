@@ -1,0 +1,52 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -1,4 +1,7 @@
+ #include <random>
++#include <algorithm>
++#include <string>
++#include <string_view>
+ 
+ #include <jank/runtime/core/math.hpp>
+ #include <jank/runtime/visit.hpp>
+@@ -759,12 +762,37 @@
+         {
+           return typed_o;
+         }
+-        else if constexpr(jtl::is_any_same<T,
+-                                           obj::integer,
+-                                           obj::small_integer,
+-                                           obj::persistent_string>)
++        else if constexpr(jtl::is_any_same<T, obj::integer, obj::small_integer>)
+         {
+           return make_box<obj::big_integer>(typed_o->data);
++        }
++        else if constexpr(jtl::is_same<T, obj::persistent_string>)
++        {
++          /* new BigInteger(String): an optional sign, then decimal digits; leading zeros are
++           * decimal, and nothing else (no 0x, no trailing N) is accepted. */
++          std::string_view text{ typed_o->data.data(), typed_o->data.size() };
++          std::string digits;
++          if(!text.empty() && (text.front() == '+' || text.front() == '-'))
++          {
++            if(text.front() == '-')
++            {
++              digits.push_back('-');
++            }
++            text.remove_prefix(1);
++          }
++          if(text.empty()
++             || !std::all_of(text.begin(), text.end(), [](char const c) {
++                  return c >= '0' && c <= '9';
++                }))
++          {
++            throw make_box(util::format("For input string: \"{}\"", typed_o->data)).erase();
++          }
++          while(text.size() > 1 && text.front() == '0')
++          {
++            text.remove_prefix(1);
++          }
++          digits.append(text);
++          return make_box<obj::big_integer>(native_big_integer{ digits });
+         }
+         else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::big_decimal>)
+         {

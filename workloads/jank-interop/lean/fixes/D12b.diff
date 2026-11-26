@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_integer.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_integer.cpp
+@@ -154,6 +154,12 @@
+ 
+   uhash big_integer::to_hash(native_big_integer const &data)
+   {
++    /* A big integer equals the integer of the same value, so it must hash as that integer does. */
++    if(std::numeric_limits<i64>::min() <= data && data <= std::numeric_limits<i64>::max())
++    {
++      return hash::integer(static_cast<i64>(data));
++    }
++
+     auto const &backend{ data.backend() };
+ 
+     auto const *limbs{ backend.limbs() };

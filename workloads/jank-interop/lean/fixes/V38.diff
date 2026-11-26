@@ -1,0 +1,185 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/inst.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/inst.cpp
+@@ -1,6 +1,8 @@
++#include <array>
+ #include <iostream>
+ #include <locale>
+ #include <sstream>
++#include <string_view>
+ 
+ #include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/obj/inst.hpp>
+@@ -28,32 +30,161 @@
+     throw make_box("'#inst' parsing not currently supported.").erase();
+   }
+ #else
++  [[noreturn]]
++  static void throw_inst_syntax_error(jtl::immutable_string const &s)
++  {
++    throw make_box(util::format("Unrecognized date/time syntax: {}", s)).erase();
++  }
++
++  /* Reads exactly `count` ASCII digits starting at `pos`. */
++  static bool
++  read_inst_digits(std::string_view const s, usize const pos, usize const count, i64 &out)
++  {
++    if(s.size() < pos + count)
++    {
++      return false;
++    }
++
++    i64 n{};
++    for(auto i{ pos }; i < pos + count; ++i)
++    {
++      if(s[i] < '0' || '9' < s[i])
++      {
++        return false;
++      }
++      n = n * 10 + (s[i] - '0');
++    }
++    out = n;
++    return true;
++  }
++
++  /* Whether `s` from `pos` to its end is an offset: nothing, `Z`, or `(+|-)hh:mm`. */
++  static bool
++  read_inst_offset(std::string_view const s, usize const pos, i64 &sign, i64 &hours, i64 &minutes)
++  {
++    sign = hours = minutes = 0;
++    if(pos == s.size() || (s[pos] == 'Z' && pos + 1 == s.size()))
++    {
++      return true;
++    }
++
++    if((s[pos] != '+' && s[pos] != '-') || pos + 6 != s.size()
++       || !read_inst_digits(s, pos + 1, 2, hours) || s[pos + 3] != ':'
++       || !read_inst_digits(s, pos + 4, 2, minutes))
++    {
++      return false;
++    }
++    sign = s[pos] == '-' ? -1 : 1;
++    return true;
++  }
++
++  /* Clojure's #inst grammar and checks (clojure.instant's parse-timestamp and validated):
++   *
++   *   yyyy[-MM[-dd[Thh[:mm[:ss[.fraction]]]]]][Z|(+|-)hh:mm]
++   *
++   * Every field after the year is optional, with Clojure's defaults. The text is matched as
++   * Clojure's regex matches it: with the most fields after which an offset ends the text, so
++   * "2020-05:00" is the year 2020 at offset -05:00. Fraction digits past the 9th are dropped,
++   * and a leap second (60 at minute 59) rolls into the next minute, as Clojure's calendar does. */
+   static inst_time_point inst_from_string(jtl::immutable_string const &s)
+   {
+-    static std::vector const formats{ "%FT%T%Oz", "%FT%T%z", "%FT%T", "%F" };
++    std::string_view const text{ s.data(), s.size() };
+ 
+-    inst_time_point o;
+-    bool parsed{ false };
++    /* Year, month, day, hour, minute, second, nanosecond. */
++    static constexpr std::array<i64, 7> defaults{ 0, 1, 1, 0, 0, 0, 0 };
++    static constexpr std::array<char, 6> separators{ '-', '-', 'T', ':', ':', '.' };
++    auto fields{ defaults };
++    /* ends[n] is where the text read with n fields after the year ends. */
++    std::array<usize, 7> ends{};
+ 
+-    for(auto const format : formats)
++    if(!read_inst_digits(text, 0, 4, fields[0]))
+     {
+-      std::istringstream is{ static_cast<std::string>(s) };
+-      is.imbue(std::locale("en_US.utf-8"));
+-      is >> std::chrono::parse(format, o);
++      throw_inst_syntax_error(s);
++    }
++    ends[0] = 4;
+ 
+-      if(!is.fail() && is.peek() == EOF)
++    usize read{};
++    for(; read < 6; ++read)
++    {
++      auto const pos{ ends[read] };
++      if(text.size() <= pos + 1 || text[pos] != separators[read])
+       {
+-        parsed = true;
+         break;
+       }
++
++      if(read < 5)
++      {
++        if(!read_inst_digits(text, pos + 1, 2, fields[read + 1]))
++        {
++          break;
++        }
++        ends[read + 1] = pos + 3;
++      }
++      else
++      {
++        auto end{ pos + 1 };
++        i64 nanos{};
++        for(; end < text.size() && '0' <= text[end] && text[end] <= '9'; ++end)
++        {
++          if(end - pos <= 9)
++          {
++            nanos = nanos * 10 + (text[end] - '0');
++          }
++        }
++        if(end == pos + 1)
++        {
++          break;
++        }
++        for(auto digits{ end - pos - 1 }; digits < 9; ++digits)
++        {
++          nanos *= 10;
++        }
++        fields[6] = nanos;
++        ends[6] = end;
++      }
+     }
+ 
+-    if(!parsed)
++    /* Back off from the most fields read until an offset ends the text. */
++    i64 offset_sign{}, offset_hours{}, offset_minutes{};
++    while(!read_inst_offset(text, ends[read], offset_sign, offset_hours, offset_minutes))
+     {
+-      throw make_box(util::format("Unrecognized date/time syntax: {}", s)).erase();
++      if(read == 0)
++      {
++        throw_inst_syntax_error(s);
++      }
++      fields[read] = defaults[read];
++      --read;
+     }
+ 
+-    return o;
++    auto const [y, mo, d, h, mi, sec, nanos] = fields;
++    static constexpr std::array<i64, 13> days_in_month{ 0,  31, 28, 31, 30, 31, 30,
++                                                        31, 31, 30, 31, 30, 31 };
++    auto const leap_year{ y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) };
++    if(mo < 1 || 12 < mo || d < 1 || days_in_month[mo] + (mo == 2 && leap_year ? 1 : 0) < d
++       || 23 < h || 59 < mi || (mi == 59 ? 60 : 59) < sec || 23 < offset_hours
++       || 59 < offset_minutes)
++    {
++      throw_inst_syntax_error(s);
++    }
++
++    std::chrono::sys_seconds const time{
++      std::chrono::sys_days{ std::chrono::year{ static_cast<int>(y) }
++                             / std::chrono::month{ static_cast<unsigned>(mo) }
++                             / std::chrono::day{ static_cast<unsigned>(d) } }
++      + std::chrono::hours{ h } + std::chrono::minutes{ mi } + std::chrono::seconds{ sec }
++      - offset_sign * (std::chrono::hours{ offset_hours } + std::chrono::minutes{ offset_minutes })
++    };
++
++    /* An inst counts nanoseconds in 64 bits, which reaches only the years 1678 to 2261. */
++    static auto const earliest{ std::chrono::ceil<std::chrono::seconds>(inst_time_point::min()) };
++    static auto const latest{ std::chrono::floor<std::chrono::seconds>(inst_time_point::max())
++                              - std::chrono::seconds{ 1 } };
++    if(time < earliest || latest < time)
++    {
++      throw make_box(util::format("The instant `{}` is out of range.", s)).erase();
++    }
++    return inst_time_point{ time }
++      + std::chrono::duration_cast<inst_time_point::duration>(std::chrono::nanoseconds{ nanos });
+   }
+ #endif
+ 

@@ -1,0 +1,44 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
+@@ -342,7 +342,19 @@
+   i64 real::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A double against a BigDecimal compares as doubles (Numbers' DoubleOps). */
++        if constexpr(std::same_as<T, big_decimal>)
++        {
++          auto const d{ typed_o->to_real() };
++          return (d < data) - (data < d);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format("Objects of type `{}` are not comparable to `real`.",
+                                                object_type_str(o.type)) };
+@@ -460,7 +472,19 @@
+   i64 small_real::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A double against a BigDecimal compares as doubles (Numbers' DoubleOps). */
++        if constexpr(std::same_as<T, big_decimal>)
++        {
++          auto const d{ typed_o->to_real() };
++          return (d < data) - (data < d);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format(
+           "Objects of type `{}` are not comparable to `small_real`.",

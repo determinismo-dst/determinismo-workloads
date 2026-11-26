@@ -1,0 +1,15 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..004e6d2 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -7343,7 +7343,9 @@ fails, attempts to require sym's namespace and retries."
+   [f content & options]
+   (let [{:keys [append]} (apply hash-map options)
+         file (cpp/std.ofstream.)
+-        path (cpp/cast jtl.immutable_string f)]
++        path (cpp/cast jtl.immutable_string f)
++        ;; Clojure writes (str content), so any value can be spit.
++        content (str content)]
+     (if-not append
+       (.open file path)
+       (.open file path cpp/std.ios_base.app))

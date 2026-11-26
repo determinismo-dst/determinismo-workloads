@@ -1,0 +1,45 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/delay.hpp
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <exception>
+ #include <mutex>
+ 
+ #include <jank/runtime/object.hpp>
+@@ -25,6 +26,9 @@
+ 
+     /*** XXX: Everything here is thread-safe. ***/
+     mutable std::mutex mutex;
++    /* A native exception the body threw. Every later deref rethrows it as it is, as Clojure's
++     * Delay rethrows the same exception. */
++    std::exception_ptr native_error;
+     object_ref val{};
+     object_ref fn{};
+     object_ref error{};
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/delay.cpp
+@@ -24,6 +24,11 @@
+       return val;
+     }
+ 
++    if(native_error)
++    {
++      std::rethrow_exception(native_error);
++    }
++
+     if(error.is_some())
+     {
+       throw error;
+@@ -33,9 +38,9 @@
+     {
+       val = fn.call();
+     }
+-    catch(std::exception const &e)
++    catch(std::exception const &)
+     {
+-      error = make_box(e.what());
++      native_error = std::current_exception();
+       throw;
+     }
+     catch(object_ref const e)

@@ -1,0 +1,320 @@
+Round 6, area P: native values (exe jank6-native). jank main 94d32623 (upstream-r5/), Clojure 1.12.0.
+Every jank path is upstream-r5/compiler+runtime/<path>. Every item is a hypothesis from a Lean replica,
+re-read against the source; jank was not built or run.
+
+How a native number reaches a Clojure operation (the mechanism behind every item):
+- The analyzer types number and boolean literals natively: an integer literal is `int` when it fits 32
+  bits, else `long` (analyze/cpp_util.cpp literal_type 602-648); a double literal `double`; true/false
+  `bool` (R25, R33).
+- A call of a var with `:inline` metadata is replaced by the inline fn's form before analysis
+  (analyze/processor.cpp analyze_call 3536-3567). core.jank's inlines (146 `:inline` keys) reach C++:
+  - natives returned: count -> sequence_length: usize = unsigned long long (core.jank 185-192, seq.hpp
+    132, seq.cpp 837-879); alength -> usize (6021-6027, array.hpp 88-100); hash -> to_hash: uhash =
+    unsigned int (2479-2486, core.hpp 87, core.cpp 623-626); int -> to_int: i64 = long long (202-208,
+    math.hpp 1409-1436); float -> to_real: f64 (211-217, math.hpp 1438-1464); boolean -> truthy: bool;
+    every predicate (nil? empty? true? false? not some? seq? coll? vector? zero? pos? neg? even? odd?
+    integer? float? boolean? number? contains? == < <= > >=): bool; bit-and/or/xor/not/... -> i64
+    (math.hpp 1391-1402); aget of a typed array -> T& (array.hpp 32-36) since byte-array, int-array,
+    float-array, char-array ... are themselves inlined and return typed array_refs (6620-6730).
+  - templates that take natives: + - * / -> add/sub/mul/div (1372-1435), < <= > >= -> lt/lte (with `>`
+    swapping operands, 1552-1615), min/max (1616-1645), inc/dec (1646-1662), abs (1817-1826), zero?
+    (is_zero); int/float (to_int/to_real).
+  - everything else (=, compare, quot, rem, ==, pos?, neg?, even?, nth, get, ...) takes object_ref: a native
+    argument is boxed first (convert<T>::into_object, convert/builtin.hpp 225-245: make_box(static_cast<i64>(o))).
+  - long, double, char, compare, mod, num are plain defns (5768-5799): their results are boxed objects.
+    byte, short and the unchecked-* casts throw "TODO: port" (U74's class).
+- A cpp_call's type is the return type of the overload Clang picks (processor.cpp build_cpp_call 525-690,
+  get_function_return_type); the code generator writes `auto t(<literal text>);` for a literal and
+  `auto &&t(jank::runtime::lt(a, b));` for the call (codegen/cpp_processor.cpp 1278-1285, 1352-1440), so
+  C++ resolves the template again on the C++ types of the temporaries. A `let` local keeps the value's native
+  type (processor.cpp 2370-2420); a `loop` local keeps it too (cpp_util.cpp mutable_type 1064-1090).
+- In core/math.hpp each binary op has four templates selected by detail::primitive_number<T>
+  (std::is_integral_v || std::is_floating_point_v, 28-29: bool and char count). The both-primitive template
+  applies C++'s operator with the usual arithmetic conversions (add 172-178, lt 622-628, div 400-406); min/max
+  convert both to std::common_type and call std::min/std::max (856-863, 983-990); a primitive meeting an object
+  computes `l op typed_r->data` with the object's data (i32 for a small integer, i64 for an integer, f64 for a
+  real; exact for ratio/bigint through ratio.hpp's integral templates and boost) (lt 566-620, min 790-854).
+- The fn-value path (apply, a local bound to the fn, a defn wrapper) boxes every argument before the fn body
+  runs the object-object template, so no native operand reaches math.hpp there.
+
+(1) DEVIATIONS
+
+P1. `<`, `<=`, `>`, `>=` compare an unsigned native (count, alength: usize; hash: u32) with a negative number
+    as unsigned. [LG1, extended to alength, hash, fn parameters, `int`, bit ops, let-bound literals]
+  - Programs (inlined path; each Clojure true, jank false):
+      (< -1 (count [1]))  (> (count [1]) -1)  (<= -1 (count [1]))  (>= (count [1]) -1)
+      ((fn [x] (< x (count [1]))) -1)           ; object operand: its i32/i64 data meets the usize
+      (< (int -1) (count [1]))  (< (bit-and -1 -1) (count [1]))  (let [a -1] (< a (count [1])))
+      (< -1 (alength (long-array 2)))  (< -2 (hash 0))
+  - Fn-value path agrees: (apply < [-1 (count [1])]) true in both (control vP1d).
+  - Path: core.jank 1552-1615 (:inline) -> math.hpp lt both-primitive 622-628 (`l < r`: int -> unsigned long long),
+    primitive-right 594-620 (`typed_l->data < r` at 608-610), lte 630-736 likewise. C++ [expr.arith.conv].
+  - Exact set (for every input): differ iff the signed operand is negative (lt_i64_usize_differs_iff,
+    lt_usize_i64_differs_iff, le_differs_iff, lt_int_usize_differs_iff); u32 hash against int likewise
+    (uac_unsigned_wins).
+  - Same cause, through native arithmetic first: sub(usize, int) wraps to 2^64-1 and the next inlined template
+    reads it unsigned: (< (- (count [1]) 2) 0) Clojure true, jank false; (inc (- (count []) 1)) Clojure 0,
+    jank throws the string "Overflow on increment." (math.hpp inc 1188-1205: __builtin_add_overflow of
+    18446744073709551615 + 1 into i64). The boxed value alone is right (boxing reads the bits as i64).
+  - Tests: vP1-lt-of-a-negative-literal-and-a-count, vP1b-lt-of-a-negative-parameter-and-a-count,
+    vP1c-lt-of-signed-natives-and-a-length, vP1d-control-lt-through-a-fn-value (predicted pass),
+    vP1e-a-negative-count-difference-stays-negative. Status: LG1 (confirmed), the rest new. Confidence: high.
+
+P1f. Arithmetic on a hash wraps at 32 bits unsigned. [new, LG1's class: u32 under C++'s conversions]
+  - (- (hash 0) 1): Clojure -1, jank 4294967295. (* (hash 1) 10): Clojure 13929915560, jank 13929915560 mod 2^32.
+  - Path: hash -> uhash; math.hpp sub 286-292 (`l - r`: unsigned int). Inlined only.
+  - Test: vP1f-arithmetic-on-a-hash-is-signed. Confidence: high. Fixed by LG2a.diff (agent N), not LG1.diff.
+
+P2. `min`/`max` of a count and a negative number. [LG1, plus the object-operand form]
+  - (max (count [1]) -1): Clojure 1, jank -1. (min (count [1 2 3]) -1): Clojure -1, jank 3.
+    ((fn [x] (max (count [1]) x)) -1): Clojure 1, jank -1.
+  - Path: math.hpp min 856-863 / max 983-990 (`std::common_type_t<usize,int>` = usize; -1 becomes
+    18446744073709551615, std::max returns it, boxing reads -1); the object form 917-948 (`l < typed_r->data`).
+  - Exact set: differ iff the other operand is negative (min_differs_iff, max_differs_iff).
+  - Tests: vP2-min-and-max-of-a-count-and-a-negative; control vP2b (fn value, predicted pass). Status: LG1.
+
+P3. `/` of a count and a negative number divides unsigned. [new, LG1's class]
+  - (/ (count [1 2 3]) -1): Clojure -3, jank 0. (/ -6 (count [1 2])): Clojure -3, jank 9223372036854775805.
+    D2's truncation (jank's documented integer `/`) would give -3 for both, so this is not D2.
+  - Path: core.jank 1421-1435 -> math.hpp div 400-406 (`l / r` in unsigned long long), 342-369 (object left).
+  - Exact sets: (/ a b) differs from truncating division iff b < 0 and |b| <= a (div_usize_by_i64_differs_iff);
+    (/ b a) iff b < 0 and a >= 2 (div_i64_by_usize_differs_iff).
+  - Test: vP3-divide-a-count-by-a-negative. Confidence: high.
+
+P4. `min`/`max` of two literals (or natives) of different types return their common C++ type. [new; same lines
+    and cause as P2's std::common_type]
+  - (str (max 1 0.5)): Clojure "1", jank "1.0". (str (min 1 2.5)): Clojure "1", jank "1.0". (min 0.5 (count [])): 0 vs 0.0.
+  - Clojure's Numbers.max(long, double) returns the chosen operand (Numbers.java 4072-4081).
+  - Path: math.hpp 856-863, 983-990. Inlined only (the fn-value path keeps the operand). Test:
+    vP4-min-and-max-keep-the-chosen-operand. Confidence: high.
+
+P5. `max` returns its first operand on a tie; Numbers.max returns the second. [new; separate cause]
+  - (str (apply max [1 1.0])): Clojure "1.0", jank "1". ((fn [a b] (max a b)) 1 1.0) the same.
+  - Path: math.hpp max object branches 877-907 (`typed_l->data < typed_r->data ? typed_r : typed_l`); Clojure
+    `gt(x, y) ? x : y` (Numbers.java 4124-4135). min agrees (`l < r ? l : r` on both sides).
+  - Both paths. Test: vP5-max-of-equal-numbers-keeps-the-second. No fix (not confirmed). Confidence: high.
+
+P6. `hash` of a long is never negative: to_hash returns u32. [new; separate cause (the hash's type)]
+  - (hash 2): Clojure -971005196, jank 3323962100; (neg? (hash 3)): Clojure true, jank false.
+  - jank's hash::integer (hash.cpp 71-114) is Murmur3.hashLong bit for bit (the model's hashLong gives the JVM's
+    values for 0..9 and -1), so jank's value is Clojure's read as unsigned: differ iff the top bit is set
+    (hash_boxed_eq_iff). Both paths (the defn body returns uhash too).
+  - Test: vP6-hash-of-a-long-is-a-signed-int. No fix (not confirmed). Confidence: high (D12's other cases aside).
+
+P7. `float` is a double: no rounding to single precision, no range check. [new]
+  - (== (float 0.1) 0.1): Clojure false, jank true. (+ (float 0.1) 0.2): Clojure 0.30000000149011613, jank
+    0.30000000000000004. (float 1e40): Clojure throws "Value out of range for float", jank 1.0E40.
+  - Path: core.jank 211-217 -> math.hpp to_real 1438-1464 (static_cast<f64>); Clojure RT.floatCast.
+  - Both paths. Test: vP7-float-rounds-to-single-precision. No fix. Confidence: high.
+
+P8. A float array's element computes in single precision. [new; the LG1/R25 cause (no widening to Clojure's
+    double), on add/sub/mul]
+  - (+ (aget (float-array [0.1]) 0) 1): Clojure 1.1000000014901161 (Float widened to double), jank
+    1.100000023841858 (float + int is float). Printing differs too: (str (aget (float-array [0.1]) 0)) Clojure
+    "0.1" (a Float), jank "0.10000000149011612".
+  - Path: array.hpp aget 32-36 (float&) -> math.hpp add 172-178. Inlined only.
+  - Test: vP8-float-array-arithmetic-is-double. No fix (LG1.diff widens floats only in < <= min max /).
+
+P9. A predicate's bool and a char array's char are numbers to the inlined arithmetic. [R33 extended to every
+    inlined predicate; the char part new]
+  - (+ (nil? nil) 1): Clojure ClassCastException, jank 2. (inc (empty? [])): CCE vs 2. (max (even? 2) 0): CCE
+    vs 1. (+ (aget (char-array "a") 0) 1): CCE vs 98.
+  - Path: math.hpp primitive_number 28-29 (std::is_integral<bool>, <char>). Through a fn value jank throws a
+    std::runtime_error "not a number" (visit.hpp 507) which `thrown?` misses (V7's class).
+  - Test: vP9-boolean-and-char-natives-are-not-numbers. Status: R33 (confirmed with a literal).
+
+P10. An `if`/`case` whose branches are a hash and a negative int converts the int into unsigned int. [R23 and
+    R26 extended to u32]
+  - ((fn [c] (if c (hash 1) -1)) false): Clojure -1, jank 4294967295.
+    ((fn [k] (case k 0 -1 1 -1 (hash 1))) 0): Clojure -1, jank 4294967295.
+  - Path: cpp_util.cpp find_branch_common_type 1907-1995 (common type of u32 and int is u32, 1970-1974).
+  - Test: vP10-if-of-a-hash-and-a-negative. Status: R23's cause. Confidence: high (compiled `if`, inside a fn).
+
+Shared causes: P1, P2, P3 (and P1f, P8 through + - *) are one design choice: math.hpp applies C++'s usual
+arithmetic conversions to native operands instead of Clojure's long/double. P4 shares P2's lines (common_type).
+P9 is R33's (bool, char are primitive_number). P10 is R23's. P5, P6, P7 are separate causes.
+
+Where typing decides an overflow's path (for agent N, LG2): `(* -3 9223372036854775807)` is mul(int, long), the
+both-primitive template (math.hpp 512-518), so C++ wraps (-fwrapv); a let-bound literal keeps its native type, so
+`(let [x 9223372036854775807] (* x 2))` wraps the same way; `(dec -9223372036854775808)` reads a BigInt (R5) and
+takes dec's big_integer branch; `(* (count [1 2]) 4611686018427387904)` is usize * long and wraps to
+-9223372036854775808 (LG2a's checked_mul computes the exact product and throws); inc/dec of a usize use
+__builtin_*_overflow into i64 (exact), so they throw only for a wrapped usize (P1e). Division by zero: a double
+parameter by a long 0 gives Infinity in jank; Clojure's Numbers.divide(Object, Object) throws "Divide by zero"
+(only the double-primitive overloads give Infinity) - D2's area, set aside here.
+
+(2) PROOFS
+For every input (Jank/R6/Native/Theorems.lean, bv_decide on BitVec 64 / 32):
+- lt_i64_usize_differs_iff, lt_usize_i64_differs_iff: for a count a < 2^63 and any i64 b, C++'s unsigned `<`
+  differs from the numbers' `<` exactly when b < 0 (both operand orders).
+- le_differs_iff: the same for `<=`.
+- lt_int_usize_differs_iff: an int literal, sign-extended: the same set.
+- min_differs_iff, max_differs_iff: std::min/max over unsigned long long, boxed as i64, differ from Clojure's
+  min/max exactly when the other operand is negative.
+- div_usize_by_i64_differs_iff: (/ a b) differs from truncating division iff b < 0 and -b <= a (unsigned).
+- div_i64_by_usize_differs_iff: (/ b a) differs iff b < 0 and a >= 2.
+- add_usize_exact: + on the same bits read as i64 is exact when no signed overflow (so + - * with a usize
+  operand only go wrong when the result is consumed natively again, P1e).
+- hash_boxed_eq_iff: a u32 boxed as i64 equals Clojure's signed int hash iff its top bit is clear.
+- hash_sub_one_wraps: (- (hash 0) 1) is 4294967295 in u32.
+Kernel-checked facts about the model's C++ (Types.lean, decide): uac_unsigned_wins (every unsigned type of rank
+>= int against every signed type of no higher rank converts to unsigned, both orders), uac_signed_survives,
+uac_ullong_int/long/llong, uac_uint_int, uac_uint_llong, uac_uchar_int, uac_bool_int, commonType_*.
+Not proved: the walk's other cells (they mix Floats, which Lean cannot decide; searched instead); that jank's
+hash::integer equals Clojure's Murmur3.hashLong (read side by side; the model has one definition, checked against
+the JVM's values); Clang's overload choice among the four templates (read: the both-primitive template's
+constraint subsumes the others').
+
+(3) WHAT WAS REPLICATED
+- Jank/R6/Native/Types.lean: C++ arithmetic types of jtl/primitive.hpp 9-27 (x86-64 LP64, char signed), [conv.prom],
+  [conv.rank], usual arithmetic conversions, std::common_type, [conv.integral]/[conv.fpint] conversions, built-in
+  < <= + - * / (with -fwrapv, idiv traps), std::min/std::max.
+- Jank/R6/Native/Math.lean: make_box (make_box.hpp 80-101, including the sign-compare test that puts every
+  unsigned value of rank >= int in an `integer`), convert<T>::into_object (convert/builtin.hpp 225-245),
+  visit_number_like's data types (visit.hpp 463-497), math.hpp lt/lte/min/max/add/sub/mul/div, all four
+  templates each (68-990), the ratio comparisons (ratio.hpp 249-275), the :inline expansion with `>` swapped
+  (core.jank 1552-1615), the fn-value path (boxing then object-object); the sources: count, alength, hash
+  (hash.cpp 71-114 = Murmur3.java hashLong), int, bit-and, byte/short/int/float/char array aget, float, predicates,
+  literals (literal_type 602-648), fn parameters. Clojure side: Numbers.lt/lte/min/max (4044-4228), add/minus/
+  multiply/divide (with Divide-by-zero per overload), RT.intCast/floatCast, Murmur3.hashLong.
+- Jank/R6/Native/Typing.lean: find_branch_common_type for two native branches (1907-1995) and analyze_case's
+  last-branch type (1521 in 1386-1581).
+- Jank/R6/Native/Theorems.lean: the BitVec statements above.
+- Run/R6/Native.lean: `jank6-native walk | forms PATH | examples | typing | hash`.
+
+(4) NOT EXACT
+- Floats are Lean's binary64 (and Float32 for float values); results printed with 17 significant digits cut,
+  not Clojure's shortest form.
+- Ratio and bigint operands are modeled in comparisons and min/max only (arithmetic with them is not walked).
+- Typed object refs (oref<integer> arguments) are not sources: only literals' boxed constants produce them.
+- The `char` signedness is x86-64's; on AArch64 Linux a char array element above 127 differs.
+- Clojure's static types are modeled only where they change a result (Numbers.divide's zero check).
+
+(5) LEFT OUT
+- pow/tan/sqrt (jank.math does not load, V24); is_zero of a char (`(zero? (aget (char-array 1) 0))`: true vs
+  CCE, same cause as P9's char part); NaN cases (D9 crashes jank on x86-64's default NaN).
+- Interop-only producers (cpp/ calls returning unsigned types, R92) beyond count/alength/hash: same mechanism.
+- dotimes past 2^31 iterations (its loop local is an int that recur converts into; R24's class), not walked.
+
+(6) ASSUMPTIONS
+- PA6-1 x86-64 Linux LP64: long and long long 64 bits, char signed (jtl/primitive.hpp asserts sizes only).
+- PA6-2 -fwrapv: signed overflow in emitted code wraps (round 3's Flags).
+- PA6-3 Clang picks the both-primitive template when both operands are primitive (constraint subsumption), and
+  re-resolves the call on the temporaries' C++ types (round 3's reading of cpp_processor.cpp).
+- PA6-4 A collection has fewer than 2^63 elements.
+- PA6-5 boost cpp_int compares exactly with unsigned long long and long long.
+Replaced: round 2's Analyzer.Types universe (bool/int/long/double) and round 3's Codegen/Native universe (no
+unsigned type, no count/hash/alength) are extended by NT; round 1's A6 ("programs pass values through function
+parameters") hid P1-P4, P8-P9: the inlined path is what plain programs take.
+
+(7) PROPERTIES CHECKED (source)
+- `<`, `<=`, `>`, `>=`, `min`, `max`, `+`, `-`, `*`, `/` on numbers of any category: Numbers.java (lt, lte, min,
+  max 4044-4228, add/minus/multiply/divide); min/max keep the chosen operand and NaN wins.
+- count, alength: an int (RT.count, Array.getLength) used as a long. hash: Murmur3.hashLong, a signed int.
+- int: RT.intCast (throws out of range); float: RT.floatCast (rounds, throws out of range); byte arrays: signed.
+- Booleans and characters are not numbers (ClassCastException).
+- if/case: the value of the branch taken (Compiler.java IfExpr/CaseExpr box mismatched branches).
+Every prediction in the walk was run on Clojure 1.12.0 (below).
+
+(8) SEARCH RUNS
+- walk (results/r6-native-walk.txt): 45 sources (every kind, 1-7 values each) x 45 x 10 ops x 2 paths, a
+  parameter paired only with a non-parameter: 38,880 cases, complete. 10,907 differ from Clojure; 10,067 differ
+  from the reference (D2's truncating `/`, long overflow and division by zero set aside): inlined 6,827, fn value
+  3,240. By single cause: LG1 723 (all inlined; < <= > >= min max 104 each, / 99); P4 336; R33 class 1,760;
+  P9 char 850; P6 2,424 (both paths); R122 2,309 (both paths); P7 652; P8 119; P5 42; R25/D1 class 213
+  (+ - *, both paths); several causes together 639. With LG1.diff: 9,112 still differ (the other causes); with
+  every switch: 0. Fn-value cases that need LG1.diff: 0.
+- JVM check (results/r6-native-jvm-check.txt): all 38,880 forms run on Clojure 1.12.0 and compared with the
+  model's Clojure prediction: 0 disagree (1,056 ratio-arithmetic cells not predicted). An earlier run found 56
+  then 8 disagreements, all Numbers.divide's zero check by overload; the model was corrected.
+- typing (results/r6-native-typing.txt): if: 36 native sources x 36 x 2 taken = 2,592, complete: 934 differ
+  (R23's class), 156 of them with an unsigned common type (P10, new); with R23.diff and the source switches: 0.
+  case: 2 branches + default over 7 sources x 3 taken = 1,029, complete: 336 differ; with R26.diff: 0.
+- results/r6-native-examples.txt: the report's programs through the model (jank, Clojure, jank with LG1.diff).
+- results/r6-native-cxx-check.txt: the C++ facts and LG1.diff's widen/primitive_min/max compiled with Apple
+  clang (C++20, -O2): (< -1 (count [1])) 0, (max (count [1]) -1) -1, (min (count [1 2 3]) -1) 3,
+  (/ (count [1 2 3]) -1) 0, (/ -6 (count [1 2])) 9223372036854775805, (- (hash 0) 1) 4294967295; with the
+  fix 1, 1, -1, -3, -3; (max 1 0.5) a long 1; static_asserts on common_type/usual conversions.
+
+(9) THEOREMS (* = new for-every-input)
+* lt_i64_usize_differs_iff  * lt_usize_i64_differs_iff  * le_differs_iff  * lt_int_usize_differs_iff
+* min_differs_iff  * max_differs_iff  * div_usize_by_i64_differs_iff  * div_i64_by_usize_differs_iff
+* add_usize_exact  * hash_boxed_eq_iff  hash_sub_one_wraps  * uac_unsigned_wins  uac_signed_survives
+uac_ullong_int  uac_ullong_long  uac_ullong_llong  uac_uint_int  uac_uint_llong  uac_uchar_int  uac_bool_int
+commonType_ullong_int  commonType_int_double.
+Axioms (results/r6-native-axioms.txt): propext, Classical.choice, Quot.sound; each bv_decide proof adds its
+own `..._native.bv_decide.ax_1_5` (bv_decide's LRAT certificate check, allowed by RULES 4). No sorry, no
+native_decide.
+
+(10) LIBRARY GAPS
+- A C++ arithmetic-type model (ranks, promotions, usual arithmetic conversions, common_type, conversions) and an
+  exact IEEE-bits decimal printer (showF); Murmur3 hashLong on UInt32. sdk/lean has none.
+
+(11) FIXES (fixes/, each `git -C upstream-r5 apply --check` clean alone; upstream-r5 left clean)
+- LG1.diff (math.hpp): detail::widen (integral -> i64, floating -> f64) applied to every primitive operand of
+  lt, lte, min, max, div, inc, dec; detail::primitive_min/max compare widened values and return the same-type
+  std::min/max or, for a long and a double, the chosen operand boxed (NaN wins). Covers LG1, P1 (all producers),
+  P1e, P2, P3, P4. Tests: vP1, vP1b, vP1c, vP1e, vP2, vP3, vP4 (and the controls still pass). Not covered:
+  P1f/P8 (+ - * are LG2a's lines; LG2a's checked ops make P1f exact; P8 needs floats widened there too).
+  Read-checked: every primitive branch of the seven templates; ratio/bigint/bigdecimal data meet an i64/f64
+  (ratio.hpp's integral and floating templates, boost mixed ops); min/max's return type becomes i64/f64 or
+  object_ref per instantiation (if constexpr; the analyzer reads the instantiated return type); bool still
+  widens to 0/1 (R33 is R33a's). A build must check: every instantiation core.jank makes compiles (typed_object
+  branches with integer_ref/real_ref data), the JIT's handling of an `auto` returning object_ref, and that
+  `(/ int int)` now divides in i64 (`(/ -2147483648 -1)` 2147483648 instead of SIGFPE). Conflicts textually with
+  LG2a.diff (agent N, + - * lines), D2.diff and D6.diff (math.hpp): merge by hand.
+- R23.diff (cpp_util.cpp find_branch_common_type): two branches of different builtin (non-void) types, compared
+  without references and cv, are both boxed. Covers R23, U7 (S57), P10, and the first case of R26's test. Tests:
+  r23-if-keeps-each-branch-value, u07-cpp-if-in-a-fn-keeps-a-reference-branchs-value, vP10. Read-checked:
+  analyze_if and analyze_case apply into_object for needs_conversion; cpp_into_object strips references and cv
+  (cpp_processor.cpp 1316-1326), so a `cpp/` global boxes. Build must check: no jank test relies on an if's
+  native common type (performance: such ifs now box).
+- R24.diff (cpp_util.cpp mutable_type): a builtin-typed loop local is an object_ref. Test:
+  r24-loop-local-takes-any-value; with LG2a.diff also r25's loop assertion. Read-checked: analyze_let converts
+  the init into_object when the type changes (2396-2411); analyze_recur converts each arg to the same type and
+  its `(cpp/= local arg)` check takes the <object> op <primitive> branch (processor.cpp 436-458), boxing the arg;
+  GetBuiltinOperatorType(=, object_ref, object_ref) is valid because Clang's CheckSingleAssignmentConstraints
+  treats a C++ class like a C struct (SemaExpr.cpp 10186-10232), so R36's caveat does not hold. Build must check
+  that, and the cost of boxed loop counters.
+- R26.diff (processor.cpp analyze_case): when any branch's type is not the default's, the whole case is boxed.
+  Test: r26-case-branches-keep-their-values (alone). Read-checked: the conversion loop that follows.
+- R33a.diff (math.hpp): primitive_number excludes bool. R33b.diff (math.hpp): the 35 type-error throws become
+  string objects (as inc's "Overflow on increment."), so `thrown?` sees them. r33-boolean-arithmetic-throws and
+  vP9's bool assertions need both; the char assertion has no fix (to_int must keep `(int \a)` = 97).
+  Read-checked: is_zero already excludes bool; to_int/to_real/abs/inc of a bool now throw, as Clojure's casts do.
+- S40.diff (core.jank `int`): `int` checks the int range on the value's double (or gives a char's code) and
+  throws an ex-info "Value out of range for int"; it is no longer inlined. Test: s40-int-of-a-long-past-int32-throws.
+  Read-checked: `long` keeps to_int; dotimes, rand-int and doseq's chunk sizes call `int` on small values; NaN
+  passes to 0 as RT.intCast does. Build must check the analysis of the new body at core.jank's position (it uses
+  only special forms, ex-info and runtime functions defined before it).
+- R122a.diff (array.hpp + array.cpp, the byte_array and bytes functions): byte arrays hold i8. Test:
+  r122-bytes-are-signed (alone). R122b.diff (core.jank bytes?): i8 element type. Read-checked: visit.hpp,
+  object.hpp and literal_type already handle i8 arrays.
+- No fix: P5, P6, P7, P8, P9's char part (not confirmed); R86, R92 (never run; R92's UINT64_MAX -> -1 is the boxing
+  LG1.diff relies on); R25's arithmetic is LG2a.diff's (agent N); its loop part is R24.diff.
+
+(12) EARLIER MODEL ERRORS CORRECTED
+- R122's path (round 2: array.cpp 275, builtin.hpp 227): `(aget (byte-array [-1]) 0)` is inlined twice:
+  byte_array(object_ref) returns a u8_array_ref and aget's template (array.hpp 32-36) returns u8&, boxed by
+  convert<u8>. The fn-value path goes through array.cpp aget 279-289 -> array::nth. Same 255.
+- Round 1's A6 and D1/D2's framing: the inlined path with literals and natives is the one plain programs take;
+  the mixed path (fn parameter + literal) wraps at 32 bits too (`((fn [x] (+ x 1)) 2147483647)` -2147483648),
+  R25/D1's cause.
+- Round 3's Codegen/Native model gave every literal `int`/`long` and had no unsigned type; `count`, `alength`,
+  `hash` were outside every round's typing (LG1's lesson).
+
+Re-checked at 94d32623 (tree byte-identical to 7135b7708; each cited line re-read):
+- R23 holds (and P10 extends it). R24 holds (from_object truncates, builtin.hpp 236-245). R25 holds (also the
+  mixed path). R26 holds. R33 holds (and P9 extends it). R86 holds (convert<bool>/<char>::from_object try_object,
+  builtin.hpp 160-187). R92 holds (into_object static_cast<i64>, 225-245; char from_object takes data[0]).
+  R122 holds (path corrected above). S40 holds: (a) a double into an int loop local, (b) to_int's static_cast
+  1420, (c) `(int 2147483648)` 2147483648, (d) from_object's to_integer. U7 holds (find_branch_common_type
+  unchanged).
+
+Files:
+- Jank/R6/Native/Types.lean, Math.lean, Typing.lean, Theorems.lean; Run/R6/Native.lean (exe jank6-native).
+- results/r6-native-report.txt, r6-native-walk.txt, r6-native-typing.txt, r6-native-examples.txt,
+  r6-native-jvm-check.txt, r6-native-cxx-check.txt, r6-native-axioms.txt, r6-native-clj.txt.
+- .r6-scratch/native/tests.jank (16 deftests); its Clojure translation .r6-scratch/native/clj/jank_lean/
+  deviations_r6_native_test.clj: 16 tests, 37 assertions, all pass on Clojure 1.12.0.
+- fixes/LG1.diff, R23.diff, R24.diff, R26.diff, R33a.diff, R33b.diff, S40.diff, R122a.diff, R122b.diff.

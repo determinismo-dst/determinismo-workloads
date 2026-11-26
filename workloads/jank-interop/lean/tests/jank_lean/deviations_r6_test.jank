@@ -1,0 +1,464 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 6 (main 94d32623): predictions from REPORT-6 (LG1-LG3 extended,
+; V49, V50, ...), each test asserting Clojure 1.12's result, so a
+; failure confirms one. The last test, fix-v03, is jank only: it asserts what jank does with
+; fixes/V3.diff applied (round 5's v03 can't pass with any fix, since `thrown?` sees only objects).
+; Paths matter in this round (REPORT-6 section 3): jank types a literal or a let-bound literal
+; natively (an `int` when it fits 32 bits, else a `long`), inlines two-argument `+ - * / < <= > >=
+; min max` and `count`, `inc`, `dec`, `hash`, ... into core/math.hpp's templates on those native
+; types, and passes a fn parameter as an object. Each test's comment says which path it runs:
+;   [literals] / inlined: the call written directly with literal or native arguments;
+;   [let]: let-bound literals, still native;
+;   [fn] / fn value: the values pass through a fn's object parameters, or the clojure.core fn is
+;   called as a value (apply), so no native operand reaches the template.
+; Every form is inside a deftest body, so it is compiled, not interpreted at the top level.
+; Forms jank may refuse go through `ev` (eval of read-string), so a refusal fails its own test.
+; Tests marked "; native" need jank's native typing to show the deviation (they run on Clojure too).
+; Non-ASCII text is written with \u escapes or (char n): run under a UTF-8 locale.
+; Run each test in its own process, from tests/ with `--module-path .`. No test predicts a hang.
+(ns jank-lean.deviations-r6-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]))
+
+(defn- n-add [a b] (+ a b))
+
+(defn- n-sub [a b] (- a b))
+
+(defn- n-mul [a b] (* a b))
+
+(defn- n-neg [a] (- a))
+
+(defn- n-subp [a b] (-' a b))
+
+(defn- n-add-max [a] (+ a 9223372036854775807))
+
+(defn- n-min [a b] (min a b))
+
+(defn- n-max [a b] (max a b))
+
+(defn- n-long [x] (long x))
+
+(defn- n-numerator [x] (numerator x))
+
+(defn- n-long-min [] (dec' -9223372036854775807))
+
+(defn- ev [s] (eval (read-string s)))
+
+(defn- id [x] x)
+
+(defn- vb-kind
+  "Calls f: :returned, :object (an object handler saw it), :native (only a std::exception
+   handler sees it) or :error (only an error_ref handler sees it)."
+  [f]
+  (try (f) :returned
+       (catch cpp/jank.runtime.object_ref _ :object)
+       (catch cpp/std.exception _ :native)
+       (catch cpp/jank.error_ref _ :error)))
+
+; native
+; Inlined: `(< -1 (count [1]))` is jank::runtime::lt(int, usize); C++ converts -1 to
+; 18446744073709551615 (math.hpp 622-628). jank predicted: false for each.
+(deftest lg1-lt-of-a-negative-literal-and-a-count
+  (is (= true (< -1 (count [1]))))
+  (is (= true (> (count [1]) -1)))
+  (is (= true (<= -1 (count [1]))))
+  (is (= true (>= (count [1]) -1))))
+
+; native
+; Inlined, object left operand: lt(object_ref, usize) visits the long, whose data (i32/i64)
+; meets the usize (math.hpp 594-620). jank predicted: false.
+(deftest lg1b-lt-of-a-negative-parameter-and-a-count
+  (is (= true ((fn [x] (< x (count [1]))) -1)))
+  (is (= true ((fn [x] (<= x (alength (long-array 2)))) -1))))
+
+; native
+; Inlined: every signed native producer meets the usize the same way: `int` (to_int: i64),
+; `bit-and` (i64), a let-bound literal (int), and `alength` (usize). jank predicted: false each.
+(deftest lg1c-lt-of-signed-natives-and-a-length
+  (is (= true (< (int -1) (count [1]))))
+  (is (= true (< (bit-and -1 -1) (count [1]))))
+  (is (= true (let [a -1] (< a (count [1])))))
+  (is (= true (< -1 (alength (long-array 2))))))
+
+; native
+; Inlined: min/max take std::common_type<usize, int> = usize (math.hpp 856-863, 983-990), then
+; box static_cast<i64>. jank predicted: -1, 3, and -1 for the parameter (math.hpp 917-948).
+(deftest lg1d-min-and-max-of-a-count-and-a-negative
+  (is (= 1 (max (count [1]) -1)))
+  (is (= -1 (min (count [1 2 3]) -1)))
+  (is (= 1 ((fn [x] (max (count [1]) x)) -1))))
+
+; Control (fn value, predicted to pass): the arguments are boxed, lt(object_ref, object_ref).
+(deftest lg1e-control-lt-through-a-fn-value
+  (is (= true (apply < [-1 (count [1])])))
+  (is (= true (let [f <] (f -1 (count [1]))))))
+
+; Control (fn value, predicted to pass).
+(deftest lg1f-control-min-and-max-through-a-fn-value
+  (is (= 1 (apply max [(count [1]) -1])))
+  (is (= -1 (apply min [(count [1 2 3]) -1]))))
+
+;; LG2 (LG2, every path): a long operand makes math.hpp compute in C++ `long`, which wraps.
+(deftest lg2-long-overflow-throws-with-literals
+  ; [literals] mul(int, long), add(long, int), sub(long, int): jank -9223372036854775805,
+  ; -9223372036854775808, 9223372036854775807; Clojure throws "long overflow".
+  (is (thrown? (* -3 9223372036854775807)))
+  (is (thrown? (+ 9223372036854775807 1)))
+  (is (thrown? (- -9223372036854775807 2))))
+
+(deftest lg2b-long-overflow-throws-with-let-bound-literals
+  ; [let] the locals keep `long`/`int`: jank -2, -9223372036854775808, 4.
+  (let [a 9223372036854775807 b 2 c 4294967296 d 2147483648]
+    (is (thrown? (* a b)))
+    (is (thrown? (* c d)))
+    (is (thrown? (- (- b a) a)))))
+
+(deftest lg2c-long-overflow-throws-through-fn-parameters
+  ; [fn] integer objects: i64 OP i64 / i64 OP i32: jank -9223372036709301616, -9223372036854775808,
+  ; 9223372036854775806.
+  (is (thrown? (n-mul 3037000500 3037000500)))
+  (is (thrown? (n-add 9223372036854775807 1)))
+  (is (thrown? (apply - [-9223372036854775807 3]))))
+
+(deftest lg2d-long-overflow-throws-with-a-literal-and-a-parameter
+  ; [lit+fn] add(object, long): jank -9223372036854775808.
+  (is (thrown? (n-add-max 1))))
+
+(deftest lg2e-negating-long-min-throws
+  ; [fn] (- x) is (- 0 x): jank -9223372036854775808 (0 - MIN wraps); Clojure throws.
+  (is (thrown? (n-neg (n-long-min))))
+  (let [m (- -9223372036854775807 1)]
+    ; [let] m is a native long (no overflow computing it); (- m) is the 1-arity fn, with m boxed.
+    (is (thrown? (- m)))))
+
+;; LG2 (R5's consequence, LG2's second example): the literal Long/MIN_VALUE is a BigInt in jank.
+(deftest lg2f-arithmetic-on-the-long-minimum-literal
+  ; [literals] dec of a big_integer: jank -9223372036854775809N; Clojure throws.
+  (is (thrown? (dec -9223372036854775808)))
+  ; [let] jank -18446744073709551616N, -9223372036854775810N; Clojure throws.
+  (let [x -9223372036854775808]
+    (is (thrown? (* x 2)))
+    (is (thrown? (- x 2))))
+  ; jank "-9223372036854775807N" and "0N": a BigInt where Clojure keeps a long.
+  (is (= "-9223372036854775807" (pr-str (inc -9223372036854775808))))
+  (is (= "0" (pr-str (* -9223372036854775808 0)))))
+
+;; LG3 (LG3; R52's subs, its test never ran). core.jank subs 1979-1985 -> core.cpp subs 398-422 ->
+;; persistent_string.cpp substring 133-155: byte offsets. jank: "-\u00e8" and "\u00e9".
+(deftest lg3-subs-indexes-characters
+  (is (= "\u00e8" (subs (identity "\u00e9-\u00e8") 2)))
+  (is (= "\u00e9-" (subs (identity "\u00e9-\u00e8") 0 2)))
+  (is (= "\u00e8" (apply subs ["\u00e9-\u00e8" 2]))))
+
+; native
+; Inlined: a difference of a count stays usize (sub(usize, int) wraps to 2^64-1); the next
+; inlined template compares it unsigned, and inc of it overflows __builtin_add_overflow into i64.
+; jank predicted: false; inc throws the string "Overflow on increment."
+(deftest v49-a-negative-count-difference-stays-negative
+  (is (= true (< (- (count [1]) 2) 0)))
+  (is (= 0 (inc (- (count []) 1)))))
+
+; native
+; Inlined: div(usize, int) is unsigned division: 3 / 18446744073709551615 = 0, and
+; div(int, usize) gives 9223372036854775805 for -6/2 (D2's truncation would give -3 for both).
+(deftest v50-divide-a-count-by-a-negative
+  (is (= -3 (/ (count [1 2 3]) -1)))
+  (is (= -3 (/ -6 (count [1 2])))))
+
+; Both paths: to_hash returns uhash (u32, core.hpp 87); Murmur3's bits are the same as Clojure's,
+; read unsigned. jank predicted 3323962100 and false.
+(deftest v51-hash-of-a-long-is-a-signed-int
+  (is (= -971005196 (hash 2)))
+  (is (= -971005196 (apply hash [2])))
+  (is (= true (neg? (hash 3)))))
+
+; native
+; Inlined: hash returns uhash (u32); arithmetic on it is unsigned 32-bit. jank predicted 4294967295.
+(deftest v51b-arithmetic-on-a-hash-is-signed
+  (is (= -1 (- (hash 0) 1))))
+
+; native
+; Compiled `if` (inside a fn): branches of type unsigned int (hash) and int get the common type
+; unsigned int (cpp_util.cpp find_branch_common_type 1970-1974), so -1 becomes 4294967295.
+(deftest v52-if-of-a-hash-and-a-negative
+  (is (= -1 ((fn [c] (if c (hash 1) -1)) false))))
+
+;; V53 (extends R25 to let-bound locals; D1's class): two `int`s are added as C++ `int`s.
+(deftest v53-let-bound-int-arithmetic-is-long
+  ; [let] jank 0 and -2147483648.
+  (let [a 65536 b 2147483647]
+    (is (= 4294967296 (* a a)))
+    (is (= 2147483648 (+ b 1)))))
+
+;; V54 (D3, re-tested with an operand that is a long; round 1's test used the literal
+;; -9223372036854775808, which jank reads as a BigInt (R5), so it never reached promoting_sub's i64 path).
+(deftest v54-promoting-subtraction-overflow-of-a-long
+  ; [fn] promoting_sub boxes the wrapped i64 difference: jank 9223372036854775807N.
+  (is (= -9223372036854775809N (-' (n-long-min) 1)))
+  (is (neg? (n-subp (n-long-min) 1))))
+
+;; V55 (new, low; Clojure's Object `-` negates its second operand first).
+(deftest v55-subtracting-long-min-through-a-fn
+  ; [fn] Clojure: minus(Object, Object) = add(x, negate(y)), and negate(Long/MIN_VALUE) throws.
+  ; jank 9223372036854775807 (the exact difference).
+  (is (thrown? (n-sub -1 (n-long-min))))
+  ; [fn] Clojure's minusP(Object, Object) gives a BigInt; jank a long ("9223372036854775807").
+  (is (= "9223372036854775807N" (pr-str (n-subp -1 (n-long-min))))))
+
+;; V56 (new): min and max with a NaN operand.
+(deftest v56-min-and-max-with-nan-through-fns
+  ; [fn] jank min is `l < r ? l : r` and max `l < r ? r : l`: NaN loses when it is min's first or
+  ; max's second operand: jank 1, 1, 1.0. Clojure: NaN.
+  (is (NaN? (n-min ##NaN 1)))
+  (is (NaN? (n-max 1 ##NaN)))
+  (is (NaN? (apply max [1.0 ##NaN]))))
+
+(deftest v56b-min-and-max-with-nan-literals
+  ; [literals] std::min(1.0, NaN) and std::max(1, NaN) as doubles: jank 1.0, 1.0. Clojure: NaN.
+  (is (NaN? (min 1.0 ##NaN)))
+  (is (NaN? (max 1 ##NaN))))
+
+;; V57 (new): on a tie, jank's max returns its first operand, Clojure's its second.
+(deftest v57-max-of-a-tie-is-the-second-operand
+  ; [fn] jank "1", "1", "0.0"; Clojure "1.0", "1N", "-0.0".
+  (is (= "1.0" (pr-str (n-max 1 1.0))))
+  (is (= "1N" (pr-str (n-max 1 1N))))
+  (is (= "-0.0" (pr-str (n-max 0.0 -0.0)))))
+
+; Fn value (no native operand): math.hpp's object max returns its first operand on a tie
+; (`l < r ? r : l`, 877-890); Numbers.max returns the second. jank predicted "1" for both.
+(deftest v57b-max-of-equal-numbers-keeps-the-second
+  (is (= "1.0" (str (apply max [1 1.0]))))
+  (is (= "1.0" (str ((fn [a b] (max a b)) 1 1.0)))))
+
+;; V58 (new): min/max of a long literal and a double literal is computed in their common type.
+(deftest v58-min-and-max-of-literals-return-an-operand
+  ; [literals] std::min/max(static_cast<double>...): jank "1.0", "9.007199254740992E15" (printed
+  ; as jank prints it), "0.0". Clojure returns the long operand, and Math.min's -0.0.
+  (is (= "1" (pr-str (min 1 2.5))))
+  (is (= 9007199254740993 (max 9007199254740993 1.0)))
+  (is (= "-0.0" (pr-str (min 0.0 -0.0)))))
+
+; native
+; Inlined, two literals of different types: std::min/max return their common type, double.
+; jank predicted "1.0" for both.
+(deftest v58b-min-and-max-keep-the-chosen-operand
+  (is (= "1" (str (max 1 0.5))))
+  (is (= "1" (str (min 1 2.5)))))
+
+;; V59 (extends S20): a ratio operation with an integral result is a BigInt in Clojure.
+(deftest v59-ratio-arithmetic-with-an-integral-result-is-a-bigint
+  ; [literals] ratio::create narrows to a long: jank "1", "1", "1".
+  (is (= "1N" (pr-str (+ 1/2 1/2))))
+  (is (= "1N" (pr-str (* 1/2 2))))
+  (is (= "1N" (pr-str (apply - [3/2 1/2])))))
+
+;; V60 (extends S40 and S12): `long` of a double out of the long range.
+(deftest v60-long-of-an-out-of-range-double-throws
+  ; [fn] real::to_integer is static_cast<i64> (undefined; x86-64 gives -9223372036854775808).
+  ; Clojure: "Value out of range for long".
+  (is (thrown? (n-long 1e20)))
+  (is (thrown? (n-long ##Inf))))
+
+;; V61 (new, low): numerator and denominator are BigIntegers, printed without N.
+(deftest v61-numerator-prints-as-a-biginteger
+  ; [fn] jank boxes a native_big_integer as a BigInt: "1N".
+  (is (= "1" (pr-str (n-numerator 1/2)))))
+
+; native
+; Inlined: `float` is to_real (f64, math.hpp 1440): no rounding to single precision, no range
+; check. jank predicted true, 0.30000000000000004, and no exception.
+(deftest v62-float-rounds-to-single-precision
+  (is (= false (== (float 0.1) 0.1)))
+  (is (= 0.30000000149011613 (+ (float 0.1) 0.2)))
+  (is (thrown? (float 1e40))))
+
+; native
+; Inlined: a float array element is a native `float`; add(float, int) computes in single
+; precision. jank predicted 1.100000023841858.
+(deftest v63-float-array-arithmetic-is-double
+  (is (= 1.1000000014901161 (+ (aget (float-array [0.1]) 0) 1))))
+
+; native
+; Inlined: a predicate's bool and a char array's char are primitive_number (std::is_integral) to
+; math.hpp. jank predicted 2, 98, 2 (no exception).
+(deftest v64-boolean-and-char-natives-are-not-numbers
+  (is (thrown? (+ (nil? nil) 1)))
+  (is (thrown? (+ (aget (char-array "a") 0) 1)))
+  (is (thrown? (inc (empty? [])))))
+
+;; V65 (R52's nth, never tested alone). Inlined nth (cpp/jank.runtime.nth) and the defn both reach
+;; seq.cpp nth 648 -> persistent_string.cpp nth 107-126: a character of the one byte 0xC3.
+(deftest v65-nth-of-a-string-is-a-character
+  (is (= (first "\u00e9") (nth (identity "\u00e9") 0)))
+  (is (= (first "\u00e9") (apply nth ["\u00e9" 0])))
+  (is (= :nf (nth (identity "\u00e9a") 2 :nf))))
+
+;; V66 (R52's get and contains?, never tested alone). persistent_string.cpp get 78-93 (byte 0xA9 at 1),
+;; contains 95-105 (1 < 2 bytes). jank: a one-byte character; true.
+(deftest v66-get-and-contains-index-characters
+  (is (= \a (get (identity "\u00e9a") 1)))
+  (is (= \a (apply get ["\u00e9a" 1])))
+  (is (false? (contains? (identity "\u00e9") 1)))
+  (is (false? (apply contains? ["\u00e9" 1]))))
+
+;; V67 (extends R52/R54: a cut makes invalid UTF-8). util/string.cpp to_uppercase 26-36 decodes with
+;; wstring_convert<codecvt_utf8<wchar_t>>::from_bytes. libstdc++ 15.3.0 (locale_conv.h 55-100,
+;; codecvt.cc read_utf8_code_point 252-) treats an incomplete last character as `partial` and drops it,
+;; and a stray continuation byte as `error`, which from_bytes turns into std::range_error.
+;; jank: "" for (subs "\u00e9" 0 1), the byte 0xC3; then a C++ range_error for (subs "\u00e9" 1), the
+;; byte 0xA9 (Clojure: "").
+(deftest v67-upper-case-of-a-cut-string
+  (is (= "\u00c9" (string/upper-case (subs (identity "\u00e9") 0 1))))
+  (is (= "" (string/upper-case (subs (identity "\u00e9") 1)))))
+
+;; V68 (extends R52). (subs "\u00e9" 1) is the byte 0xA9; string_native.cpp reverse 24-32 walks
+;; utf8_range backwards: prev_char_size (utf8.cpp 48-70) reaches index npos and throws.
+;; jank: "Invalid UTF-8 string." (a C++ runtime_error).
+(deftest v68-reverse-of-a-cut-string
+  (is (= "" (string/reverse (subs (identity "\u00e9") 1)))))
+
+;; V69 (R54, a new test). (str "a" (nth "\u00e9" 0)) is "a" + byte 0xC3. Its seq: next() at index 1
+;; gives 1 + 2 = 3, not == size 2 (persistent_string_sequence.cpp 128-138), so the walk goes on at
+;; index 3: first() (122-126) reads the byte after the terminator, then substr(3, ...) throws
+;; ("position outside of string", immutable_string.hpp 161-169) unless next_char_size threw first.
+;; count (78-88) stops at 2. jank: a C++ runtime_error, "Invalid UTF-8 string." (round 2's b03) or
+;; "position outside of string".
+(deftest v69-a-cut-string-seq-has-its-count
+  (let [s (str "a" (nth (identity "\u00e9") 0))]
+    (is (= (count (seq s)) (count (vec (seq s)))))))
+
+;; V70 (new). A character hashes as its code unit (Character.hashCode). character.cpp to_hash 89-92
+;; -> immutable_string to_hash (immutable_string.hpp 648-660): murmur3 of the string hash of its bytes.
+;; jank: 1455541201 for \a, 958611385 for \\u00e9.
+(deftest v70-a-character-hashes-as-its-code
+  (is (= 97 (hash (first (identity "a")))))
+  (is (= 97 (apply hash [(first "a")])))
+  (is (= 233 (hash (first (identity "\u00e9"))))))
+
+;; V71 (new; the byte design). String.hashCode over UTF-16 units vs immutable_string to_hash over
+;; UTF-8 bytes (immutable_string.hpp 648-660). jank: 958611385.
+(deftest v71-hash-of-a-non-ascii-string
+  (is (= -1107437598 (hash (identity "\u00e9")))))
+
+;; V72 (extends R57: the value, not only the sign). persistent_string.cpp compare 68-71 ->
+;; immutable_string.hpp compare 576-584: the byte-length difference 2; memcmp's 0xC3 - 0x65 = 94
+;; (glibc) where Java subtracts the units 0xE9 - 0x65 = 132.
+(deftest v72-compare-of-strings-counts-units
+  (is (= 1 (compare (identity "\u00e9") "")))
+  (is (= 132 (compare (identity "\u00e9") "e"))))
+
+;; V73 (extends R57). character.cpp compare 94-102: the same memcmp of the bytes. jank: 94.
+(deftest v73-compare-of-characters-subtracts-units
+  (is (= 132 (compare (first (identity "\u00e9")) \e))))
+
+;; V74 (R58's starts, never seen alone: b07 stopped at its first assertion). string_native.cpp
+;; index_of 257-262 passes the i64 start as size_t (-1 -> 2^64-1) and immutable_string find 281-292
+;; gives npos past the end; last_index_of 264-269 clamps 2^64-1 to the last match.
+;; jank: nil, 1, nil.
+(deftest v74-index-of-starts-clamp-as-java
+  (is (= 0 (string/index-of (identity "a") "a" -1)))
+  (is (nil? (string/last-index-of (identity "aa") "a" -1)))
+  (is (= 1 (string/index-of (identity "a") "" 5))))
+
+;; V75 (extends R78/R62: an empty match falls between bytes). string_native.cpp split 392-449
+;; iterates std::regex over bytes; libstdc++'s regex_iterator steps an empty match one byte
+;; (regex.tcc 556-584). jank: ["a" "\xC3" "\xA9" "b"]. (re-seq with an empty match never ends: R81.)
+(deftest v75-split-on-an-empty-pattern-keeps-characters
+  (is (= ["a" "\u00e9" "b"] (string/split (identity "a\u00e9b") (re-pattern "")))))
+
+;; V76 (new; code-point characters). A lone surrogate escape: util/escape.cpp unescape 46-68 writes
+;; "?" for a high surrogate not followed by \u. jank: 63.
+(deftest v76-a-lone-surrogate-escape-is-kept
+  (is (= 55357 (int (first (identity "\ud83d"))))))
+
+;; V77 (extends R53; code-point characters). The first character of an emoji: persistent_string_sequence
+;; first 122-126 takes all 4 bytes; character.cpp to_integer 104-110 (mbrtowc). jank: 128512.
+(deftest v77-int-of-the-first-of-an-emoji
+  (is (= 55357 (int (first (identity "\ud83d\ude00")))))
+  (is (= 2 (count (vec (identity "\ud83d\ude00"))))))
+
+;; V78 (R64, never tested). core.cpp to_char 1311-1319 -> character.cpp 57-61 -> utf8.cpp to_char
+;; 170-194: wcrtomb of a surrogate fails. jank: "Unfinished character: 55296" (a C++ runtime_error).
+(deftest v78-char-of-a-surrogate
+  (is (= 55296 (int (char (identity 55296))))))
+
+;; V79 (R66 and R64's range, never tested). utf8.cpp to_char 172 checks only > 0x10FFFF, then
+;; static_cast<wchar_t> keeps the low 32 bits. jank: \A and the emoji character (no exception).
+(deftest v79-char-past-its-range-throws
+  (is (thrown? (char (identity -4294967231))))
+  (is (thrown? (char (identity 128512)))))
+
+;; V80 (R65, never tested). core.cpp keyword 521 -> context.cpp intern_keyword joins "a/b" "/" "c",
+;; symbol.cpp separate 8 splits at the first '/'. jank: "a".
+(deftest v80-keyword-keeps-a-slashed-namespace
+  (is (= "a/b" (namespace (keyword (identity "a/b") "c")))))
+
+;; V81 (R67, never tested). core.jank symbol 520-527: a nil ns calls (symbol o), which splits "b/c".
+;; jank: "b".
+(deftest v81-symbol-with-a-nil-namespace
+  (is (nil? (namespace (symbol nil (identity "b/c"))))))
+
+;; V82 (new; the U74 class of unported names). core.jank defines neither char-name-string nor
+;; char-escape-string. jank: an analysis error (unresolved symbol), an error_ref.
+(deftest v82-char-name-and-escape-strings
+  (is (= "space" (ev "(clojure.core/char-name-string (char 32))")))
+  (is (= "\\n" (ev "(clojure.core/char-escape-string (char 10))"))))
+
+;; V83 (new). Keyword and symbol hashes: hash.cpp combine 67-70 shifts a u32 right (Java's int shift
+;; keeps the sign), and symbol.cpp to_hash 152-155 murmurs the namespace where Clojure takes its
+;; String.hashCode. jank: 1458033393, 45199738, 1685731265.
+(deftest v83-keyword-and-symbol-hashes
+  (is (= -1763192079 (hash (keyword (identity "c")))))
+  (is (= -1763191981 (hash (keyword (identity "b") "c"))))
+  (is (= -122660454 (hash (symbol (identity "b") "c")))))
+
+;; V84 (extends D12; corrects D12's third example). 0.0 and -0.0 are = but hash 0 and 2^31, which
+;; share their low 30 bits. CHAMP's get follows the query's hash 5 bits a level, so -0.0 finds 0.0
+;; exactly while 0.0 sits in a data slot within the first 6 levels: in #{0.0} it is found (as in
+;; Clojure), after an unrelated 2.0 (hash 2^30: the same first 6 chunks as 0.0) pushes 0.0 down to
+;; level 6 it is not, and after 2.0 is removed it is found again. The law "get of another key after
+;; add/remove is unchanged" breaks: an unrelated conj or disj flips contains?, get, disj and set =.
+;; jank: [true false true]; 2 ; [1 3] ; nil ; false.  Clojure: [true true true]; 1 ; [1 2] ; :a ; true.
+(deftest v84-an-unrelated-element-hides-an-equal-key
+  (let [z (id 0.0) nz (id -0.0) two (id 2.0)
+        s1 (hash-set z)
+        s2 (conj s1 two)
+        s3 (disj s2 two)]
+    (is (= [true true true] [(contains? s1 nz) (contains? s2 nz) (contains? s3 nz)]))
+    (is (= 1 (count (disj s2 nz))))
+    (is (= [1 2] [(count (conj s1 nz)) (count (conj s2 nz))]))
+    (is (= :a (get (hash-map z :a two :b) nz)))
+    (is (= (hash-set z two) (hash-set nz two)))))
+
+;; vH1b: the same through a transient (champ.hpp do_add_mut / do_sub_mut, transient_hash_set.cpp).
+;; jank: false, 2.  Clojure: true, 1.
+(deftest v84b-a-transient-hides-an-equal-key-too
+  (let [z (id 0.0) nz (id -0.0) two (id 2.0)
+        s (persistent! (conj! (conj! (transient #{}) z) two))]
+    (is (contains? s nz))
+    (is (= 1 (count (persistent! (disj! (transient s) nz)))))))
+
+;; V85 (extends V48; another value, another cause). ##NaN is not = to itself in either language,
+;; but Clojure's hash sets and maps compare keys with Util.equiv, whose first test is identity
+;; (k1 == k2); immer compares with runtime::equal (core/equal.cpp 19-22), which has none. So the
+;; same NaN object is never found, is stored twice (one collision node), and disj never removes it.
+;; jank: [false 2 nil 2 false].  Clojure: [true 1 1 1 true].
+(deftest v85-a-set-finds-its-own-nan
+  (let [x (id ##NaN)]
+    (is (= [true 1 1 1 true]
+           [(contains? (hash-set x) x)
+            (count (hash-set x x))
+            (get (hash-map x 1) x)
+            (count (disj (hash-set x 3) x))
+            (= (hash-set x) (hash-set x))]))))
+
+; native
+;; V3 with fixes/V3.diff: dlopen's failure on a text file that is not an ld script is a
+;; std::runtime_error ("Unable to load the dynamic library `…`: …"), not llvm::cantFail.
+;; Before the fix: :returned (release build: undefined behavior) or an abort (debug build).
+(deftest fix-v03-loading-a-file-that-is-not-a-library-throws
+  (spit "/tmp/jank-lean-va4-not-a-library.so" "hello\n")
+  (ev "(cpp/raw \"inline void v_a4f_load(jank::runtime::object_ref p) { jank::runtime::__rt_ctx->jit_prc.load_dynamic_library(p.to_string()); }\")")
+  (let [load (ev "(fn [p] (cpp/v_a4f_load p))")]
+    (is (= :native (vb-kind #(load "/tmp/jank-lean-va4-not-a-library.so"))))))

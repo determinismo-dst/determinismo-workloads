@@ -1,0 +1,1151 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+index 9035dd1..ebd12eb 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -25,12 +25,82 @@ namespace jank::runtime
+ 
+   namespace detail
+   {
++    /* `bool` is integral to C++ but not a number to Clojure: `(+ true 1)` throws. */
+     template <typename T>
+-    concept primitive_number = (std::is_integral_v<T> || std::is_floating_point_v<T>);
++    concept primitive_number
++      = ((std::is_integral_v<T> && !jtl::is_same<T, bool>) || std::is_floating_point_v<T>);
+ 
+     template <typename T>
+     concept typed_object = (behavior::object_like<typename T::value_type>);
+ 
++    /* Clojure compares and divides numbers as longs and doubles. A native operand is widened
++     * before C++'s usual arithmetic conversions see it: otherwise an unsigned `usize` from
++     * `count` meets a negative number as a huge unsigned one (`(< -1 (count [1]))` is false,
++     * `(max (count [1]) -1)` is -1). A `usize` that wrapped below zero reads as the negative
++     * long it stands for, as boxing it does (convert<T>::into_object). */
++    template <typename T>
++    requires primitive_number<T>
++    [[gnu::always_inline, gnu::flatten, gnu::hot]]
++    auto widen(T const t)
++    {
++      if constexpr(std::is_integral_v<T>)
++      {
++        return static_cast<i64>(t);
++      }
++      else
++      {
++        return static_cast<f64>(t);
++      }
++    }
++
++    /* Clojure's min and max of two primitive numbers: they are compared as numbers, and the
++     * result is the chosen operand itself, so a long next to a double stays a long. */
++    template <typename L, typename R>
++    [[gnu::always_inline, gnu::flatten, gnu::hot]]
++    auto primitive_min(L const l, R const r)
++    {
++      auto const wl{ widen(l) };
++      auto const wr{ widen(r) };
++      if constexpr(std::is_same_v<decltype(wl), decltype(wr)>)
++      {
++        return std::min(wl, wr);
++      }
++      else
++      {
++        if constexpr(std::is_floating_point_v<decltype(wl)>)
++        {
++          if(std::isnan(wl))
++          {
++            return make_box(wl).erase();
++          }
++        }
++        return wl < wr ? make_box(wl).erase() : make_box(wr).erase();
++      }
++    }
++
++    template <typename L, typename R>
++    [[gnu::always_inline, gnu::flatten, gnu::hot]]
++    auto primitive_max(L const l, R const r)
++    {
++      auto const wl{ widen(l) };
++      auto const wr{ widen(r) };
++      if constexpr(std::is_same_v<decltype(wl), decltype(wr)>)
++      {
++        return std::max(wl, wr);
++      }
++      else
++      {
++        if constexpr(std::is_floating_point_v<decltype(wl)>)
++        {
++          if(std::isnan(wl))
++          {
++            return make_box(wl).erase();
++          }
++        }
++        return wr < wl ? make_box(wl).erase() : make_box(wr).erase();
++      }
++    }
++
+     template <typename T>
+     concept valid_boxed_math = (jtl::is_same<T, object_ref>
+                                 || jtl::is_any_same<T,
+@@ -60,6 +130,117 @@ namespace jank::runtime
+     }
+   }
+ 
++  namespace detail
++  {
++    /* Fixed-width integers take part in Clojure's long arithmetic; bool doesn't. */
++    template <typename T>
++    concept checked_integer = (std::is_integral_v<T> && !jtl::is_same<T, bool>);
++
++    /* Clojure's `+ - *` on longs: the exact result in i64, or an "integer overflow" error
++     * (Numbers.add/minus/multiply, Math.addExact etc.). Two `int`s (literals, small integers)
++     * are combined in i64 as well, since both are Clojure longs. Other operand types keep
++     * their own operators; the operands are taken by reference so that an expression
++     * template (boost) refers to the same objects as the inline expression did. */
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_add(L const &l, R const &r)
++    {
++      if constexpr(checked_integer<L> && checked_integer<R>)
++      {
++        i64 res{};
++        if(__builtin_add_overflow(l, r, &res))
++        {
++          throw make_box("integer overflow").erase();
++        }
++        return res;
++      }
++      else
++      {
++        return l + r;
++      }
++    }
++
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_sub(L const &l, R const &r)
++    {
++      if constexpr(checked_integer<L> && checked_integer<R>)
++      {
++        i64 res{};
++        if(__builtin_sub_overflow(l, r, &res))
++        {
++          throw make_box("integer overflow").erase();
++        }
++        return res;
++      }
++      else
++      {
++        return l - r;
++      }
++    }
++
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_mul(L const &l, R const &r)
++    {
++      if constexpr(checked_integer<L> && checked_integer<R>)
++      {
++        i64 res{};
++        if(__builtin_mul_overflow(l, r, &res))
++        {
++          throw make_box("integer overflow").erase();
++        }
++        return res;
++      }
++      else
++      {
++        return l * r;
++      }
++    }
++
++    template <typename T>
++    concept integral_operand = (std::is_integral_v<T> && !jtl::is_same<T, bool>);
++
++    template <typename T>
++    concept exact_integer_operand = (integral_operand<T> || jtl::is_same<T, native_big_integer>);
++
++    /* Clojure's `/` on integers (Numbers.divide): the exact quotient, a ratio unless it
++     * divides; a long from two longs (LongOps.divide), a BigInt when a BigInt takes part
++     * (BigIntOps.divide); dividing by zero throws. Other operand types keep their `/`. */
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_div(L const &l, R const &r)
++    {
++      if constexpr(exact_integer_operand<L> && exact_integer_operand<R>)
++      {
++        if(r == 0)
++        {
++          throw make_box("Divide by zero").erase();
++        }
++        native_big_integer const n{ l }, d{ r };
++        obj::ratio_data const data{ n, d };
++        if(data.denominator != 1)
++        {
++          return make_box<obj::ratio>(data).erase();
++        }
++        if constexpr(integral_operand<L> && integral_operand<R>)
++        {
++          /* LongOps.divide hands Long/MIN_VALUE to BigIntOps. */
++          native_big_integer const min{ std::numeric_limits<i64>::min() };
++          if(n != min && d != min)
++          {
++            return make_box(static_cast<i64>(data.numerator)).erase();
++          }
++        }
++        return make_box<obj::big_integer>(data.numerator).erase();
++      }
++      else
++      {
++        return l / r;
++      }
++    }
++  }
++
+   /* Only for fixed integer sizes (i.e. integer and small_integer). */
+   i64 to_i64(object_ref const o);
+   /* Only for fixed real sizes (i.e. real and small_real). */
+@@ -72,9 +253,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -83,7 +262,7 @@ namespace jank::runtime
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data + typed_r->data).erase();
++              return make_box(detail::checked_add(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -94,20 +273,20 @@ namespace jank::runtime
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data + r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_add(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data + typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_add(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data + r->data;
++      return detail::checked_add(l->data, r->data);
+     }
+   }
+ 
+@@ -118,25 +297,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l + typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_add(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l + r->data;
++      return detail::checked_add(l, r->data);
+     }
+     else
+     {
+-      return l + r;
++      return detail::checked_add(l, r);
+     }
+   }
+ 
+@@ -147,25 +324,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't add a {} to {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data + r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_add(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data + r;
++      return detail::checked_add(l->data, r);
+     }
+     else
+     {
+-      return l + r;
++      return detail::checked_add(l, r);
+     }
+   }
+ 
+@@ -174,7 +349,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto add(L const l, R const r)
+   {
+-    return l + r;
++    return detail::checked_add(l, r);
+   }
+ 
+   object_ref promoting_add(object_ref const l, object_ref const r);
+@@ -186,9 +361,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -197,7 +370,7 @@ namespace jank::runtime
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data - typed_r->data).erase();
++              return make_box(detail::checked_sub(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -208,20 +381,20 @@ namespace jank::runtime
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data - r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_sub(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data - typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_sub(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data - r->data;
++      return detail::checked_sub(l->data, r->data);
+     }
+   }
+ 
+@@ -232,25 +405,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l - typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_sub(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l - r->data;
++      return detail::checked_sub(l, r->data);
+     }
+     else
+     {
+-      return l - r;
++      return detail::checked_sub(l, r);
+     }
+   }
+ 
+@@ -261,25 +432,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't subtract a {} from a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data - r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_sub(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data - r;
++      return detail::checked_sub(l->data, r);
+     }
+     else
+     {
+-      return l - r;
++      return detail::checked_sub(l, r);
+     }
+   }
+ 
+@@ -288,7 +457,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto sub(L const l, R const r)
+   {
+-    return l - r;
++    return detail::checked_sub(l, r);
+   }
+ 
+   object_ref promoting_sub(object_ref const l, object_ref const r);
+@@ -300,9 +469,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -311,7 +478,7 @@ namespace jank::runtime
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data / typed_r->data).erase();
++              return make_box(detail::checked_div(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -322,20 +489,20 @@ namespace jank::runtime
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data / r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_div(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data / typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_div(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data / r->data;
++      return detail::checked_div(l->data, r->data);
+     }
+   }
+ 
+@@ -346,25 +513,25 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l / typed_r->data).erase(); },
++        [](auto const typed_r, L const l) {
++          return make_box(detail::checked_div(detail::widen(l), typed_r->data)).erase();
++        },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l / r->data;
++      return detail::checked_div(detail::widen(l), r->data);
+     }
+     else
+     {
+-      return l / r;
++      return detail::checked_div(detail::widen(l), detail::widen(r));
+     }
+   }
+ 
+@@ -375,25 +542,25 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't divide a {} by a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data / r).erase(); },
++        [](auto const typed_l, R const r) {
++          return make_box(detail::checked_div(typed_l->data, detail::widen(r))).erase();
++        },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data / r;
++      return detail::checked_div(l->data, detail::widen(r));
+     }
+     else
+     {
+-      return l / r;
++      return detail::checked_div(detail::widen(l), detail::widen(r));
+     }
+   }
+ 
+@@ -402,7 +569,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto div(L const l, R const r)
+   {
+-    return l / r;
++    return detail::checked_div(detail::widen(l), detail::widen(r));
+   }
+ 
+   template <typename L, typename R>
+@@ -412,9 +579,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -423,7 +588,7 @@ namespace jank::runtime
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data * typed_r->data).erase();
++              return make_box(detail::checked_mul(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -434,20 +599,20 @@ namespace jank::runtime
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data * r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_mul(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data * typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_mul(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data * r->data;
++      return detail::checked_mul(l->data, r->data);
+     }
+   }
+ 
+@@ -458,25 +623,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l * typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_mul(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l * r->data;
++      return detail::checked_mul(l, r->data);
+     }
+     else
+     {
+-      return l * r;
++      return detail::checked_mul(l, r);
+     }
+   }
+ 
+@@ -487,25 +650,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't multiply a {} with a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+-    if constexpr(jtl::is_same<L, object_ref>)
++    else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data * r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_mul(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data * r;
++      return detail::checked_mul(l->data, r);
+     }
+     else
+     {
+-      return l * r;
++      return detail::checked_mul(l, r);
+     }
+   }
+ 
+@@ -514,7 +675,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto mul(L const l, R const r)
+   {
+-    return l * r;
++    return detail::checked_mul(l, r);
+   }
+ 
+   object_ref promoting_mul(object_ref const l, object_ref const r);
+@@ -526,9 +687,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -570,24 +729,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_r, L const l) { return l < typed_r->data; },
++      return visit_number_like(
++        [](auto const typed_r, L const l) { return detail::widen(l) < typed_r->data; },
+                                r,
+                                l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l < r->data;
++      return detail::widen(l) < r->data;
+     }
+     else
+     {
+-      return l < r;
++      return detail::widen(l) < detail::widen(r);
+     }
+   }
+ 
+@@ -598,24 +756,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data < r; },
++      return visit_number_like(
++        [](auto const typed_l, R const r) { return typed_l->data < detail::widen(r); },
+                                l,
+                                r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data < r;
++      return l->data < detail::widen(r);
+     }
+     else
+     {
+-      return l < r;
++      return detail::widen(l) < detail::widen(r);
+     }
+   }
+ 
+@@ -624,7 +781,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool lt(L const l, R const r)
+   {
+-    return l < r;
++    return detail::widen(l) < detail::widen(r);
+   }
+ 
+   template <typename L, typename R>
+@@ -634,9 +791,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -678,24 +833,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_r, L const l) { return l <= typed_r->data; },
++      return visit_number_like(
++        [](auto const typed_r, L const l) { return detail::widen(l) <= typed_r->data; },
+                                r,
+                                l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l <= r->data;
++      return detail::widen(l) <= r->data;
+     }
+     else
+     {
+-      return l <= r;
++      return detail::widen(l) <= detail::widen(r);
+     }
+   }
+ 
+@@ -706,24 +860,23 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data <= r; },
++      return visit_number_like(
++        [](auto const typed_l, R const r) { return typed_l->data <= detail::widen(r); },
+                                l,
+                                r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data <= r;
++      return l->data <= detail::widen(r);
+     }
+     else
+     {
+-      return l <= r;
++      return detail::widen(l) <= detail::widen(r);
+     }
+   }
+ 
+@@ -732,7 +885,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool lte(L const l, R const r)
+   {
+-    return l <= r;
++    return detail::widen(l) <= detail::widen(r);
+   }
+ 
+   template <typename L, typename R>
+@@ -742,9 +895,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -794,29 +945,25 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? make_box(l).erase() : typed_r.erase();
++          return detail::widen(l) < typed_r->data ? make_box(detail::widen(l)).erase() : typed_r.erase();
+         },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r->data));
++      return detail::primitive_min(l, r->data);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_min(l, r);
+     }
+   }
+ 
+@@ -827,29 +974,25 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? typed_l.erase() : make_box(r).erase();
++          return typed_l->data < detail::widen(r) ? typed_l.erase() : make_box(detail::widen(r)).erase();
+         },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l->data), static_cast<C>(r));
++      return detail::primitive_min(l->data, r);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_min(l, r);
+     }
+   }
+ 
+@@ -858,8 +1001,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto min(L const l, R const r)
+   {
+-    using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-    return std::min(static_cast<C>(l), static_cast<C>(r));
++    return detail::primitive_min(l, r);
+   }
+ 
+   template <typename L, typename R>
+@@ -869,9 +1011,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -921,29 +1061,25 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? typed_r.erase() : make_box(l).erase();
++          return detail::widen(l) < typed_r->data ? typed_r.erase() : make_box(detail::widen(l)).erase();
+         },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r->data));
++      return detail::primitive_max(l, r->data);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_max(l, r);
+     }
+   }
+ 
+@@ -954,29 +1090,25 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? make_box(r).erase() : typed_l.erase();
++          return typed_l->data < detail::widen(r) ? make_box(detail::widen(r)).erase() : typed_l.erase();
+         },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l->data), static_cast<C>(r));
++      return detail::primitive_max(l->data, r);
+     }
+     else
+     {
+-      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r));
++      return detail::primitive_max(l, r);
+     }
+   }
+ 
+@@ -985,8 +1117,7 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto max(L const l, R const r)
+   {
+-    using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-    return std::max(static_cast<C>(l), static_cast<C>(r));
++    return detail::primitive_max(l, r);
+   }
+ 
+   template <typename L>
+@@ -1006,15 +1137,24 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't abs a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't abs a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_l) -> object_ref {
+-          return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
+-                                     : make_box(typed_l->data).erase();
++          using T = typename decltype(typed_l)::value_type;
++          /* Math.abs(double): -0.0 is +0.0, which `data < 0` can't see. */
++          if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++          {
++            return make_box(std::fabs(typed_l->data)).erase();
++          }
++          else
++          {
++            return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
++                                       : make_box(typed_l->data).erase();
++          }
+         },
+         l);
+     }
+@@ -1048,7 +1188,7 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't tan a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't tan a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1071,7 +1211,7 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't sqrt a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't sqrt a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1091,9 +1231,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't pow a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't pow a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
+@@ -1121,9 +1259,7 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<R>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+@@ -1147,12 +1283,10 @@ namespace jank::runtime
+   {
+     if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{
+-        util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))
+-      };
++      throw make_box<obj::persistent_string>(util::format("Can't compare a {} to a {}.", detail::type_name(l), detail::type_name(r))).erase();
+       return object_ref{};
+     }
+-    if constexpr(jtl::is_same<L, object_ref>)
++    else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return make_box(std::pow(l.to_real(), static_cast<f64>(r))).erase();
+     }
+@@ -1191,7 +1325,7 @@ namespace jank::runtime
+       {
+         i64 res{};
+ 
+-        if(__builtin_add_overflow(l, 1ll, &res))
++        if(__builtin_add_overflow(detail::widen(l), 1ll, &res))
+         {
+           throw make_box("Overflow on increment.").erase();
+         }
+@@ -1205,7 +1339,7 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't increment a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't increment a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1269,7 +1403,7 @@ namespace jank::runtime
+       {
+         i64 res{};
+ 
+-        if(__builtin_sub_overflow(l, 1ll, &res))
++        if(__builtin_sub_overflow(detail::widen(l), 1ll, &res))
+         {
+           throw make_box("Overflow on increment.").erase();
+         }
+@@ -1283,7 +1417,7 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't increment a {}.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't increment a {}.", detail::type_name(l))).erase();
+       return object_ref{};
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1350,8 +1484,8 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't check if a {} is zero.",
+-                                             detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't check if a {} is zero.",
++                                             detail::type_name(l))).erase();
+       return false;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1421,8 +1555,8 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L> && !std::same_as<L, obj::character_ref>)
+     {
+-      throw std::runtime_error{ util::format("Can't convert {} to integer.",
+-                                             detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't convert {} to integer.",
++                                             detail::type_name(l))).erase();
+       return 0;
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+@@ -1454,7 +1588,7 @@ namespace jank::runtime
+     }
+     else if constexpr(!detail::valid_boxed_math<L>)
+     {
+-      throw std::runtime_error{ util::format("Can't convert {} to real.", detail::type_name(l)) };
++      throw make_box<obj::persistent_string>(util::format("Can't convert {} to real.", detail::type_name(l))).erase();
+       return 0.0;
+     }
+     else

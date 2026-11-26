@@ -1,0 +1,135 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -487,98 +487,109 @@
+       },
+       l,
+       r);
++  }
++
++  /* Numbers.bitOpsCast: bit operations take Long, Integer, Short and Byte only; a BigInt is
++   * an IllegalArgumentException ("bit operation not supported for: class clojure.lang.BigInt"). */
++  static i64 bit_operand(object_ref const o)
++  {
++    if(o.get_type() == object_type::big_integer)
++    {
++      throw make_box("bit operation not supported for: big_integer").erase();
++    }
++    return to_i64(o);
+   }
+ 
+   i64 bit_not(object_ref const l)
+   {
+-    auto const l_data{ to_i64(l) };
++    auto const l_data{ bit_operand(l) };
+     return ~l_data;
+   }
+ 
+   i64 bit_and(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data & r_data;
+   }
+ 
+   i64 bit_or(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data | r_data;
+   }
+ 
+   i64 bit_xor(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data ^ r_data;
+   }
+ 
+   i64 bit_and_not(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data & (~r_data);
+   }
+ 
+   i64 bit_clear(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data & ~(static_cast<i64>(1) << r_data);
+   }
+ 
+   i64 bit_set(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data | (static_cast<i64>(1) << r_data);
+   }
+ 
+   i64 bit_flip(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data ^ (static_cast<i64>(1) << r_data);
+   }
+ 
+   bool bit_test(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return (l_data >> r_data) & static_cast<i64>(1);
+   }
+ 
+   i64 bit_shift_left(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data << r_data;
+   }
+ 
+   i64 bit_shift_right(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return l_data >> r_data;
+   }
+ 
+   i64 bit_unsigned_shift_right(object_ref const l, object_ref const r)
+   {
+-    auto const l_data{ to_i64(l) };
+-    auto const r_data{ to_i64(r) };
++    auto const l_data{ bit_operand(l) };
++    auto const r_data{ bit_operand(r) };
+ 
+     return static_cast<i64>(static_cast<u64>(l_data) >> static_cast<u64>(r_data));
+   }

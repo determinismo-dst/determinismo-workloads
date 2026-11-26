@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
+@@ -1924,6 +1924,25 @@
+                               || cpp_util::is_implicitly_assignable(else_type, then_type)
+                               || common_type };
+ 
++    /* Clojure keeps the value of whichever branch runs. Two branches of different native
++     * number types (an `int` and a `double`, a `bool` and an `int`, a `u32` hash and a negative
++     * `int`) are both boxed, rather than converted into their common C++ type. A reference
++     * branch, such as a `cpp/` global, counts as the type it refers to. */
++    {
++      auto const then_value_type{ cppinterop::get_type_without_cv(
++        cppinterop::get_non_reference_type(then_type)) };
++      auto const else_value_type{ cppinterop::get_type_without_cv(
++        cppinterop::get_non_reference_type(else_type)) };
++      if(!has_recur && else_expr_opt.is_some() && cppinterop::is_builtin(then_value_type)
++         && cppinterop::is_builtin(else_value_type) && !cppinterop::is_void(then_value_type)
++         && !cppinterop::is_void(else_value_type)
++         && cppinterop::get_canonical_type(then_value_type)
++           != cppinterop::get_canonical_type(else_value_type))
++      {
++        return branch_common_type{ cpp_util::untyped_object_ref_type(), true, true };
++      }
++    }
++
+     /* If one of the branches has a native type, we need to match one of these scenarios.
+      *
+      * 1. The other branch has the same native type.

@@ -1,0 +1,17 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..01d0dce 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -6207,7 +6207,11 @@
+   ;;   (filter-key val (fn [^clojure.lang.Var v] (and (instance? clojure.lang.Var v)
+   ;;                                (not= ns (.ns v))))
+   ;;               (ns-map ns)))
+-  (throw (ex-info "TODO: port ns-refers"  {})))
++  (let [ns (the-ns ns)]
++    (filter-key val
++                (fn [v]
++                  (and (var? v) (not= ns (cpp/jank.runtime.var_ns v))))
++                (ns-map ns))))
+ 
+ (defn ns-aliases
+   "Returns a map of the aliases for the namespace."

@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/repeat.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/repeat.cpp
+index 2bfea2e..d3153ba 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/repeat.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/repeat.cpp
+@@ -124,7 +124,8 @@ namespace jank::runtime::obj
+   repeat_ref repeat::with_meta(object_ref const m) const
+   {
+     auto const meta(behavior::detail::validate_meta(m));
+-    auto const ret(expect_object<obj::repeat>(fresh_seq()));
++    /* A copy, also when infinite: fresh_seq returns this one then. */
++    auto const ret(count == infinite ? make_box<repeat>(value) : make_box<repeat>(count, value));
+     ret->meta = meta;
+     return ret;
+   }

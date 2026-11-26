@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..76aaab4 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -1837,7 +1837,8 @@
+   Note - uses a primitive operator subject to overflow."
+   [x]
+   ;; (. clojure.lang.Numbers (unchecked_int_inc x))
+-  (throw (ex-info "TODO: port unchecked-inc-int" {})))
++  ;; jank's int is its long (see `int`), so this is unchecked-inc. areduce uses it.
++  (cpp/jank.runtime.unchecked_inc x))
+ 
+ (defn unchecked-inc
+   "Returns a number one greater than x, a long.

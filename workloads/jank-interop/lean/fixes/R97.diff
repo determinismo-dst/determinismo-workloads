@@ -1,0 +1,26 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/keyword.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/keyword.cpp
+@@ -2,6 +2,8 @@
+ #include <jank/runtime/obj/symbol.hpp>
+ #include <jank/runtime/rtti.hpp>
+ #include <jank/runtime/core/seq.hpp>
++#include <jank/runtime/core/make_box.hpp>
++#include <jank/util/fmt.hpp>
+ 
+ namespace jank::runtime::obj
+ {
+@@ -49,6 +51,14 @@
+ 
+   i64 keyword::compare(object const &o) const
+   {
++    /* A keyword compares only with a keyword; Clojure throws a ClassCastException otherwise.
++     * Thrown as an object, so a program's catch sees it. */
++    if(o.type != object_type::keyword)
++    {
++      throw make_box(util::format("Objects of type `{}` are not comparable to `keyword`.",
++                                  object_type_str(o.type)))
++        .erase();
++    }
+     return compare(*expect_object<keyword>(runtime::detail::untagged(&o)));
+   }
+ 

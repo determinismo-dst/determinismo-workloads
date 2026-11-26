@@ -1,0 +1,17 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1139,6 +1139,14 @@
+         auto const locked_state{ ret->state.wlock() };
+         locked_state->status = obj::future_status::done;
+         locked_state->error = o;
++      }
++      /* A read, analysis or load error. It must not reach the catch(...) below, whose rethrow
++       * would leave the thread function and end the process. */
++      catch(error_ref const e)
++      {
++        auto const locked_state{ ret->state.wlock() };
++        locked_state->status = obj::future_status::done;
++        locked_state->error = make_box<obj::exception_info>(e);
+       }
+       catch(std::exception const &e)
+       {

@@ -1,0 +1,39 @@
+--- a/compiler+runtime/src/cpp/jank/util/string.cpp
++++ b/compiler+runtime/src/cpp/jank/util/string.cpp
+@@ -50,7 +50,8 @@
+     return ret;
+   }
+ 
+-  /* Doesn't support Unicode characters. */
++  /* Upper-cases the first character (its UTF-8 bytes, through to_uppercase), the caller having
++   * lower-cased the text: Clojure's (str (.toUpperCase (subs s 0 1)) (.toLowerCase (subs s 1))). */
+   jtl::immutable_string capitalize(jtl::immutable_string const &s)
+   {
+     if(s.empty())
+@@ -58,15 +59,22 @@
+       return s;
+     }
+ 
+-    auto const c(static_cast<char>(std::toupper(s[0])));
+-    if(s[0] == c)
++    auto const b0(static_cast<unsigned char>(s[0]));
++    usize n{ b0 < 0xC0 ? 1u : b0 < 0xE0 ? 2u : b0 < 0xF0 ? 3u : 4u };
++    if(n > s.size())
+     {
++      n = s.size();
++    }
++    auto const first(s.substr(0, n));
++    auto const upper(to_uppercase(first));
++    if(upper == first)
++    {
+       return s;
+     }
+ 
+     jtl::string_builder buff;
+-    buff(c);
+-    buff(s.substr(1));
++    buff(upper);
++    buff(s.substr(n));
+     return buff.release();
+   }
+ 

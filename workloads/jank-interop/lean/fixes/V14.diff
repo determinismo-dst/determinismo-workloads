@@ -1,0 +1,27 @@
+--- a/compiler+runtime/src/cpp/jank/evaluate.cpp
++++ b/compiler+runtime/src/cpp/jank/evaluate.cpp
+@@ -334,13 +334,13 @@
+   {
+     auto const var(__rt_ctx->intern_var(expr->name).expect_ok());
+     auto const meta(__rt_ctx->eval(expr->name->get_meta()));
+-    var->set_meta(meta);
+ 
+     auto const dynamic(get(meta, __rt_ctx->intern_keyword("dynamic").expect_ok()));
+     var->set_dynamic(truthy(dynamic));
+ 
+     if(expr->value.is_none())
+     {
++      var->set_meta(meta);
+       return var;
+     }
+ 
+@@ -358,6 +358,9 @@
+       var->bind_root(evaluated_value);
+     }
+ 
++    /* As in Clojure's DefExpr.eval, and in the code we generate for a def, the metadata is set
++     * only once the value is bound, so a def whose value throws leaves the var's metadata alone. */
++    var->set_meta(meta);
+     return var;
+   }
+ 

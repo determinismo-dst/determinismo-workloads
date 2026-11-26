@@ -1,0 +1,25 @@
+--- a/compiler+runtime/src/cpp/clojure/string_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/string_native.cpp
+@@ -170,11 +170,20 @@
+ 
+     if(match_size == 0)
+     {
++      /* Around every character (String.replace("", r) goes around every char), not every byte:
++       * a byte of a multi-byte character alone is invalid UTF-8. */
+       jtl::string_builder buff{ s_size + ((s_size + 1) * replacement.size()) };
+-      for(usize i{}; i < s_size; ++i)
++      for(usize i{}; i < s_size;)
+       {
++        auto const b0(static_cast<u8>(s[i]));
++        usize n{ b0 < 0xC0 ? 1u : b0 < 0xE0 ? 2u : b0 < 0xF0 ? 3u : 4u };
++        if(n > s_size - i)
++        {
++          n = s_size - i;
++        }
+         buff(replacement);
+-        buff(s[i]);
++        buff(s.substr(i, n));
++        i += n;
+       }
+       buff(replacement);
+       return buff.release();

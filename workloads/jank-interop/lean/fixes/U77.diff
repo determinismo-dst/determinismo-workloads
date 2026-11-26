@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..678f516 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -7325,7 +7325,8 @@ fails, attempts to require sym's namespace and retries."
+ 
+ (defn slurp
+   "Reads the file at the specified path into a string."
+-  [f]
++  ;; Clojure's options go to clojure.java.io/reader (:encoding). jank reads the file's bytes.
++  [f & opts]
+   (let [fname (cpp/cast (:* (:const char)) f)
+         file (cpp/std.ifstream. fname)
+         size (cpp/std.filesystem.file_size fname)]

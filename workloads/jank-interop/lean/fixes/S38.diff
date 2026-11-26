@@ -1,0 +1,34 @@
+diff --git a/compiler+runtime/src/cpp/jank/analyze/processor.cpp b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+index a986565..08d506d 100644
+--- a/compiler+runtime/src/cpp/jank/analyze/processor.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/processor.cpp
+@@ -3502,7 +3502,28 @@ namespace jank::analyze
+       {
+         object_ref expanded{ o };
+         jtl::ptr<error::base> expansion_error{};
+-        cpptrace::try_catch([&] { expanded = __rt_ctx->macroexpand(o); },
++        /* One step at a time, as Clojure's analyzeSeq: the expansion is analyzed again, so a
++         * head that names a local there is a call of the local, not another macro. The
++         * expansion meta is what context::macroexpand adds at each step. */
++        cpptrace::try_catch(
++          [&] {
++            expanded = __rt_ctx->macroexpand1(o);
++            if(expanded != o)
++            {
++              auto const source{ object_source(o) };
++              if(source != read::source::unknown())
++              {
++                auto meta{ runtime::meta(expanded) };
++                static auto const macro_kw{
++                  __rt_ctx->intern_keyword("jank/macro-expansion").expect_ok()
++                };
++                auto const quote_sym{ make_box<obj::symbol>("", "quote") };
++                auto const quoted_o{ make_box<obj::persistent_list>(std::in_place, quote_sym, o) };
++                meta = runtime::assoc(meta, macro_kw, quoted_o);
++                expanded = runtime::with_meta_graceful(expanded, meta);
++              }
++            }
++          },
+                             [&](std::exception const &e) {
+                               expansion_error = error::analyze_macro_expansion_exception(
+                                 e,

@@ -1,0 +1,22 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+index 652e36f..be95cca 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+@@ -124,8 +124,15 @@ namespace jank::runtime::obj
+ 
+     runtime::detail::native_array_map trans{};
+ 
+-    trans.insert_unique(cause_kw, make_box(message));
+-    trans.insert_unique(data_kw, data);
++    /* Clojure's Throwable->map takes :cause and :data from the root cause, the last in the
++     * chain. */
++    exception_info_ref root{ runtime::detail::untagged(this) };
++    while(root->cause.is_some())
++    {
++      root = root->cause;
++    }
++    trans.insert_unique(cause_kw, make_box(root->message));
++    trans.insert_unique(data_kw, root->data);
+ 
+     runtime::detail::native_transient_vector via_trans;
+     for(exception_info_ref cause_it{ runtime::detail::untagged(this) }; cause_it.is_some();

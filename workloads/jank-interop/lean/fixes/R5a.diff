@@ -1,0 +1,36 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -1,5 +1,6 @@
+ #include <iostream>
+ #include <iomanip>
++#include <limits>
+ 
+ #include <jank/read/lex.hpp>
+ #include <jank/error/lex.hpp>
+@@ -1140,11 +1141,22 @@
+                                std::strtod(file.data() + token_start, nullptr) });
+             }
+ 
+-            /* Integers */
++            /* Integers. The magnitude is read unsigned, so that the negative literal
++             * -9223372036854775808 (Long/MIN_VALUE) is a long, as in Clojure. */
+             errno = 0;
+-            auto const parsed_int{ std::strtoll(file.data() + number_start, nullptr, radix)
+-                                   * (found_beginning_negative ? -1 : 1) };
+-            if(errno == ERANGE || found_N)
++            auto const magnitude{ std::strtoull(file.data() + number_start, nullptr, radix) };
++            auto const out_of_range{
++              errno == ERANGE
++              || magnitude > (found_beginning_negative
++                                ? static_cast<unsigned long long>(
++                                    std::numeric_limits<i64>::max())
++                                    + 1ull
++                                : static_cast<unsigned long long>(
++                                    std::numeric_limits<i64>::max()))
++            };
++            auto const parsed_int{ found_beginning_negative ? static_cast<i64>(0ull - magnitude)
++                                                            : static_cast<i64>(magnitude) };
++            if(out_of_range || found_N)
+             {
+               jtl::immutable_string_view const number_literal{ file.data() + number_start,
+                                                                number_end - number_start };

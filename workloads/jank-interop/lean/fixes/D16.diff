@@ -1,0 +1,16 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/atom.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/atom.cpp
+@@ -42,8 +42,11 @@
+ 
+   static void notify_watches(atom_ref const a, object_ref const old_val, object_ref const new_val)
+   {
+-    auto const locked_watches(a->watches.rlock());
+-    for(auto const &entry : (*locked_watches)->data)
++    /* Take the watches as they are now and call them with no lock held, as Clojure does. A watch
++     * may add or remove watches, or swap! the atom again, and the watches lock is not reentrant:
++     * holding it here deadlocks. */
++    persistent_hash_map_ref const watches{ *a->watches.rlock() };
++    for(auto const &entry : watches->data)
+     {
+       auto const fn(entry.second);
+       if(fn.is_some())

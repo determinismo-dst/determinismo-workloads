@@ -1,0 +1,530 @@
+R6 FIXES-1: local fixes for the confirmed deviations of rounds 1 and 2 (D and R ids)
+====================================================================================
+
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708, the tree the
+real jank was tested at). Paths below are under upstream-r5/compiler+runtime/, line numbers are
+94d32623's (the "-N" of each diff hunk). jank was not built or run. Every diff was checked with
+`git -C upstream-r5 apply --check ../fixes/<id>.diff` (each alone), and all 52 were also applied
+in sequence to a scratch copy (.r6-scratch/fix1/combined.sh): no conflict. upstream-r5 stays
+clean (`git -C upstream-r5 status --short` empty).
+
+Checks run:
+- Clojure 1.12.0 (through the job script): every Clojure behavior a fix or a note relies on
+  (.r6-scratch/fix1/clj/checks.clj; results quoted below as "Clojure 1.12:").
+- A standalone C++ program with the Mac's clang (job script): the logic of R84 (Java replacement
+  expansion), R71 (regex printing), R8 (octal escapes), R114 (range stepping) and std::regex_match
+  of `a|ab` (R82), adapted from the diffs to std::string (.r6-scratch/fix1/cpp/check.cpp). Every
+  output equals Clojure's (listed under each fix). The Mac's standard library is libc++; jank on
+  Linux uses libstdc++, read for R82 only.
+
+Every confirmed test, mapped to its id (validation/round-1-2-evidence.txt; round-4-evidence.txt for
+b01, b11, b24, b29). Tests are named <letter><nn>: d = D (deviations_test), a = R1-R21
+(deviations_reader_test, a20 = R20), r = R23-R123 (deviations_main_test), b/c = REPORT-2's
+strings/printing/regex/core ids (deviations_r2_test). Mapping of b/c: b15 R68, b16 R69, b17 R70,
+b18 R71, b19 R72, b20 R73, b21 R74, b23 R76, b24 R78, b25 R79, b26 R80, b27 R81, b28 R82, b29 R83,
+b30 R18, b31 R84, c02 R97, c03 R98, c05b R100, c06 R101, c07 R102, c08 R103 (b01-b12 = R52-R63,
+c01 = R96, c04 = R99, r122 = R122: other agents').
+Confirmed in my scope: D9 D12 D13 D16 D18 D19 D21 D22 D24 D25; R1-R4 R6-R21 (R5 not mine);
+R27-R30 R34 R37-R42 R44 R47; R68-R74 R76 R78-R84; R97 R98 R100-R105 R108 R110 R112;
+R114 R116-R121. Failed another way (not confirmed as predicted): D15, D23, R89.
+Refuted (README): D3 D11 D14 D16b D20 R45 R123 - nothing to fix.
+
+
+1. DIFFS WRITTEN (52 files in fixes/, for 49 ids)
+--------------------------------------------------
+
+Fixes of one id split by file are named <id><letter> (coordinator's rule: one function or one
+file per diff; a header and its .cpp for the same function count as one).
+
+-- D9 (fixes/D9.diff) --------------------------------------------------------------------
+File: include/cpp/jank/runtime/oref.hpp, detail::tag(f64) (193-197).
+Change: a double whose bits are >= max_real (a negative quiet NaN; x86-64's default NaN
+0xFFF8'0000'0000'0000 from inf-inf, 0/0, 0*inf) is stored as std::numeric_limits<f64>::quiet_NaN()
+(0x7FF8...). Every other double is stored as before.
+Why safe: those bit patterns are the tag space (0xFFF9 ints, 0xFFFA pointers, the rest decodes as
+nothing), so no correct value is lost; only the NaN payload/sign changes, which nothing observes
+(NaN prints ##NaN, `=` is false either way). One compare-and-branch per boxing of a real.
+Read-checked: tag(f64) is the only path from a small_real to an object_ref: oref<object>'s
+constructor from oref<small_real> (280-289) and oref<small_real>::erase() (2303) both call it;
+make_box(f64) returns oref<small_real> (make_box.hpp 79-85); no other bit_cast stores a double
+in an oref (grep); math.hpp sub/div box their f64 result with make_box. cpp_processor 195 reads
+a tagged real back with as_real, after tagging.
+Test: d09-nan-from-infinities, d09b-nan-from-zero-over-zero (no more segfault).
+Note on the tests (they are wrong against Clojure 1.12, though round 2 reported them passing on
+Clojure 1.11.1): Clojure 1.12 gives false for d09's `(let [x (sub ##Inf ##Inf)] (not= x x))`
+(Util.equiv's identity check on the one boxed Double), and throws ArithmeticException "Divide
+by zero" for d09b's `(div 0.0 0.0)` (Numbers.divide through Object params checks a zero
+divisor). With D9, jank gives true for d09 (small_real equal is NaN == NaN, false, and jank's `=`
+has no identity check) and ##NaN for d09b, so both tests pass on jank while asserting what
+Clojure does not. A sound test of D9: `(let [x (sub ##Inf ##Inf)] (is (NaN? x)))`. jank's
+`(/ 0.0 0.0)` = ##NaN where Clojure throws belongs to D2's area (another agent's).
+Build must check: jank's own tests; a C++ check that `(- ##Inf ##Inf)` prints ##NaN on x86-64.
+
+-- D12a, D12b, D12c, D12d (one cause each; d12-equal-means-same-hash needs all four) ---------
+d12's five assertions: 1/1N in a set (D12b), 1N key found by 1 (D12b), -0.0 in #{0.0} (D12a),
+[] and (lazy-seq nil) in one set (D12c), hash of (seq {:a 1}) = hash of [[:a 1]] (D12d).
+D12a (fixes/D12a.diff): src/cpp/jank/hash.cpp, real() (116): 0.0 and -0.0 hash 0 (Clojure 1.12's
+  Numbers.hasheq: -0.0 hashes as 0.0; Java's hash of 0.0 is 0, so +0.0 is unchanged).
+  Callers: real::to_hash, small_real::to_hash (number.cpp 337, 455) only.
+  IMPORTANT: apply with R42. The constant pools (cpp_processor global_constants, ir/processor.hpp
+  86/91, ir/opt/hoist_literals.cpp 17) dedupe literals by type + `=` + hash; once 0.0 and -0.0
+  hash alike, a -0.0 literal would be merged with a 0.0 one. R42 makes the pools also require the
+  same printed form.
+D12b (fixes/D12b.diff): src/cpp/jank/runtime/obj/big_integer.cpp, to_hash(native_big_integer)
+  (155): a big integer in the i64 range hashes as hash::integer(i64), as long and small_integer
+  do (number.cpp 134, 223; Clojure's BigInt.hasheq uses hashLong). Out of range: unchanged.
+  Users: big_integer::to_hash() and ratio::to_hash (ratio.cpp 135; ratios equal only ratios, so
+  any consistent hash is fine). equal() already makes 1 = 1N (big_integer.cpp 116-131,
+  number.cpp 184-204). jank's test/cpp/jank/runtime/obj/big_integer.cpp "Hashing" stays true
+  (0 and -1 hash differently; big values keep the limb hash).
+D12c (fixes/D12c.diff): src/cpp/jank/runtime/obj/lazy_sequence.cpp, to_hash (98-106): an empty
+  lazy seq hashes as every empty ordered collection, mix_collection_hash(1, 0) (what
+  hash::ordered gives for () and []), not 1.
+D12d (fixes/D12d.diff): src/cpp/jank/runtime/obj/detail/base_persistent_map_sequence.cpp, to_hash
+  (84-87): hash::ordered instead of hash::unordered; the seq is sequential and `=` to the vector
+  or list of its entries (entries hash as [k v] vectors).
+Build must check: jank's tests (big_integer, ratio hashing; hash-map/set tests); d12.
+
+-- D13 (fixes/D13.diff) --------------------------------------------------------------------
+File: src/cpp/jank/hash.cpp, unordered(object_ref) (181-199), called only by core.cpp
+hash_unordered (1369, i.e. hash-unordered-coll) and base_persistent_map_sequence::to_hash (which
+D12d moves to ordered).
+Change: the sum starts at 0 (as sets' hash::unordered(begin, end), hash.hpp 63-84, and Clojure's
+hashUnordered), and any seqable is iterated (a vector, a set, a map), not only sequence_like.
+Test: d13-hash-unordered-coll-is-a-set-hash (both assertions).
+Not covered: Clojure 1.12 also has (= (hash-unordered-coll {:a 1}) (hash {:a 1})) true; jank's map
+hash adds 31*h(k)+h(v) per entry, not the entry vector's hash, so that still differs.
+Build must check: d13.
+
+-- D16 (fixes/D16.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/atom.cpp, notify_watches (43-54).
+Change: copy the watches map (a persistent_hash_map_ref) under the read lock, release it, then
+call the watches; as Clojure, which calls them from a snapshot with no lock held.
+Why safe: the map is persistent, so the copy is a snapshot; add_watch/remove_watch (249-259)
+still swap it under the write lock. The lock was held only for the iteration.
+Test: d16-watch-removing-itself (no more self-deadlock). Also removes d16b's cause (refuted by
+the run, but the lock order it modeled no longer exists).
+Build must check: d16; jank's atom tests.
+
+-- D18a + D18b (two units; d18-alter-meta-loses-no-update needs BOTH; neither alone passes) ----
+D18a (fixes/D18a.diff): include/cpp/jank/runtime/core/meta.hpp + src/cpp/jank/runtime/core/meta.cpp:
+  a new alter_meta(o, f, args) = reset_meta(o, apply_to(f, cons(meta(o), args))) under a static
+  std::recursive_mutex, and reset_meta (84) takes the same lock (Clojure's alterMeta and
+  resetMeta are synchronized). Recursive so alter_meta can call reset_meta and f may alter other
+  metadata. One lock for all objects: stronger than Clojure's per-reference monitor, never weaker.
+D18b (fixes/D18b.diff): src/jank/clojure/core.jank, alter-meta! (1235-1243) calls
+  cpp/jank.runtime.alter_meta. D18b alone would not resolve (alter_meta does not exist without
+  D18a); D18a alone changes nothing a program sees.
+Read-checked: meta.hpp is in the JIT prelude (prelude.hpp 11), as reset_meta is; apply_to (call.hpp
+20) and cons (seq.hpp 87) exist; callers of reset-meta!/alter-meta! in core.jank (843, 5637,
+6591, 7066) only gain the lock. Coordinator's rule: two units, so D18 may be counted as not local.
+Build must check: d18 (8 futures x 1000 alter-meta!); no deadlock in jank's tests.
+
+-- D19 (fixes/D19.diff) --------------------------------------------------------------------
+Files: include/cpp/jank/runtime/obj/delay.hpp + src/cpp/jank/runtime/obj/delay.cpp (deref 19-46,
+is_realized 49-53).
+Change: a `realized` flag set once the body has run, whatever it returned (nil included) or threw
+(std::exception or object); deref then returns the value or rethrows the stored error;
+is_realized returns the flag; fn is cleared after running (as Clojure's Delay).
+Why safe: all under the existing mutex. A body that throws something else (an error_ref, V11)
+still runs again at the next deref, as today: unchanged on purpose.
+Test: d19-delay-runs-once-even-for-nil (runs = 1, realized? true).
+Note: another agent's V10.diff/V11.diff also touch delay.cpp/delay.hpp; check they combine.
+Build must check: d19; the struct gained a member (rebuild everything that includes delay.hpp).
+
+-- D22 (fixes/D22.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, future (1091-1160): after push_thread_bindings, a
+util::scope_exit pops the frame when the thread's body ends (normally, by an exception or by
+cancellation), so a later thread that gets the same std::thread::id starts from an empty
+binding stack (context.cpp push_thread_bindings 706-750 starts a frame from the front one).
+Read-checked: pop_thread_bindings (context.cpp 752-763) only pops; the guard is declared after
+the GC-unregister guard, so it runs first.
+Test: d22-future-sees-its-creators-bindings-only.
+Build must check: d22 (50 futures).
+
+-- D24 (fixes/D24.diff) --------------------------------------------------------------------
+File: src/cpp/jank/codegen/cpp_processor.cpp, gen(try) (1054-1100).
+Change: with a finally, the generated C++ is now
+  { finally-lambda; scope_exit guard; try { try { body } catch(T e) { handler } }
+    catch(...) { guard.release(); finally(); throw; } guard.release(); finally(); }
+so a handler that throws reaches the outer catch(...), which runs the finally outside any
+destructor; a throwing finally then replaces the handler's exception, as on the JVM. Before, the
+handler's exception unwound through the guard's destructor, which ran the throwing finally:
+std::terminate. With no catch, the inner try is not emitted (a try needs a handler), which is
+the old output exactly. Without a finally the output is unchanged.
+Read-checked: evaluate.cpp eval(try) wraps the form in a fn (623-626), so every try goes through
+this codegen; jank's tests test/jank/form/try/*.jank (throw-from-finally, catch-rethrow, empty
+bodies, execution order, nested-no-catch) keep their meaning; util::format only substitutes "{}".
+Test: d24-finally-throwing-after-a-throwing-catch ("c").
+Build must check: test/jank/form/try/* and cpp/try/*; d24.
+
+-- R1 (fixes/R1.diff) ----------------------------------------------------------------------
+File: src/cpp/jank/read/lex.cpp, convert_to_codepoint (452-468): mbrtowc returns 0 for a NUL;
+return codepoint{ U'\0', 1 } so every loop that advances by the length moves past it.
+Read-checked: every lexer loop advances by .len (strings 1323-1347, symbols 1183, keywords,
+comments 635, #! 1411, characters 612, # 1384, ~ 1466); the default case already broke on len 0.
+NUL becomes an ordinary character (a symbol constituent, as in Clojure's reader).
+Test: a01-a-nul-in-a-string-reads.
+Build must check: a01; jank's lexer tests.
+
+-- R2 (fixes/R2.diff) ----------------------------------------------------------------------
+File: src/cpp/jank/read/lex.cpp, processor::next(): `"`, `^`, `` ` ``, `~` and `@` no longer
+demand whitespace before them (they are terminating macro characters in Clojure), and a string no
+longer demands whitespace after it. Numbers, symbols and keywords still do, before a number,
+symbol, keyword or `#`: those cases are one invalid token in Clojure.
+Clojure 1.12: (read-string "(str\"a\")") = (str "a"); "\"a\"b" reads "a"; ":a\"b\"" reads :a.
+Read-checked: the 12 lexer tests asserting lex_expecting_whitespace (test/cpp/jank/read/lex.cpp
+690-1398) are all a number followed by a letter or digit: unchanged. No other test input puts a
+symbol, number or string right before one of these characters.
+Test: a02-adjacent-atoms-need-no-space; with R14, a14.
+Build must check: jank's lexer tests; the book's lex/expecting-whitespace page no longer covers
+strings and these characters.
+
+-- R3 (fixes/R3.diff) ----------------------------------------------------------------------
+File: src/cpp/jank/read/lex.cpp, next(), the single-0 escape (1027-1035): also for `-0` (the -0
+branch, 691-707, has already stepped past the `-`), so -0 before any delimiter is 0.
+Clojure 1.12: [-0 -07 -0.5] reads [0 -7 -0.5]. Traced: -07 (radix 8 kept), -0.5, -0x10, -0N.
+Test: a03-minus-zero-before-a-delimiter.
+
+-- R8 (fixes/R8.diff) ----------------------------------------------------------------------
+File: src/cpp/jank/util/escape.cpp, unescape (35-145) and a helper: octal escapes as Clojure's
+reader: \ then 0-7, up to three digits, ended early by the end, whitespace, a comma or a macro
+character, any other character an error "Invalid digit: c", at most \377.
+Clojure 1.12 and the C++ check agree: "\101" = "A", "\08" error "Invalid digit: 8", "\400" error,
+"\1 x" ends at the space, "\12\"" ends at the quote. \a, \v, \? stay accepted (jank's; Clojure
+rejects them - left alone, jank's lexer tests use them).
+Read-checked: only parse.cpp parse_escaped_string calls unescape; the lexer passes escapes through.
+Test: a08-octal-string-escapes.
+
+-- R9 (fixes/R9.diff) ----------------------------------------------------------------------
+File: src/cpp/jank/read/lex.cpp, next(): `;` comments (643) and `#!` comments (1419) end at \r too
+(Clojure's CommentReader stops at \n or \r). The \r is then skipped as whitespace.
+Read-checked: lexer comment tests (lex.cpp tests 178-268, 2116-2147) have no \r.
+Test: a09-a-comment-ends-at-a-carriage-return.
+
+-- R10 (fixes/R10.diff) --------------------------------------------------------------------
+Files: src/cpp/jank/read/parse.cpp parse_deref (1786-1807), and jank's test
+test/cpp/jank/read/parse.cpp "Deref" (1180-1201), updated: @x reads as (clojure.core/deref x).
+Read-checked: core.jank never uses @ before deref's definition (1081); nothing in the analyzer
+special-cases the unqualified symbol `deref`; syntax quote qualifies it anyway.
+Test: a10-deref-is-qualified (and R10's local-capture example).
+Build must check: the updated parse test.
+
+-- R12 (fixes/R12.diff) --------------------------------------------------------------------
+File: src/cpp/jank/read/parse.cpp, parse_symbol's %n branch (1853-1880): only a leading 0 is
+rejected (%10, %20 are parameters); a number over 255 is an error instead of wrapping the u8.
+Read-checked: jank's tests test/jank/reader-macro/function/fail-%0 (still fails: leading 0),
+fail-too-many-args `#(do %20)` (still fails: analyze_fn rejects more than max_params = 10
+params, processor.cpp 1866), pass-fixed-args unchanged.
+Clojure 1.12: (#(+ %10 %1) 1 ... 10) = 11.
+Test: a12-percent-ten-in-an-anonymous-fn.
+
+-- R14 (fixes/R14.diff) --------------------------------------------------------------------
+File: src/cpp/jank/read/lex.cpp, is_special_char (493-497): adds @, so a symbol, keyword or
+character token ends at @ (a terminating macro character in Clojure).
+Test: a14-at-sign-ends-a-symbol, which needs R2 too: after the symbol `a`, the `@` token must not
+demand whitespace. With both, "a@b" lexes as a, @, b; read-string returns a.
+Read-checked: no jank source or test has @ inside a symbol (grep); `~@` and `#?@` are lexed by
+their own cases.
+
+-- R16 (fixes/R16.diff) --------------------------------------------------------------------
+File: src/cpp/jank/read/parse.cpp, parse_keyword (1903-1938): a slash is a separator only when the
+keyword text is longer than "/", as parse_symbol does (1832-1837); :/ is the keyword named "/".
+The lexer test "Single slash" (lex.cpp tests 1765-1772) already gives the token "/"; `://`,
+`:/foo`, `::/` stay lexer errors.
+Test: a16-keyword-slash.
+
+-- R19 (fixes/R19.diff) --------------------------------------------------------------------
+File: src/cpp/jank/read/parse.cpp, syntax_quote (1457-1510): an unqualified symbol with a `.` after
+its first character is left unqualified (Clojure's resolveSymbol: indexOf('.') > 0). Names
+starting with `.` were already left alone (is_special 1442).
+Clojure 1.12: `clojure.set = clojure.set, `foo. = foo., `a.b/c = a.b/c.
+Read-checked: test/jank/syntax-quote/* have no unqualified dotted names except .foo/.-foo.
+Test: a19-syntax-quote-leaves-dotted-names. The ~@#{a b} part of R19 is not touched.
+
+-- R27 (fixes/R27.diff) --------------------------------------------------------------------
+File: src/cpp/jank/analyze/processor.cpp, analyze_fn (1941-): loop_details is saved, cleared and
+restored (scope_exit) around the fn, so a recur in a fn written inside a loop targets the fn.
+analyze_recur (2120-2241) targets the loop exactly when loop_details is set.
+Test: r27-recur-in-a-fn-inside-a-loop-targets-the-fn.
+Not covered: R27's second case (recur inside the loop's own bindings, analyze_let sets
+loop_details before the bindings, 2338-2342).
+
+-- R29 (fixes/R29.diff) --------------------------------------------------------------------
+File: src/cpp/jank/analyze/processor.cpp, analyze_call (3498-3535): no macroexpansion when the
+operator is the fn's own name (expression_kind::recursion_reference), as for a local.
+Read-checked: no defmacro in jank's sources calls its own name as code (scanned core.jank,
+test.jank, template.jank: such uses are in docstrings, comments or syntax quotes). Note R108:
+jank's defn names its fn, so after R29 a defn/defmacro body that calls its own name as a macro
+would call the fn instead; in Clojure the defn fn is unnamed, so that call would expand. No
+such code was found.
+Test: r29-a-named-fn-shadows-a-macro.
+
+-- R30 (fixes/R30.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/context.cpp, macroexpand1 (604-635): a macro fn now gets
+&form = the call form, &env = nil (TODO kept: no locals map), args = the arguments. It got
+&form = ((args)) and &env = the macro's symbol.
+Read-checked: jank's macros using &form: `fn` (core.jank 652) and `fn` with pre/post (3584) do
+(meta &form); they now get the call's metadata (source info), as Clojure's do. No macro reads
+&env (core.jank grep). The analyzer calls __rt_ctx->macroexpand (processor.cpp 3510).
+Test: r30-macro-form.
+Build must check: jank's whole suite (fn* forms now carry the call's meta; error positions).
+
+-- R34 (fixes/R34.diff) --------------------------------------------------------------------
+File: src/cpp/jank/analyze/processor.cpp, analyze_call (3569-3579): a keyword call becomes an
+inlined get only with 1 or 2 arguments; (:k) and (:k m nf x) are ordinary calls, which throw
+invalid_arity (object.cpp 80-88), as Clojure throws ArityException (Clojure 1.12 checked).
+Test r34-keyword-call-without-a-map still FAILS: invalid_arity is a C++ exception and
+clojure.test's thrown? catches only objects (V7's family). Its failure turns from "nil" into
+"uncaught C++ exception".
+
+-- R37 (fixes/R37.diff) --------------------------------------------------------------------
+File: src/cpp/jank/ir/processor.cpp, gen(call) (110-121): the operator is generated before the
+arguments (Clojure's order; jank's interpreted top level already does it, evaluate.cpp 376).
+Test: r37-operator-evaluated-first. Build must check: the IR opt passes and -O levels.
+
+-- R39 (fixes/R39.diff) --------------------------------------------------------------------
+File: src/cpp/jank/ir/processor.cpp, gen(let) for loop_with_recur (510-585): local_to_loop_shadow
+is saved and restored around the loop (scope_exit), so an outer recur after an inner loop that
+rebinds a name uses the outer shadow (read at 422 and 439).
+Test: r39-nested-loop-rebinding.
+
+-- R41 (fixes/R41.diff) --------------------------------------------------------------------
+File: src/cpp/jank/codegen/cpp_processor.cpp, gen(letfn) (886-906): deferred_bindings is cleared
+after this letfn fills them in. defer() is called only from gen(closure) (762); each fn has its
+own builder, so the entries are this function's.
+Test: r41-two-letfns-in-one-fn.
+
+-- R42 (fixes/R42.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/object.cpp, very_equal_to and very_equal_to_with_meta (336-353): also
+require the same to_code_string, so [[]] and ['()], and 0.0 and -0.0, are distinct constants.
+Users: cpp_processor global_constants (126), ir/processor.hpp (86, 91), ir/opt/hoist_literals.cpp
+(17). The string is built only when hash and `=` already match.
+Test: r42-equal-constants-stay-distinct. Needed by D12a (see there).
+
+-- R70 (fixes/R70.diff) --------------------------------------------------------------------
+File: src/cpp/jank/util/escape.cpp, escape (147-201): BEL and VT are written as they are (Clojure's
+string printer escapes only \n \t \r \" \\ \f \b).
+Read-checked: escape() is used by persistent_string::to_code_string (55) and for C++ string
+literals in cpp_processor (331-456), where other control bytes (0x01, 0x1b) already go raw.
+Test: b17-pr-str-of-bel.
+
+-- R71 (fixes/R71.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/re_pattern.cpp, to_code_string (23-30): Clojure's print-method for
+a Pattern: `"` becomes `\"`, or `\E\"\Q` inside \Q...\E; escapes are copied.
+C++ check = Clojure 1.12: #"\"" for (re-pattern "\""), #"a\Qb\E\"\Qc\E" for "a\Qb\"c\E".
+Test: b18-pr-str-of-a-regex-with-a-quote.
+
+-- R73 (fixes/R73.diff) --------------------------------------------------------------------
+File: src/jank/clojure/core.jank: a full pr-str after with-out-str (before prn-str, 6315): 0 args
+"", 1 arg to_code_string (the early one's fast path), more: (with-out-str (apply pr x more)).
+The early 1-arity def (628-631) stays: core uses it before with-out-str exists.
+Test: b20-pr-str-of-several-values ("1 2"). Clojure 1.12: (pr-str) "", (pr-str nil 1) "nil 1".
+
+-- R80 (fixes/R80.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, smatch_to_vector (945-970): a group that did not take part is
+nil. Users: re-find/re-groups (core.cpp 972) and string_native's replace-first with a fn (108).
+Test: b26-an-unmatched-group-is-nil.
+
+-- R82 (fixes/R82.diff; also R83's re-matches half) ------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, re_matches (1002-1018): std::regex_match on the whole input
+(Java's Matcher.matches), built from data()/size() (no cut at NUL).
+C++ check (libc++): regex_match("ab", a|ab) = "ab". libstdc++ read: its DFS executor, in exact
+mode, tries the right alternative when the left one does not reach the end.
+Test: b28-re-matches-finds-a-full-match.
+
+-- R83 (fixes/R83.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/re_matcher.cpp, constructor (8-13): match_input from data()/size(),
+not c_str() (which ended at the first NUL). Covers re-find, re-seq, re-groups; re-matches is in
+R82. clojure.string's replace/split (string_native.cpp 82-87, 95, 222-231) still cut at NUL.
+Test: b29-regex-input-past-a-nul.
+
+-- R84 (fixes/R84.diff) --------------------------------------------------------------------
+File: src/cpp/clojure/string_native.cpp: replace(s, regex, string) (220-226) expands the
+replacement by Java's appendReplacement rules (new static append_replacement: \x literal; $n
+with greedy digits while a group exists; errors "character to be escaped is missing", "Illegal
+group reference[: group index is missing]", "No group n"; unmatched group = ""); replace(s,
+regex, fn) (228-252) calls the fn with re-groups' result (smatch_to_vector), not the match
+string. Matches are still iterated with std::sregex_iterator (R85's empty-match stepping is not
+touched).
+C++ check = Clojure 1.12 for: "\\$$1" -> "$5"; "$12" with one group -> "a2"; "$2", "$x", "$",
+trailing "\" -> the same errors; unmatched group -> "".
+Test: b31-replacement-templates-and-functions (both assertions).
+Not covered: replace-first with a string (82-87, regex_replace format_first_only) keeps
+ECMAScript's format rules.
+
+-- R97 (fixes/R97.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/keyword.cpp, compare(object const &) (50-53): a non-keyword
+operand throws instead of expect_object's unchecked cast (undefined behavior). Thrown as an
+object (make_box(...).erase(), as inst.cpp, uuid.cpp, math.hpp do) so the program's catch sees
+it, as Clojure's ClassCastException. string/character compare throw std::runtime_error
+(try_object) - not changed.
+Test: c02-keyword-against-a-number-throws.
+
+-- R98 (fixes/R98.diff) --------------------------------------------------------------------
+File: src/cpp/jank/runtime/core/equal.cpp, compare (24-32): `if(l == r) return 0;` first, as
+Clojure's Util.compare (identity on the raw oref, as is_identical). Clojure 1.12:
+(compare '() '()) 0; (compare (list 1) (list 1)) throws.
+Test: c03-compare-of-identical-empty-lists, passing only if both '() are one object in jank (one
+deduped constant, or the empty-list singleton). Build must confirm.
+
+-- R100 (fixes/R100.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/multi_function.cpp: reset_cache (137-143) caches the hierarchy's
+value (hierarchy.deref()), not the var; is_a (219-225) takes that value as is. is_preferred then
+gets a map, so `parents` finds the ancestors and a preference declared on an ancestor applies.
+As Clojure's MultiFn (cachedHierarchy = hierarchy.deref(), isA(ch, ...)). prefer_method already
+passed hierarchy.deref() (167). get_method's cache check (249) now compares like with like, so
+the method cache works between hierarchy changes.
+Test: c05b-prefer-method-on-an-ancestor.
+
+-- R101 (fixes/R101.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, get_method (613-616): multi_function::get_method (nil when
+nothing applies, the default method when one exists) instead of get_fn (which throws).
+Clojure 1.12: get-method with no method = nil.
+Test: c06-get-method-without-one-is-nil.
+
+-- R103 (fixes/R103.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, remove_ns (840-843): clojure.core throws "Cannot remove
+clojure namespace" (Clojure's message), as an object so thrown? sees it.
+Test: c08-clojure-core-cannot-be-removed.
+
+-- R104 (fixes/R104.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/persistent_sorted_set.cpp, equal (56-82): a lookup that throws
+(keys that cannot be compared) makes the sets unequal, as PersistentTreeSet.equiv catches
+ClassCastException. Catches std::runtime_error and object_ref (R97's keyword error is an object).
+Broader than Clojure's catch: any error during the lookups means "unequal"; the default
+comparator runs no user code.
+Test: r104-sorted-sets-with-incomparable-keys-are-unequal. Not covered: sorted maps
+(base_persistent_map::equal, shared with hash and array maps) and a hash set compared with a
+sorted one from the hash set's side (persistent_hash_set::equal looks up in the sorted set).
+
+-- R105, R105b (fixes/R105.diff, fixes/R105b.diff) -------------------------------------------
+Files: src/cpp/jank/runtime/obj/persistent_sorted_map.cpp find (80-88) [R105];
+transient_sorted_map.cpp find (59-68) [R105b]: the entry carries the stored key (res->first).
+Test: r105-sorted-find-returns-the-stored-key needs R105 only.
+
+-- R110 (fixes/R110.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, find_var (835-838): as Clojure's Var.find: unqualified ->
+throws "Symbol must be namespace-qualified"; unknown ns -> "No such namespace: x" (objects); only
+a var interned in that ns (a referred one gives nil). Clojure 1.12 checked all three.
+Read-checked: the only jank caller with a symbol is clojure.test (test.jank 736), qualified.
+context::find_var (used everywhere else) is not touched.
+Test: r110-find-var-wants-a-qualified-symbol.
+
+-- R112 (fixes/R112.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/core.cpp, in_ns (819-823): returns the namespace (Clojure 1.12 checked).
+Test: r112-in-ns-returns-the-namespace.
+
+-- R114 (fixes/R114.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/obj/integer_range.cpp, next and next_in_place (113-130): whether there is
+a next element is decided by one overflow-checked step against the bound, not by count() (which
+throws on a span wider than an i64). Same answer as count() > 1 wherever count() works; a step
+past the i64 range ends the range.
+C++ check and Clojure 1.12: (take 2 (range Long/MAX_VALUE)) (0 1); (range (- MAX 2) MAX) two
+elements; (range (- MAX 1) MAX 5) one.
+Test: r114-take-from-a-long-range. Not covered: count() itself (R115).
+
+-- R117 (fixes/R117.diff) ------------------------------------------------------------------
+Files: include/cpp/jank/runtime/obj/cons.hpp + src/cpp/jank/runtime/obj/cons.cpp: cons overrides
+next_in_place to return tail.fresh_seq(), a seq its caller owns, instead of the tail itself, which
+every copy of the cons shares (fresh_seq copies only the cons, 25-28). object.hpp 565-604 says
+next_in_place's result is owned and mutated; doseq (core.jank 2742/2750) relies on that.
+Test: r117-doseq-leaves-held-seqs-alone. Not covered: other seqs whose next() returns shared
+state (not traced).
+
+-- R118 (fixes/R118.diff) ------------------------------------------------------------------
+File: src/jank/clojure/core.jank, partition-by's transducer (3291-3321): the buffer is cleared
+before the partition is sent, and refilled only when rf did not return reduced; the completion
+step clears it too (Clojure's ";;clear first!"). Paren balance checked by script.
+Test: r118-partition-by-after-reduced ([[1] [2]]).
+
+-- R120 (fixes/R120.diff) ------------------------------------------------------------------
+Files: include/cpp/jank/runtime/obj/cons.hpp + src/cpp/jank/runtime/obj/cons.cpp: cons gets
+static empty() (persistent_list::empty()), which makes it collection_like (is_collection,
+seq.cpp 77; empty, seq.cpp 787). Same change as upstream's 2a4777bd for lazy and string seqs.
+Test: r120-cons-is-a-collection. Not covered: repeat, sort results, array seqs (same pattern).
+
+-- R121 (fixes/R121.diff) ------------------------------------------------------------------
+File: src/cpp/jank/runtime/core/seq.cpp, get_in (473-511): no `get` behavior check on the
+outer value; runtime get of a value without lookup is nil or the fallback (object.cpp 190-198),
+so no keys give the value back and missing keys the fallback (Clojure 1.12: (get-in 5 []) 5,
+(get-in 5 [:a] :nf) :nf). Both arities are inlined from core.jank get-in (2354).
+Test: r121-get-in-with-no-keys.
+
+
+2. NOT FIXED (confirmed ids in my scope)
+----------------------------------------
+
+Design change:
+- D25: object monitors - monitor-enter/monitor-exit exist nowhere and jank objects carry no lock.
+- R11: jank quotes a symbol tag (parse_meta_hint 614-625) so evaluated def/fn metadata does not
+  resolve it; Clojure evaluates tags (resolving classes). Unquoting needs analyzer support.
+- R18: std::regex ECMAScript has no (?i), lookbehind, named or atomic groups.
+- R21: every read form carries :jank/source metadata, used for error reporting.
+- R38: locals are named by their munged names (a-b and a_b munge alike); needs unique names.
+- R69, R76 (one design): jank's one to_string serves both str (readable for collections in
+  Clojure) and print (not readable). R76 alone would make (str (seq "ab")) "(a b)" where Clojure
+  1.12 gives "(\\a \\b)". R69 also spans two units (core.jank's one-argument str, seq.cpp str).
+- R72: boost cpp_dec_float keeps no BigDecimal scale.
+- R78, R79: regexes run over bytes with ECMAScript `$` (engine).
+- R108: defn emits a named fn so recursion skips the var (a codegen/performance choice).
+- D15 (failed another way): fixed upstream (607de3f9); the remaining difference is that the
+  error is a C++ exception thrown? cannot see (V7's family).
+
+Needs a new feature:
+- D21: timed blocking deref: promise::deref has only an untimed wait; future::deref joins its
+  thread and has no condition variable; plus a C++ deref overload and core.jank's 3-arity.
+- D23 (failed another way): jank has no set! for vars; the predicted path is unreachable.
+- R17: namespaced map literals (#:a{}, #::{}) and #^ in parse_reader_macro.
+- R74: *print-length* and the other printer vars in the C++ printers.
+
+More than one unit (split possible, neither half works alone):
+- R28: the fn's own name lives in the fn frame's named recursion, consulted after every
+  enclosing local (analyze_symbol 1599 vs 1660); needs local_frame's lookup and analyze_symbol.
+- R81: re-find must search the original string from a position (match_prev_avail, Java's
+  empty-match bump), which needs new state in re_matcher.hpp plus re_find in core.cpp.
+- R119: chunk_cons (seq.cpp 1066) seqs the rest eagerly, and chunked_cons (next,
+  next_in_place, chunked_next) assumes a realized rest; both must change.
+- R44: case keys outside i32 (c_api.cpp 991-1037 hashing and cpp_processor 1141-1170).
+
+Cause outside my scope:
+- R116: range.cpp 147's add wraps at i32 - D1's cause (another agent's).
+- R13: shares D12a/D12b (the literal duplicate check hashes, parse.cpp 432-459, 722-743); with
+  D12b jank rejects #{1 1N} and {1 :a 1N :b}, with D12a #{0.0 -0.0}. a13 still fails: the read
+  error is an error_ref, which thrown? does not see (V7).
+- R20: a20's failure has another cause: jank lexes "1-2" as 1 then an erroring "-2" (Clojure:
+  one invalid token, NumberFormatException), and read-string reads only the first form; even
+  then the read error is an error_ref (V7). R20's own predictions (a data reader run on the
+  second form; a NUL there hanging) were never run; the NUL part is fixed by R1.
+- R89 (failed another way): its test ran a cpp/raw and its use as one form (S71).
+
+Local but not written (time or confidence):
+- R4: `+5` needs the number state machine's `-` path (octal, radix, ratio branches) for `+`.
+- R6: radix literals: N/M taken as suffixes, e and r continuing past expecting_more_digits, the
+  i8 cast of the radix (lex.cpp 785-1083); a06 needs the letter digits.
+- R7: leading zeros: radix 8 kept through M (lex.cpp 691-723, 1107-1122) and boost reading the
+  ratio numerator's leading 0 as octal (906-910).
+- R15: needs Java's isWhitespace set (U+001C-1F, Zs/Zl/Zp except no-break) in the whitespace
+  skip (decoding UTF-8 there, 549-563), is_symbol_char and the keyword checks.
+- R40: std::out_of_range in hoist_scoped_values (ir/processor.cpp 449) not traced to one cause.
+- R47: closure context read from the argument (cpp_processor 1946-1957, 1984-1993) not traced.
+- R68: Java's Double.toString format from to_chars' shortest digits (number.cpp 291/314,
+  string_builder.cpp 83-132).
+- R102: intern of a referred name (ns.cpp 26-47) is shared with def; not traced far enough.
+
+
+3. WHAT A BUILD MUST CHECK (all diffs)
+--------------------------------------
+- Compile with jank's flags (-Wall -Wextra -Wpedantic -Wold-style-cast -Werror in debug); the
+  diffs use no old-style casts and no new signed/unsigned comparisons.
+- jank's own suites: test/cpp (lexer, parser, big_integer, ratio, integer_range), test/jank
+  (form/try, reader-macro/function, syntax-quote, macro), test/bash error-reporting, and the
+  clojure-test-suite namespaces.
+- The tests named above, each alone and with all diffs together.
+- D12a only together with R42.
+- D18a and D18b together; D19 together with another agent's V10/V11 (same file).
+- R34: the r34 test still fails (C++ arity exception); R98: c03 passes only if '() is one object.
+- d09/d09b: the assertions are not Clojure's (see D9); judge D9 by `(NaN? (sub ##Inf ##Inf))`.
+
+Files: fixes/<id>.diff (52), .r6-scratch/fix1/ (start.sh, gen.sh, combined.sh, clj/checks.clj,
+cpp/check.cpp).

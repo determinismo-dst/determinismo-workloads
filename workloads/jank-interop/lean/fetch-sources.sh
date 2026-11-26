@@ -72,6 +72,21 @@ else
   echo "$regex (chrono): fetched (GCC releases/gcc-15.3.0)"
 fi
 
+# Round 6: libstdc++ 15.3.0's UTF-8 conversion (wstring_convert<codecvt_utf8<wchar_t>>, which jank's
+# upper-case/lower-case use), from the same GCC tag.
+cvt=deps/libstdcxx-15.3.0-codecvt
+if [ -f "$cvt/codecvt.cc" ]; then
+  echo "$cvt: present"
+else
+  gcc=deps/.gcc-15.3.0
+  [ -d "$gcc/.git" ] || git -c advice.detachedHead=false clone -q --depth 1 --branch releases/gcc-15.3.0 --filter=blob:none --sparse \
+    https://github.com/gcc-mirror/gcc.git "$gcc"
+  git -C "$gcc" sparse-checkout add libstdc++-v3/include/bits libstdc++-v3/src/c++11
+  mkdir -p "$cvt"
+  cp "$gcc/libstdc++-v3/include/bits/locale_conv.h" "$gcc/libstdc++-v3/src/c++11/codecvt.cc" "$cvt/"
+  echo "$cvt: fetched (GCC releases/gcc-15.3.0)"
+fi
+
 # Round 5: GNU ld 2.45's script grammar and docs (the spec of the ld-script replica), flat.
 ld=deps/binutils-ld
 if [ -f "$ld/ldgram.y" ]; then

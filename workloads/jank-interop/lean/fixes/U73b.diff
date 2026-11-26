@@ -1,0 +1,17 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..da0a95e 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -5903,9 +5903,9 @@
+   "Flushes the output stream that is the current value of
+   *out*"
+   []
+-    ;; (. *out* (flush))
+-    ;; nil
+-  (throw (ex-info "TODO: port flesh"  {})))
++  ;; (. *out* (flush))
++  (cpp/fflush (cpp/unbox (:* FILE) *out*))
++  nil)
+ 
+ (defn read
+   "Reads the next object from stream, which must be an instance of

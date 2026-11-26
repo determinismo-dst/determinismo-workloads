@@ -1,0 +1,16 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/inst.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/inst.cpp
+@@ -57,9 +57,12 @@
+   }
+ #endif
+ 
++  /* Clojure reads an #inst as a java.util.Date, which keeps whole milliseconds: the reader drops
++   * the rest of the fraction, which floors the instant (before 1970 too). Doing the same here
++   * keeps =, hashing, inst-ms and printing to the millisecond. */
+   inst::inst(jtl::immutable_string const &s)
+     : object{ obj_type, obj_behaviors }
+-    , value{ inst_from_string(s) }
++    , value{ std::chrono::floor<std::chrono::milliseconds>(inst_from_string(s)) }
+   {
+   }
+ 

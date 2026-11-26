@@ -1,0 +1,104 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string.cpp
+@@ -65,9 +65,100 @@
+     return compare(*try_object<persistent_string>(runtime::detail::untagged(&o)));
+   }
+ 
++  /* The UTF-16 code units of the character at byte i (1 or 2), advancing i past it. A byte that
++   * does not start a complete character stands for itself as 0xDC00 + byte, a lone low surrogate no
++   * valid text decodes to, so only equal bytes compare equal. */
++  static usize next_utf16_units(jtl::immutable_string const &d, usize &i, char16_t (&units)[2])
++  {
++    auto const b0(static_cast<u8>(d[i]));
++    usize n{ b0 < 0x80               ? 1u
++             : (b0 & 0xE0) == 0xC0 ? 2u
++             : (b0 & 0xF0) == 0xE0 ? 3u
++             : (b0 & 0xF8) == 0xF0 ? 4u
++                                   : 0u };
++    if(n > d.size() - i)
++    {
++      n = 0;
++    }
++    for(usize k{ 1 }; k < n; ++k)
++    {
++      if((static_cast<u8>(d[i + k]) & 0xC0) != 0x80)
++      {
++        n = 0;
++        break;
++      }
++    }
++    if(n == 0)
++    {
++      ++i;
++      units[0] = static_cast<char16_t>(0xDC00 + b0);
++      return 1;
++    }
++
++    char32_t cp{ n == 1 ? b0 : static_cast<char32_t>(b0 & (0x7Fu >> n)) };
++    for(usize k{ 1 }; k < n; ++k)
++    {
++      cp = (cp << 6) | (static_cast<u8>(d[i + k]) & 0x3Fu);
++    }
++    i += n;
++    if(cp < 0x10000)
++    {
++      units[0] = static_cast<char16_t>(cp);
++      return 1;
++    }
++    cp -= 0x10000;
++    units[0] = static_cast<char16_t>(0xD800 + (cp >> 10));
++    units[1] = static_cast<char16_t>(0xDC00 + (cp & 0x3FF));
++    return 2;
++  }
++
++  /* java.lang.String.compareTo: the first differing UTF-16 code units' difference, else the
++   * difference of the lengths in code units. UTF-8 byte order is code point order, which puts a
++   * supplementary character after U+E000..U+FFFF where UTF-16 puts it before. */
+   i64 persistent_string::compare(persistent_string const &s) const
+   {
+-    return data.compare(s.data);
++    auto const &a(data);
++    auto const &b(s.data);
++    usize i{}, j{}, na{}, nb{}, ka{}, kb{};
++    char16_t ua[2]{}, ub[2]{};
++    while(true)
++    {
++      if(ka == na)
++      {
++        if(i == a.size())
++        {
++          break;
++        }
++        na = next_utf16_units(a, i, ua);
++        ka = 0;
++      }
++      if(kb == nb)
++      {
++        if(j == b.size())
++        {
++          break;
++        }
++        nb = next_utf16_units(b, j, ub);
++        kb = 0;
++      }
++      if(ua[ka] != ub[kb])
++      {
++        return static_cast<i64>(ua[ka]) - static_cast<i64>(ub[kb]);
++      }
++      ++ka;
++      ++kb;
++    }
++
++    auto rest(static_cast<i64>(na - ka) - static_cast<i64>(nb - kb));
++    while(i < a.size())
++    {
++      rest += static_cast<i64>(next_utf16_units(a, i, ua));
++    }
++    while(j < b.size())
++    {
++      rest -= static_cast<i64>(next_utf16_units(b, j, ub));
++    }
++    return rest;
+   }
+ 
+   object_ref persistent_string::get(object_ref const key) const

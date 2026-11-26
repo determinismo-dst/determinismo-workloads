@@ -1,0 +1,544 @@
+r6 FIXES-2: local fixes for the confirmed deviations of rounds 3 and 4 (S and U ids)
+=====================================================================================
+
+jank main 94d32623 (upstream-r5/, compiler+runtime byte-identical to 7135b7708, so the S/U
+reports' lines hold). Paths below are under upstream-r5/compiler+runtime/.
+
+What was done
+- 63 diffs in fixes/ (list in section 1). Each applies alone to 94d32623
+  (`git -C upstream-r5 apply --check ../fixes/<id>.diff` passes for every one), and all 63 apply
+  together in the order of .r6-scratch/fix2/stack.sh (no conflict among them). upstream-r5 is clean
+  (`git -C upstream-r5 status --short` empty).
+- Diffs that apply together with other agents' diffs: not checked against them. Applying every
+  file in fixes/ alphabetically, S17 (lex.cpp, vs S14/S15), S37 (processor.cpp), S64 (delay, vs
+  V10/V11) and U19 (multi_function) meet another agent's hunk: the merge is the coordinator's.
+- Nothing was built or run on jank. Checks by machine:
+  - The .jank files with all diffs applied read whole with Clojure 1.12's reader (forms: core.jank
+    698 -> 701, data.jank 10 -> 11, walk.jank 11, completions.jank 9), so parens balance.
+  - The pure-Clojure ports run on Clojure 1.12.0 (.r6-scratch/fix2/clj/portcheck.clj, output
+    portcheck.out): U61's clojure.data equals Clojure's diff on 20,000 random pairs (seed 42) and
+    passes u61; U69's walk equals clojure.walk (value and top metadata) on 20,000 random forms
+    without maps (jank's map entries are vectors) and passes u69; U51's line is the one Clojure
+    prints; U48's path mapping inverts Clojure's root-resource for every lib name without `_`.
+  - A standalone C++ file (std only) checks S16's decimal normalization, S17's exponent bound and
+    U83's u64 boundary (.r6-scratch/fix2/cpp/check.cpp, clang++ -std=c++20 through the job
+    script: all passed).
+- Thrown errors in these fixes are objects (`throw make_box("...").erase()`), jank's own form for
+  catchable errors (math.cpp, inst.cpp, uuid.cpp): clojure.test's `thrown?` catches only
+  `cpp/jank.runtime.object_ref` (test.jank 493-504), so a std::runtime_error would leave a
+  `thrown?` test failing as "uncaught C++ exception" (as D15 did).
+
+1. Diffs
+--------
+
+Format: id(s) | files | change | why safe | test | read-checked | build must check.
+
+S1  | src/cpp/jank/read/parse.cpp
+- Change: parse_reader_macro_var_quote (807-838) no longer requires a symbol after #'; it reads
+  (var x) for any form x, as Clojure's VarReader. The "must be present" error stays.
+- Safe: analyze_var_call (processor.cpp 2808-2830) still rejects a non-symbol with "The argument
+  to `var` must be a symbol", which is where Clojure fails too (compile error).
+- Test: deviations_r3_test.jank s01-var-quote-of-a-non-symbol.
+- Read-checked: jank's own test test/jank/reader-macro/var-quote/fail-not-a-symbol.jank (#'"str")
+  still fails (now at analysis; the runner counts any failure for fail- files,
+  test/cpp/jank/jit/processor.cpp 80-191). The list is built with std::in_place from a symbol and
+  an object_ref, both object_ref-convertible.
+- Build must check: the in_place list constructor accepts mixed oref types. The book's
+  reference/error/parse/invalid-reader-var.md describes the removed error (outside
+  compiler+runtime, not edited).
+
+S16 | src/cpp/jank/read/lex.cpp
+- Change: the ratio branch (903-935) reads both numerator and a big-integer denominator as
+  decimal: a local helper drops a sign and the leading zeros before boost's assign. boost read
+  "0010" as octal.
+- Safe: digits only reach this point after the lexer's own validation; one zero is kept ("0").
+- Test: deviations_r3_test.jank s16-ratio-parts-are-decimal (0010/3 = 10/3).
+- Read-checked: both denominator kinds (integer from next(), big_integer number_literal); the
+  helper's logic in the C++ check.
+- Not covered: an integer-kind denominator with a leading 0 is lexed as octal by next() itself
+  (R7's class, another agent's), and "008/3" fails in the lexer's digit check before this point.
+- Build must check: native_big_integer::assign(std::string).
+
+S17 | src/cpp/jank/read/lex.cpp
+- Change: a BigDecimal literal (found_M, 1123-1132) whose exponent doesn't fit in an int is the
+  lex error "Exponent overflow." (Java's BigDecimal message); boost read it with atoll and wrapped.
+- Test: deviations_r3_test.jank s17-bigdecimal-exponent-overflow-throws passes only once read
+  errors are objects (V7, another agent): alone, jank now errors where it returned 1.0M, and the
+  test reports "uncaught jank error".
+- Not covered: exponents inside int but past cpp_dec_float's range still give inf (S4's design);
+  hex-looking literals (0x1e5M) still read.
+- Build must check: <limits> include, strtoll stops at the M.
+
+S37 | src/cpp/jank/analyze/processor.cpp
+- Change: analyze_case analyzes the clauses before the default (Clojure's CaseExpr.Parser order);
+  the common-type pass (has_recur, find_branch_common_type, needs_conversion, chosen_type) runs
+  after, over the clauses in the same order, so types are computed exactly as before.
+- Test: deviations_r3_test.jank s37-case-analyzes-its-clauses-first.
+- Read-checked: the error from find_branch_common_type is wrapped by analyze_invalid_case as the
+  old lambda's error was; the default's expect_ok() is reached as before.
+- Build must check: compile; jank's case tests (test/jank/form/case*).
+
+S38 | src/cpp/jank/analyze/processor.cpp
+- Change: analyze_call (3501-3533) expands one step (macroexpand1) and analyzes the result, as
+  Clojure's analyzeSeq; the result's head is then checked for locals again. The
+  :jank/macro-expansion meta that context::macroexpand adds per step is added here.
+- Test: deviations_r3_test.jank s38-macro-expansion-headed-by-a-local.
+- Read-checked: this is the analyzer's only macroexpand call; push_macro_expansions reads the same
+  meta key; clojure.core/macroexpand (context::macroexpand) is unchanged.
+- Build must check: compile; error-reporting expectations under test/bash/error-reporting that
+  print macro expansions.
+
+S41a, S41b | S41a src/cpp/jank/codegen/api.cpp, S41b src/cpp/jank/evaluate.cpp (one per path)
+- Change: a map or set expression whose keys collide at run time throws the object
+  "Duplicate key: k" (Clojure's RT.map/RT.set createWithCheck).
+  - S41a: compiled code, the six _jank_hset/_jank_amap/_jank_hmap builders. Their arguments are
+    already evaluated, as in Clojure. Key and value va_args are now read in sequence (the old
+    two va_arg calls in one argument list had unspecified order).
+  - S41b: interpreted top-level forms, eval(map) and eval(set). Every key and value is evaluated
+    first, then checked (in_place_unique trusted distinct keys, so jank made a 2-entry {1 :x 1 :y}).
+- Safe: literal duplicates are already read errors (R13), so constant maps never reach a throw.
+- Test: deviations_r3_test.jank s41-runtime-duplicate-map-keys-throw. Its deftest body is
+  compiled code, so S41a.
+- Build must check: transient contains() on the builders' locals; immer transient count().
+
+S60 | src/cpp/jank/runtime/obj/transient_array_map.cpp
+- Change: get(key, fallback), find and contains call assert_active(), and assert_active throws
+  an object. The other transients already assert in these methods.
+- Test: deviations_r3_test.jank s60-array-map-transient-after-persistent.
+- Read-checked: no jank test asserts the old exception type or text.
+
+S61 | src/cpp/jank/runtime/obj/detail/base_persistent_map.cpp
+- Change: conj of a seqable that is not a vector or a map assocs each element, which must be a
+  2-vector (jank's map entries), as APersistentMap.cons does with a seq of entries. An empty
+  list adds nothing.
+- Test: deviations_r3_test.jank s61-conj-of-an-empty-list-onto-a-map.
+- Read-checked:
+  - it is shared by array, hash and sorted maps, and runtime::assoc handles promotion;
+  - strings fail on their first element (Clojure: ClassCastException);
+  - test/cpp persistent_array_map.cpp's conj test (a vector) is unchanged.
+
+S62 | src/cpp/jank/runtime/obj/atom.cpp
+- Change: validate copies the validator under the lock and calls it after releasing the lock
+  (Clojure reads its volatile validator once). A validator may call set-validator! on its own
+  atom.
+- Test: deviations_r3_hangs_test.jank s62-a-validator-calling-set-validator.
+
+S63 | include/cpp/jank/runtime/var.hpp, src/cpp/jank/runtime/var.cpp
+- Change: the var's write_mutex (used only by bind_root and alter_root) is a std::recursive_mutex;
+  Clojure's synchronized alter-var-root is re-entrant.
+- Test: deviations_r3_hangs_test.jank s63-alter-var-root-re-entering-its-var (= 10).
+- Also: the single-thread form of U13. U13b's second thread is fixed by U8.
+
+S64 | include/cpp/jank/runtime/obj/delay.hpp, src/cpp/jank/runtime/obj/delay.cpp
+- Change: is_realized reads an atomic has_val, set where val is set and with the same condition
+  (val.is_some()), without the mutex. Clojure's isRealized takes no lock.
+- Test: deviations_r3_hangs_test.jank s64-a-delay-asking-whether-it-is-realized.
+- Not changed: what realized? and deref answer for a failed or nil-valued delay (D19/V10/V11,
+  other agents).
+
+S71 | src/cpp/jank/runtime/context_dynamic.cpp
+- Change: a static eval_top_level evaluates a top-level (do ...) form by form, recursively, as
+  Clojure's Compiler.eval. eval_string's loop and context::eval(object) both use it.
+- Test: deviations_r3_test.jank s71-a-top-level-do-sees-its-own-macros (through eval).
+- Read-checked: the forms vector kept for module compilation still gets the original form; the
+  static runtime's eval_string/eval throw as before (context_static.cpp).
+- Also: earlier rounds' test lesson "a cpp/raw and its use must be separate top-level evals" stops
+  being needed.
+
+S73 | src/cpp/jank/runtime/ns.cpp
+- Change: ns::to_code_string (pr) is #object[ns 0x... "name"]; to_string (str) stays the bare
+  name.
+- Test: deviations_r3_test.jank s73-pr-str-of-a-namespace.
+- Read-checked: codegen emits constants by type, not through to_code_string of an ns. The nREPL
+  value of *ns* now prints as nREPL over Clojure prints it.
+
+U3  | src/cpp/jank/analyze/pass/strip_source_meta.cpp
+- Change: a quoted value's :jank/source is stripped on a copy (with_meta), and only when present.
+  References (var, ns, atom) keep the old in-place reset.
+- Test: deviations_r4_test.jank u03-eval-of-a-quoted-object-keeps-its-meta (both assertions).
+- Read-checked:
+  - optimize.cpp is the only caller;
+  - IR lifting (ir/builder.cpp 104) happens after the pass and sees the copy;
+  - eval(primitive_literal) returns expr->data.
+- Residual: (identical? v (eval (list 'quote v))) is false for a value carrying a :jank/source key.
+
+U8 (also U9, U10, U11, U13, U13b; makes u14 pass) | include/.../deferred_cpp_function.hpp, src/cpp/jank/runtime/obj/deferred_cpp_function.cpp
+- Change: realize no longer rebinds the var's root to the compiled fn. The deferred object stays
+  the fn's value and proxies to compiled_fn. An atomic `realized` flag lets calls after the first
+  skip the recursive mutex.
+- Safe: the class already proxied for captured values. Only evaluate.cpp 538 creates it, and
+  core.cpp is_fn knows the type.
+- Tests:
+  - deviations_r4_test.jank u08-a-wrapped-fn-stays-wrapped-after-its-first-call,
+    u09-with-redefs-keeps-its-stub-after-the-original-runs,
+    u10-calling-an-old-fn-value-keeps-the-redefinition,
+    u11-a-fn-keeps-its-identity-after-its-first-call, u14-a-defn-d-fn-has-no-metadata-after-its-first-call;
+  - deviations_r4_hangs_test.jank u13-alter-var-root-whose-fn-calls-the-vars-fn,
+    u13b-alter-var-root-whose-fn-waits-on-a-first-call.
+- u14 passes because the value stays the deferred fn, which has no metadata. The {:name}
+  metadata on eagerly compiled fns (evaluate.cpp 551 / processor.cpp 2064-2067) is a separate
+  cause, not changed.
+- Build must check: per-call overhead (one atomic load plus the proxy call where the var used to
+  point at the compiled fn); stack traces now show deferred_cpp_function frames.
+
+U15 | src/cpp/jank/runtime/core.cpp
+- Change: runtime get_thread_bindings (the one core.jank's get-thread-bindings calls) returns a
+  copy mapping each var to its value. context::get_thread_bindings, which futures and
+  var::get_thread_binding need with boxes, is unchanged.
+- Test: deviations_r4_test.jank u15-get-thread-bindings-holds-values.
+- Read-checked: bound-fn* passes the map to with-bindings* -> push_thread_bindings, which takes
+  plain values (context.cpp 733-741). It now conveys values taken at bound-fn* time, as Clojure.
+
+U16 | src/cpp/jank/runtime/var.cpp
+- Change: var_unbound_root::to_string is "Unbound: #'ns/x" (Var$Unbound.toString).
+- Test: deviations_r4_test.jank u16-an-unbound-root-prints-as-clojure-prints-it.
+- s70-an-unbound-root-survives-its-var also needs this text. S70's own prediction (pointer_free
+  true while holding the var, var.hpp 183) was not confirmed, so no diff: it would be
+  `pointer_free{ false }`.
+
+U17 | src/cpp/jank/runtime/context.cpp
+- Change: push_thread_bindings(object_ref) takes any map (copied into a hash map) where it took
+  only a persistent_hash_map.
+- Test: deviations_r4_test.jank u17-push-thread-bindings-takes-an-array-map.
+
+U19 | include/.../multi_function.hpp, src/cpp/jank/runtime/obj/multi_function.cpp
+- Change: reset_cache also records the hierarchy's value (cached_hierarchy_value), and get_method
+  compares the current value with it, as Clojure's cachedHierarchy. It compared the reference with
+  the value, never matched, and took the mutex on every call.
+- Safe: cached_hierarchy (the reference that is_a/is_dominant deref) is kept. Every
+  method/prefer change still resets the cache, and a derive changes the value's identity, so the
+  cache is reset then.
+- Test: deviations_r4_hangs_test.jank u19-defmethod-with-a-lazy-dispatch-value-realized-by-a-caller-thread.
+- Build must check: the mutex-free read of method_cache, which was already unlocked before.
+
+U27 | src/cpp/jank/runtime/obj/repeat.cpp
+- Change: with_meta always makes a new repeat; for an infinite repeat, fresh_seq returned this
+  one, so the metadata was written into the original.
+- Test: deviations_r4_test.jank u27-with-meta-leaves-an-infinite-repeat-alone.
+
+U28 | include/.../iterator.hpp, src/cpp/jank/runtime/obj/iterator.cpp
+- Change: iterator (iterate, and (range) with no args) is metadatable: with_meta copies fn and
+  current, shares the cached next (Clojure's Iterate.withMeta shares _next), and lazy_meta
+  holds the metadata.
+- Test: deviations_r4_hangs_test.jank u28-with-meta-on-an-iterate,
+  u28b-with-meta-on-an-infinite-range.
+- Read-checked:
+  - the other metadatable visitors (seq.cpp sort, parse.cpp meta hint, strip_source_meta) only
+    gain the type;
+  - the hang came from meta.cpp 50-53 printing the infinite seq in the error text.
+
+U30 | include/.../iterator.hpp, src/cpp/jank/runtime/obj/iterator.cpp
+- Change: iterator::is_realized returns true (behavior::realizable).
+- Test: deviations_r4_test.jank u30-an-iterate-is-realized.
+- Residual: Clojure's (realized? (next (iterate inc 0))) is false; jank computes each next value
+  eagerly, so it answers true.
+- U28 and U30 apply alone and together.
+
+U29 | src/cpp/jank/runtime/core/seq.cpp
+- Change: nth/2 and nth/3 pass the truncated index (make_box(to_int(idx))) to an indexable's nth,
+  as RT.nth(Object, int) receives it.
+- Test: deviations_r4_test.jank u29-nth-of-a-vector-truncates-a-double-index (all five
+  assertions, transient vector included).
+- Read-checked:
+  - the inline (cpp/jank.runtime.nth ...) and the fn take the same function;
+  - persistent_vector::nth/2's fallback goes through get, which a double index missed;
+  - a vector called as a fn still requires an integer, as Clojure's.
+
+U31 | src/cpp/jank/runtime/obj/persistent_list.cpp
+- Change: pop of a one-element list keeps the metadata (EMPTY.withMeta(meta)).
+- Test: deviations_r4_test.jank u31-pop-of-a-one-element-list-keeps-its-meta.
+
+U32 | src/cpp/jank/runtime/obj/persistent_list.cpp
+- Change: seq of a non-empty list is the list itself (it was a copy without metadata).
+- Safe: every in-place iteration takes fresh_seq. The callers of next_in_place (seq.cpp 327-338,
+  context.cpp 717, multi_function.cpp, processor.cpp, to_string.hpp, sequence_range.hpp) and
+  core.jank's doseq (fresh-seq) were read. sequence_range (seq()) uses next(). repeat::seq already
+  returns this.
+- Test: deviations_r4_test.jank u32-seq-of-a-list-is-the-list.
+- U31 and U32 apply alone and together.
+
+U34 | include/.../persistent_array_map.hpp, src/cpp/jank/runtime/obj/persistent_array_map.cpp
+- Change: create_from_seq keeps the transient that assoc_in_place returns (a transient hash map
+  past 8 entries) and returns object_ref. The promoted map was dropped, so pairs past the 8th
+  were lost.
+- Safe: core.jank's array-map (6255) is the only caller, through cpp/ interop.
+- Test: deviations_r4_test.jank u34-array-map-keeps-every-pair.
+- Residual: Clojure's array-map keeps an array map (insertion order) of any size; jank's is a hash
+  map past 8 (native_array_map's capacity is a u8).
+
+U36 (also U37) | src/cpp/jank/runtime/obj/re_matcher.cpp
+- Change: re_matcher::nth follows Matcher.group(n):
+  - with no current match it throws the object "No match found" (U37);
+  - when re-find keeps the match as a string (a pattern without groups), index 0 is the match and
+    other indexes are "No group n" or the fallback (U36).
+- Tests: deviations_r4_test.jank u36-nth-of-a-matcher-is-the-match,
+  u37-nth-of-a-matcher-without-a-match-throws.
+
+U38 | src/cpp/jank/runtime/obj/re_pattern.cpp
+- Change: std::regex is built from data() and size(), so a NUL is part of the pattern.
+- Test: deviations_r4_test.jank u38-a-pattern-keeps-its-nul.
+- Read-checked: libstdc++ 15.3.0 regex_scanner.tcc 168-174 reads a NUL in ECMAScript as an
+  ordinary character. The matcher's input (match_input from c_str) is a separate site (R83's,
+  not changed).
+
+U39 | src/cpp/jank/runtime/core.cpp
+- Change: print, print1 and println write a pattern as #"..." through a static print_one
+  (Clojure's print-method for Pattern ignores *print-readably*); str keeps the bare text.
+- Test: deviations_r4_test.jank u39-print-of-a-pattern.
+- Residual: a pattern inside a printed collection prints through the collection's to_string.
+
+U41 | src/jank/jank/nrepl/server/handler/completions.jank
+- Change: each var candidate's :ns is its own namespace, (namespace (symbol v)).
+- Test: deviations_r4_test.jank u41-completions-name-each-vars-own-namespace.
+- Read-checked: test/bash/nrepl-proof's completion snippet checks only the value.
+
+U44 | src/cpp/jank/runtime/obj/exception_info.cpp
+- Change: exception_info(error_ref) sets message to the error's message, or to its kind's text
+  (jank::error::kind_str) when empty. ex-message of *e after a compile error was "".
+- Test: deviations_r4_test.jank u44-ex-message-of-a-compile-error-in-star-e.
+- V18 (ex-data/ex-cause of that *e) is not changed.
+
+U45 | src/cpp/main.cpp
+- Change: run_main does (in-ns 'user) and (refer 'clojure.core) before requiring the target and
+  calling -main, as clojure.main -m (initialize) and jank's own run() do.
+- Test: deviations_r4_test.jank u45-main-runs-in-user.
+- Read-checked:
+  - load_module restores *ns*, so -main sees user (the evidence's clojure.core was the value
+    before the load);
+  - test/bash run-main scripts don't depend on *ns*.
+
+U48 | src/jank/clojure/core.jank
+- Change: load converts a string to a module name as Clojure's resource paths mean it: "/a/b_c"
+  is a.b-c, and a path without a slash is relative to the current namespace's directory (new
+  defn- resource-path->module). Symbols (load-one's libs) pass through.
+- Test: deviations_r4_test.jank u48-load-takes-a-resource-path.
+- Read-checked: on Clojure, the mapping inverts root-resource for libs without `_`.
+
+U49a, U49b, U49c, U49d | src/jank/clojure/core.jank (one function each)
+- Change:
+  - a: load-string = context::eval_string through __rt_ctx, as load already calls load_module;
+  - b: load-file = context::eval_file;
+  - c: ns-refers ported, as ns-publics with not= on var_ns;
+  - d: requiring-resolve ported with require (serialized-require is unported).
+- Test: deviations_r4_test.jank u49-loading-functions-exist needs all four plus ns-aliases, which
+  is not local (section 2). So u49 still fails on its third assertion.
+- Build must check: the interop calls (.eval_string ctx (.to_string s)) and (.unwrap_or opt nil)
+  on jtl::option<object_ref>.
+
+U50 | src/jank/clojure/core.jank
+- Change: refer throws (ex-info) when a given :only or :refer is not sequential (Clojure's check).
+- Test: deviations_r4_test.jank u50-refer-only-must-be-sequential.
+
+U51 | src/jank/clojure/core.jank
+- Change: *loading-verbosely* moves before load; load-lib binds it from :verbose; load-one prints
+  (clojure.core/load "/lib/path").
+- Test: deviations_r4_test.jank u51-require-verbose-prints-the-load.
+- Residual: Clojure's alias/refer lines under :verbose are not printed.
+
+U55 | src/jank/clojure/core.jank
+- Change: the ns macro drops the reader's :jank/source from the name's metadata before
+  reset-meta!.
+- Test: deviations_r4_test.jank u55-ns-form-leaves-no-namespace-meta.
+
+U59b | src/cpp/jank/runtime/core.cpp
+- Change: compile returns the lib (it returned nil).
+- Test: deviations_r4_test.jank u59-compile-at-run-time still needs U59a (not local, section 2).
+
+U61 | src/jank/clojure/data.jank
+- Change: equality-partition and diff-similar dispatch as Clojure's protocols do (:set, :map,
+  :sequential via sequential?, :atom), with diff-set.
+- Test: deviations_r4_test.jank u61-diff-subdiffs-maps-and-vectors.
+- Checked on Clojure: equals clojure.data/diff on 20,000 random pairs.
+
+U62 | include/cpp/jank/runtime/core.hpp, src/cpp/jank/runtime/core.cpp
+- Change: ex_message, ex_data and ex_cause give nil for a non-exception; ex_message returns
+  object_ref.
+- Test: deviations_r4_test.jank u62-ex-message-of-a-non-exception-is-nil.
+- Read-checked: no C++ caller other than core.jank's three defs; test.jank's thrown-with-msg? now
+  fails cleanly on a thrown string.
+
+U63 | src/cpp/jank/runtime/obj/exception_info.cpp
+- Change: to_map's :cause and :data come from the root cause.
+- Test: deviations_r4_test.jank u63-throwable-map-cause-is-the-root-cause.
+- Residual: jank still sets :cause/:data when nil, where Clojure omits them.
+
+U66 | src/cpp/jank/runtime/core/seq.cpp
+- Change: counted? is false for strings, arrays, and hash/sorted map and set seqs. Clojure 1.12
+  was run on 26 values to fix the list (clj/probe1.clj); array map seqs, vector seqs and string seqs stay true.
+- Test: deviations_r4_test.jank u66-strings-are-not-counted.
+- Also: jank's own test/bash/clojure-test-suite list comments out counted-qmark for exactly this;
+  re-enabling it is the maintainers' call.
+
+U68 | src/cpp/jank/runtime/core/seq.cpp
+- Change: shuffle takes any seq (cons, repeat, sort's result); maps, strings and arrays still
+  throw (Clojure: not a Collection).
+- Test: deviations_r4_test.jank u68-shuffle-of-any-seq.
+
+U69 | src/jank/clojure/walk.jank
+- Change: walk keeps a list's and a seq's metadata (Clojure 1.12).
+- Test: deviations_r4_test.jank u69-postwalk-keeps-list-metadata.
+- Checked on Clojure: 20,000 random forms.
+
+U70 | src/cpp/jank/runtime/obj/tagged_literal.cpp
+- Change: to_code_string (pr) writes the form with to_code_string: #foo "bar".
+- Test: deviations_r4_test.jank u70-tagged-literal-prints-its-form-readably.
+
+U71 | src/cpp/jank/runtime/core.cpp
+- Change: parse-uuid returns nil unless the text has exactly four dashes and no leading brace
+  (java.util.UUID/fromString); stduuid accepted 32 bare digits and {...}.
+- Test: deviations_r4_test.jank u71-parse-uuid-needs-the-dashed-form.
+- Residual: Java's lenient short forms ("0-0-0-0-0" is a uuid on Clojure) are still nil. The
+  #uuid reader is not changed (jank's own reader tests expect strictness).
+
+U72 | src/jank/clojure/core.jank
+- Change: unchecked-inc-int ported as unchecked_inc (jank's int is its long), so areduce works.
+- Test: deviations_r4_test.jank u72-areduce-over-an-array.
+- Residual: no 32-bit wrap (S40's class).
+
+U73a, U73b | src/jank/clojure/core.jank
+- Change: a: newline prints system-newline; b: flush is (cpp/fflush (cpp/unbox (:* FILE) *out*))
+  and nil, the unbox form nrepl/server/capture.jank uses.
+- Test: deviations_r4_test.jank u73-newline-and-flush needs both.
+
+U74b-a, U74b-b, U74b-c, U74b-d | src/jank/clojure/core.jank
+- Change:
+  - a: reversible? = vector? or sorted?;
+  - b: indexed? = vector?;
+  - c: special-symbol? against jank's analyzer table (processor.cpp specials() plus
+    catch/finally);
+  - d: into-array/1 = to-array.
+- Test: deviations_r4_test.jank u74b-collection-predicates needs all four.
+- Residuals:
+  - transient vectors aren't indexed? (Clojure: true);
+  - Clojure's specials . new set! deftype* reify* & monitor-* import* aren't jank's;
+  - into-array's component type is object, and into-array/2 stays unported (no Class).
+
+U76 | src/jank/clojure/core.jank
+- Change: spit writes (str content).
+- Test: deviations_r4_test.jank u76-spit-writes-any-value-as-str.
+
+U77 | src/jank/clojure/core.jank
+- Change: slurp takes [f & opts], with the options ignored (jank reads bytes; :encoding is not
+  applied).
+- Test: deviations_r4_test.jank u77-slurp-takes-options.
+
+U78 | src/jank/clojure/core.jank
+- Change: spit throws (str f " (No such file or directory)"), slurp's own form, when the file
+  doesn't open.
+- Test: deviations_r4_test.jank u78-spit-into-a-missing-directory-throws.
+- U76, U77 and U78 apply alone and together.
+
+U83 | src/cpp/clojure/data/json_native.cpp
+- Change: an unsigned JSON integer past i64 is a BigInt (data.json's read-integer).
+- Test: deviations_r4_test.jank u83-json-reads-big-integers-exactly.
+- Residual: integers past u64 still arrive from nlohmann as doubles.
+
+U86 | src/cpp/clojure/data/json_native.cpp
+- Change: writing NaN or an infinity throws data.json's messages; nlohmann wrote null.
+- Test: deviations_r4_test.jank u86-json-does-not-write-nan.
+
+U87 | src/cpp/clojure/data/json_native.cpp
+- Change: read_str of empty or whitespace-only text returns :eof-value, or throws "JSON error
+  (end-of-file)" when eof-error? is set.
+- Test: deviations_r4_test.jank u87-json-eof-value.
+
+2. Confirmed ids not fixed, and why
+-----------------------------------
+
+Owned by other agents (brief):
+- S2-S12, S14, S15, S18-S21, S40, U1, U2, U7, U75.
+- U84 shares S9's cause (big_decimal from a double, math.cpp 817), owned with S9.
+- No S/U fix of mine needed persistent_string or utf8; S22-S24's UTF-8 side is listed below
+  (regex engine).
+
+Not local: a design or a library change.
+- S22-S35, U35: libstdc++'s std::regex (ECMAScript grammar and its recursive executor) stands
+  for java.util.regex. The fix is a Java-syntax translator or another engine:
+  - S22-S24: bytes for characters;
+  - S25-S33: grammar and lookahead differences;
+  - S34: recursion depth;
+  - S35: NFA state limit;
+  - U35: per-position capture reset.
+- S36: literal locals are natively typed (R23/R24's root); a call position on them is analyzed
+  as a C++ call.
+- S42: the 10-parameter limit is the callable interface (core/call.hpp max_params, behavior
+  arities).
+- S59, U81: immer's map set/update store the given key, and no public API returns the stored
+  entry (deps/immer/immer/map.hpp 94-101, 405-440). Keeping the stored key needs an immer change.
+  U81 also had no result.
+- S65: future.cpp's deref holds the thread lock across join, and cancel_future (core.cpp) holds
+  the state lock while taking it: a two-file lock protocol.
+- S67: lazy_meta::get evaluates under its write lock. A fix needs a re-entrancy/wait design in
+  lazy_meta, and R43 (another agent's) is the same site.
+- U4, U5, U6, U20-U25: C++ interop through CppInterOp:
+  - U4: explicit template arguments re-deduced;
+  - U5: conversions to reference parameters of fn pointers;
+  - U6, U24: no built-in operator candidates in BestOverloadMatch;
+  - U20, U21: enums treated as primitives in build_cpp_call;
+  - U22, U23: GetOperator's lookup in CppInterOp.cpp;
+  - U25: no class template argument deduction.
+  U4, U5, U20 and U21 may be local in analyze/processor.cpp, but each depends on CppInterOp
+  answers I could not check without a build; not attempted.
+- U12: a deferred fn has no with_meta. Adding metadatable to deferred_cpp_function needs a
+  decision on what a lazily compiled fn's metadata is (U14: Clojure nil, jank {:name}); left out.
+- U18: Clojure throws on a pop past the thread's base frame. jank's frame stack has no base
+  frame (a future's conveyed frame is Clojure's bottom), and a throwing context pop would reach
+  binding_scope's destructor (context.cpp 674-677).
+- U26: cpp/delete emits GC_free (codegen 1894-1919), right only for jank's own cpp/new. Telling
+  pointers apart is a design question.
+- U33: jank offers transient sorted maps and sets on purpose (transient_sorted_map.cpp); removing
+  them changes into's path.
+- U40, U40b, U40c: the reader's positions only reach :jank/source. Line/column/file/name/ns meta
+  on read lists and vars spans the reader, def analysis and var meta.
+- U49's ns-aliases: needs an accessor for ns's folly::Synchronized aliases (a core.hpp/core.cpp
+  function plus core.jank).
+- U59a: at run time the output target is unset (context_dynamic.cpp 274-277); choosing one and its
+  extension for compile outside `jank compile` is a CLI decision.
+- U65: format is std::format; Java's Formatter is a subsystem.
+- U67: jank's map entries are 2-vectors, so map-entry? can't tell them apart.
+- U85: nlohmann's DOM has no arbitrary-precision number, so writing BigInts/BigDecimals exactly
+  needs another writer.
+- U91, U92: pprint is prn, and cl-format is a subsystem (U92's test needs cl-format beside
+  print-table, root-cause and print-stack-trace).
+
+Not confirmed, so no diff (rules, section 8):
+- No result: U64, U79, U80, U81, U82.
+  - U64 would be one token, exception_info.cpp 83: cause_to_via(cause) -> cause_to_via(cause_it).
+  - U79: slurp's file_size runs before is_open.
+- U74: its evidence was another test's.
+- U88, U89, U90: failed with an error none predicted (jank.shell likely didn't load; REPORT-5 §1).
+- S49, S57, S70: failed in another way. S49 was re-tested as U4 and S57 as U7.
+  - S70's text is U16's.
+  - S70's pointer_free part is not seen.
+- Never run (no test): S13, S39, S43, S45-S48, S51, S52, S54-S56, S58, S66, S68, S72, S74-S76,
+  U42, U43, U46, U47, U52-U54, U56-U58, U60.
+- Refuted: S44 (re-tested as U3, fixed), S69.
+
+Shared causes:
+- U8 = U9 = U10 = U11 = U13 = U13b (realize's bind_root); u14 also passes with it.
+- U36 = U37 (re_matcher::nth).
+- S41a and S41b are one deviation on two paths.
+- S63 also fixes U13's same-thread case.
+
+3. What a build must confirm (all diffs)
+----------------------------------------
+
+- Compile, and jank's own suites:
+  - test/cpp: the jit fail-/pass- files, persistent_array_map, list, repeat;
+  - test/bash: clojure.test, cli, nrepl-proof, error-reporting.
+- The new deftests' assertions per section 1.
+- Interop in core.jank that I could not compile:
+  - U49a/b: (.eval_string ...), (.eval_file ...), (.unwrap_or ... nil);
+  - U73b: (cpp/unbox (:* FILE) *out*).
+- U8: the per-call cost without the var rebind.
+- U32: no remaining caller relies on seq() of a list being a fresh object.
+
+Files
+-----
+
+- fixes/*.diff: the 63 listed in section 1.
+- .r6-scratch/fix2/:
+  - fx.sh (prep/mk), edits*.py (the edits), stack.sh (applies all 63 together), notes.txt;
+  - clj/portcheck.clj, clj/readcheck.clj, clj/probe1.clj (Clojure 1.12 probes), portcheck.out;
+  - cpp/check.cpp.
+- Work copies (w/, stack/) deleted at the end.

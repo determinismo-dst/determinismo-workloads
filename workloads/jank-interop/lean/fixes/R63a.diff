@@ -1,0 +1,29 @@
+--- a/compiler+runtime/src/jank/clojure/string.jank
++++ b/compiler+runtime/src/jank/clojure/string.jank
+@@ -213,16 +213,16 @@
+   [s cmap]
+   (when (nil? s)
+     (throw (ex-info "escape does not support nil"  {})))
+-  (let [c (count s)]
+-    (loop [index (int 0)
+-           out ""]
+-      (if (= c index)
+-        out
+-        (let [ch (nth s index)]
+-          (recur (inc index)
+-                 (if-let [replacement (cmap ch)]
+-                   (str out replacement)
+-                   (str out ch))))))))
++  ;; Walk the characters (seq), not the bytes (count, nth): a byte never equals a multi-byte key.
++  (loop [chars (seq s)
++         out ""]
++    (if chars
++      (let [ch (first chars)]
++        (recur (next chars)
++               (if-let [replacement (cmap ch)]
++                 (str out replacement)
++                 (str out ch))))
++      out)))
+ 
+ (defn index-of
+   "Return index of value (string or char) in s, optionally searching

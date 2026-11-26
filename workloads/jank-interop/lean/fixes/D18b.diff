@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -1239,8 +1239,7 @@
+ 
+    f must be free of side-effects"
+   [o f & args]
+-  ; TODO: Atomics.
+-  (reset-meta! o (apply f (meta o) args)))
++  (cpp/jank.runtime.alter_meta o f args))
+ 
+ ;; Atoms.
+ (defn- setup-reference [r options]

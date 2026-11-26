@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
+index e8f2a80..e83d2c5 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
+@@ -6,7 +6,8 @@ namespace jank::runtime::obj
+   re_pattern::re_pattern(jtl::immutable_string const &s)
+     : object{ obj_type, obj_behaviors }
+     , pattern{ s }
+-    , regex{ s.c_str(), std::regex_constants::ECMAScript }
++    /* With its length, so a NUL in the pattern is a character to match, not its end. */
++    , regex{ s.data(), s.size(), std::regex_constants::ECMAScript }
+   {
+   }
+ 

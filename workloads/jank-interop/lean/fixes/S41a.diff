@@ -1,0 +1,122 @@
+diff --git a/compiler+runtime/src/cpp/jank/codegen/api.cpp b/compiler+runtime/src/cpp/jank/codegen/api.cpp
+index 077f32a..e9645db 100644
+--- a/compiler+runtime/src/cpp/jank/codegen/api.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/api.cpp
+@@ -7,6 +7,17 @@
+ #include <jank/runtime/obj/persistent_array_map.hpp>
+ #include <jank/runtime/obj/transient_vector.hpp>
+ #include <jank/runtime/obj/transient_hash_set.hpp>
++#include <jank/runtime/core/make_box.hpp>
++#include <jank/util/fmt.hpp>
++
++/* Clojure's RT.map and RT.set (createWithCheck) throw when a map or set expression's keys
++ * collide at run time; literal duplicates are already read errors. */
++[[noreturn]]
++static void _jank_throw_duplicate_key(jank::runtime::object_ref const key)
++{
++  throw jank::runtime::make_box(jank::util::format("Duplicate key: {}", key.to_code_string()))
++    .erase();
++}
+ 
+ jank::runtime::var_ref _jank_var(char const * const sym)
+ {
+@@ -217,7 +228,12 @@ _jank_hset_impl(char const * const meta, jank::u64 const elems, va_list args)
+   for(jank::u64 i{}; i < elems; ++i)
+   {
+     /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-    trans.conj_in_place(va_arg(args, jank::runtime::object *));
++    jank::runtime::object_ref const elem{ va_arg(args, jank::runtime::object *) };
++    if(trans.contains(elem))
++    {
++      _jank_throw_duplicate_key(elem);
++    }
++    trans.conj_in_place(elem);
+   }
+ 
+   if(meta)
+@@ -259,7 +275,12 @@ _jank_hset_impl(jank::runtime::object_ref const meta, jank::u64 const elems, va_
+   for(jank::u64 i{}; i < elems; ++i)
+   {
+     /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-    trans.conj_in_place(va_arg(args, jank::runtime::object *));
++    jank::runtime::object_ref const elem{ va_arg(args, jank::runtime::object *) };
++    if(trans.contains(elem))
++    {
++      _jank_throw_duplicate_key(elem);
++    }
++    trans.conj_in_place(elem);
+   }
+ 
+   return trans.to_persistent()->with_meta(meta);
+@@ -287,9 +308,14 @@ _jank_amap_impl(char const * const meta, jank::u64 const pairs, va_list args)
+   for(jank::u64 i{}; i < pairs; ++i)
+   {
+     /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-    trans.assoc_in_place(va_arg(args, jank::runtime::object *),
+-                         /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-                         va_arg(args, jank::runtime::object *));
++    jank::runtime::object_ref const key{ va_arg(args, jank::runtime::object *) };
++    /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
++    jank::runtime::object_ref const val{ va_arg(args, jank::runtime::object *) };
++    if(trans.contains(key))
++    {
++      _jank_throw_duplicate_key(key);
++    }
++    trans.assoc_in_place(key, val);
+   }
+ 
+   if(meta)
+@@ -332,9 +358,14 @@ _jank_amap_impl(jank::runtime::object_ref const meta, jank::u64 const pairs, va_
+   for(jank::u64 i{}; i < pairs; ++i)
+   {
+     /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-    trans.assoc_in_place(va_arg(args, jank::runtime::object *),
+-                         /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-                         va_arg(args, jank::runtime::object *));
++    jank::runtime::object_ref const key{ va_arg(args, jank::runtime::object *) };
++    /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
++    jank::runtime::object_ref const val{ va_arg(args, jank::runtime::object *) };
++    if(trans.contains(key))
++    {
++      _jank_throw_duplicate_key(key);
++    }
++    trans.assoc_in_place(key, val);
+   }
+ 
+   return trans.to_persistent()->with_meta(meta);
+@@ -361,9 +392,14 @@ _jank_hmap_impl(char const * const meta, jank::u64 const pairs, va_list args)
+   for(jank::u64 i{}; i < pairs; ++i)
+   {
+     /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-    trans.assoc_in_place(va_arg(args, jank::runtime::object *),
+-                         /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-                         va_arg(args, jank::runtime::object *));
++    jank::runtime::object_ref const key{ va_arg(args, jank::runtime::object *) };
++    /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
++    jank::runtime::object_ref const val{ va_arg(args, jank::runtime::object *) };
++    if(trans.contains(key))
++    {
++      _jank_throw_duplicate_key(key);
++    }
++    trans.assoc_in_place(key, val);
+   }
+ 
+   if(meta)
+@@ -405,9 +441,14 @@ _jank_hmap_impl(jank::runtime::object_ref const meta, jank::u64 const pairs, va_
+   for(jank::u64 i{}; i < pairs; ++i)
+   {
+     /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-    trans.assoc_in_place(va_arg(args, jank::runtime::object *),
+-                         /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
+-                         va_arg(args, jank::runtime::object *));
++    jank::runtime::object_ref const key{ va_arg(args, jank::runtime::object *) };
++    /* NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) */
++    jank::runtime::object_ref const val{ va_arg(args, jank::runtime::object *) };
++    if(trans.contains(key))
++    {
++      _jank_throw_duplicate_key(key);
++    }
++    trans.assoc_in_place(key, val);
+   }
+ 
+   return trans.to_persistent()->with_meta(meta);

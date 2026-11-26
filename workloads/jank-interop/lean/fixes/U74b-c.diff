@@ -1,0 +1,23 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..c849d88 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -6417,11 +6417,16 @@
+      (comp seq :content)
+      root))
+ 
++(def ^:private special-symbols
++  ;; analyze/processor.cpp specials() and is_special.
++  '#{def fn* recur do let* letfn* loop* if quote var throw try case* catch finally
++     cpp/raw cpp/dsl cpp/cast cpp/unsafe-cast cpp/box cpp/unbox cpp/new cpp/delete})
++
+ (defn special-symbol?
+   "Returns true if s names a special form"
+   [s]
+-    ;; (contains? (. clojure.lang.Compiler specials) s)
+-  (throw (ex-info "TODO: port special-symbol?"  {})))
++  ;; (contains? (. clojure.lang.Compiler specials) s)
++  (contains? special-symbols s))
+ 
+ (defn max-key
+   "Returns the x for which (k x), a number, is greatest.

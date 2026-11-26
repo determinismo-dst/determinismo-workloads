@@ -1,0 +1,21 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
+@@ -129,7 +129,8 @@
+   {
+     auto const n(index + jtl::next_char_size(str->data, index));
+ 
+-    if(n == str->data.size())
++    /* A last character cut short (fewer bytes than its lead announces) ends past the size. */
++    if(n >= str->data.size())
+     {
+       return {};
+     }
+@@ -141,7 +142,7 @@
+   {
+     index += jtl::next_char_size(str->data, index);
+ 
+-    if(index == str->data.size())
++    if(index >= str->data.size())
+     {
+       return {};
+     }

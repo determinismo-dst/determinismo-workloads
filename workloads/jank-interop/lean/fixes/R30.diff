@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -630,8 +630,10 @@
+         return o;
+       }
+ 
+-      /* TODO: Provide &env. */
+-      auto const args(cons(cons(rest(o), {}), o));
++      /* A macro fn's parameters are [&form &env & args]: &form is the whole call form, as in
++       * Clojure, and the args are the call's arguments.
++       * TODO: Provide &env (a map of the locals in scope); it is nil for now. */
++      auto const args(cons(o, cons(jank_nil, rest(o))));
+       return apply_to(var->deref(), args);
+     }
+   }

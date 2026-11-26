@@ -1,0 +1,19 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..e1c6f06 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -6168,6 +6168,14 @@
+     ;; (. clojure.lang.PersistentStructMap (getAccessor s key))
+   (throw (ex-info "TODO: port accessor"  {})))
+ 
++(defn load-file
++  "Sequentially read and evaluate the set of forms contained in the file."
++  [name]
++  ;; clojure.lang.Compiler/loadFile; jank binds *file* to the path while it evaluates.
++  (-> cpp/jank.runtime.__rt_ctx
++      (.eval_file (.to_string name))
++      (.unwrap_or nil)))
++
+ (defn load-reader
+   "Sequentially read and evaluate the set of forms contained in the
+   stream/file"

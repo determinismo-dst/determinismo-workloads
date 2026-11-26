@@ -1,0 +1,46 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/obj/multi_function.hpp b/compiler+runtime/include/cpp/jank/runtime/obj/multi_function.hpp
+index 9fb7a60..4c089ec 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/multi_function.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/multi_function.hpp
+@@ -98,6 +98,9 @@ namespace jank::runtime::obj
+     /*** XXX: Everything here is thread-safe. ***/
+     std::recursive_mutex mutex;
+     mutable object_ref cached_hierarchy{};
++    /* The hierarchy's value when the cache was made, as Clojure's cachedHierarchy, which
++     * get_method compares with the current value (cached_hierarchy holds the reference). */
++    mutable object_ref cached_hierarchy_value{};
+     mutable persistent_hash_map_ref method_cache{};
+     persistent_hash_map_ref method_table{};
+     persistent_hash_map_ref prefer_table{};
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp
+index 776d488..7e3d4ad 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/multi_function.cpp
+@@ -130,6 +130,7 @@ namespace jank::runtime::obj
+   {
+     std::lock_guard<std::recursive_mutex> const lock{ mutex };
+     cached_hierarchy = jank_nil;
++    cached_hierarchy_value = jank_nil;
+     method_table = prefer_table = method_cache = persistent_hash_map::empty();
+     return runtime::detail::untagged(this);
+   }
+@@ -138,6 +139,7 @@ namespace jank::runtime::obj
+   {
+     std::lock_guard<std::recursive_mutex> const lock{ mutex };
+     cached_hierarchy = hierarchy;
++    cached_hierarchy_value = hierarchy.deref();
+     method_cache = method_table;
+     return method_cache;
+   }
+@@ -246,7 +248,10 @@ namespace jank::runtime::obj
+ 
+   object_ref multi_function::get_method(object_ref const dispatch_val) const
+   {
+-    if(cached_hierarchy != hierarchy.deref())
++    /* Compared with the value the cache was made from: a hit takes no lock. Comparing with
++     * the reference never matched, so every call reset the cache under the mutex, which a
++     * defmethod holds while it hashes a lazy dispatch value. */
++    if(cached_hierarchy_value != hierarchy.deref())
+     {
+       const_cast<multi_function *>(this)->reset_cache();
+     }

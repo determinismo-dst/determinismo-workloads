@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_sorted_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_sorted_map.cpp
+@@ -65,7 +65,8 @@
+     auto const res(data.find(key));
+     if(res != data.end())
+     {
+-      return make_box<persistent_vector>(std::in_place, key, res->second);
++      /* The stored key, as Clojure's entryAt: it may differ from the one compared equal to it. */
++      return make_box<persistent_vector>(std::in_place, res->first, res->second);
+     }
+     return {};
+   }

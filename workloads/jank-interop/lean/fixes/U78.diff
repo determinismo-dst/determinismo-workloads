@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..3c15569 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -7347,6 +7347,9 @@ fails, attempts to require sym's namespace and retries."
+     (if-not append
+       (.open file path)
+       (.open file path cpp/std.ios_base.app))
++    ;; Clojure's writer throws FileNotFoundException when the file can't be opened.
++    (when-not (cpp/.is_open file)
++      (throw (str f " (No such file or directory)")))
+     (cpp/<< file (cpp/cast jtl.immutable_string content))
+     nil))
+ 

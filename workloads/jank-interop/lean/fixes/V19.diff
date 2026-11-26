@@ -1,0 +1,17 @@
+--- a/compiler+runtime/src/cpp/jank/c_api.cpp
++++ b/compiler+runtime/src/cpp/jank/c_api.cpp
+@@ -171,13 +171,7 @@
+     object_ref const f_obj(reinterpret_cast<object *>(f));
+     object_ref const a1_obj(reinterpret_cast<object *>(a1));
+     object_ref const a2_obj(reinterpret_cast<object *>(a2));
+-    jank_object_ref ret{ jank_const_nil() };
+-    cpptrace::try_catch([&] { ret = f_obj.call(a1_obj, a2_obj).erase().raw(); },
+-                        [](std::exception const &e) { jank::util::print_exception(e); },
+-                        [](jank::runtime::object_ref const e) { jank::util::print_exception(e); },
+-                        [](jank::error_ref const e) { jank::util::print_exception(e); },
+-                        []() { jank::util::print_current_exception(); });
+-    return ret;
++    return f_obj.call(a1_obj, a2_obj).erase().raw();
+   }
+ 
+   jank_object_ref jank_call3(jank_object_ref const f,

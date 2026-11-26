@@ -1,0 +1,57 @@
+diff --git a/compiler+runtime/src/jank/clojure/core.jank b/compiler+runtime/src/jank/clojure/core.jank
+index 7936bea..cce3f0d 100644
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -4798,18 +4798,46 @@
+           chain (apply str (interpose "->" pending))]
+       (throw-if true (str "Cyclic load dependency: " chain)))))
+ 
++(defn- resource-path->module
++  "Clojure's load takes resource paths: \"/a/b_c\" is the module a.b-c, and a path
++   without a leading slash is relative to the current namespace's directory."
++  [path]
++  (let [->module (fn [s]
++                   (apply str (map (fn [c]
++                                     (case c
++                                       \/ \.
++                                       \_ \-
++                                       c))
++                                   s)))]
++    (if (= \/ (first path))
++      (symbol (->module (subs path 1)))
++      (let [dir (->> (str (ns-name *ns*))
++                     reverse
++                     (drop-while #(not= \. %))
++                     rest
++                     reverse
++                     (apply str))
++            m (->module path)]
++        (symbol (if (= "" dir)
++                  m
++                  (str dir "." m)))))))
++
+ (defn load
+   "Loads Clojure code from resources in the module path. A path is interpreted as
+    module-path-relative if it begins with a slash or relative to the root
+    directory for the current namespace otherwise."
+   [& paths]
+   (doseq [path paths]
+-    (check-cyclic-dependency path)
+-    (when-not (= path (first *pending-paths*))
+-      (binding [*pending-paths* (conj *pending-paths* path)]
+-        (-> cpp/jank.runtime.__rt_ctx
+-            (.load_module (.to_string path) cpp/jank.runtime.module.origin.latest)
+-            .expect_ok)))))
++    ;; A string is a resource path, as in Clojure; require's load-one passes module names.
++    (let [path (if (string? path)
++                 (resource-path->module path)
++                 path)]
++      (check-cyclic-dependency path)
++      (when-not (= path (first *pending-paths*))
++        (binding [*pending-paths* (conj *pending-paths* path)]
++          (-> cpp/jank.runtime.__rt_ctx
++              (.load_module (.to_string path) cpp/jank.runtime.module.origin.latest)
++              .expect_ok))))))
+ 
+ (defn- load-one
+   "Loads a lib given its name. If `need-ns?`, ensures that the associated

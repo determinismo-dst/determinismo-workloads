@@ -1,0 +1,330 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -60,6 +60,75 @@
+     }
+   }
+ 
++  namespace detail
++  {
++    /* Fixed-width integers take part in Clojure's long arithmetic; bool doesn't. */
++    template <typename T>
++    concept checked_integer = (std::is_integral_v<T> && !jtl::is_same<T, bool>);
++
++    /* Clojure's `+ - *` on longs: the exact result in i64, or an "integer overflow" error
++     * (Numbers.add/minus/multiply, Math.addExact etc.). Two `int`s (literals, small integers)
++     * are combined in i64 as well, since both are Clojure longs. Other operand types keep
++     * their own operators; the operands are taken by reference so that an expression
++     * template (boost) refers to the same objects as the inline expression did. */
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_add(L const &l, R const &r)
++    {
++      if constexpr(checked_integer<L> && checked_integer<R>)
++      {
++        i64 res{};
++        if(__builtin_add_overflow(l, r, &res))
++        {
++          throw make_box("integer overflow").erase();
++        }
++        return res;
++      }
++      else
++      {
++        return l + r;
++      }
++    }
++
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_sub(L const &l, R const &r)
++    {
++      if constexpr(checked_integer<L> && checked_integer<R>)
++      {
++        i64 res{};
++        if(__builtin_sub_overflow(l, r, &res))
++        {
++          throw make_box("integer overflow").erase();
++        }
++        return res;
++      }
++      else
++      {
++        return l - r;
++      }
++    }
++
++    template <typename L, typename R>
++    [[gnu::always_inline]]
++    inline auto checked_mul(L const &l, R const &r)
++    {
++      if constexpr(checked_integer<L> && checked_integer<R>)
++      {
++        i64 res{};
++        if(__builtin_mul_overflow(l, r, &res))
++        {
++          throw make_box("integer overflow").erase();
++        }
++        return res;
++      }
++      else
++      {
++        return l * r;
++      }
++    }
++  }
++
+   /* Only for fixed integer sizes (i.e. integer and small_integer). */
+   i64 to_i64(object_ref const o);
+   /* Only for fixed real sizes (i.e. real and small_real). */
+@@ -83,7 +152,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data + typed_r->data).erase();
++              return make_box(detail::checked_add(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -94,20 +163,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data + r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_add(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data + typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_add(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data + r->data;
++      return detail::checked_add(l->data, r->data);
+     }
+   }
+ 
+@@ -126,17 +195,17 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l + typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_add(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l + r->data;
++      return detail::checked_add(l, r->data);
+     }
+     else
+     {
+-      return l + r;
++      return detail::checked_add(l, r);
+     }
+   }
+ 
+@@ -155,17 +224,17 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data + r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_add(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data + r;
++      return detail::checked_add(l->data, r);
+     }
+     else
+     {
+-      return l + r;
++      return detail::checked_add(l, r);
+     }
+   }
+ 
+@@ -174,7 +243,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto add(L const l, R const r)
+   {
+-    return l + r;
++    return detail::checked_add(l, r);
+   }
+ 
+   object_ref promoting_add(object_ref const l, object_ref const r);
+@@ -197,7 +266,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data - typed_r->data).erase();
++              return make_box(detail::checked_sub(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -208,20 +277,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data - r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_sub(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data - typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_sub(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data - r->data;
++      return detail::checked_sub(l->data, r->data);
+     }
+   }
+ 
+@@ -240,17 +309,17 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l - typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_sub(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l - r->data;
++      return detail::checked_sub(l, r->data);
+     }
+     else
+     {
+-      return l - r;
++      return detail::checked_sub(l, r);
+     }
+   }
+ 
+@@ -269,17 +338,17 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data - r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_sub(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data - r;
++      return detail::checked_sub(l->data, r);
+     }
+     else
+     {
+-      return l - r;
++      return detail::checked_sub(l, r);
+     }
+   }
+ 
+@@ -288,7 +357,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto sub(L const l, R const r)
+   {
+-    return l - r;
++    return detail::checked_sub(l, r);
+   }
+ 
+   object_ref promoting_sub(object_ref const l, object_ref const r);
+@@ -423,7 +492,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return make_box(typed_l->data * typed_r->data).erase();
++              return make_box(detail::checked_mul(typed_l->data, typed_r->data)).erase();
+             },
+             r,
+             typed_l);
+@@ -434,20 +503,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data * r->data).erase(); },
++        [](auto const typed_l, auto const r) { return make_box(detail::checked_mul(typed_l->data, r->data)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data * typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) { return make_box(detail::checked_mul(l->data, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data * r->data;
++      return detail::checked_mul(l->data, r->data);
+     }
+   }
+ 
+@@ -466,17 +535,17 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l * typed_r->data).erase(); },
++        [](auto const typed_r, L const l) { return make_box(detail::checked_mul(l, typed_r->data)).erase(); },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l * r->data;
++      return detail::checked_mul(l, r->data);
+     }
+     else
+     {
+-      return l * r;
++      return detail::checked_mul(l, r);
+     }
+   }
+ 
+@@ -495,17 +564,17 @@
+     if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data * r).erase(); },
++        [](auto const typed_l, R const r) { return make_box(detail::checked_mul(typed_l->data, r)).erase(); },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data * r;
++      return detail::checked_mul(l->data, r);
+     }
+     else
+     {
+-      return l * r;
++      return detail::checked_mul(l, r);
+     }
+   }
+ 
+@@ -514,7 +583,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   auto mul(L const l, R const r)
+   {
+-    return l * r;
++    return detail::checked_mul(l, r);
+   }
+ 
+   object_ref promoting_mul(object_ref const l, object_ref const r);

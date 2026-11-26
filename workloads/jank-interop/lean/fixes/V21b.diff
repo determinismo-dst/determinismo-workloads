@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/cpp/jank/c_api.cpp
++++ b/compiler+runtime/src/cpp/jank/c_api.cpp
+@@ -140,6 +140,11 @@
+   {
+     object_ref const ns_obj(reinterpret_cast<object *>(ns));
+     object_ref const name_obj(reinterpret_cast<object *>(name));
++    /* A nil namespace makes an unqualified keyword, as clojure.lang.Keyword/intern does. */
++    if(ns_obj.is_nil())
++    {
++      return __rt_ctx->intern_keyword(name_obj.to_string()).expect_ok().erase().raw();
++    }
+     return __rt_ctx->intern_keyword(ns_obj.to_string(), name_obj.to_string())
+       .expect_ok()
+       .erase()

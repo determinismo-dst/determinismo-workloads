@@ -1,0 +1,138 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -318,24 +318,128 @@
+       r);
+   }
+ 
++  /* Numbers.quotient: a double quotient for doubles, an exact truncated quotient otherwise:
++   * a long for two longs (Java's `/`: MIN / -1 is MIN), a BigInt when a BigInt or a ratio takes
++   * part, a BigDecimal (divideToIntegralValue) for decimals. Dividing by zero throws. */
+   object_ref quot(object_ref const l, object_ref const r)
+   {
+     return visit_number_like(
+       [](auto const typed_l, auto const r) -> object_ref {
+         return visit_number_like(
+           [](auto const typed_r, auto const &typed_l) -> object_ref {
+-            auto const typed_l_data{ to_real(typed_l) };
+-            auto const typed_r_data{ to_real(typed_r->data) };
+-#pragma clang diagnostic push
+-#pragma clang diagnostic ignored "-Wfloat-equal"
+-            if(typed_r_data == 0ll)
++            using LT = std::decay_t<decltype(typed_l)>;
++            using RT = std::decay_t<decltype(typed_r->data)>;
++            constexpr bool is_float{ jtl::is_any_same<LT, f32, f64>
++                                     || jtl::is_any_same<RT, f32, f64> };
++            constexpr bool is_decimal{ jtl::is_same<LT, native_big_decimal>
++                                       || jtl::is_same<RT, native_big_decimal> };
++            constexpr bool is_ratio{ jtl::is_same<LT, obj::ratio_data>
++                                     || jtl::is_same<RT, obj::ratio_data> };
++            constexpr bool is_big{ jtl::is_same<LT, native_big_integer>
++                                   || jtl::is_same<RT, native_big_integer> };
++
++            if constexpr(is_float)
+             {
++              auto const n{ to_real(typed_l) };
++              auto const d{ to_real(typed_r->data) };
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wfloat-equal"
++              if(d == 0.0)
+ #pragma clang diagnostic pop
+-              throw make_box("Division by zero is not permitted.").erase();
++              {
++                throw make_box("Divide by zero").erase();
++              }
++              auto const q{ n / d };
++              if(q < 9223372036854775808.0 && q >= -9223372036854775808.0)
++              {
++                return make_box(static_cast<f64>(static_cast<i64>(q))).erase();
++              }
++              if(!std::isfinite(q))
++              {
++                throw make_box("Infinite or NaN").erase();
++              }
++              return make_box(std::trunc(q)).erase();
++            }
++            else if constexpr(is_decimal && !is_ratio)
++            {
++              auto const to_decimal = [](auto const &v) -> native_big_decimal {
++                if constexpr(jtl::is_same<std::decay_t<decltype(v)>, native_big_integer>)
++                {
++                  return native_big_decimal{ v.str() };
++                }
++                else
++                {
++                  return native_big_decimal{ v };
++                }
++              };
++              auto const n{ to_decimal(typed_l) };
++              auto const d{ to_decimal(typed_r->data) };
++              if(d == 0)
++              {
++                throw make_box("Divide by zero").erase();
++              }
++              return make_box<obj::big_decimal>(boost::multiprecision::trunc(n / d)).erase();
++            }
++            else if constexpr(is_ratio && !is_decimal)
++            {
++              auto const to_ratio = [](auto const &v) -> obj::ratio_data {
++                if constexpr(jtl::is_same<std::decay_t<decltype(v)>, obj::ratio_data>)
++                {
++                  return v;
++                }
++                else
++                {
++                  return obj::ratio_data{ native_big_integer{ v }, native_big_integer{ 1 } };
++                }
++              };
++              auto const x{ to_ratio(typed_l) };
++              auto const y{ to_ratio(typed_r->data) };
++              if(y.numerator == 0)
++              {
++                throw make_box("Divide by zero").erase();
++              }
++              native_big_integer const q{ (x.numerator * y.denominator)
++                                          / (x.denominator * y.numerator) };
++              return make_box<obj::big_integer>(q).erase();
+             }
++            else if constexpr(is_big)
++            {
++              native_big_integer const n{ typed_l };
++              native_big_integer const d{ typed_r->data };
++              if(d == 0)
++              {
++                throw make_box("Divide by zero").erase();
++              }
++              return make_box<obj::big_integer>(native_big_integer{ n / d }).erase();
++            }
++            else if constexpr(!is_decimal && !is_ratio)
++            {
++              i64 const n{ typed_l };
++              i64 const d{ typed_r->data };
++              if(d == 0)
++              {
++                throw make_box("Divide by zero").erase();
++              }
++              /* Java's long division: MIN / -1 wraps to MIN (C++'s would trap). */
++              if(d == -1)
++              {
++                return make_box(static_cast<i64>(0ull - static_cast<u64>(n))).erase();
++              }
++              return make_box(n / d).erase();
++            }
+             else
+             {
+-              return make_box(static_cast<i64>(typed_l_data / typed_r_data)).erase();
++              /* A ratio with a decimal: through doubles, as before. */
++              auto const n{ to_real(typed_l) };
++              auto const d{ to_real(typed_r->data) };
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wfloat-equal"
++              if(d == 0.0)
++#pragma clang diagnostic pop
++              {
++                throw make_box("Division by zero is not permitted.").erase();
++              }
++              return make_box(static_cast<i64>(n / d)).erase();
+             }
+           },
+           r,

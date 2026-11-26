@@ -1,0 +1,32 @@
+diff --git a/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp b/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp
+index e6dbf9f..2ea7e6c 100644
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/iterator.hpp
+@@ -37,6 +37,9 @@ namespace jank::runtime::obj
+     object_ref first() const override;
+     object_ref next() const override;
+ 
++    /* behavior::realizable */
++    bool is_realized() const;
++
+     /* behavior::conjable */
+     obj::cons_ref conj(object_ref const head) const;
+ 
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp
+index d044027..fa16de5 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/iterator.cpp
+@@ -32,6 +32,13 @@ namespace jank::runtime::obj
+     return current;
+   }
+ 
++  /* Clojure's Iterate.isRealized: the seed is there. jank computes each value when its
++   * iterator is made, so every iterator is realized. */
++  bool iterator::is_realized() const
++  {
++    return true;
++  }
++
+   object_ref iterator::next() const
+   {
+     iterator_ref const n{ cached_next.load() ?: iterator_ref{} };

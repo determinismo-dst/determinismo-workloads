@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+@@ -902,6 +902,9 @@
+                       deferred.second,
+                       bindings[deferred.second]);
+     }
++    /* These deferred captures belong to this letfn and are now filled in. A later letfn in
++     * the same function must not fill them again, from its own bindings. */
++    b.deferred_bindings.clear();
+ 
+     return inst->name;
+   }

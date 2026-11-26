@@ -1,0 +1,22 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -1013,8 +1013,17 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l) -> object_ref {
+-          return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
+-                                     : make_box(typed_l->data).erase();
++          using T = typename decltype(typed_l)::value_type;
++          /* Math.abs(double): -0.0 is +0.0, which `data < 0` can't see. */
++          if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++          {
++            return make_box(std::fabs(typed_l->data)).erase();
++          }
++          else
++          {
++            return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
++                                       : make_box(typed_l->data).erase();
++          }
+         },
+         l);
+     }

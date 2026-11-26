@@ -1,0 +1,19 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1315,7 +1315,15 @@
+       return expect_object<obj::character>(x);
+     }
+ 
+-    return make_box<obj::character>(to_int(x));
++    /* RT.charCast: a char is one UTF-16 code unit, so a value outside 0..0xFFFF throws (a code
++     * point past U+FFFF is two chars in Clojure). Checked on the whole i64, and thrown as an
++     * object, as Clojure's IllegalArgumentException reaches any catch. */
++    auto const ch{ to_int(x) };
++    if(ch < 0 || ch > 0xFFFF)
++    {
++      throw make_box(util::format("Value out of range for char: {}", ch)).erase();
++    }
++    return make_box<obj::character>(ch);
+   }
+ 
+   obj::exception_info_ref ex_info(jtl::immutable_string const &message, object_ref const data)

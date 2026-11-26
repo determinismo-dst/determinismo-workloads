@@ -1,0 +1,70 @@
+--- a/compiler+runtime/include/cpp/jank/error.hpp
++++ b/compiler+runtime/include/cpp/jank/error.hpp
+@@ -281,6 +281,9 @@
+     jtl::ptr<base> cause;
+     std::unique_ptr<cpptrace::raw_trace> trace;
+     native_vector<candidate> candidates;
++    /* The object a program threw that this error reports (a module's top level, a macro's body),
++     * kept so the error, made an object again (*e, a program's catch), has it as its cause. */
++    runtime::object_ref thrown;
+ 
+     /* TODO: suggestions */
+   };
+--- a/compiler+runtime/src/cpp/jank/error/analyze.cpp
++++ b/compiler+runtime/src/cpp/jank/error/analyze.cpp
+@@ -186,12 +186,16 @@
+                                               read::source const &source,
+                                               runtime::object_ref const expansion)
+   {
+-    return make_error(kind::analyze_macro_expansion_exception,
+-                      e.get_type() == runtime::object_type::persistent_string ? e.to_string()
+-                                                                              : e.to_code_string(),
+-                      source,
+-                      expansion,
+-                      std::make_unique<cpptrace::raw_trace>(trace));
++    auto const ret{ make_error(kind::analyze_macro_expansion_exception,
++                               e.get_type() == runtime::object_type::persistent_string
++                                 ? e.to_string()
++                                 : e.to_code_string(),
++                               source,
++                               expansion,
++                               std::make_unique<cpptrace::raw_trace>(trace)) };
++    /* The macro's exception stays with the error (Clojure: the CompilerException's cause). */
++    ret->thrown = e;
++    return ret;
+   }
+ 
+   error_ref analyze_macro_expansion_exception(error_ref const e,
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -345,7 +345,11 @@
+     }
+     catch(object_ref const e)
+     {
+-      return error::runtime_unable_to_load_module(e.to_code_string());
++      /* The object stays with the error, so a catch that makes the error an object again has
++       * it as the cause (Clojure: the CompilerException's cause). */
++      auto const err{ error::runtime_unable_to_load_module(e.to_code_string()) };
++      err->thrown = e;
++      return err;
+     }
+     catch(error_ref const e)
+     {
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+@@ -24,6 +24,15 @@
+     : object{ obj_type, obj_behaviors }
+     , error{ error }
+   {
++    /* An ex-info a module's top level or a macro's body threw, which this error reports, is the
++     * cause, as in Clojure's CompilerException, so its data stays reachable through ex-cause. */
++    exception_info_ref thrown_cause{};
++    if(error->thrown.get_type() == object_type::exception_info)
++    {
++      thrown_cause = expect_object<exception_info>(error->thrown);
++    }
++
++    cause = thrown_cause;
+   }
+ 
+   static persistent_vector_ref frame_to_vec(cpptrace::stacktrace_frame const &frame)

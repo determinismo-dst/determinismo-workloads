@@ -1,0 +1,105 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -292,6 +292,11 @@
+   }
+ 
+   object_ref promoting_sub(object_ref const l, object_ref const r);
++  /* Clojure's unary minus: Numbers.minus(x) is ops(x).negate(x) (LongOps.negate throws on
++   * Long/MIN_VALUE, DoubleOps.negate gives -0.0 for 0.0, a BigDecimal keeps its scale), and
++   * Numbers.minusP(x) is negateP(x) (Long/MIN_VALUE becomes a BigInt). */
++  object_ref negate(object_ref const o);
++  object_ref promoting_negate(object_ref const o);
+ 
+   template <typename L, typename R>
+   requires(!detail::primitive_number<L> && !detail::primitive_number<R>)
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -138,6 +138,68 @@
+       },
+       l,
+       r);
++  }
++
++  static object_ref negate_number(object_ref const o, bool const promote)
++  {
++    return visit_number_like(
++      [promote](auto const typed_o) -> object_ref {
++        using T = typename jtl::decay_t<decltype(typed_o)>::value_type;
++
++        if constexpr(jtl::is_same<T, obj::integer>)
++        {
++          if(typed_o->data == std::numeric_limits<i64>::min())
++          {
++            if(promote)
++            {
++              return make_box<obj::big_integer>(native_big_integer{ -native_big_integer{ typed_o->data } });
++            }
++            throw make_box("integer overflow").erase();
++          }
++          return make_box(-typed_o->data);
++        }
++        else if constexpr(jtl::is_same<T, obj::small_integer>)
++        {
++          return make_box(-static_cast<i64>(typed_o->data));
++        }
++        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++        {
++          /* A NaN keeps its bits: a negative quiet NaN is not a boxable real (oref.hpp
++           * max_real, D9), and Clojure prints both NaNs alike. */
++          if(std::isnan(typed_o->data))
++          {
++            return typed_o;
++          }
++          return make_box(-typed_o->data);
++        }
++        else if constexpr(jtl::is_same<T, obj::ratio>)
++        {
++          return make_box(
++            obj::ratio_data{ native_big_integer{ -typed_o->data.numerator },
++                             typed_o->data.denominator });
++        }
++        else if constexpr(jtl::is_same<T, obj::big_integer>)
++        {
++          return make_box(native_big_integer{ -typed_o->data });
++        }
++        else
++        {
++          /* big_decimal: its own negation keeps the value's digits (and, with a math
++           * context, rounds as BigDecimal.negate(mc) does). */
++          return make_box(native_big_decimal{ -typed_o->data });
++        }
++      },
++      o);
++  }
++
++  object_ref negate(object_ref const o)
++  {
++    return negate_number(o, false);
++  }
++
++  object_ref promoting_negate(object_ref const o)
++  {
++    return negate_number(o, true);
+   }
+ 
+   object_ref promoting_mul(object_ref const l, object_ref const r)
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -1391,7 +1391,7 @@
+     :inline-arities #{2}}
+   -
+   ([x]
+-   (- 0 x))
++   (cpp/jank.runtime.negate x))
+   ([l r]
+    (cpp/jank.runtime.sub l r))
+   ([l r & args]
+@@ -1809,7 +1809,7 @@
+   the ys from x and returns the result. Supports arbitrary precision.
+   See also: -"
+   ([x]
+-   (-' 0 x))
++   (cpp/jank.runtime.promoting_negate x))
+   ([x y]
+    (cpp/jank.runtime.promoting_sub x y))
+   ([x y & more]

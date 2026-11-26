@@ -1,0 +1,15 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -7321,7 +7321,11 @@
+   and f is not called. Note that reduce-kv is supported on vectors,
+   where the keys will be the ordinals."
+   ([f init coll]
+-   (cpp/jank.runtime.reduce_kv f init coll)))
++   ;; Clojure's IKVReduce slow path (core.clj kv-reduce on Object): any other reducible coll is
++   ;; reduced as a sequence of map entries.
++   (if (or (nil? coll) (vector? coll) (map? coll))
++     (cpp/jank.runtime.reduce_kv f init coll)
++     (reduce (fn [ret e] (f ret (key e) (val e))) init coll))))
+ 
+ (defn slurp
+   "Reads the file at the specified path into a string."

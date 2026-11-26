@@ -1,0 +1,306 @@
+Round 9, area W: strings as UTF-16 (exe jank9-str, Lean namespace Jank.R9.Str). jank main 94d32623
+(upstream-r5/); paths are upstream-r5/compiler+runtime/<path>. Every item is a hypothesis from the Lean
+replica and a standalone run of the fix's own C++ text, re-read against the source; jank was not built
+or run. Clojure values were run on Clojure 1.12.3 (.r9-scratch/clj-run.sh, clj-eval.sh).
+
+The design in one paragraph
+- A string is indexed by UTF-16 code units, as Java's. Its bytes stay UTF-8, which may also hold a
+  surrogate (U+D800..U+DFFF) in its three-byte form, as WTF-8 does. A lone surrogate is a character of
+  its own; a surrogate pair is always the four-byte form of its code point: string_builder joins a high
+  surrogate followed by a low one when it appends them, so (str (subs s 0 1) (subs s 1)) and
+  (apply str (seq s)) give s back byte for byte, and = stays byte equality.
+- The bytes are read as pieces (jtl::utf16_piece_at, the rule round 8's R57a compare already uses): a
+  complete 1-4 byte sequence as its lead announces, else one byte standing alone (unit 0xDC00 + byte).
+  A piece of value >= U+10000 is two units; every other piece is one. Every function is total on every
+  byte string.
+- A character is one unit: nth/get/first of half a pair is that surrogate's three-byte form;
+  `char` accepts 0..0xFFFF (surrogates included) and throws an object outside.
+- Speed: persistent_string caches its unit count (a benign race, as immutable_string's hash). When the
+  count equals the byte count (ASCII above all), count/nth/get/contains?/subs are stock's byte
+  operations, O(1). Otherwise nth/get/subs walk from the start (O(n)), and index-of decodes both strings.
+
+========================================================================================================
+(1) Deviations
+========================================================================================================
+Tests: .r9-scratch/str/tests.jank (ns jank-lean.strings-r9-test, 14 deftests, one assertion each);
+Clojure translation .r9-scratch/str/clj/jank_lean/strings_r9_test.clj: 13 tests, 13 pass on 1.12.3
+(results/r9-str-clj.txt). vw13 is jank only (the nREPL's bencode has no Clojure counterpart).
+
+W9-1 (new) char-array of a non-ASCII string holds its bytes.
+  (alength (char-array (identity "é"))): Clojure 1, jank 2.
+  Path: core.jank char-array 6659-6667 (inline) -> core/array.cpp char_array(object_ref) 60-70 ->
+  char_array(immutable_string) 50-58 (one C char per byte). Test vw1-char-array-of-a-non-ascii-string-
+  has-one-char. Status: new (rounds 6-8 tested char-array only on "a"). Confidence: high. Cause:
+  separate (char arrays are arrays of C char); no fix: it needs 16-bit char arrays (aget, aset, alength,
+  char-array of a seq, every typed-array path).
+Refuted on the way: a surrogate character literal \ud83d is a read error in jank (parse.cpp
+  parse_character_in_base 63-101: libstdc++ codecvt.cc ucs4_out 480-498 rejects 0xD800..0xDFFF), but
+  Clojure 1.12.3 rejects it too ("Invalid character constant: \ud83d", LispReader CharacterReader).
+  Not a deviation; dropped.
+
+The UTF-8 string family (known ids; single-cause tests for the parts no earlier test isolates):
+- vw3 (R53/V77's count) (count "😀"): 2 vs 4. persistent_string.cpp count 179-182.
+- vw4 (LG3 on a pair) (int (first (subs "😀" 0 1))): 55357 vs not 55357 (stock keeps the
+  byte F0; its first walks past the end, R54, and mbrtowc fails).
+- vw7 (V78 feeding index-of) (index-of "😀" (str (char 56832))): 1 vs a C++ exception
+  ("Unfinished character: 56832", utf8.cpp to_char 170-194).
+- vw8 (V71 on a pair) (hash "😀"): -1934073014 vs the hash of bytes F0 9F 98 80.
+- vw9 (V78 + Java's reverse) (mapv int (reverse (str (char 56320) (char 55296)))): [55296 56320] vs a
+  C++ exception (char of a surrogate).
+- vw10 (R62 on a pair) (mapv int (replace "😀" "" "-")): [45 55357 45 56832 45] vs bytes
+  around bytes (stock) or [45 55357 56832 45] (R62a, code points).
+- vw11 (R64's range at its edge) (char 65536): throws vs a character (stock and R66 alike).
+- vw12 (includes? with half a pair) true vs a C++ exception (char of a surrogate).
+- vw14 (V75 on a pair, W9r) (mapv #(mapv int %) (split "\ud83d\ude00" #"")): [[55357] [56832]] vs
+  the bytes cut one by one (stock); with W9r + W9u the two halves.
+- vw15 (R81 with an empty match, W9r) (vec (take 5 (re-seq #"" "\u00e9"))): ["" ""] vs five "" (stock's
+  re-find searches the rest again and finds the same empty match forever).
+- Controls: vw5 (halves of a pair join back), vw6 (apply str of a seq with an emoji), vw13 (bencode
+  writes a byte length, jank only): predicted to pass on stock and with the fixes.
+Status: all extend LG3/R52/R53/V65-V79 (design A: byte indices; design B: code-point characters);
+confidence high. Shared cause: one design choice (strings as bytes, characters as code points); W9u
+is its fix, W9h the hash part, W9c char's range.
+
+========================================================================================================
+(2) Proofs (no sorry, no native_decide, no new axiom; results/r9-str-axioms.txt: propext,
+    Classical.choice, Quot.sound; bitops_arith only propext)
+========================================================================================================
+Jank/R9/Str/Units.lean. A Clojure string is a list of units us (each < 0x10000, lone surrogates
+allowed); W9u's jank holds wtf8 us = (unitsToCps us).flatMap enc (round 2's pairing, each code point in
+UTF-8, a surrogate in three bytes). For every such us (and ns):
+* toUnits_wtf8 ★: the units W9u reads back (to_utf16) are us.
+* count_wtf8 ★: count (utf16_length) is us.length.
+* nth_wtf8 ★: nth at k < length gives the unit us[k] (locate + piece, persistent_string unit_at's
+  general path; nthUnit_eq ★ for every byte string).
+* hash_wtf8 ★: W9h's loop (u32) is String.hashCode of us (hashUnits_eq ★ for every byte string).
+* indexOf_wtf8 ★, lastIndexOf_wtf8 ★: index-of / last-index-of (the general path: decode both, search)
+  are Java's indexOf/lastIndexOf(String, int) on the units, for every start.
+* subs_whole ★: (subs s 0 (count s)) is s byte for byte, for EVERY byte string.
+* subs_tail_units ★: the units of (subs s k) are us from k on (both the fast byte path and
+  utf16_substr, a cut pair included; tailGen_units ★ and drop_locate ★ for every byte string).
+* subs_indexOf_startsWith ★: whenever index-of finds x from any start, the units of
+  (subs s (index-of s x from)) begin with x's units.
+* bitops_arith: for every byte, the C++ bit tests ((b & 0xE0) == 0xC0, ...) are the arithmetic ones the
+  model uses (decide +kernel).
+Not proved (searched instead, (8)): the three-argument subs on units as a byte-exact canonical result
+(searched: every (i, j) on 4,955 texts, every byte string up to 4 bytes); the fast paths of index-of/
+includes?/starts-with?/ends-with? (byte search when every piece is one byte); reverse and replace ""
+(searched); the string_builder join (searched: join and apply-str round trips, 0 failures).
+
+========================================================================================================
+(3) What was replicated (file -> what it mirrors)
+========================================================================================================
+- Jank/R9/Str/Units.lean:
+  enc: W9u jtl/utf8.cpp code_point_bytes (new; replaces to_char's wcrtomb 170-216).
+  leadSize/pieceN/piece: W9u utf16_piece_at (= R57a's next_utf16_units in the combined
+  persistent_string.cpp). toUnits: to_utf16. unitCount: utf16_length / persistent_string count.
+  locate: utf16_locate. nthUnit: persistent_string.cpp unit_at (general path) + character.cpp
+  to_integer. tailGen/subsTail: utf16_substr to the end and substring's fast path (stock's
+  data.substr, persistent_string.cpp 138-155 when count == size). hashUnits: W9h immutable_string.hpp
+  to_hash (stock 648-660). indexOfJ/lastIndexOfJ: java.lang.String indexOf/lastIndexOf(String,int)
+  (JDK javadoc; Clojure string.clj 319-359 with unchecked-int), run by utf16_index_of on the units.
+- Round 2's Jank.StrModel unitsToCps (the pairing) and round 6's utf16_supp_eq are reused unchanged.
+- .r9-scratch/str/cpp/: the fix's own text, extracted verbatim (extract.py: utf8.cpp's helpers and
+  to_char, string_builder's write, string_native's reverse/replace/index-of family) over a std::string
+  stand-in (shim.hpp); harness.cpp adds persistent_string's count/unit_at/substring and the sequence's
+  first/next exactly as in the diff.
+
+========================================================================================================
+(4) What is not exact
+========================================================================================================
+- The model reads bytes as Nat, not u8; bitops_arith ties the tests to the C++ bit operations for every
+  byte value.
+- The search harness replaces immutable_string/string_builder with std::string stand-ins (shim.hpp);
+  jtl's own find/rfind semantics for an empty pattern are copied into the stand-in.
+- The Murmur3 mix after the 31-loop is jank's hash::integer, unchanged (round 1 checked it against
+  Clojure for ASCII strings).
+
+========================================================================================================
+(5) Still left out, and why
+========================================================================================================
+- Regex on bytes, beyond W9r's step (section W9r below): a byte std::regex still sees bytes (`.` and
+  negated classes match one byte of a non-ASCII character, \b's word characters are ASCII: R78-R85,
+  V35, V36). W9r emulates a search from the middle of a pair, which Java starts after an empty match;
+  it does not emulate a match Java starts inside a pair in the middle of an ordinary search (only a
+  pattern matching a lone low surrogate but not the whole pair can do that, e.g. a class of low
+  surrogates, which a byte regex cannot express anyway).
+- What still differs with W9u: a pair built outside string_builder stays two three-byte halves (e.g.
+  with-out-str printing the halves separately); count/nth/subs/hash/compare still see the right
+  units, but = against the four-byte literal is false. A supplementary character literal (\😀, a read
+  error in Clojure) is a four-byte character, and its int is the code point. W9-1 (char arrays).
+  includes?/starts-with?/ends-with? and index-of match units (lone-surrogate needles too); replace with
+  a string or char match, replace-first, trim and the case functions still work on bytes (exact for
+  every canonical string unless the match is a lone surrogate meeting half a pair).
+- clojure.string's other byte users: none found (escape walks count/nth, now units; last-index-of's
+  default (count s) is units).
+
+========================================================================================================
+(6) Assumptions (StrA9-n) and earlier ones replaced
+========================================================================================================
+- StrA9-1: jank's strings come from string_builder (str, format, printing, clojure.string, the reader's
+  unescape) or from bytes outside Clojure's reach (files, sockets); only the first path makes pairs from
+  halves, and W9u joins them there.
+- StrA9-2: the benign race on persistent_string's cached count is acceptable, as jank already does for
+  immutable_string's cached hash (immutable_string.hpp 648-660).
+Replaced: round 6's "UTF-16 is excluded" (REPORT-6 Not fixed: LG3/R52) - the brief asked for it; the
+code-point design of round 6 is superseded by units over WTF-8, which keeps (subs s (count s)) and the
+nREPL's byte offsets consistent (callers below).
+
+========================================================================================================
+(7) Properties checked, with their sources
+========================================================================================================
+- java.lang.String length, charAt, substring, indexOf/lastIndexOf(String,int), startsWith, endsWith,
+  contains, replace(CharSequence,CharSequence), hashCode; StringBuilder.reverse (pairs kept, a low
+  followed by a high becomes a pair); RT.charCast (0..0xFFFF): JDK javadoc, run on 1.12.3.
+- Clojure string.clj index-of/last-index-of 319-359 (unchecked-int from-index).
+- jank's own consistency: (subs s 0 (count s)) = s; (str (subs s 0 k) (subs s k)) = s; (apply str (seq
+  s)) = s; count = (count (seq s)) = number of nth-able indices.
+
+========================================================================================================
+(8) Search runs (complete where stated)
+========================================================================================================
+- W9r's regex loops vs Clojure 1.12.3: 302,255 results, 0 differences (details under W9r in (11)).
+- Harness vs Clojure 1.12.3 (.r9-scratch/str/cpp/, texts.txt from gen.py, seed 20261126 fixed before
+  the run): every text of at most 3 atoms over 14 atoms (a, -, é, €, U+0301, U+FFFF, U+E000, 😀,
+  U+10000, U+10FFFF, lone D83D, DE00, DBFF, DC00: 2,955 texts, complete 3) plus 2,000 random texts of
+  4-8 atoms: 4,955 texts, 1,148,414 result lines, 0 differences. Per op: count 4,955; nth 35,071; subs
+  (every i, j in -1..count+1) 235,087; seq 4,955; apply str 4,955; index-of 359,848 and last-index-of
+  359,848 (8 needles incl. "", lone halves, a pair; every start -2..count+1); starts-with?/ends-with?/
+  includes? 39,640 each; reverse, replace "" "-", replace "" "", hash 4,955 each. Internal checks (non-
+  canonical results, apply-str and subs-join byte round trips, nth's bytes): 0 failures.
+- Every byte string of length 0-4 over 14 bytes (41,371; 885 canonical WTF-8), with ASan+UBSan: count =
+  units, seq = units, every subs's units = the slice, subs 0 count = the bytes, joins give the units
+  (and the bytes when canonical), reverse and index-of total: 0 failures, no sanitizer report.
+- Lean replica (lake exe jank9-str 3, results/r9-str-run.txt): 2,955 texts (complete 3), 383,832
+  checks of count, nth, hash, every tail subs, index-of and last-index-of against Java's functions: 0.
+
+========================================================================================================
+(9) Theorems (★ new for-every-input proofs)
+========================================================================================================
+★ toUnits_wtf8, ★ count_wtf8, ★ nth_wtf8, ★ nthUnit_eq, ★ hash_wtf8, ★ hashUnits_eq, ★ indexOf_wtf8,
+★ lastIndexOf_wtf8, ★ subs_whole, ★ drop_locate, ★ tailGen_units, ★ subs_tail_units,
+★ subs_indexOf_startsWith, ★ unitsToCps_roundtrip, ★ piece_enc, ★ locate_end; bitops_arith (every byte).
+
+========================================================================================================
+(10) Library gaps
+========================================================================================================
+- None blocking. Recursion over pieces is well-founded on the byte length (toUnits.induct serves every
+  proof); Nat bytes with div/mod keep omega usable.
+
+========================================================================================================
+(11) Fixes written (each applies alone to 94d32623; all three apply together; upstream-r5 clean)
+========================================================================================================
+W9u - strings indexed by UTF-16 code units over WTF-8 (fixes/W9u.diff, 12 files):
+  jtl/utf8.hpp/.cpp (pieces, utf16_length/locate/substr/to_utf16/index_of/last_index_of; to_char
+  encodes every code point 0..0x10FFFF itself, surrogates included, no wcrtomb, no locale; #pragma once);
+  persistent_string.hpp/.cpp (cached unit count; count, nth, get, contains, substring, first/
+  last_index_of in units); persistent_string_sequence.hpp/.cpp (walks units: a `second` flag for the
+  low half; first, next, next_in_place, count, to_string); character.cpp (to_integer decodes the
+  piece); string_builder.cpp (write joins a high + low surrogate); string_native.cpp (reverse by
+  pieces, starts/ends-with/includes on units, replace "" around units, index-of/last-index-of in units
+  after unchecked-int, byte_count/byte_substring) and .hpp; util/escape.cpp (each \uXXXX kept as its
+  unit; the builder pairs them); nrepl/server/bencode.jank (lengths and offsets through byte_count and
+  byte_substring).
+  Should pass: b01 (all five), b02, b03, b07 (all three), lg3, v65, v66, v67, v68, v76, v77, v78;
+  vw3, vw4, vw7, vw9 (with W9c not needed: 55296/56320 are in range), vw10, vw12; generated g465-g473,
+  g483-g485, g495-g503, g510-g518, g528-g530, g558-g563, g619-g621, g573-g575. g543-g545 (subs out of
+  range under thrown?) also need X20 (in round 8's patch). v79 needs W9c (or R66) as well; v71 needs W9h.
+  Still failing with W9u alone: v75, x19, x19b (the empty regex step: W9r below); vw1 (W9-1).
+  Callers kept consistent (read): core.cpp subs 398-422 and first/last_index_of 424-446; seq.cpp nth
+  648-696 and sequence_length (count); string.jank escape (count/nth), index-of/last-index-of (from
+  -index and default (count s) in units), reverse, replace, starts-with?/ends-with?/includes?; core.jank
+  include macro 5734-5743 (subs/count of a header name: units, consistent); nREPL util.jank abbreviate
+  (count and subs both units: never throws; may end in half a pair, as Java's would); nREPL bencode.jank
+  (moved to bytes: its lengths, nth-byte and subs+ are byte offsets of the wire format; fwdref.py: new
+  0); perf/print.jank (vectors, unaffected); array.cpp char_array (bytes: W9-1, unchanged); the reader's
+  source positions are C++ byte offsets in lex.cpp, never passed to subs/count.
+  jank's suite (test/jank/**): the only string-content files are form/case/pass-string.jank (ASCII
+  hash collisions, unchanged) and pass-unicode-char.jank (case on CJK strings: the case macro and the
+  run-time key both hash through persistent_string::to_hash, so they agree); no suite file uses
+  count/nth/subs/index-of on non-ASCII text or a surrogate. They hold by reading.
+  Syntax: every changed .cpp compiles with -fsyntax-only (.r8-scratch/merge/syn.sh; string_native.cpp
+  and core.cpp need -include jank/runtime/obj/delay.hpp -DGC_THREADS -DJANK_VERSION as stock does).
+  A build must check: the JIT resolving cpp/clojure.string_native.byte_count/byte_substring from
+  bencode.jank (an :include in its ns, as string.jank does); the nREPL with non-ASCII :out; speed of
+  non-ASCII nth loops (O(n) each); every TU including persistent_string.hpp (new field).
+  Combined tree: does not apply (R57a, X20, R54a/R55a/R56a, R62a/R58a, R57b change the same
+  functions); .r9-scratch/str/W9u-combined.diff applies to round 8's tree (it supersedes R62a's code-
+  point replace and R58a's byte index-of, keeps X20's object throw, R55a/R56a, R57a/R57b, R66), and
+  compiles there with -fsyntax-only.
+W9h - hash over UTF-16 units (fixes/W9h.diff, immutable_string.hpp to_hash): the same piece rule
+  inline. Should pass: v71, vw8. Applies alone and to round 8's tree as is. ASCII hashes unchanged, so
+  every ASCII case table and keyword/symbol hash stays.
+W9c - char's range is 0..0xFFFF (fixes/W9c.diff, core.cpp to_char): an object "Value out of range for
+  char: n", as RT.charCast. Should pass: x25b, v79 (both assertions), vw11. Combined variant
+  .r9-scratch/str/W9c-combined.diff (round 8's R66 bound 0x10FFFF becomes 0xFFFF).
+Standalone checks: (8). Not compiled: nothing else; jank was not built.
+
+W9r - the step past an empty regex match (fixes/W9r.diff; written after the coordinator's follow-up):
+  The change. obj::regex_find (re_pattern.hpp/.cpp) is java.util.regex.Matcher.find over jank's bytes:
+  it searches the whole input from a position (match_prev_avail past the start, so `^` and `\b` see
+  the text before), and after a match moves to its end, or, after an EMPTY match, one UTF-16 unit
+  further: past a whole character (never one byte of it; a byte that starts no character counts
+  alone), or into the middle of a four-byte character. A position is (byte, inside); a search from
+  the middle of a pair runs on a copy whose character there is its two surrogates in three-byte forms,
+  from between them. obj::regex_slice cuts the input between two positions, a half pair becoming its
+  surrogate's three-byte form. Callers moved onto it: string_native.cpp split (Pattern.split's loop:
+  no leading empty piece for an empty match at 0, `limit` as Java, trailing empties dropped at 0),
+  replace(regex, string) (Matcher.replaceAll; each tree keeps its own replacement expansion: stock's
+  ECMAScript format, round 8's append_replacement), replace(regex, fn); core.cpp re_find, whose
+  matcher (re_matcher.hpp) now keeps the whole input and Matcher.find's position instead of copying
+  the rest after each match: re-seq ends after empty matches and `^` matches only at the start (R81,
+  both parts). Not changed, because they never step: replace-first (one search from 0),
+  re-matches (match_continuous / regex_match), re-groups; jank-internal regex_replace on ASCII
+  identifiers (util/try.cpp, munge.cpp, loader_dynamic.cpp).
+  Supplementary characters: split as Java. After an empty match at a pair, the next search starts
+  between its halves, so (split "😀" #"") is [hi lo], (replace "😀" #"" "-") is "-hi-lo-",
+  (re-seq #"" "😀") has 3 matches, exactly Java's (run on 1.12.3). This is coherent with W9u: the
+  halves are W9u's lone-surrogate strings, the pieces and replacements are canonical WTF-8 (0
+  non-canonical outputs), and replacing every empty match by "" gives the input back byte for byte
+  (string_builder joins the halves). Applied ALONE on stock (without W9u), the halves are still
+  produced in three-byte form, which stock reads as 3-byte characters it cannot decode (its count,
+  nth and int stay byte/code-point based); BMP text is exact alone.
+  Should pass: v75, x19, x19b (BMP, alone or stacked), b27 (both assertions: (re-seq #"^a" "aa") is
+  ["a"], (take 5 (re-seq #"a*" "b")) is ["" ""]), vw15 (alone), vw14 (with W9u). Still failing for
+  other causes: the regex byte classes (V35, V36, R78-R85's other parts), u-series tests of groups.
+  Checked by running: the helpers extracted verbatim (.r9-scratch/str/cpp/extract_r.py ->
+  regex_extract.hpp) and the four loops as in the diff (regex_harness.cpp), compiled with Homebrew GCC
+  15.2 so std::regex is libstdc++'s (jank links libstdc++ 15.3.0; the regex executor and at-begin
+  code are the same, the 15.3 differences being constexpr forms and class traits; the Mac's libc++
+  gave different `^` results, so it was not used). On the 4,955 texts of the W9u search (UTF-16 units
+  in canonical WTF-8, as W9u holds them) x 10 patterns ("", (?:), a*, -*, a?, -, a, -|, $, ^): split
+  with limits 0, -1, 2 (148,650), replace with "-" (49,550), replace with a fn (49,550), re-seq
+  (49,550): 302,255 lines against Clojure 1.12.3, 0 differences; 0 non-canonical outputs; replace of
+  "" and (?:) by "" gives every text back byte for byte.
+  Checked by reading: every std::regex caller (grep regex_iterator/regex_replace/regex_search); jank's
+  suite files with regexes (reader-macro/regex/pass-escape-regex.jank, pass-fn-regex.jank,
+  fail-imbalanced-regex.jank) only build patterns; clojure.test's thrown-with-msg? uses the 2-arity
+  re-find (a new matcher, first search from 0, as before). They hold.
+  Syntax: re_pattern.cpp, re_matcher.cpp, string_native.cpp and core.cpp compile with -fsyntax-only
+  alone on 94d32623 and stacked (round 8's tree + W9u-combined + W9h + W9c-combined + W9r-combined).
+  A build must check: every TU including re_matcher.hpp (new fields); re-seq on long inputs (no more
+  copies of the rest).
+  Combined tree: fixes/W9r.diff does not apply to round 8's tree (R62a/append_replacement in
+  string_native.cpp); .r9-scratch/str/W9r-combined.diff applies stacked after W9u-combined, W9h and
+  W9c-combined (checked with git apply --check of the four in that order).
+
+========================================================================================================
+(12) Model errors of earlier rounds corrected
+========================================================================================================
+- Round 6 (REPORT-6 Not fixed, LG3/R52): "exact agreement needs UTF-16 indexing, which the rules
+  exclude" and the code-point design as the smallest change: units over WTF-8 bytes give exact
+  agreement (8) without breaking (subs s (count s)) or the nREPL, once bencode uses bytes explicitly.
+- No earlier model was found wrong; the surrogate character literal hypothesis (mine) was refuted on
+  1.12.3 before reporting.
+
+Files
+- Lean: Jank/R9/Str/Units.lean; Run/R9/Str.lean (lake build jank9-str succeeds; lake exe jank9-str 3).
+- Results: results/r9-str-report.txt, r9-str-axioms.txt, r9-str-run.txt, r9-str-clj.txt.
+- Tests: .r9-scratch/str/tests.jank; .r9-scratch/str/clj/jank_lean/strings_r9_test.clj.
+- Fixes: fixes/W9u.diff, fixes/W9h.diff, fixes/W9c.diff, fixes/W9r.diff; .r9-scratch/str/
+  W9u-combined.diff, W9c-combined.diff, W9r-combined.diff. Stacking order on round 8's tree:
+  W9u-combined, W9h, W9c-combined, W9r-combined. On 94d32623 the four fixes apply together in the
+  order W9u, W9h, W9c, W9r (each also alone).
+- Scratch: .r9-scratch/str/cpp/ (shim.hpp, extract.py, harness.cpp, bytes.cpp, gen.py, texts.txt,
+  probe.clj; op counts in .r9-scratch/str/harness-op-counts.txt), .r9-scratch/str/syn/ (syntax trees),
+  .r9-scratch/str/comb/ (combined copies), .r9-scratch/work/W9u|W9h|W9c (the edited files).

@@ -1,0 +1,194 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+@@ -1,6 +1,7 @@
+ #include <algorithm>
+ #include <random>
+ 
++#include <jank/runtime/obj/exception_info.hpp>
+ #include <jank/runtime/visit.hpp>
+ #include <jank/runtime/behavior/associatively_writable.hpp>
+ #include <jank/runtime/core/call.hpp>
+@@ -655,9 +656,13 @@
+     }
+     else if(index < 0)
+     {
+-      throw std::runtime_error{ util::format("The index `{}` is out of bounds for this `{}`.",
+-                                             index,
+-                                             object_type_str(o.get_type())) };
++      /* An object (ex-info: jank's message, nil data), as Clojure's IndexOutOfBoundsException is
++       * an exception a program's catch sees; a std::runtime_error passes every object catch. */
++      throw make_box<obj::exception_info>(util::format("The index `{}` is out of bounds for this `{}`.",
++                                                       index,
++                                                       object_type_str(o.get_type())),
++                                          jank_nil)
++        .erase();
+     }
+ 
+     /* TODO: Port visit_object: sequential. */
+@@ -680,16 +685,22 @@
+             }
+             ++i;
+           }
+-          throw std::runtime_error{ util::format(
+-            "The index `{}` is out of bounds for this `{}`. The collection has a size of `{}`.",
+-            index,
+-            object_type_str(typed_o.get_type()),
+-            i) };
++          throw make_box<obj::exception_info>(
++                  util::format("The index `{}` is out of bounds for this `{}`. The collection has a "
++                               "size of `{}`.",
++                               index,
++                               object_type_str(typed_o.get_type()),
++                               i),
++                  jank_nil)
++            .erase();
+         }
+         else
+         {
+-          throw std::runtime_error{ util::format("Objects of type `{}` are not indexable.",
+-                                                 object_type_str(o.get_type())) };
++          throw make_box<obj::exception_info>(
++                  util::format("Objects of type `{}` are not indexable.",
++                               object_type_str(o.get_type())),
++                  jank_nil)
++            .erase();
+         }
+       },
+       o);
+@@ -727,8 +738,11 @@
+         }
+         else
+         {
+-          throw std::runtime_error{ util::format("Objects of type `{}` are not indexable.",
+-                                                 object_type_str(o.get_type())) };
++          throw make_box<obj::exception_info>(
++                  util::format("Objects of type `{}` are not indexable.",
++                               object_type_str(o.get_type())),
++                  jank_nil)
++            .erase();
+         }
+       },
+       o);
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_vector.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_vector.cpp
+@@ -1,3 +1,4 @@
++#include <jank/runtime/obj/exception_info.hpp>
+ #include <jank/runtime/obj/persistent_vector.hpp>
+ #include <jank/runtime/obj/transient_vector.hpp>
+ #include <jank/runtime/visit.hpp>
+@@ -321,22 +322,28 @@
+ 
+   object_ref persistent_vector::nth(object_ref const index) const
+   {
++    /* Objects (ex-info: jank's message, nil data), as Clojure's IndexOutOfBoundsException is an
++     * exception a program's catch sees; a std::runtime_error passes every object catch. */
+     if(is_integral(index))
+     {
+       auto const i(to_i64(index));
+       if(i < 0 || data.size() <= static_cast<size_t>(i))
+       {
+-        throw std::runtime_error{
+-          util::format("The index `{}` is out of bounds for this `persistent_vector`.", i)
+-        };
++        throw make_box<exception_info>(
++                util::format("The index `{}` is out of bounds for this `persistent_vector`.", i),
++                jank_nil)
++          .erase();
+       }
+       return data[i];
+     }
+     else
+     {
+-      throw std::runtime_error{ util::format(
+-        "The `nth` operation on a `persistent_vector` requires an integer index, not a `{}`.",
+-        object_type_str(index.get_type())) };
++      throw make_box<exception_info>(
++              util::format("The `nth` operation on a `persistent_vector` requires an integer "
++                           "index, not a `{}`.",
++                           object_type_str(index.get_type())),
++              jank_nil)
++        .erase();
+     }
+   }
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/array_chunk.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/array_chunk.cpp
+@@ -1,3 +1,4 @@
++#include <jank/runtime/obj/exception_info.hpp>
+ #include <jank/runtime/obj/array_chunk.hpp>
+ #include <jank/runtime/obj/number.hpp>
+ #include <jank/runtime/core/to_string.hpp>
+@@ -64,17 +65,22 @@
+       auto const i(to_i64(index));
+       if(i < 0 || buffer.size() - offset <= static_cast<size_t>(i))
+       {
+-        throw std::runtime_error{
+-          util::format("The index `{}` is out of bounds for this `array_chunk`.", i)
+-        };
++        /* Objects, as Clojure's IndexOutOfBoundsException (see persistent_vector::nth). */
++        throw make_box<exception_info>(
++                util::format("The index `{}` is out of bounds for this `array_chunk`.", i),
++                jank_nil)
++          .erase();
+       }
+       return buffer[offset + i];
+     }
+     else
+     {
+-      throw std::runtime_error{ util::format(
+-        "The `nth` operation on an `array_chunk` requires an integer index, not a `{}`.",
+-        object_type_str(index.get_type())) };
++      throw make_box<exception_info>(
++              util::format("The `nth` operation on an `array_chunk` requires an integer index, "
++                           "not a `{}`.",
++                           object_type_str(index.get_type())),
++              jank_nil)
++        .erase();
+     }
+   }
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_vector.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_vector.cpp
+@@ -1,3 +1,4 @@
++#include <jank/runtime/obj/exception_info.hpp>
+ #include <jank/runtime/obj/transient_vector.hpp>
+ #include <jank/runtime/obj/persistent_vector.hpp>
+ #include <jank/runtime/obj/nil.hpp>
+@@ -53,23 +54,30 @@
+   object_ref transient_vector::nth(object_ref const index) const
+   {
+     assert_active();
++    /* Objects, as Clojure's IndexOutOfBoundsException (see persistent_vector::nth). */
+     if(is_integral(index))
+     {
+       auto const i(to_i64(index));
+       if(i < 0 || data.size() <= static_cast<size_t>(i))
+       {
+-        throw std::runtime_error{ util::format(
+-          "The index `{}` is out of bounds for this `transient_vector` of length `{}`.",
+-          i,
+-          data.size()) };
++        throw make_box<exception_info>(
++                util::format(
++                  "The index `{}` is out of bounds for this `transient_vector` of length `{}`.",
++                  i,
++                  data.size()),
++                jank_nil)
++          .erase();
+       }
+       return data[i];
+     }
+     else
+     {
+-      throw std::runtime_error{ util::format(
+-        "The `nth` operation on a `transient_vector` requires an integer index, not a `{}`.",
+-        object_type_str(index.get_type())) };
++      throw make_box<exception_info>(
++              util::format("The `nth` operation on a `transient_vector` requires an integer "
++                           "index, not a `{}`.",
++                           object_type_str(index.get_type())),
++              jank_nil)
++        .erase();
+     }
+   }
+ 

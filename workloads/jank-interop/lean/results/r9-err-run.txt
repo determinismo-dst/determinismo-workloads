@@ -1,0 +1,30 @@
+walk: complete, 2482 valid handler lists of length ≤ 4 (9 types) × 9 thrown values = 22338 cases
+  generated code = specification: 67014 of 67014 (stock, V7a, A34); mismatches 0
+  A34 differs from stock in 3862 cases, V7a in 1808; regressions on unconverted values: 0
+nth: complete, 64 cases (8 collections × indices -3..4): agree with Clojure (value / nil / an object throw): stock 15, X20 22, X20+X20b 64
+tests (Clojure 1.12.3 | stock | round 8's patch | + area E's fixes):
+  r34: Clojure ArityException (thrown? passes) | stock nil, no throw (fail) | r8 invalid_arity<0>, std::runtime_error escapes is (error) | E pass (A34 converts it)
+  v07b: Clojure :object | stock :error | r8 :error | E pass (A34/V7a)
+  v07c: Clojure :object | stock :error | r8 :error | E pass (A34/V7a)
+  v08: Clojure nil (ns removed) | stock ns kept (fail) | r8 pass (round 8's load-lib error_ref catch) | E pass (its object catch now sees the error first)
+  v09: Clojure {:vb3 1} | stock nil (fail) | r8 nil (fail) | E pass (V9 + A34/V7a)
+  v09b: Clojure {:vb3b 1} | stock nil (fail) | r8 nil (fail) | E pass (V9 + A34/V7a)
+  v10: Clojure [:object :object] | stock [:native :object] (fail) | r8 pass (round 6's V10 delay) | E pass (A34 converts the rethrown native)
+  v13: Clojure not a string | stock a string (fail) | r8 pass (round 6's V13) | E pass (X20b: nth throws an ex-info)
+  v15: Clojure nil | stock std::runtime_error escapes (error) | r8 same | E error (no fix written)
+  v18: Clojure true, true | stock false, false (fail) | r8 false, false (fail) | E pass (V18)
+  d15: Clojure thrown? passes | stock std::runtime_error escapes (error) | r8 same | E pass (A34)
+  u79: Clojure :caught | stock filesystem_error escapes (error) | r8 same | E pass (A34)
+  u80: Clojure [:a] | stock std::runtime_error escapes (error) | r8 same | E error inside is (reduce-kv still unsupported)
+  u90: Clojure "1\n" ... | stock std::runtime_error escapes (error) | r8 same | E error inside is (sh env still needs strings)
+  v03: Clojure thrown? passes | stock no throw (fail) | r8 std::runtime_error escapes (error) | E pass (A34 with V3)
+  b30 s24 s27 s28 s32 s35: Clojure a match / a pattern | stock regex_error escapes (error) | r8 same | E error inside is (Clojure accepts the pattern)
+  g480 g481 g482: Clojure thrown? passes | stock std::runtime_error escapes (error) | r8 same (X20's miss) | E pass (X20b, or A34)
+  v07 x27 s17 a13 y10: Clojure an object | stock :error / escapes | r8 pass (V7r) | E pass (V7r; A34 alone too)
+  ve1 ve1b (A34): Clojure thrown / a message | stock error | r8 error | E pass
+  ve2 ve2b ve2c (X20b): Clojure thrown / nil data | stock error | r8 error | E pass
+  ve3 ve3b ve3c (V7a): Clojure thrown / :outer | stock error | r8 error | E pass
+  ve4 ve4b (V18): Clojure compiler data / a cause | stock error | r8 error | E pass (A34 alone: fail)
+  ve5 (V9): Clojure {:ve5 1} | stock error | r8 error | E pass (A34 alone: fail)
+  ve6 (E9-1): Clojure a string | stock error (ex-message of a string) | r8 nil (fail) | E nil (fail): no fix
+  ve7 ve7b ve7c (controls): Clojure pass | stock pass | r8 pass | E pass

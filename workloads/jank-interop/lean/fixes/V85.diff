@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/object.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/object.cpp
+@@ -382,6 +382,9 @@
+     jank::runtime::object_ref const lhs,
+     jank::runtime::object_ref const rhs) const noexcept
+   {
+-    return jank::runtime::equal(lhs, rhs);
++    /* The hash collections' key equality is Util.equiv, which tests identity first
++     * (PersistentHashMap and PersistentHashSet find a key that is the same object, ##NaN
++     * included). A NaN-boxed number has no identity beyond its bits. */
++    return lhs == rhs || jank::runtime::equal(lhs, rhs);
+   }
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/core/equal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/equal.cpp
+@@ -18,6 +18,12 @@
+ 
+   bool equal(object_ref const lhs, object_ref const rhs)
+   {
++    /* Util.equiv: an object is equal to itself. Only heap objects have an identity here; a
++     * NaN-boxed number compares by value, as Clojure's primitive doubles do. */
++    if(detail::is_tagged_pointer(lhs.raw()) && lhs == rhs)
++    {
++      return true;
++    }
+     return lhs.equal(rhs);
+   }
+ 

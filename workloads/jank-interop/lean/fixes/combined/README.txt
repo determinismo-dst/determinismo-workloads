@@ -1,22 +1,52 @@
-fixes/combined: every fix as one patch on jank 94d32623 (round 8)
+fixes/combined: every fix as one patch on jank 94d32623 (round 9)
 =================================================================
 
 Files
 -----
 - all.diff: one unified diff from 94d32623 (paths a/compiler+runtime/..., b/compiler+runtime/...)
-  to the tree with every fix applied. 86 files, from the 214 diffs in fixes/ (some merged as groups,
+  to the tree with every fix applied. 114 files, from the 243 diffs in fixes/ (some merged as groups,
   superseded or subsumed, below). `git -C upstream-r5 apply --check ../fixes/combined/all.diff`
   passes; upstream-r5 stays clean.
+- immer.diff (round 9): H8-1's half in immer (jank-lang/immer 282629d0, the submodule commit), paths
+  relative to the immer repository: `git -C compiler+runtime/third-party/immer apply
+  ../../../fixes/combined/immer.diff`. `git -C deps/immer apply --check` passes.
 - math-hpp.diff, delay.diff, multi-function.diff: those files' parts of all.diff (groups).
-- CHECK.md: what to look at on the next build.
-- Round 7's S40-order.diff is folded into fixes/S40.diff and all.diff; it is no longer here (its text:
-  .r8-scratch/merge/orig/S40-order.diff). Applying it on top of this all.diff would move `long` twice.
-- The work: .r8-scratch/merge/ (stack8.sh rebuilds everything from fixes/*.diff: round 7's stack.sh
-  plus r8.sh; r8-ids.txt lists the round-8 diffs it takes out of the alphabetical pass). Its tree/ is a
-  git copy of 94d32623's compiler+runtime with one commit per diff or group (HEAD = all.diff).
+- CHECK.md: what to look at on the next build. Round 8's all.diff, CHECK.md and README.txt are kept in
+  .r9-scratch/merge/orig-r8/.
 
-Round 8's changes to the patch
+Round 9's changes to the patch
 ------------------------------
+.r9-scratch/merge/r9.sh rebuilds round 9 from round 8's tree (tag r8 of .r9-scratch/merge/tree, which is
+round 8's all.diff), applying each round-9 fix in its combined form with `git apply` (no fuzz), in order:
+1. Coordinator: V82, U80, U84 (combined variant .r9-scratch/coord/U84-combined.diff: keeps U83, U86 and the
+   eof check), U88, U90.
+2. Area E: .r9-scratch/err/err-all-combined.diff = A34 (contains V7a) + V9 + V18 + X20b.
+3. Area W: W9u-combined, W9h, W9c-combined, W9r-combined (.r9-scratch/str/). W9u replaces R58a's byte
+   index-of and R62a's code-point replace; W9c changes R66's 0x10FFFF bound to 0xFFFF.
+4. Area H: H8-1 (jank side; also S59 and U81), H9-3. immer's half is immer.diff.
+5. Area Q: Q1, then .r9-scratch/nrepl/Q2-on-Q1.diff (Q2 redone on Q1: Q2.diff alone does not apply after
+   Q1), then V37i.
+6. Coordinator: T9-2, T9-9.
+7. Area N: DEC8-1, V55, V60, V61, V62b, V85, R72f (.r9-scratch/num/<id>-combined.diff). V62b supersedes
+   V62 (V62.diff, the value-only fix, makes (str (float 0.1)) print 17 digits: not in all.diff). R72f
+   (BigDecimal's i64 fast path and digit counting without a string) exists only as a combined variant.
+Not in all.diff: V62 (superseded by V62b), V7a (inside A34), Q2.diff (as Q2-on-Q1), and round 8's
+exclusions (S3c, U19, R3, N7-2).
+
+How round 9's result was checked
+--------------------------------
+- Each of the 243 diffs applies alone to 94d32623 (round 9's 29: V82 U80 U84 U88 U90 A34 V7a V9 V18 X20b
+  W9u W9h W9c W9r H8-1 H9-3 Q1 Q2 V37i T9-2 T9-9 DEC8-1 V55 V60 V61 V62 V62b V85, and H8-1-immer on immer).
+- Every .cpp of the merged tree (207), -fsyntax-only as before: 194 compile; the other 13 fail identically
+  on round 8's tree (missing isocline, jankzip, cpptrace's real headers, build defines).
+  .r9-scratch/merge/syn9-1.txt, syn9-2.txt.
+- jank's warning flags on the 31 changed .cpp files: no new warning (warn9-*.txt; one -Wcomment in V18's
+  comment was found and fixed in the diffs).
+- .jank files: fwdref.py "new 0" for core.jank, shell.jank, bencode.jank and the nREPL server files.
+- Each area's standalone checks are in its report (results/r9-<area>-report.txt).
+
+Round 8's changes to the patch (still in all.diff)
+--------------------------------------------------
 Folded or corrected (each still applies alone to 94d32623):
 - S40: `long` moved above `dotimes` (the build failure of round 7's patch).
 - LG1: min/max of a native number and a typed BigInt, ratio or BigDecimal ref take the object

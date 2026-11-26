@@ -1,0 +1,374 @@
+ROUND 9, AREA M (coll): MAPS, SETS, VECTORS, DESTRUCTURING, HIERARCHIES, LIBRARY NAMESPACES
+
+jank main 94d32623 (upstream-r5/compiler+runtime/; every path below is under it). Clojure 1.12.3 run
+for every Clojure value (.r9-scratch/coll/probe1-4.clj, clj-eval.sh; the tests through clj-run.sh).
+Lean: Jank/R9/Coll/{Order,HashOrder,Lookup,Paths}.lean, Run/R9/Coll.lean (exe jank9-coll; `lake build
+jank9-coll` succeeds, 96 jobs). Tests: .r9-scratch/coll/tests.jank (57 deftests, 1 assertion each),
+their Clojure translation .r9-scratch/coll/clj/jank_lean/deviations_r9_coll_test.clj: 57 of 57 pass on
+Clojure 1.12.3 (.r9-scratch/coll/clj-result.txt). No fix written (none assigned). Nothing left running.
+
+What rounds 1-8 covered in this ground (read before choosing):
+- round 2: R100-R101 (multimethod prefers through parents, get-method), R104-R106 and R113 (sorted
+  collections), R107 (kwargs with a trailing seq of entries), R120 (coll?/empty of cons; R120.diff
+  covers cons only), R121 (get-in on a value without lookup; R121.diff), R123 (map find builds the
+  entry from the query key); Jank/Core/{Destructure,Sorted,NsExtra}.lean, Jank/Multi.lean;
+- round 3: S59 (an = key replaces the stored key; 8-entry promotion used once), S60, S61;
+- round 4: U27-U34 (collection objects; U33 transient of a sorted map, U34 array-map past 8), U61
+  (clojure.data), U66, U67 (map entries are 2-vectors), U69 (walk drops list meta), U80, U81
+  (zipmap's hash-map transient); "not reported" list: update-vals of a sorted map stays sorted,
+  zipmap/group-by key order;
+- rounds 6-8 CHAMP (area H): laws, transients, H8-1; Clojure's side a set model, never its HAMT;
+- round 1's assumption A10: "Clojure quirks are not the spec; get truncating a long key with
+  intValue is ignored".
+Not new here (re-read, same code token for token as Clojure 1.12): clojure.set (every function),
+clojure.template, the hierarchy functions (make-hierarchy, isa?, parents, ancestors, descendants,
+derive, underive), partitionv, partitionv-all, splitv-at, partition, partition-all, merge, merge-with,
+update, update-in, assoc-in, max-key, min-key, replace, update-keys, the destructure macro apart from
+its seq-to-map step. Their deviations come only from the primitives below.
+
+========================================================================================================
+(1) DEVIATIONS
+========================================================================================================
+
+M9-1. A vector's (or string's) integer index past 32 bits. New.
+- Programs (Clojure 1.12.3, then jank's predicted value):
+  - (get [1 2 3] 4294967297): 2; nil.
+  - ((fn [v k] (get v k)) [1 2 3] 4294967297): 2; nil.
+  - (contains? [1 2 3] 4294967297): true; false.
+  - (assoc [1 2 3] 4294967297 :x): [1 :x 3]; std::runtime_error "The index `4294967297` is out of bounds".
+  - ([1 2 3] 4294967297): 2; std::runtime_error (persistent_vector call -> nth).
+  - (find [1 2 3] 4294967297): [4294967297 2]; nil.
+  - (get "abc" 4294967297): \b; nil.
+  - (get [1 2 3] 18446744073709551617N): 2; std::runtime_error ("out of range for `i64` conversion").
+  - control (get [1 2 3] 2147483648): nil; nil (the low 32 bits are negative).
+- Why: Clojure's APersistentVector.valAt/containsKey/entryAt/assoc/invoke take any Util.isInteger key
+  and use ((Number) key).intValue(), its low 32 bits; RT.getFrom/RT.contains on a String also use
+  intValue. jank uses the whole value.
+- Path: obj/persistent_vector.cpp get 218-233, find 235-251, contains 253-264, assoc 266-290, call 184-187
+  -> nth 322-341; obj/persistent_string.cpp get 78-93; core/math.cpp is_integral 621-624, to_i64 10-30;
+  obj/big_integer.cpp to_i64 200-208. Inlined get/contains?/assoc reach the same functions as a fn value.
+- Tests: vM1, vM1b (fn), vM1c, vM1d, vM1e, vM1f (control). With the combined patch: the same (no round-8
+  diff touches these lines).
+- Status: new. Round 1's A10 set it aside as a Clojure quirk; RULES section 5 does not allow that
+  assumption (section 6, 12). Confidence: high (value); low importance.
+- Shared cause: with M9-2 and round 4's U29 (nth of a vector with a double): jank's index must be an
+  integer type read as an i64; Clojure reads any (vector: any integer) Number with intValue.
+
+M9-2. A string indexed by a non-integer number. New.
+- (get "abc" 1.5): \b; nil. (get "abc" 1/2): \a; nil. ((fn [s k] (get s k)) "abc" 1.5): \b; nil.
+- (contains? "abc" 1.5): true; std::runtime_error "The `contains?` operation on a `persistent_string`
+  requires an integer index, not a `real`".
+- (nth "abc" 1.5): \b; std::runtime_error ("requires an integer index"): seq.cpp nth 648-696 first
+  truncates with to_int (1, not negative), then calls persistent_string::nth with the original 1.5.
+- Path: obj/persistent_string.cpp get 78-93, contains 95-105, nth 107-126; core/seq.cpp nth 648-696.
+  Clojure: RT.getFrom, RT.contains 865-868, RT.nthFrom (String branch), all `Number` + intValue.
+- Tests: vM2, vM2b (fn), vM2c, vM2d. Combined patch: the same (its persistent_string.cpp changes leave
+  these branches).
+- Status: new (U29 is the vector nth case). Confidence: high. Shared cause: M9-1.
+
+M9-3. contains? on a collection that is neither associative nor a set returns false. New.
+- (contains? '(1 2) 0): throws IllegalArgumentException "contains? not supported on type:
+  clojure.lang.PersistentList"; false. The same for (contains? 5 0), (contains? :a :a),
+  (contains? (seq [1 2]) 0), and through a fn.
+- (clojure.set/subset? #{0} '(0)): throws; false (set.jank 136-140 is Clojure's code).
+- Path: core/seq.cpp contains 518-533 (no `get` behavior -> false); Clojure RT.contains 850-874.
+- Tests: vM3, vM3b (fn), vM3c, vM3d, vM3e (control: nil, false in both).
+- Status: new. Confidence: high.
+
+M9-4. select-keys drops the map's metadata. New.
+- (meta (select-keys (with-meta {:a 1 :b 2} {:m 1}) [:a])): {:m 1}; nil.
+- (meta (first (clojure.set/project #{(with-meta {:a 1 :b 2} {:m 1})} [:a]))): {:m 1}; nil.
+- Path: core.jank select-keys 2400-2409 (reduce into {}); Clojure core.clj select-keys ends with
+  (with-meta ret (meta map)). project: set.jank 68-71.
+- Tests: vM4, vM4b. Status: new. Confidence: high.
+
+M9-5. An 8-entry array map becomes a hash map on assoc of a key it already holds (its order changes). New.
+- (let [m (into {} (map vector (range 8) (range 8)))] (vec (keys (assoc m 0 :x)))):
+  [0 1 2 3 4 5 6 7]; [0 7 1 4 6 3 2 5]. The same with (update m 3 inc).
+- (vec (keys (frequencies [7 6 5 4 3 2 1 0 0]))): [7 6 5 4 3 2 1 0]; [0 7 1 4 6 3 2 5]. group-by and
+  (into {} ...) alike.
+- control: 7 entries: [0 1 2 3 4 5 6] in both.
+- Why: persistent_array_map.cpp assoc 70-89 and transient_array_map.cpp assoc_in_place 67-89 promote
+  when the map holds max_size (8, native_array_map.hpp 30) entries, before looking for the key (their
+  comments say so). Clojure's PersistentArrayMap.assoc / TransientArrayMap.doAssoc replace a present
+  key's value in place. jank's hash order for 0-7 is the CHAMP order of hashLong (low 5 bits 0 4 20 19 6
+  23 17 3); Clojure's own (hash-map 0 0 ... 7 7) shows the same order, so only the promotion differs.
+- Lean: Order.promoted_keys, frequencies_keys, jank_assoc_at_8_promotes (for every 8-entry map and key),
+  clj_assoc_present_keeps_keys (for every map and present key).
+- Tests: vM5, vM5b, vM5c, vM5d, vM5e (control). Combined patch: the same (its array-map changes are
+  create_from_seq and assert_active).
+- Status: new as an order deviation; round 3's S59 used the same promotion for a key-identity example.
+  Confidence: high.
+
+M9-6. The map that destructuring builds from a seq (keyword arguments) is a hash map. New.
+- ((fn [& {:as m}] (vec (keys m))) 2 :x 1 :y): [2 1]; [1 2].
+- (let [{:as m} (list 2 :x 1 :y)] (vec (keys m))): [2 1]; [1 2].
+- ((fn [& {:as m}] (vector? (first (keys m)))) [1] :a '(1) :b): true; false (S59: the hash map keeps
+  the last of = keys; createAsIfByAssoc keeps the first).
+- control: 1 :x 2 :y gives [1 2] in both.
+- Path: core.jank destructure, pmap 3431-3436: (if (even? (count gmap)) (apply hash-map gmap) (conj
+  (apply hash-map (butlast gmap)) (last gmap))). Clojure 1.12: PersistentArrayMap/createAsIfByAssoc
+  (PersistentArrayMap.java 86-195): an array map in argument order.
+- Lean: Order.kwargs_keys; Order.clj_kwargs_order (for every argument list with distinct keys,
+  Clojure's map lists them in argument order).
+- Tests: vM6, vM6b, vM6c (S59 instance), vM6d (control).
+- Status: new; same code as R107 (jank's own seq-to-map step). seq-to-map-for-destructuring itself
+  (core.jank 6257-6264) is "TODO: port": a program calling it gets ex-info "TODO: port
+  seq-to-map-for-destructuring" (Clojure: {:a 1, :b 2} for '(:a 1 :b 2)); destructuring never calls it.
+  The rest of destructure (pvec, :keys/:strs/:syms with namespaces, :or, :as) is Clojure's code.
+  Confidence: high.
+
+M9-7. assert throws (ex-info "assertion failed" {:assertion form}). New.
+- (try (assert (= 1 2)) (catch Throwable e (ex-message e))): "Assert failed: (= 1 2)"; "assertion failed".
+- ((fn [x] {:pre [(pos? x)]} x) -1), the message: "Assert failed: (pos? x)"; "assertion failed".
+  :post alike ("Assert failed: (neg? %)").
+- (ex-data of a failed (assert false)): nil; {:assertion "false"}.
+- (derive (make-hierarchy) ::a ::a), the message: "Assert failed: (not= tag parent)"; "assertion failed".
+- Path: core.jank assert 915-930; fn :pre/:post 3560-3575; derive 4229-4245. Clojure: AssertionError
+  (an Error: a (catch Exception ...) does not catch it in Clojure; jank has no such distinction).
+- Tests: vM7, vM7b (fn), vM7c, vM7d. Status: new. Confidence: high.
+
+M9-8. clojure.walk's prewalk-demo and postwalk-demo print with println. New.
+- (with-out-str (clojure.walk/prewalk-demo "a")): "Walked: \"a\"\n"; "Walked: a\n". postwalk-demo alike.
+- control: of 1, "Walked: 1\n" in both.
+- Path: walk.jank 27-37 (println); Clojure walk.clj uses prn. Combined patch: walk.jank's change keeps
+  these lines.
+- Tests: vM8, vM8b, vM8c (control). Status: new. Confidence: high.
+
+M9-9. update-vals of a sorted map stays sorted. New as an item.
+- (sorted? (update-vals (sorted-map 1 2) inc)): false; true.
+- (vec (keys (assoc (update-vals (sorted-map 3 :a 1 :b) str) 2 :x))): [1 3 2]; [1 2 3].
+- Path: core.jank update-vals 7748-7761 builds in (transient m) when (transientable? m) (seq.cpp
+  is_transientable 143-153; persistent_sorted_map.cpp to_transient 120-123, U33 confirmed on the real
+  jank); Clojure asks IEditableCollection, which PersistentTreeMap is not, and builds in (transient {}).
+- Tests: vM9, vM9b. Status: round 4 noticed it and did not report it ("implementation detail"); under
+  RULES section 5 it is a deviation. Confidence: high.
+
+M9-10. empty of a seq keeps the seq's metadata. New.
+- (meta (empty (with-meta (seq [1 2 3]) {:m 1}))): nil; {:m 1}. A lazy seq alike.
+- control: (meta (empty (with-meta '(1 2) {:m 1}))): {:m 1} in both.
+- Path: core/seq.cpp empty 787-805: with_meta(T::empty(), meta(o)) for every collection_like type;
+  Clojure's ASeq.empty and LazySeq.empty return PersistentList.EMPTY (lists, vectors, maps, sets, Cons
+  keep it).
+- Lean: Paths.empty_meta_differs (the type table).
+- Tests: vM10, vM10b, vM10c (control). Status: new. Confidence: high.
+
+M9-11. A hash set's or hash map's seq order. New.
+- (vec (hash-set 5 9 8)): [9 5 8]; [8 9 5]. (str (hash-set 5 9 8)): "#{9 5 8}"; "#{8 9 5}".
+- (vec (keys (into {} (map vector (range 12) (range 12))))): [0 7 1 4 6 3 2 11 9 5 10 8];
+  [0 7 1 4 6 3 2 10 8 11 9 5].
+- control: (vec (hash-set 5 8)): [5 8] in both.
+- Why: both index the 32-bit hash 5 bits at a time from the low end, and a long hashes alike in both
+  (Murmur3 hashLong). immer's CHAMP node keeps inline values apart from sub-nodes and champ_iterator
+  (deps/immer/immer/detail/hamts/champ_iterator.hpp, step_down/step_right) yields a node's values,
+  then its children; Clojure's BitmapIndexedNode interleaves entries and sub-nodes by position. So a
+  node with a sub-node at position i and an entry at j > i lists the entry first in jank, after the
+  sub-node's keys in Clojure. 5 and 9 share position 23, 8 is alone at 31.
+- Reach: seq, keys, vals, first, printing, reduce, vec, into, = of seqs: every hash set (any size)
+  and every hash map past 8 entries whose keys crowd a node position before a later lone key. Of
+  the subsets of 0-13, 8,064 of 16,384 differ; (range n) differs for every n from 10 on (54 of
+  n < 64). For keywords, symbols, strings and chars the hashes already differ (V70, V71, V83); this is
+  the structural part, which stays when the hashes agree (longs, or with V51/V83's fixes).
+- Path: obj/persistent_hash_set.cpp create_from_seq 45-53, to_string 83-86;
+  obj/detail/base_persistent_map_sequence; immer champ_iterator. Clojure: PersistentHashMap.java
+  (BitmapIndexedNode, ArrayNode, NodeSeq), PersistentHashSet over it.
+- Lean: HashOrder.cljOrd (reproduces every Clojure order checked, probe3), champOrd (equals the round-3
+  CHAMP replica's Champ.toList on all 16,384 subsets of 0-13), set_5_9_8, champ_eq_clj_without_crowding,
+  champ_perm_clj.
+- Tests: vM11, vM11b, vM11c, vM11d (control). Status: new. Confidence: high for longs (the replica's
+  iteration order was confirmed by the real jank in round 8, H8-1's y22 tests and controls).
+
+Instances of known causes (tests included):
+- R121 (round 2; fixes/R121.diff in the combined patch): (get-in '(1 2) []): (1 2); nil.
+  (get-in 5 [:a] :nf): :nf; nil. (get-in 5 [] :nf): 5; nil. Tests vM12-vM12d, control vM12e. With the
+  combined patch all pass (r121 passed on the real patched jank).
+- R120 (round 2; fixes/R120.diff gives cons an empty()): (coll? (cons 1 '(2))): true; false (patched:
+  true). (coll? (repeat 2 1)): true; false (patched too). (empty ...) of each: (); nil. Tests vM13,
+  vM13c (pass patched), vM13b, vM13d (fail patched), vM13e (control). Also chunked_cons and the
+  native sequences (Paths.coll_differs).
+- D10 (parse-long is std::stoll, core/math.cpp parse_long 678-707): (parse-long "٣٤"): 34
+  (Java's Long.valueOf takes every Unicode decimal digit); nil. (parse-double "٣"): nil in both.
+  Test vM14.
+- U81's code (zipmap builds in (transient (hash-map)), core.jank 2411-2422; Clojure (transient {})):
+  (vec (keys (zipmap [2 1] [:a :b]))): [2 1]; [1 2]. Round 4 noted the order and did not report it.
+  Test vM15, control vM15b.
+- U67 (a map entry is a 2-vector): (empty (first {:a 1})): nil (MapEntry.empty); []. (key [1 2]):
+  ClassCastException; 1 (core.jank key 2306-2309 is (first e)). (keys [[1 2] [3 4]]): throws; (1 3).
+  Tests vM16, vM16b.
+- S59: vM6c (above).
+
+Which share a cause:
+- M9-1, M9-2 (and U29): one choice, the index's type and width.
+- M9-5 and M9-11 are separate (promotion vs node layout); M9-5's tests use keys without crowding, so
+  M9-11 plays no part in them, and M9-11's 12-key map test promotes in both.
+- M9-6 shares R107's code; M9-4, M9-3, M9-7, M9-8, M9-9, M9-10 are each local.
+
+========================================================================================================
+(2) PROOFS (statements in words; Lean names)
+========================================================================================================
+- For every map and present key, Clojure's array-map assoc keeps the key order:
+  Jank.R9.Coll.Order.clj_assoc_present_keeps_keys.
+- For every 8-entry array map and every key, jank's assoc promotes to a hash map; below 8 entries
+  it is Clojure's: Order.jank_assoc_at_8_promotes, Order.jank_assoc_below_8.
+- For every argument list with distinct keys, Clojure's createAsIfByAssoc lists them in argument
+  order: Order.clj_kwargs_order.
+- The tests' jank orders (CHAMP replica, decide +kernel): Order.promoted_keys, frequencies_keys,
+  kwargs_keys, zipmap_keys; HashOrder.set_5_9_8 (Clojure [9 5 8], jank [8 9 5], replica agrees).
+- For every key list and level without two keys at one position, jank's CHAMP order equals
+  Clojure's HAMT order: HashOrder.champ_eq_clj_without_crowding. For every list, level and depth the two
+  orders are permutations of each other: HashOrder.champ_perm_clj.
+- For every vector size and integer key in the int range, jank's get is Clojure's; for every
+  non-integer key both give not-found: Lookup.vec_get_agree_int, vec_get_agree_nonint;
+  str_get_agree_int (strings).
+- For every vector of at most 2^31 elements and every key in the i64 range: jank's get differs from
+  Clojure's iff the key's low 32 bits index the vector and the key does not: Lookup.vec_get_differs_iff.
+- For every string size and in-range truncation, a non-integer key: Clojure finds the char and
+  contains? is true; jank gives not-found and contains? throws: Lookup.str_frac_differs.
+- For every root with the get behavior, jank's get-in (both arities) is Clojure's; for every root
+  without it jank gives nil, Clojure the root (no keys) or the not-found value: Paths.getIn_agree,
+  Paths.getIn_no_lookup.
+- contains? differs exactly on non-lookup collections and on strings with non-integer numbers:
+  Paths.contains_differs_iff.
+- coll? differs exactly on cons, repeat, chunked_cons, native_array_sequence, native_vector_sequence;
+  (meta (empty x)) additionally on the seq types: Paths.coll_differs, Paths.empty_meta_differs (over
+  the header table).
+- select-keys: the same entries for every map and key list, metadata differing iff the map has some:
+  Paths.selectKeys_differs.
+- For every asserted form the messages differ and only jank's carries data: Paths.assert_differs.
+- For every string walked, the demo lines differ: Paths.demo_differs.
+- update-vals' result is sorted in jank iff the input is: Paths.updateVals_sorted_differs.
+Axioms: results/r9-coll-axioms.txt (propext, Classical.choice, Quot.sound at most; two need none).
+No sorry, no native_decide, no axiom declared.
+Not proved: that the round-3 CHAMP replica's Champ.toList equals champOrd for every key set (checked on
+all 16,384 subsets of 0-13 only); that Clojure's HAMT order is cljOrd (read from PersistentHashMap.java,
+checked against Clojure on the probe3 orders, not replicated node by node).
+
+========================================================================================================
+(3) WHAT WAS REPLICATED
+========================================================================================================
+- Jank/R9/Coll/Order.lean: persistent_array_map.cpp assoc 70-89 and transient_array_map.cpp
+  assoc_in_place 67-89 (the promotion), as JMap/jankAssoc; persistent_hash_map.cpp 12-25 (built from
+  the array map by transient set) and create_from_seq 55-72 through round 3's CHAMP (addMut) and round
+  8's hLong/mapCfg; Clojure's PersistentArrayMap.assoc and createAsIfByAssoc (cljAssoc, cljAsIfByAssoc).
+- Jank/R9/Coll/HashOrder.lean: immer champ_iterator (champOrd, abstract; checked against round 3's
+  iterNode) and Clojure's BitmapIndexedNode/NodeSeq order (cljOrd).
+- Jank/R9/Coll/Lookup.lean: persistent_vector.cpp get/find/contains 213-264; persistent_string.cpp
+  get/contains/nth 73-130; math.cpp is_integral 616-624, to_i64 10-30; big_integer.cpp 200-208;
+  Clojure APersistentVector valAt/containsKey, RT.getFrom/contains (String branch).
+- Jank/R9/Coll/Paths.lean: seq.cpp get_in 473-511 and contains 518-533; is_collection 77-87 and empty
+  787-805 with each obj/*.hpp's empty()/conj; core.jank select-keys 2400-2409, assert 915-930,
+  update-vals 7748-7761; walk.jank 27-37; their Clojure counterparts.
+- Run/R9/Coll.lean: prints the predictions and runs the walks of section 8.
+
+========================================================================================================
+(4) WHAT IS NOT EXACT
+========================================================================================================
+- HashOrder: keys are assumed to have distinct full hashes (no collision node; H8-1 covers those).
+  A hash is taken as 32 bits with immer's 13 levels (upper levels index 0), as round 3's replica.
+- Lookup: a non-integer key is modelled by its truncation (Java intValue / jank to_int); they differ
+  past the int range for doubles (Java saturates); not used by any test.
+- Paths' value types are abstract (a hasGet flag and a lookup function); their correspondence to each
+  object type is read from the headers (obj_behaviors), not replicated.
+- The assert and demo models compare messages as character lists; pr-str of the form is taken as given.
+
+========================================================================================================
+(5) STILL LEFT OUT, AND WHY
+========================================================================================================
+- Multimethods past round 2: read whole (multi_function.cpp 1-312 against MultiFn.java). Besides R100
+  and R101: prefer-method conflicts and missing methods throw std::runtime_error (the C++-exception
+  class, V7/r34), defmulti's return value (core.jank's TODO says nil; not confirmed by reading the
+  analyzer, so no item), and the order-dependence of the ambiguity check, which now depends on M9-11
+  (the method table is a hash map) and on keyword hashes (V83): not searched.
+- nil as a hash-map key (Clojure keeps it apart, first in the seq; jank hashes it into the CHAMP).
+- sorted collections beyond R104-R113, transients of sorted collections beyond U33.
+- clojure.data beyond U61 (its only path is atom-diff).
+
+========================================================================================================
+(6) ASSUMPTIONS
+========================================================================================================
+- collA9-1: jank's seq of a persistent_hash_map/set is immer's champ_iterator order (base_persistent_map
+  sequence over data.begin()/end(); persistent_hash_set to_string over data). Read; the order itself
+  was confirmed by round 8's real run (H8-1).
+- collA9-2: jank's rest-argument seq is seq? (sequence_like), so (fn [& {:as m}] ...) takes the
+  (apply hash-map gmap) branch. Read (destructure 3431-3436), not run.
+- collA9-3: `(def ^:dynamic *assert*)` (core.jank 23) keeps context.cpp's root true (73-76), as for *ns*.
+Earlier ones replaced:
+- Round 1's A10 ("Clojure quirks are not the spec: get truncating a long key with intValue is
+  ignored") hid a disagreement with Clojure: replaced by M9-1.
+- Round 4's "not reported" items update-vals of a sorted map and zipmap's order: reported now (M9-9,
+  vM15) under RULES section 5.
+
+========================================================================================================
+(7) PROPERTIES CHECKED, EACH WITH ITS SOURCE
+========================================================================================================
+- get/contains?/find/assoc/invoke of a vector with an integer key: APersistentVector.java (intValue).
+- get/contains?/nth of a string with a Number key: RT.java getFrom, contains 850-874, nthFrom.
+- contains? throws on unsupported types: RT.contains 873.
+- get-in: core.clj get-in (reduce1 get; sentinel loop).
+- select-keys keeps the map's meta: core.clj select-keys.
+- coll? / empty: IPersistentCollection; ASeq.empty, LazySeq.empty, Cons.empty, MapEntry.empty.
+- array map assoc of a present key keeps order: PersistentArrayMap.assoc, TransientArrayMap.doAssoc.
+- keyword-argument maps: PersistentArrayMap.createAsIfByAssoc (86-195), core.clj destructure.
+- assert: core.clj assert (AssertionError "Assert failed: ...").
+- walk demos: walk.clj (prn).
+- update-vals: core.clj (IEditableCollection).
+- hash collection order: PersistentHashMap.java (mask, BitmapIndexedNode, ArrayNode, NodeSeq).
+- parse-long: Long.valueOf (Character.digit). zipmap: core.clj (transient {}).
+Each checked on Clojure 1.12.3 (probe1-4 outputs in this session; the tests).
+
+========================================================================================================
+(8) SEARCH RUNS (results/r9-coll-search.txt)
+========================================================================================================
+- Hash order, every subset of {0..11}: complete 4,096; Clojure/jank orders differ on 1,536; champOrd vs
+  the CHAMP replica: 0 mismatches. First differing subset {5, 8, 9}.
+- Hash order, every subset of {0..13}: complete 16,384; differ on 8,064; replica mismatches 0.
+- (range n), n < 64: complete 64; differ for 54 values of n, the first 10.
+- Vector get, keys in a window (-5..5, 2^31-1, 2^31, -2^31, -2^31-1, 2^32, 2^32+1, 2^32+2, -2^32+1,
+  2^63-1, 2^63, 2^64+1, four truncations, a keyword) x sizes 0-4: complete 135 pairs; 22 differ, every
+  one an integer key past the int range (M9-1).
+Each run takes under a second (one job).
+
+========================================================================================================
+(9) THEOREMS (★ = new for-every-input proof)
+========================================================================================================
+★ Order.clj_assoc_present_keeps_keys, ★ Order.jank_assoc_at_8_promotes, ★ Order.jank_assoc_below_8,
+★ Order.clj_kwargs_order, Order.promoted_keys, Order.frequencies_keys, Order.kwargs_keys,
+Order.zipmap_keys; ★ HashOrder.champ_eq_clj_without_crowding, ★ HashOrder.champ_perm_clj,
+HashOrder.set_5_9_8 (with helper lemmas flatMap_ext', flatMap_perm', flatMap_append_perm);
+★ Lookup.vec_get_agree_int, ★ Lookup.vec_get_agree_nonint, ★ Lookup.vec_get_differs_iff,
+★ Lookup.str_get_agree_int, ★ Lookup.str_frac_differs, Lookup.vM1_instances, Lookup.vM2_instances,
+Lookup.low32_id; ★ Paths.getIn_agree, ★ Paths.getIn_no_lookup, ★ Paths.contains_differs_iff,
+Paths.coll_differs, Paths.empty_meta_differs, ★ Paths.selectKeys_differs, ★ Paths.assert_differs,
+★ Paths.demo_differs, ★ Paths.updateVals_sorted_differs.
+
+========================================================================================================
+(10) LIBRARY GAPS
+========================================================================================================
+- Lean's core library (v4.36.0) has no List.flatMap congruence lemma; flatMap_ext', flatMap_perm' and
+  flatMap_append_perm are proved in HashOrder.lean. Nothing else; sdk/lean untouched.
+
+========================================================================================================
+(11) FIXES WRITTEN
+========================================================================================================
+None (area M had no ids assigned; finding and confirming came first). Fix sketches, not written:
+- M9-5: look for the key before promoting (persistent_array_map.cpp 79, transient_array_map.cpp 78).
+- M9-4: (with-meta ret (meta m)) in select-keys. M9-8: prn in walk.jank 31, 37.
+- M9-3: contains of a value without `get` throws (seq.cpp 529-532) - watch jank's own callers.
+- M9-10: empty of a seq type returns persistent_list::empty() without meta.
+- M9-9: (instance? IEditableCollection m) has no jank counterpart; a check for sorted maps.
+- M9-11 and M9-1 are design choices (immer's CHAMP; 64-bit indices).
+
+========================================================================================================
+(12) MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+========================================================================================================
+- Round 1's A10 (an assumption, not a replica error): Clojure's intValue truncation is Clojure's
+  behavior (M9-1).
+- Rounds 6-8 CHAMP: "Clojure's side is a set model" left the HAMT's iteration order unreplicated;
+  M9-11 is what that hid.
+- Round 2's R120 entry and round 6's R120 fix: "repeat, sort results, array seqs" not covered; the
+  repeat case is re-tested (vM13b, vM13d), and empty's metadata on seqs (M9-10) is new.
+- Round 4's "not reported" list (update-vals sorted, zipmap order): now deviations (RULES section 5).
+
+Files: Jank/R9/Coll/{Order,HashOrder,Lookup,Paths}.lean; Run/R9/Coll.lean; results/r9-coll-report.txt,
+r9-coll-axioms.txt, r9-coll-search.txt; .r9-scratch/coll/{tests.jank, clj/, clj-result.txt,
+probe1-4.clj, axioms.lean}.

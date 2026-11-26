@@ -1,0 +1,62 @@
+--- a/compiler+runtime/include/cpp/jtl/immutable_string.hpp
++++ b/compiler+runtime/include/cpp/jtl/immutable_string.hpp
+@@ -652,11 +652,55 @@
+         return store.hash;
+       }
+ 
+-      /* https://github.com/openjdk/jdk/blob/7e30130e354ebfed14617effd2a517ab2f4140a5/src/java.base/share/classes/java/lang/StringLatin1.java#L194 */
+-      auto const ptr(data());
+-      for(size_type i{}; i != size(); ++i)
++      /* String.hashCode: 31 * h + each UTF-16 code unit, so that a non-ASCII string hashes as
++       * Clojure's does (Murmur3 of String.hashCode). The units are read by jtl::utf16_piece_at's
++       * rule (jtl/utf8.hpp): a complete sequence of one to four bytes is its code point, a pair
++       * past U+FFFF, and a byte that starts none stands alone as 0xDC00 + the byte. An ASCII byte
++       * is its own unit, as before. */
++      auto const ptr(data());
++      auto const length(size());
++      for(size_type i{}; i != length;)
+       {
+-        store.hash = (31 * store.hash) + (ptr[i] & 0xff);
++        auto const b0(static_cast<u8>(ptr[i]));
++        size_type n{ b0 < 0x80               ? 1u
++                     : (b0 & 0xE0) == 0xC0 ? 2u
++                     : (b0 & 0xF0) == 0xE0 ? 3u
++                     : (b0 & 0xF8) == 0xF0 ? 4u
++                                           : 0u };
++        if(n > length - i)
++        {
++          n = 0;
++        }
++        for(size_type k{ 1 }; k < n; ++k)
++        {
++          if((static_cast<u8>(ptr[i + k]) & 0xC0) != 0x80)
++          {
++            n = 0;
++            break;
++          }
++        }
++        if(n == 0)
++        {
++          store.hash = (31 * store.hash) + (0xDC00 + b0);
++          ++i;
++          continue;
++        }
++        u32 cp{ n == 1 ? b0 : static_cast<u32>(b0 & (0x7Fu >> n)) };
++        for(size_type k{ 1 }; k < n; ++k)
++        {
++          cp = (cp << 6) | (static_cast<u8>(ptr[i + k]) & 0x3Fu);
++        }
++        i += n;
++        if(cp < 0x10000)
++        {
++          store.hash = (31 * store.hash) + cp;
++        }
++        else
++        {
++          cp -= 0x10000;
++          store.hash = (31 * store.hash) + (0xD800 + (cp >> 10));
++          store.hash = (31 * store.hash) + (0xDC00 + (cp & 0x3FF));
++        }
+       }
+       return store.hash = jank::hash::integer(store.hash);
+     }

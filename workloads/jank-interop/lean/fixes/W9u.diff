@@ -1,0 +1,990 @@
+--- a/compiler+runtime/include/cpp/jtl/utf8.hpp
++++ b/compiler+runtime/include/cpp/jtl/utf8.hpp
+@@ -1,3 +1,7 @@
++#pragma once
++
++#include <string>
++
+ #include <jtl/immutable_string.hpp>
+ 
+ namespace jtl
+@@ -42,4 +46,49 @@
+   u32 combine_surrogate_pair(u16 const high, u16 const low);
+   immutable_string::size_type
+   next_char_size(immutable_string const &s, immutable_string::size_type const i);
++
++  /* jank's strings are indexed by UTF-16 code units, as Java's are. Their bytes are UTF-8 which
++   * may also hold a surrogate (U+D800..U+DFFF) in the three-byte form, as WTF-8 does: a lone
++   * surrogate is a character of its own, while a pair is the four-byte form of its code point
++   * (string_builder joins a high and a low surrogate appended in that order).
++   *
++   * A string is read as a sequence of pieces. A piece is a complete sequence of one to four bytes,
++   * as its lead byte announces, or else a single byte standing alone. A piece of four bytes whose
++   * value is U+10000 or more is two units, a surrogate pair. Every other piece is one unit, and a
++   * byte standing alone is the unit 0xDC00 + byte. */
++  struct utf16_piece
++  {
++    /* The piece's size in bytes, 1 to 4. */
++    u8 size{};
++    /* Its number of units, 1 or 2. */
++    u8 unit_count{};
++    char16_t units[2]{};
++  };
++
++  /* The piece starting at byte i (i < s.size()). */
++  utf16_piece utf16_piece_at(immutable_string const &s, immutable_string::size_type const i);
++  /* The number of UTF-16 code units of s. */
++  immutable_string::size_type utf16_length(immutable_string const &s);
++
++  struct utf16_position
++  {
++    /* The first byte of the piece holding the unit (s.size() past the last unit). */
++    immutable_string::size_type byte{};
++    /* Whether the unit is the second of its piece's two (a low surrogate). */
++    bool second{};
++  };
++
++  /* Where unit `unit` is, for unit <= utf16_length(s). */
++  utf16_position utf16_locate(immutable_string const &s, immutable_string::size_type const unit);
++  /* The bytes of one code unit alone: its UTF-8 form, a surrogate's three-byte form. */
++  immutable_string utf16_unit_bytes(char16_t const unit);
++  /* Units [start, end) of s, for start <= end <= utf16_length(s). */
++  immutable_string utf16_substr(immutable_string const &s,
++                                immutable_string::size_type const start,
++                                immutable_string::size_type const end);
++  std::u16string to_utf16(immutable_string const &s);
++  /* java.lang.String's indexOf(String, int) and lastIndexOf(String, int), on the units of s and
++   * value: the unit index of the match, or -1. */
++  i64 utf16_index_of(immutable_string const &s, immutable_string const &value, i64 from);
++  i64 utf16_last_index_of(immutable_string const &s, immutable_string const &value, i64 from);
+ }
+--- a/compiler+runtime/src/cpp/jtl/utf8.cpp
++++ b/compiler+runtime/src/cpp/jtl/utf8.cpp
+@@ -167,52 +167,54 @@
+     return { data, value_type::npos };
+   }
+ 
+-  jtl::immutable_string to_char(i64 const ch)
++  /* The UTF-8 bytes of a code point, a surrogate in its three-byte form (WTF-8). No locale is
++   * involved: wcrtomb refuses a surrogate, and a C locale refuses everything past ASCII. */
++  static std::string code_point_bytes(u32 const cp)
+   {
+-    if(ch > 0x10FFFF)
++    std::string str;
++    if(cp < 0x80)
+     {
+-      throw std::runtime_error{ jank::util::format("Value out of range for char: {}", ch) };
++      str.push_back(static_cast<char>(cp));
+     }
+-
+-    std::mbstate_t state{};
+-    wchar_t const wc{ static_cast<wchar_t>(ch) };
+-    std::string str(MB_CUR_MAX, '\0');
+-    auto const len{ std::wcrtomb(str.data(), wc, &state) };
+-
+-    if(std::cmp_equal(len, static_cast<size_t>(-1)))
++    else if(cp < 0x800)
+     {
+-      throw std::runtime_error{ jank::util::format("Unfinished character: {}", ch) };
++      str.push_back(static_cast<char>(0xC0 | (cp >> 6)));
++      str.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+     }
+-    else if(std::cmp_equal(len, static_cast<size_t>(-2)))
++    else if(cp < 0x10000)
+     {
+-      throw std::runtime_error{ jank::util::format("Invalid Unicode character: {}", ch) };
++      str.push_back(static_cast<char>(0xE0 | (cp >> 12)));
++      str.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
++      str.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+     }
+-
+-    str.resize(len);
+-
++    else
++    {
++      str.push_back(static_cast<char>(0xF0 | (cp >> 18)));
++      str.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
++      str.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
++      str.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
++    }
+     return str;
+   }
+ 
+-  jtl::immutable_string to_char(i64 const ch, jtl::immutable_string const &fallback)
++  jtl::immutable_string to_char(i64 const ch)
+   {
+-    if(ch > 0x10FFFF)
++    if(ch < 0 || ch > 0x10FFFF)
+     {
+-      return fallback;
++      throw std::runtime_error{ jank::util::format("Value out of range for char: {}", ch) };
+     }
+ 
+-    std::mbstate_t state{};
+-    wchar_t const wc{ static_cast<wchar_t>(ch) };
+-    std::string str(MB_CUR_MAX, '\0');
+-    auto const len{ std::wcrtomb(str.data(), wc, &state) };
++    return code_point_bytes(static_cast<u32>(ch));
++  }
+ 
+-    if(std::cmp_equal(len, static_cast<size_t>(-1)) || std::cmp_equal(len, static_cast<size_t>(-2)))
++  jtl::immutable_string to_char(i64 const ch, jtl::immutable_string const &fallback)
++  {
++    if(ch < 0 || ch > 0x10FFFF)
+     {
+       return fallback;
+     }
+ 
+-    str.resize(len);
+-
+-    return str;
++    return code_point_bytes(static_cast<u32>(ch));
+   }
+ 
+   bool is_surrogate_high(u16 const high)
+@@ -228,5 +230,214 @@
+   u32 combine_surrogate_pair(u16 const high, u16 const low)
+   {
+     return 0x10000 + ((static_cast<u32>(high) - 0xD800) * 0x400) + (static_cast<u32>(low) - 0xDC00);
++  }
++
++  utf16_piece utf16_piece_at(immutable_string const &s, size_type const i)
++  {
++    auto const b0(static_cast<u8>(s[i]));
++    usize n{ b0 < 0x80               ? 1u
++             : (b0 & 0xE0) == 0xC0 ? 2u
++             : (b0 & 0xF0) == 0xE0 ? 3u
++             : (b0 & 0xF8) == 0xF0 ? 4u
++                                   : 0u };
++    if(n > s.size() - i)
++    {
++      n = 0;
++    }
++    for(usize k{ 1 }; k < n; ++k)
++    {
++      if((static_cast<u8>(s[i + k]) & 0xC0) != 0x80)
++      {
++        n = 0;
++        break;
++      }
++    }
++
++    utf16_piece ret{};
++    if(n == 0)
++    {
++      ret.size = 1;
++      ret.unit_count = 1;
++      ret.units[0] = static_cast<char16_t>(0xDC00 + b0);
++      return ret;
++    }
++
++    u32 cp{ n == 1 ? b0 : static_cast<u32>(b0 & (0x7Fu >> n)) };
++    for(usize k{ 1 }; k < n; ++k)
++    {
++      cp = (cp << 6) | (static_cast<u8>(s[i + k]) & 0x3Fu);
++    }
++    ret.size = static_cast<u8>(n);
++    if(cp < 0x10000)
++    {
++      ret.unit_count = 1;
++      ret.units[0] = static_cast<char16_t>(cp);
++      return ret;
++    }
++    cp -= 0x10000;
++    ret.unit_count = 2;
++    ret.units[0] = static_cast<char16_t>(0xD800 + (cp >> 10));
++    ret.units[1] = static_cast<char16_t>(0xDC00 + (cp & 0x3FF));
++    return ret;
+   }
++
++  size_type utf16_length(immutable_string const &s)
++  {
++    auto const size(s.size());
++    size_type units{};
++    for(size_type i{}; i < size;)
++    {
++      if(static_cast<u8>(s[i]) < 0x80)
++      {
++        ++units;
++        ++i;
++        continue;
++      }
++      auto const piece(utf16_piece_at(s, i));
++      units += piece.unit_count;
++      i += piece.size;
++    }
++    return units;
++  }
++
++  utf16_position utf16_locate(immutable_string const &s, size_type const unit)
++  {
++    auto const size(s.size());
++    size_type i{}, u{};
++    while(i < size)
++    {
++      auto const piece(utf16_piece_at(s, i));
++      if(unit < u + piece.unit_count)
++      {
++        return { i, unit != u };
++      }
++      u += piece.unit_count;
++      i += piece.size;
++    }
++    return { size, false };
++  }
++
++  immutable_string utf16_unit_bytes(char16_t const unit)
++  {
++    return code_point_bytes(unit);
++  }
++
++  immutable_string
++  utf16_substr(immutable_string const &s, size_type const start, size_type const end)
++  {
++    if(start >= end)
++    {
++      return {};
++    }
++    auto const from(utf16_locate(s, start));
++    auto const to(utf16_locate(s, end));
++    if(!from.second && !to.second)
++    {
++      return s.substr(from.byte, to.byte - from.byte);
++    }
++
++    /* A cut inside a surrogate pair keeps the half on this side, in its three-byte form. */
++    std::string out;
++    auto i(from.byte);
++    if(from.second)
++    {
++      auto const piece(utf16_piece_at(s, i));
++      out += code_point_bytes(piece.units[1]);
++      i += piece.size;
++    }
++    if(i < to.byte)
++    {
++      out.append(s.data() + i, to.byte - i);
++    }
++    if(to.second)
++    {
++      out += code_point_bytes(utf16_piece_at(s, to.byte).units[0]);
++    }
++    return out;
++  }
++
++  std::u16string to_utf16(immutable_string const &s)
++  {
++    std::u16string out;
++    out.reserve(s.size());
++    auto const size(s.size());
++    for(size_type i{}; i < size;)
++    {
++      auto const piece(utf16_piece_at(s, i));
++      out.push_back(piece.units[0]);
++      if(piece.unit_count == 2)
++      {
++        out.push_back(piece.units[1]);
++      }
++      i += piece.size;
++    }
++    return out;
++  }
++
++  /* Whether every piece of s is one byte, so that units and bytes are the same positions and
++   * equal bytes are equal units (ASCII, above all). */
++  static bool units_are_bytes(immutable_string const &s)
++  {
++    return utf16_length(s) == s.size();
++  }
++
++  i64 utf16_index_of(immutable_string const &s, immutable_string const &value, i64 from)
++  {
++    if(units_are_bytes(s) && units_are_bytes(value))
++    {
++      auto const count(static_cast<i64>(s.size()));
++      if(from >= count)
++      {
++        return value.empty() ? count : -1;
++      }
++      auto const found(s.find(value, from < 0 ? 0 : static_cast<size_type>(from)));
++      return found == immutable_string::npos ? -1 : static_cast<i64>(found);
++    }
++
++    auto const units(to_utf16(s));
++    auto const value_units(to_utf16(value));
++    auto const count(static_cast<i64>(units.size()));
++    if(from >= count)
++    {
++      return value_units.empty() ? count : -1;
++    }
++    if(from < 0)
++    {
++      from = 0;
++    }
++    auto const found(std::u16string_view{ units }.find(value_units, static_cast<usize>(from)));
++    return found == std::u16string_view::npos ? -1 : static_cast<i64>(found);
++  }
++
++  i64 utf16_last_index_of(immutable_string const &s, immutable_string const &value, i64 from)
++  {
++    if(units_are_bytes(s) && units_are_bytes(value))
++    {
++      auto const right(static_cast<i64>(s.size()) - static_cast<i64>(value.size()));
++      if(from > right)
++      {
++        from = right;
++      }
++      if(from < 0)
++      {
++        return -1;
++      }
++      auto const found(s.rfind(value, static_cast<size_type>(from)));
++      return found == immutable_string::npos ? -1 : static_cast<i64>(found);
++    }
++
++    auto const units(to_utf16(s));
++    auto const value_units(to_utf16(value));
++    auto const right(static_cast<i64>(units.size()) - static_cast<i64>(value_units.size()));
++    if(from > right)
++    {
++      from = right;
++    }
++    if(from < 0)
++    {
++      return -1;
++    }
++    auto const found(std::u16string_view{ units }.rfind(value_units, static_cast<usize>(from)));
++    return found == std::u16string_view::npos ? -1 : static_cast<i64>(found);
++  }
+ }
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string.hpp
+@@ -62,6 +62,8 @@
+     i64 last_index_of(object_ref const m) const;
+ 
+     /* behavior::countable */
++    /* The number of UTF-16 code units, as java.lang.String.length: every index a program sees
++     * (count, nth, get, contains?, subs, index-of) is in units (jtl/utf8.hpp). */
+     usize count() const;
+ 
+     /* behavior::seqable */
+@@ -70,5 +72,9 @@
+ 
+     /*** XXX: Everything here is immutable after initialization. ***/
+     jtl::immutable_string data;
++
++    /* count(), computed on first use. Racing threads store the same value, as with
++     * immutable_string's cached hash. When it equals data.size(), every unit is one byte. */
++    mutable usize cached_count{ std::numeric_limits<usize>::max() };
+   };
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string.cpp
+@@ -1,3 +1,5 @@
++#include <jtl/utf8.hpp>
++
+ #include <jank/runtime/obj/persistent_string.hpp>
+ #include <jank/runtime/obj/persistent_string_sequence.hpp>
+ #include <jank/runtime/rtti.hpp>
+@@ -70,6 +72,23 @@
+     return data.compare(s.data);
+   }
+ 
++  /* The character of unit i (i < s.count()): a piece of one unit as its bytes, and either half
++   * of a surrogate pair alone, in its three-byte form. */
++  static object_ref unit_at(persistent_string const &s, usize const i)
++  {
++    if(s.count() == s.data.size())
++    {
++      return make_box<character>(s.data[i]);
++    }
++    auto const at(jtl::utf16_locate(s.data, i));
++    auto const piece(jtl::utf16_piece_at(s.data, at.byte));
++    if(piece.unit_count == 2)
++    {
++      return make_box<character>(jtl::utf16_unit_bytes(piece.units[at.second ? 1 : 0]));
++    }
++    return make_box<character>(s.data.substr(at.byte, piece.size));
++  }
++
+   object_ref persistent_string::get(object_ref const key) const
+   {
+     return get(key, {});
+@@ -80,11 +99,11 @@
+     if(is_integral(key))
+     {
+       auto const i(to_i64(key));
+-      if(i < 0 || data.size() <= static_cast<size_t>(i))
++      if(i < 0 || count() <= static_cast<size_t>(i))
+       {
+         return fallback;
+       }
+-      return make_box<character>(data[i]);
++      return unit_at(*this, static_cast<usize>(i));
+     }
+     else
+     {
+@@ -97,7 +116,7 @@
+     if(is_integral(key))
+     {
+       auto const i(to_i64(key));
+-      return 0 <= i && static_cast<size_t>(i) < data.size();
++      return 0 <= i && static_cast<size_t>(i) < count();
+     }
+     throw std::runtime_error{ util::format(
+       "The `contains?` operation on a `persistent_string` requires an integer index, not a `{}`.",
+@@ -109,13 +128,13 @@
+     if(is_integral(index))
+     {
+       auto const i(to_i64(index));
+-      if(i < 0 || data.size() <= static_cast<size_t>(i))
++      if(i < 0 || count() <= static_cast<size_t>(i))
+       {
+         throw std::runtime_error{
+           util::format("The index `{}` is out of bounds for this `persistent_string`.", i)
+         };
+       }
+-      return make_box<character>(data[i]);
++      return unit_at(*this, static_cast<usize>(i));
+     }
+     else
+     {
+@@ -132,7 +151,7 @@
+ 
+   jtl::string_result<persistent_string_ref> persistent_string::substring(i64 start) const
+   {
+-    return substring(start, static_cast<i64>(data.size()));
++    return substring(start, static_cast<i64>(count()));
+   }
+ 
+   jtl::string_result<persistent_string_ref>
+@@ -146,39 +165,36 @@
+     {
+       return err(util::format("end index {} is less than start {}", end, start));
+     }
+-    else if(static_cast<size_t>(end) > data.size())
++    else if(static_cast<size_t>(end) > count())
+     {
+-      return err(util::format("end index {} out of bounds for length {}", end, data.size()));
++      return err(util::format("end index {} out of bounds for length {}", end, count()));
+     }
+ 
+-    return ok(make_box(data.substr(start, end - start)));
++    if(count() == data.size())
++    {
++      return ok(make_box(data.substr(start, end - start)));
++    }
++    return ok(make_box(
++      jtl::utf16_substr(data, static_cast<usize>(start), static_cast<usize>(end))));
+   }
+ 
+   i64 persistent_string::first_index_of(object_ref const m) const
+   {
+-    auto const s(m.to_string());
+-    auto const found(data.find(s));
+-    if(found == jtl::immutable_string::npos)
+-    {
+-      return -1;
+-    }
+-    return static_cast<i64>(found);
++    return jtl::utf16_index_of(data, m.to_string(), 0);
+   }
+ 
+   i64 persistent_string::last_index_of(object_ref const m) const
+   {
+-    auto const s(m.to_string());
+-    auto const found(data.rfind(s));
+-    if(found == jtl::immutable_string::npos)
+-    {
+-      return -1;
+-    }
+-    return static_cast<i64>(found);
++    return jtl::utf16_last_index_of(data, m.to_string(), static_cast<i64>(count()));
+   }
+ 
+   usize persistent_string::count() const
+   {
+-    return data.size();
++    if(cached_count == std::numeric_limits<usize>::max())
++    {
++      cached_count = jtl::utf16_length(data);
++    }
++    return cached_count;
+   }
+ 
+   object_ref persistent_string::seq() const
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string_sequence.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/persistent_string_sequence.hpp
+@@ -24,6 +24,7 @@
+     persistent_string_sequence(persistent_string_sequence const &) = default;
+     persistent_string_sequence(obj::persistent_string_ref const s);
+     persistent_string_sequence(obj::persistent_string_ref const s, usize const i);
++    persistent_string_sequence(obj::persistent_string_ref const s, usize const i, bool const second);
+ 
+     /* behavior::object_like */
+     bool equal(object const &) const override;
+@@ -59,7 +60,11 @@
+ 
+     /*** XXX: Everything here is immutable after initialization. ***/
+     obj::persistent_string_ref str{};
++    /* The first byte of the current piece (jtl/utf8.hpp). */
+     usize index{};
++    /* Whether the current unit is the second of its piece's two (the low surrogate of a
++     * four-byte character): the sequence walks UTF-16 code units, as Java's does. */
++    bool second{};
+ 
+     /*** XXX: Everything here is thread-safe. ***/
+   protected:
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string_sequence.cpp
+@@ -30,6 +30,30 @@
+     jank_debug_assert(!s->data.empty() && i < s->data.size());
+   }
+ 
++  persistent_string_sequence::persistent_string_sequence(persistent_string_ref const s,
++                                                         usize const i,
++                                                         bool const second)
++    : object{ obj_type, obj_behaviors }
++    , str{ s }
++    , index{ i }
++    , second{ second }
++  {
++    jank_debug_assert(!s->data.empty() && i < s->data.size());
++  }
++
++  /* The character of the current unit: a piece of one unit as its bytes, and either half of a
++   * surrogate pair alone, in its three-byte form. */
++  static jtl::immutable_string
++  unit_bytes(jtl::immutable_string const &data, usize const index, bool const second)
++  {
++    auto const piece(jtl::utf16_piece_at(data, index));
++    if(piece.unit_count == 2)
++    {
++      return jtl::utf16_unit_bytes(piece.units[second ? 1 : 0]);
++    }
++    return data.substr(index, piece.size);
++  }
++
+   /* behavior::object_like */
+   bool persistent_string_sequence::equal(object const &o) const
+   {
+@@ -38,19 +62,29 @@
+ 
+   void persistent_string_sequence::to_string(jtl::string_builder &buff) const
+   {
+-    auto const range(jtl::utf8_range(str->data.substr(index)));
+-    auto const begin(range.begin());
+-    auto const end(range.end());
++    auto const &data(str->data);
++    auto const size(data.size());
++    auto i(index);
++    auto low(second);
+ 
+     buff('(');
+-    for(auto i(begin); i != end; ++i)
++    while(i < size)
+     {
+-      buff(character{ *i }.to_code_string());
+-      auto n(i);
+-      if(++n != end)
++      if(i != index || low != second)
+       {
+         buff(' ');
+       }
++      buff(character{ unit_bytes(data, i, low) }.to_code_string());
++      auto const piece(jtl::utf16_piece_at(data, i));
++      if(piece.unit_count == 2 && !low)
++      {
++        low = true;
++      }
++      else
++      {
++        low = false;
++        i += piece.size;
++      }
+     }
+     buff(')');
+   }
+@@ -80,18 +114,20 @@
+     /* TODO: Cache count if it becomes an issue */
+     usize count{};
+     auto const size(str->data.size());
+-    for(auto i(index); i < size; i += jtl::next_char_size(str->data, i))
++    for(auto i(index); i < size;)
+     {
+-      ++count;
++      auto const piece(jtl::utf16_piece_at(str->data, i));
++      count += piece.unit_count;
++      i += piece.size;
+     }
+-    return count;
++    return second ? count - 1 : count;
+   }
+ 
+   /* behavior::metadatable */
+   persistent_string_sequence_ref persistent_string_sequence::with_meta(object_ref const m) const
+   {
+     auto const meta(behavior::detail::validate_meta(m));
+-    auto const ret(make_box<persistent_string_sequence>(str, index));
++    auto const ret(make_box<persistent_string_sequence>(str, index, second));
+     ret->meta = meta;
+     return ret;
+   }
+@@ -115,21 +151,26 @@
+ 
+   object_ref persistent_string_sequence::fresh_seq() const
+   {
+-    return make_box<persistent_string_sequence>(str, index);
++    return make_box<persistent_string_sequence>(str, index, second);
+   }
+ 
+   /* behavior::sequence_like */
+   object_ref persistent_string_sequence::first() const
+   {
+-    auto const size(jtl::next_char_size(str->data, index));
+-    return make_box<character>(str->data.substr(index, size));
++    return make_box<character>(unit_bytes(str->data, index, second));
+   }
+ 
+   object_ref persistent_string_sequence::next() const
+   {
+-    auto const n(index + jtl::next_char_size(str->data, index));
++    auto const piece(jtl::utf16_piece_at(str->data, index));
++    if(piece.unit_count == 2 && !second)
++    {
++      return make_box<persistent_string_sequence>(str, index, true);
++    }
+ 
+-    if(n == str->data.size())
++    auto const n(index + piece.size);
++
++    if(n >= str->data.size())
+     {
+       return {};
+     }
+@@ -139,9 +180,17 @@
+ 
+   object_ref persistent_string_sequence::next_in_place()
+   {
+-    index += jtl::next_char_size(str->data, index);
++    auto const piece(jtl::utf16_piece_at(str->data, index));
++    if(piece.unit_count == 2 && !second)
++    {
++      second = true;
++      return runtime::detail::untagged(this);
++    }
+ 
+-    if(index == str->data.size())
++    second = false;
++    index += piece.size;
++
++    if(index >= str->data.size())
+     {
+       return {};
+     }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/character.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/character.cpp
+@@ -101,11 +101,21 @@
+     return data.compare(s.data);
+   }
+ 
++  /* The character's value. A character of a string is one UTF-16 code unit (jtl/utf8.hpp), so
++   * this is Java's char value, a lone surrogate's too; mbrtowc refuses a surrogate and depends on
++   * the locale. A four-byte character, which only a literal makes, keeps its code point. */
+   i64 character::to_integer() const
+   {
+-    std::mbstate_t state{};
+-    wchar_t wc{};
+-    std::mbrtowc(&wc, data.c_str(), data.size(), &state);
+-    return static_cast<i64>(wc);
++    if(data.empty())
++    {
++      return 0;
++    }
++    auto const piece(jtl::utf16_piece_at(data, 0));
++    if(piece.unit_count == 2)
++    {
++      return 0x10000 + ((static_cast<i64>(piece.units[0]) - 0xD800) << 10)
++        + (static_cast<i64>(piece.units[1]) - 0xDC00);
++    }
++    return static_cast<i64>(piece.units[0]);
+   }
+ }
+--- a/compiler+runtime/src/cpp/jtl/string_builder.cpp
++++ b/compiler+runtime/src/cpp/jtl/string_builder.cpp
+@@ -33,8 +33,37 @@
+     }
+   }
+ 
+-  static void write(string_builder &sb, char const * const str, usize const size)
++  /* Whether the three bytes at p are a surrogate in its three-byte form (WTF-8): high is
++   * ED A0..AF xx, low is ED B0..BF xx. */
++  static bool is_surrogate_bytes(char const * const p, bool const high)
+   {
++    return static_cast<u8>(p[0]) == 0xED
++      && (static_cast<u8>(p[1]) & 0xF0) == (high ? 0xA0 : 0xB0)
++      && (static_cast<u8>(p[2]) & 0xC0) == 0x80;
++  }
++
++  /* A low surrogate appended right after a high one becomes the four-byte form of their code
++   * point, so a string never holds a pair as two halves: (str (subs s 0 1) (subs s 1)) gives s
++   * back, byte for byte, and equals it, as in Java. The caller reserved `size` bytes, and the
++   * join writes two fewer. */
++  static void write(string_builder &sb, char const *str, usize size)
++  {
++    if(3 <= size && 3 <= sb.pos && is_surrogate_bytes(str, false)
++       && is_surrogate_bytes(sb.buffer + sb.pos - 3, true))
++    {
++      auto const high{ 0xD000u | ((static_cast<u32>(sb.buffer[sb.pos - 2]) & 0x3F) << 6)
++                       | (static_cast<u32>(sb.buffer[sb.pos - 1]) & 0x3F) };
++      auto const low{ 0xD000u | ((static_cast<u32>(str[1]) & 0x3F) << 6)
++                      | (static_cast<u32>(str[2]) & 0x3F) };
++      auto const cp{ 0x10000u + ((high - 0xD800u) << 10) + (low - 0xDC00u) };
++      sb.pos -= 3;
++      sb.buffer[sb.pos++] = static_cast<char>(0xF0 | (cp >> 18));
++      sb.buffer[sb.pos++] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
++      sb.buffer[sb.pos++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
++      sb.buffer[sb.pos++] = static_cast<char>(0x80 | (cp & 0x3F));
++      str += 3;
++      size -= 3;
++    }
+     string_builder::traits_type::copy(sb.buffer + sb.pos, str, size);
+     sb.pos += size;
+   }
+--- a/compiler+runtime/src/cpp/clojure/string_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/string_native.cpp
+@@ -21,31 +21,71 @@
+   using namespace jank;
+   using namespace jank::runtime;
+ 
++  /* StringBuilder.reverse: the units in reverse order, a surrogate pair kept in order. Reversing
++   * whole pieces (jtl/utf8.hpp) is that: a pair is one piece, and a low surrogate followed by a high
++   * one, which Java's reverse turns into a pair, comes out as a high one appended before a low one,
++   * which the builder joins. A byte standing alone stays as it is. */
+   jtl::immutable_string reverse(jtl::immutable_string const &s)
+   {
+-    jtl::string_builder buff{ s.size() };
+-    for(auto const &c : jtl::utf8_range(s) | std::views::reverse)
++    auto const size(s.size());
++    std::vector<usize> starts;
++    for(usize i{}; i < size; i += jtl::utf16_piece_at(s, i).size)
+     {
+-      buff(c);
++      starts.push_back(i);
+     }
++
++    jtl::string_builder buff{ size };
++    auto end(size);
++    for(auto it(starts.rbegin()); it != starts.rend(); ++it)
++    {
++      buff(s.substr(*it, end - *it));
++      end = *it;
++    }
+     return buff.release();
+   }
+ 
++  /* Whether every piece of s is one byte: its units are its bytes, so the byte functions are
++   * the unit functions (ASCII, above all). */
++  static bool units_are_bytes(jtl::immutable_string const &s)
++  {
++    return jtl::utf16_length(s) == s.size();
++  }
++
++  /* String.startsWith, endsWith and contains, on units: a value may start with a low surrogate
++   * or end with a high one, which matches half of a pair. */
+   bool starts_with(jtl::immutable_string const &s, jtl::immutable_string const &substr)
+   {
+-    return s.starts_with(substr);
++    if(units_are_bytes(s) && units_are_bytes(substr))
++    {
++      return s.starts_with(substr);
++    }
++    return std::u16string_view{ jtl::to_utf16(s) }.starts_with(jtl::to_utf16(substr));
+   }
+ 
+   bool ends_with(jtl::immutable_string const &s, jtl::immutable_string const &substr)
+   {
+-    return s.ends_with(substr);
++    if(units_are_bytes(s) && units_are_bytes(substr))
++    {
++      return s.ends_with(substr);
++    }
++    return std::u16string_view{ jtl::to_utf16(s) }.ends_with(jtl::to_utf16(substr));
+   }
+ 
+   bool includes(jtl::immutable_string const &s, jtl::immutable_string const &substr)
+   {
+-    return s.contains(substr);
++    return jtl::utf16_index_of(s, substr, 0) != -1;
+   }
+ 
++  i64 byte_count(jtl::immutable_string const &s)
++  {
++    return static_cast<i64>(s.size());
++  }
++
++  object_ref byte_substring(jtl::immutable_string const &s, i64 const start, i64 const end)
++  {
++    return make_box(s.substr(static_cast<usize>(start), static_cast<usize>(end - start)));
++  }
++
+   static jtl::immutable_string replace_first(jtl::immutable_string const &s,
+                                              jtl::immutable_string const &match,
+                                              jtl::immutable_string const &replacement)
+@@ -170,11 +210,24 @@
+ 
+     if(match_size == 0)
+     {
++      /* String.replace("", r) puts r around every UTF-16 unit, so between the halves of a pair
++       * too. An empty r joins them again (string_builder). */
+       jtl::string_builder buff{ s_size + ((s_size + 1) * replacement.size()) };
+-      for(usize i{}; i < s_size; ++i)
++      for(usize i{}; i < s_size;)
+       {
++        auto const piece(jtl::utf16_piece_at(s, i));
+         buff(replacement);
+-        buff(s[i]);
++        if(piece.unit_count == 2)
++        {
++          buff(jtl::utf16_unit_bytes(piece.units[0]));
++          buff(replacement);
++          buff(jtl::utf16_unit_bytes(piece.units[1]));
++        }
++        else
++        {
++          buff(s.substr(i, piece.size));
++        }
++        i += piece.size;
+       }
+       buff(replacement);
+       return buff.release();
+@@ -254,18 +307,20 @@
+     return buff.release();
+   }
+ 
++  /* String.indexOf and lastIndexOf after clojure.string's (unchecked-int from-index), in UTF-16
++   * units like every index jank's strings give (jtl/utf8.hpp). */
+   i64 index_of(jtl::immutable_string const &s,
+                jtl::immutable_string const &value,
+                i64 const from_index)
+   {
+-    return static_cast<i64>(s.find(value, from_index));
++    return jtl::utf16_index_of(s, value, static_cast<i32>(from_index));
+   }
+ 
+   i64 last_index_of(jtl::immutable_string const &s,
+                     jtl::immutable_string const &value,
+                     i64 const from_index)
+   {
+-    return static_cast<i64>(s.rfind(value, from_index));
++    return jtl::utf16_last_index_of(s, value, static_cast<i32>(from_index));
+   }
+ 
+   static jtl::immutable_string::size_type triml_index(jtl::immutable_string const &s)
+--- a/compiler+runtime/include/cpp/clojure/string_native.hpp
++++ b/compiler+runtime/include/cpp/clojure/string_native.hpp
+@@ -43,6 +43,11 @@
+                     jtl::immutable_string const &value,
+                     i64 const from_index);
+ 
++  /* Byte offsets, for jank's own byte protocols (the nREPL's bencode): every other index of a
++   * string is in UTF-16 units. */
++  i64 byte_count(jtl::immutable_string const &s);
++  object_ref byte_substring(jtl::immutable_string const &s, i64 const start, i64 const end);
++
+   jtl::immutable_string triml(jtl::immutable_string const &s);
+   jtl::immutable_string trimr(jtl::immutable_string const &s);
+   jtl::immutable_string trim(jtl::immutable_string const &s);
+--- a/compiler+runtime/src/cpp/jank/util/escape.cpp
++++ b/compiler+runtime/src/cpp/jank/util/escape.cpp
+@@ -53,38 +53,10 @@
+           return high.expect_err();
+         }
+ 
+-        auto const codepoint_high(high.expect_ok());
+-
+-        if(!jtl::is_surrogate_high(codepoint_high))
+-        {
+-          sb(jtl::to_char(codepoint_high, "?"));
+-          continue;
+-        }
+-
+-        if((i + 6) > size || input[i] != '\\' || input[i + 1] != 'u')
+-        {
+-          sb('?');
+-          continue;
+-        }
+-
+-        auto const low(unescape_unicode(input.substr(i + 2, 4)));
+-        i += 6;
+-
+-        if(low.is_err())
+-        {
+-          return low.expect_err();
+-        }
+-
+-        auto const codepoint_low(low.expect_ok());
+-
+-        if(!jtl::is_surrogate_low(codepoint_low))
+-        {
+-          sb("?");
+-          sb(jtl::to_char(codepoint_low, "?"));
+-          continue;
+-        }
+-
+-        sb(jtl::to_char(jtl::combine_surrogate_pair(codepoint_high, codepoint_low)));
++        /* Each \uXXXX is one UTF-16 code unit, kept as it is: a lone surrogate in its three-byte
++         * form (jtl/utf8.hpp), as Java keeps it, where "?" replaced it. A high one followed by a
++         * low one is joined into their code point by the builder. */
++        sb(jtl::to_char(high.expect_ok()));
+       }
+       else if(!escape)
+       {
+--- a/compiler+runtime/src/jank/jank/nrepl/server/bencode.jank
++++ b/compiler+runtime/src/jank/jank/nrepl/server/bencode.jank
+@@ -1,7 +1,13 @@
+-(ns jank.nrepl.server.bencode)
++(ns jank.nrepl.server.bencode
++  (:include "clojure/string_native.hpp"))
+ 
++;; bencode counts bytes. A string's count, subs and nth count UTF-16 units, as Java's do, so the
++;; lengths and offsets here go through the byte functions.
++(defmacro byte-count [data]
++  `(cpp/clojure.string_native.byte_count ~data))
++
+ (defmacro nth-byte [data i]
+-  `(when (< ~i (count ~data))
++  `(when (< ~i (byte-count ~data))
+      (int (cpp/aget (cpp/cast jtl.immutable_string ~data) (int ~i)))))
+ 
+ (defmacro index-of [data start c]
+@@ -12,8 +18,8 @@
+          (recur (inc i#))))))
+ 
+ (defmacro subs+ [data start end]
+-  `(when (and ~start ~end (<= ~start ~end (count ~data)))
+-     (subs ~data ~start ~end)))
++  `(when (and ~start ~end (<= ~start ~end (byte-count ~data)))
++     (cpp/clojure.string_native.byte_substring ~data ~start ~end)))
+ 
+ (defmacro peek-byte [position data]
+   `(nth-byte ~data (deref ~position)))
+@@ -86,7 +92,8 @@
+     (when s
+       (let [position (volatile! 0)
+             value (parse-recur position s)]
+-        (when value [value (not-empty (subs s @position))])))
++        (when value
++          [value (not-empty (cpp/clojure.string_native.byte_substring s @position (byte-count s)))])))
+     (catch :default _
+       nil)))
+ 
+@@ -98,7 +105,7 @@
+     (str "i" x "e")
+ 
+     (string? x)
+-    (str (count x) ":" x)
++    (str (byte-count x) ":" x)
+ 
+     (or (symbol? x)
+         (keyword? x))

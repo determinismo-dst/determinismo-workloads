@@ -1,0 +1,422 @@
+ROUND 9, AREA H (CHAMP): H8-1 FIXED (IMMER'S COLLISION REPLACE KEEPS THE POSITION; JANK KEEPS THE STORED
+KEY), TRANSIENT AND PERSISTENT CHAINS AGREE EXACTLY WITH THE FIX FOR EVERY EQUALITY, STOCK UNDER A PARTIAL
+EQUIVALENCE; A NON-TRANSITIVE = MAKES THEM DIFFER IN CONTENTS (H9-1)
+jank main 94d32623 (upstream-r5/compiler+runtime, = 7135b7708's tree); immer as pinned (deps/immer,
+jank-lang/immer 282629d0, the submodule commit `git -C upstream-r5 ls-tree HEAD compiler+runtime/third-party/immer`
+names). Every jank path below is under upstream-r5/compiler+runtime/. Nothing here was run on jank.
+Lean: Jank/R9/Champ/{Fix,SeqF,Order,Per,Programs}.lean (2,136 lines), Run/R9/Champ.lean (exe jank9-champ).
+Build: `lake build jank9-champ` succeeds (132 jobs). No sorry, no native_decide, no new axiom
+(results/r9-champ-axioms.txt: 39 declarations, each on a subset of propext, Classical.choice, Quot.sound).
+Scratch: .r9-scratch/champ/ (tests.jank, clj/, dec/ (C++ searches), immer-check/ (C++ check of the immer fix),
+comb/ (combined-tree copies), probe/). The patched immer copy used for the syntax checks and C++ runs
+(immer-patched/) was deleted at the end: `cp -R deps/immer/immer X/ && patch -p1 -d X < fixes/H8-1-immer.diff` rebuilds it.
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+Tests: .r9-scratch/champ/tests.jank (14 deftests, one assertion each, all [fn]: values through `id`).
+Clojure 1.12.3: 14 of 14 pass (.r9-scratch/champ/clj/run-1.12.3.txt). None needs native types or interop.
+
+H9-1 (new; shared cause: D8 meeting H8-1). A transient chain and its persistent twin end with different
+CONTENTS (not only order).
+    (let [a (id 0.00000000000000000000000002084477M)
+          q (id 0.00000000000000011000000000687110M)
+          b (id 0.00000000000000023000000001916567M)]
+      (= (set (map str (persistent! (-> (transient #{}) (conj! a) (conj! b) (conj! a) (disj! q)))))
+         (set (map str (-> #{} (conj a) (conj b) (conj a) (disj q))))))
+    Clojure 1.12.3: true (both #{a b}: Clojure's = is exact, q is neither). jank predicted: false: the transient
+    chain gives #{a}, the persistent one #{b}.
+    The same with a hash map: (-> (transient (hash-map)) (assoc! a 1) (assoc! b 2) (assoc! a 3) (dissoc! q))
+    against (-> (hash-map) (assoc a 1) (assoc b 2) (assoc a 3) (dissoc q)), compared by (set (map str (vals ..))):
+    Clojure true (#{"3" "2"} both); jank false (#{"3"} against #{"2"}).
+    Why:
+    - The three BigDecimals hash to 3969516785 in jank (big_decimal.cpp to_hash 177-180: std::hash of
+      cpp_dec_float<100> truncated to a u32; boost's hash_combine over the 16 limbs, exponent, sign, class).
+      Found by a C++ search with boost itself over three pools of 4,194,304 literals each (.r9-scratch/champ/
+      dec/triple.cpp, 6 s, 5 triples; results in dec/triple-4M.txt) and recomputed with round 3's Lean replica of
+      the reader and the hash (`jank9-champ h91`: 3969516785 three times). The same program reproduces round 7's
+      published hashes of 1M (3307139568) and 1.0000000000000000023M (2623107792), whose low bits the real jank
+      confirmed (x22b, x22c failed on stock as predicted).
+    - jank's = on BigDecimals is |x - y| < 2^-52 (big_decimal.cpp equal 146-155, D8): (= a q) and (= q b) are
+      true, (= a b) is false (|a - b| = 2.3E-16 > 2^-52). So a and b are both stored, in one collision node
+      (champ.hpp do_add/do_add_mut: a different value on a full-hash match goes to make_merged down to
+      make_collision), newest first: [b a].
+    - Transient: `conj! a` finds a at position 1; the node is the transient's own (make_merged_e marks it), so
+      do_add_mut writes in place (champ.hpp 650-655): [b a]. `disj! q` (do_sub_mut 1346-) removes the first
+      value = to q: b. Result #{a}.
+    - Persistent: `conj a` (persistent_hash_set.cpp conj 149-154 -> immer insert -> do_add 575-581) calls
+      copy_collision_replace (node.hpp 495-523), which writes a FIRST: [a b] (H8-1). `disj q` removes a.
+      Result #{b}.
+    - Maps: the same nodes over pairs; transient_hash_map.cpp assoc_in_place 96-101 / persistent_hash_map.cpp
+      assoc 110-114 and dissoc.
+    Checked three ways: immer's own code (C++, .r9-scratch/champ/dec/h91.cpp, built against deps/immer with
+    jank's memory policy but a malloc heap: set transient #{2.084477e-26}, persistent #{2.3000000001916567e-16};
+    map {a 3} against {b 2}; with the patched immer both #{a} / {a 3}), round 3's Lean replica with round 3's
+    BigDecimal replica (`jank9-champ h91`, the same), and an abstract model (Programs.lean
+    h91_stock_contents_differ, decide +kernel).
+    Tests: vH1-control-without-the-repeated-conj-the-twins-agree (control; jank true: with no in-place write
+    both chains remove b), vH1-transient-and-persistent-twins-differ-in-contents, vH1b-transient-and-
+    persistent-map-twins-differ-in-contents. Path [fn].
+    With fixes: vH1 passes with H8-1-immer.diff, with H8-1.diff (conj of a member returns the set, so the
+    persistent chain keeps [b a]) and with D8.diff / the combined patch (R72's exact =: no triple is =).
+    vH1b passes with H8-1-immer.diff or the combined patch, NOT with H8-1.diff alone (an assoc of a new value
+    still goes through immer's copy_collision_replace).
+    Status: new (a new program of two known causes: D8's =, H8-1's reorder; neither round names the contents
+    difference; round 8 said "none was searched for", REPORT-8 section 6 and r8-champ-report section 2).
+    Confidence: high for the mechanism (immer run, two replicas); medium-high for the program: it rests on the
+    literals reaching big_decimal with rd_string's value (x22b's literal did on the real jank; these have 7 to
+    17 significant digits) and on str printing a and b differently (any printing does: they differ by 10^10).
+    No control can check the hash premise on both languages (Clojure's hashes differ); if the premise failed,
+    vH1 would pass on jank, which a run shows.
+
+H9-2 (new). assoc of the value a key already holds, and conj of a member, return a NEW collection.
+    (let [m (hash-map (id :k) (id :v))] (identical? m (assoc m (id :k) (id :v))))   ; Clojure true, jank false
+    (let [s (hash-set (id 1) (id 2))] (identical? s (conj s (id 1))))               ; Clojure true, jank false
+    (let [m (id {:k :v})] (identical? m (assoc m (id :k) (id :v))))                 ; Clojure true, jank false
+    Clojure: PersistentHashMap.assoc returns this when root.assoc returns its node (BitmapIndexedNode.assoc and
+    HashCollisionNode.assoc: `if(valOrNode == val) return this`), PersistentArrayMap.assoc likewise
+    (`if(array[i+1] == val) return this`), PersistentHashSet.cons returns this when it contains the element.
+    jank: persistent_hash_map.cpp assoc 110-114, persistent_hash_set.cpp conj 149-154 and
+    persistent_array_map.cpp assoc 70-89 always make_box a new collection.
+    Tests: vH2-assoc-of-the-held-value-returns-the-hash-map-itself, vH2b-conj-of-a-member-returns-the-hash-set-
+    itself, vH2c-assoc-of-the-held-value-returns-the-array-map-itself, vH2-control-assoc-of-another-value-is-a-
+    new-map (control). Path [fn]. Clojure 1.12.3 run (probe/p1.clj, p2.clj): true, true, true, false.
+    Fix: H8-1.diff (hash map, hash set), H9-3.diff (array map). Status: new (no round names identity of
+    assoc/conj results). Confidence: high (read; the boxing is unconditional).
+
+H9-3 (new; on S59's path). assoc of a key already present in an 8-entry array map makes a hash map.
+    (let [m (into {} (map vector (range 8) (range 8)))] (= (range 8) (keys (assoc m (id 0) :x))))
+    Clojure 1.12.3: true (still a PersistentArrayMap). jank predicted: false: keys (0 7 1 4 6 3 2 5).
+    Why: persistent_array_map.cpp assoc 79-82 promotes whenever the map holds 8 entries (its own comment: "this
+    currently doesn't check if the assoc is adding a new key or updating an existing one"), through
+    persistent_hash_map(meta, array_map, key, val) (persistent_hash_map.cpp 12-25). The longs 0..7 hash
+    (Murmur3.hashLong, jank = Clojure, checked on 1.12.3) to the low 5 bits 0 4 20 19 6 23 17 3, all different,
+    so the CHAMP root holds them in bit order: (0 7 1 4 6 3 2 5) (also computed on round 3's replica with round
+    1's long hash, the constructor's one transient: .r9-scratch/champ/H93Order.lean). The transient path does the same:
+    transient_array_map.cpp assoc_in_place 67-89 (vH3b: assoc! of 0 on an 8-entry transient array map).
+    Clojure: PersistentArrayMap.assoc and TransientArrayMap.doAssoc replace the value of a present key in place
+    at any size; only a new key past 8 entries makes a hash map.
+    Tests: vH3-assoc-of-a-present-key-keeps-an-8-entry-array-map, vH3b-assoc!-of-a-present-key-keeps-an-8-
+    entry-array-map, vH3-control-a-ninth-key-keeps-every-pair (control). Path [fn].
+    Status: new as a deviation (REPORT-3's fourth S59 example used this promotion for the key replacement only;
+    round 6's U34 residual is about array-map past 8 entries). It may overlap area M's new ground (maps); it is
+    reported here because it sits on S59's path. Fix: H9-3.diff. Confidence: high (read; order computed from
+    the hash, which the y22 control confirmed for longs on the real jank).
+
+S59/U81 (known), the other paths H8-1.diff changes (tests for the fix):
+    vH4-hash-map-keeps-the-first-of-equal-keys: (list? (first (keys (hash-map (id '(1)) :a (id [1]) :b))))
+      Clojure true; jank false (create_from_seq 55-71 transient.set stores [1]); H8-1.diff true.
+    vH4b-assoc-at-the-promotion-keeps-the-stored-key: REPORT-3's fourth S59 example; Clojure true (nil); jank
+      false; true with H8-1.diff or H9-3.diff.
+    vH4c-conj-keeps-the-stored-element: (list? (first (conj (hash-set (id '(1))) (id [1])))); Clojure true;
+      jank false; H8-1.diff true.
+    vH4-control-get-of-a-transient-built-set-is-the-last-element (control, see 5): (vector? (get (hash-set
+      (id '(1)) (id [1])) [1])): Clojure true (ATransientSet.conj -> impl.assoc(o, o) keeps the first element
+      as the KEY and the last as the VALUE; get returns the value); jank true (one slot, the last element).
+
+H8-1 (round 8; fixed this round): y22, y22b, y22c, y22d, y22e of deviations_r8_test.jank; the real jank
+failed all five as predicted on stock and with round 8's patch (results/r8c-*.tsv).
+
+Shared causes: H9-1 = D8 x H8-1 (either fix removes it). H9-2 and H9-3 are separate local choices (jank's
+assoc/conj never compare with what is stored). S59/U81 and H8-1 share the "replacing add" path (immer's set
+stores the given key and copy_collision_replace moves it first); H8-1.diff/H8-1-immer.diff fix both.
+
+Checked, not reported:
+- R55's asymmetric = (stored vector accepts a query string seq, not the reverse) cannot give a contents
+  difference this way: two such values share a node only as [v ss] (v newest; inserting v first makes ss
+  replace it), and every value ss accepts, v accepts too, so the first acceptor is always v at position 0 and no
+  in-place write lands at position 1. (A full 32-bit hash collision of (seq s) and (vec s) would also be
+  needed.) The combined patch makes string seq = symmetric anyway (persistent_string_sequence.cpp equal ->
+  sequence_equal).
+- NaN (V85) and D12's =/hash mismatches are within the PER hypothesis: proved harmless for contents (section 2).
+- The R123 hash-map half (persistent_hash_map.cpp find 94-102 and transient_hash_map.cpp find 78-87 box the
+  ARGUMENT key): known (round 3 confirmed it for hash maps). H8-1.diff's find_entry makes it a one-line change
+  per file; not written (R123 is not this area's id).
+
+======================================================================
+2. PROOFS (no sorry, no native_decide, no new axiom)
+======================================================================
+Over round 3's replica of immer's champ.hpp (Jank/R3/Immer/Champ.lean), round 6's slot view and Edit lemmas,
+round 7's TOp sequences and round 8's Agree relation, congruences and step agreements.
+
+(a) The fixed steps (Fix.lean). `doAddF`/`doAddMutF` are round 3's `doAdd`/`doAddMut` with
+    copy_collision_replace writing v at its position (`xs.set pos v`) = H8-1-immer.diff.
+- ★ wf_doAddF, ★ wf_doAddMutF: the fixed steps keep wfNode (every hash, every equality, every owner).
+- ★ addMutF_agree, ★ addMutF_root_agree: with the fix, do_add_mut (assoc!/conj!) and do_add (assoc/conj) from
+  the same node agree node by node EXACTLY (Agree Eq: every collision list equal) with the same added flag, for
+  every well-formed node, hash, equality and owner token. Round 8's addMut_agree had one list differing
+  (InPlace); round 8's inPlace_eq_iff said exactly when it differs (pos /= 0).
+
+(b) With the fix, whole chains agree exactly, for EVERY equality (SeqF.lean).
+- ★ add_congrF, ★ sub_congrE: the (fixed) do_add and do_sub of one value/key on two well-formed nodes that agree
+  exactly give results that agree exactly (same flag, same result kind, same passed-up value). No Lawful, no
+  uniqueness: the two nodes hold the same values in the same order, so every Equal call is the same.
+- ★ stepF_wf, ★ buildTF_wf: every fixed step and sequence keeps wfNode.
+- ★ buildTF_agree, ★ buildTF_agree_empty: with the fix, every sequence of assoc/conj, dissoc/disj, assoc!/conj!,
+  dissoc!/disj! (any owner tokens; transient and persistent! are token changes, round 3) and the same sequence
+  with every transient step made persistent give champs that agree node by node exactly, with the same size and
+  the SAME iteration (seq/keys/vals order), for every hash function and every equality (D8, NaN, D12 included).
+- ★ agreeEq_iter: exactly agreeing well-formed nodes iterate identically (round 8's agree_iter is the
+  permutation version).
+
+(c) With the fix, assoc/conj of a present key keeps every position (Order.lean).
+- ★ addF_inPlace: when the fixed do_add finds a stored value x that Equal accepts (added = false), the result
+  iterates as the old node with v at x's position: iterNode N' = (iterNode N).set j v, (iterNode N)[j] = x,
+  Equal x v. Every well-formed node, hash, equality (the in-place child replace, the value replace, the
+  collision write).
+- ★ addMutF_inPlace: the same for the fixed do_add_mut (through (a) and agreeEq_iter), any owner.
+- ★ addRootF_inPlace, ★ addMutRootF_inPlace: at the root: a step that leaves the size unchanged leaves
+  Champ.toList = old.set j v.
+- ★ keys_kept: when the stored entry at j has key k and the step stores (k, val) (H8-1.diff's jank half keeps
+  the stored key), the key sequence is unchanged. With (c) this is Clojure's property for maps; for sets
+  H8-1.diff returns the set itself, so nothing changes at all.
+- ★ flatMap_set (list lemma).
+
+(d) Stock jank without a lawful equality (Per.lean). Round 8's sequence theorem assumed Lawful (reflexive,
+    symmetric, transitive, agreeing with the hash). Weaker hypothesis PER: Equal symmetric and transitive on
+    stored values, and two stored values accepting one key are Equal. Reflexivity and hash agreement dropped.
+    Invariant CU: every collision node holds pairwise non-Equal values (per node; round 6's Uniq of the whole
+    iteration fails under D12's mismatches).
+- ★ cu_makeMerged, ★ cu_add, ★ cu_sub, ★ cu_step, ★ cu_reach: every stock step (the transient ones through round
+  8's addMut_agree/subMut_agree, the in-place write being a permutation of the persistent list) keeps CU under
+  PER, so every champ a jank program builds from champ::empty() meets it.
+- ★ add_congrP, ★ sub_congrP: round 8's congruences with PER and CU for Lawful and Uniq (round 8's proofs with
+  their two uses of lawfulness replaced: ★ one_of_cu, one stored value per collision node accepts a query; CU
+  passes to a child).
+- ★ buildT_agreeP, ★ buildT_agreeP_empty: under PER, every stock sequence of persistent and transient steps and its
+  all-persistent twin agree node by node up to collision order, with the same size and permuted iterations
+  (the same contents).
+- So: NaN's irreflexive = (V85) and D12's =/hash mismatches never make the twins differ in contents; a
+  non-transitive = can (H9-1: Programs.lean h91_not_transitive, h91_stock_contents_differ). An asymmetric =
+  of R55's shape (one stored value accepts the other as a query, not the reverse) gave no contents difference
+  in the complete `asym` searches (section 8), for the reason in section 1; that symmetry can be dropped from
+  PER in general is not proved.
+- Tools: ★ cu_edit, ★ cu_owned, ★ cu_ownedValues, ★ cu_agree, cu_empty, cu_sub_root, ★ stepS_wf, ★ buildT_wf_any
+  (stock sequences keep wfNode without HP), ne_symm, eqTT_viaP, add_root_congrP, sub_root_congrP, congr_stepP.
+
+(e) Programs (Programs.lean, decide +kernel).
+- fix_y22, fix_y22b, fix_y22c, fix_y22d, fix_y22e: round 8's H8-1 programs (the longs 1 and 7676047846,
+  jank's hash) through the fixed steps give Clojure's orders: (7676047846 1) before and after; the transient and
+  persistent chains equal.
+- h91_stock_contents_differ ([1] against [3]), h91_fixed_agree ([1], [1]), h91_control, h91_not_transitive:
+  H9-1 over an abstract non-transitive equality with one hash.
+
+Not proved:
+- That jank's = on every value meets PER except D8 and R55 (read and searched by rounds 1-7, not proved). Sets and
+  maps whose = goes through CHAMP lookups of D12-affected elements could be non-transitive; making them share a
+  full 32-bit hash with a third = value needs a coincidence, not searched.
+- H8-1.diff's jank half (find_entry/set_keeping_key, the identity returns) and H9-3.diff are read and
+  syntax-checked, not modeled in Lean beyond keys_kept; array maps are not modeled.
+- That H8-1.diff's second lookup (set with the STORED key) lands on the entry find_entry found: it does when
+  Equal is reflexive on that key and no earlier value in its collision node accepts it, which CU and PER give
+  (one acceptor per node), assumption champA9-3.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Jank/R9/Champ/Fix.lean: immer node.hpp copy_collision_replace with H8-1-immer.diff (`copyCollisionReplaceF`),
+  champ.hpp do_add 572-638 and do_add_mut 645-748 with it (`doAddF`, `doAddMutF`), add/add_mut at the root
+  (`addRootF`, `addMutRootF`). Everything else is round 3's replica.
+- Jank/R9/Champ/SeqF.lean: the fixed sequences (`applyTF`, `buildTF` over round 7's TOp).
+- Jank/R9/Champ/Order.lean: iteration of copy_inner_replace / copy_inner_replace_value results
+  (node.hpp, champ_iterator.hpp order: a node's values then its children).
+- Jank/R9/Champ/Per.lean: the CU invariant over round 6's slots.
+- Jank/R9/Champ/Programs.lean: round 8's programs (hash.cpp integer(i64), immer::map pairs) with the fix; H9-1.
+- Run/R9/Champ.lean: `show`, `h91` (round 3's cpp_dec_float reader and hash, round 7's Vals tables: jank's
+  BigDecimal = and hash, Clojure's =), `seqs CFG N MODE` (section 8).
+- C++ (my own programs, not jank's): .r9-scratch/champ/immer-check/check.cpp (immer::map/set with jank's memory
+  policy, malloc heap, built against stock and patched immer); dec/triple.cpp (boost cpp_dec_float<100> hash and
+  jank's =); dec/h91.cpp (H9-1 on immer + boost).
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- The C++ checks use immer::malloc_heap for jank's gc_heap (no refcount either way; owner tokens are fresh heap
+  objects in both; jank's Boehm collector frees nothing reachable).
+- The Lean replica's owner tokens are numbers (round 8's champA8-1 stands).
+- The `seqs` search's hash is k / 3 over the values 0..5 and its equalities are abstract (they stand for the
+  classes named in section 8), not jank's values; the H9-1 program itself was run with jank's BigDecimal hash
+  and = (C++ boost and round 3's replica).
+- Clojure's side is read (PersistentHashMap/HashSet/ArrayMap, TransientHashMap/ArrayMap, ATransientSet) and run
+  on 1.12.3 through the 14 tests and probes; Clojure's HAMT is not replicated.
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- S59's transient-set half: Clojure's transient set stores the first element as the key and the LAST as the value
+  (ATransientSet.conj -> impl.assoc(o, o) -> BitmapIndexedNode.assoc keeps the key, editAndSet the value); seq
+  and printing show the first, get and invoke return the last (Clojure 1.12.3: (first (hash-set '(1) [1])) is (1),
+  (get .. [1]) is [1]). jank's set stores one object per element. Stock jank stores the last: get agrees with
+  Clojure, seq does not (S59). Keeping the first would turn get into a deviation. H8-1.diff leaves transient
+  sets alone (with H8-1-immer.diff their order is right); an exact fix needs a key/value set representation.
+  vH4-control guards get.
+- R123's hash-map half (find returns the argument key): one line per file with H8-1.diff's find_entry; not
+  written (another id).
+- Array maps are not modeled in Lean (H9-2's array-map half and H9-3 are read and syntax-checked).
+- A for-every-input proof that the C++ of H8-1-immer.diff equals `copyCollisionReplaceF` (read; checked by
+  check.cpp on 2,249,685 random steps, section 8).
+
+======================================================================
+6. ASSUMPTIONS (champA9-n) AND EARLIER ONES REPLACED
+======================================================================
+- champA9-1. The build applies fixes/H8-1-immer.diff inside the immer submodule (282629d0): `git submodule update
+  --init compiler+runtime/third-party/immer` then `git -C compiler+runtime/third-party/immer apply
+  ../../../fixes/H8-1-immer.diff` (or `patch -p1 -d compiler+runtime/third-party/immer < fixes/H8-1-immer.diff`);
+  or jank-lang/immer takes the commit and jank bumps its submodule pin. A diff with paths
+  a/compiler+runtime/third-party/immer/... does not apply to the jank repository: `git -C upstream-r5 apply
+  --check` and the combined tree's both say "No such file or directory" (the submodule is a gitlink).
+- champA9-2. jank's BigDecimal literals reach big_decimal with rd_string's value (round 3/8; x22b's literal on the
+  real jank) for H9-1's three literals.
+- champA9-3. Equal is reflexive on a stored key that a query finds, and no earlier value in its node accepts it
+  (H8-1.diff's set_keeping_key relookup). True for every jank value but a self-unequal one, which is never found.
+- champA9-4. immer's map::impl() and map_transient::impl() ("Semi-private", public) and champ::get<Project,
+  Default> stay as at 282629d0 (H8-1.diff uses them; detail::constantly too).
+- champA9-5. The malloc heap of the C++ checks stands for gc_heap (section 4).
+- Round 8's champA8-1, champA8-2 and round 7's champA7-1..4 stand.
+- Replaced: round 6's "S59, U81: immer's map set/update store the given key, and no public API returns the
+  stored entry; keeping the stored key needs an immer change" (REPORT-6 4.x; r6-fix2-report): map.hpp 481 and
+  map_transient.hpp 316 expose impl(), and champ::get with an entry projection returns the stored pair; the
+  jank-side H8-1.diff keeps the key without touching immer. Round 8's "for maps keeping the order needs more
+  than a jank-side call change" stands (it needs H8-1-immer.diff).
+
+======================================================================
+7. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- 38 (REPORT-8): assoc/conj of a present key keep a hash collection's seq order (PersistentHashMap.java
+  HashCollisionNode.assoc cloneAndSet/editAndSet, BitmapIndexedNode.assoc; PersistentHashSet.cons): proved for
+  the fixed steps (Order.lean), checked on immer (check.cpp).
+- A transient chain and its persistent twin give the same collection, seq order included (Clojure's transients
+  share the node code: TransientHashMap -> INode.assoc(edit, ...)): proved exactly with the fix for every
+  equality (SeqF.lean); for stock jank up to order under PER (Per.lean); contents differ without transitivity
+  (H9-1).
+- New 42: assoc of the value a key holds and conj of a member return the collection itself
+  (PersistentHashMap.assoc `newroot == root`, PersistentArrayMap.assoc, PersistentHashSet.cons) (H9-2).
+- New 43: an array map stays an array map when assoc replaces a present key (PersistentArrayMap.assoc,
+  TransientArrayMap.doAssoc) (H9-3).
+- S59/U81's: the stored key is kept (BitmapIndexedNode.assoc, HashCollisionNode.assoc, PersistentHashMap.create
+  through a transient; zipmap's assoc!).
+
+======================================================================
+8. SEARCH RUNS (complete = every input within the bounds)
+======================================================================
+- BigDecimal triples (dec/triple.cpp, boost cpp_dec_float<100>): pools a(i) = i*10^-32, q(i) = 1.1E-16 + i*10^-34,
+  b(i) = 2.3E-16 + i*10^-34, i = 1..4,194,304 each; stopped at the first 5 triples of one jank hash with
+  (= a q), (= q b), not (= a b) (all 5 have them; results .r9-scratch/champ/dec/triple-4M.txt). 6 s.
+- immer check (immer-check/check.cpp): 200,000 random sequences (seeded mt19937_64, 2,249,685 steps; keys 0..11,
+  hash k/4, ==; persistent set/update/erase against a twin with transient stretches; snapshots by impl() so the
+  owner token is untouched). Stock immer: the twin differs in order after 170,745 steps, in contents 0;
+  assoc/update of a present key reorders 341,736 times. Patched: 0, 0, 0.
+- `jank9-champ seqs CFG N MODE` (results/r9-champ-seqs.txt): COMPLETE for every sequence of length <= N; values
+  0..5, hash k / 3; stock and fixed steps; MODE pure: 12 steps, all transient under one owner against all
+  persistent; MODE mixed: 24 steps (each persistent or transient) against the all-persistent twin.
+  All COMPLETE (pure: length <= 6, 3,257,437 sequences; mixed: length <= 5, 8,308,825 sequences; 21 min total,
+  at most 196 MB). "contents" = the two results' iterations are not permutations or the sizes differ;
+  "node by node" = Agree with equal collision lists fails.
+    lawful   pure:  stock contents 0, node by node 205,632; fixed 0, 0.
+    lawful   mixed: stock contents 0, node by node 69,624;  fixed 0, 0.
+    nontrans pure:  stock contents 9,336 (352 at <= 5, 8 at <= 4), node by node 55,708; fixed 0, 0.
+                    First: (conj! 0) (conj! 2) (conj! 0) (conj! 1) against the persistent twin: H9-1's shape (the
+                    in-place write keeps [2 0], the move gives [0 2]; 1 then replaces a different value).
+    nontrans mixed: stock contents 2,624, node by node 20,856; fixed 0, 0.
+    per      pure:  stock contents 0, node by node 182,668; fixed 0, 0.
+    per      mixed: stock contents 0, node by node 60,448;  fixed 0, 0.
+    asym     pure:  stock contents 0, node by node 175,184; fixed 0, 0.
+    asym     mixed: stock contents 0, node by node 60,760;  fixed 0, 0.
+  As proved: with the fix nothing differs for any of the four equalities (buildTF_agree_empty); stock never
+  differs in contents under the lawful and PER equalities (round 8's buildT_agree_empty, buildT_agreeP_empty);
+  the non-transitive one does (H9-1).
+- `jank9-champ show`, `jank9-champ h91`: results/r9-champ-show.txt (H8-1's programs stock and fixed; H9-1's
+  values on round 3's replicas). C++ outputs: results/r9-champ-immer.txt (check.cpp and keepkey.cpp, stock and
+  patched immer).
+
+======================================================================
+9. THEOREMS (★ = for every input)
+======================================================================
+Fix.lean: ★ wf_doAddF, ★ wf_doAddMutF, ★ addMutF_agree, ★ addMutF_root_agree.
+SeqF.lean: ★ add_congrF, ★ sub_congrE, ★ agreeEq_iter, ★ stepF_wf, ★ buildTF_wf, ★ buildTF_agree,
+  ★ buildTF_agree_empty, ★ addF_root_congr, ★ subE_root_congr, ★ persistF_step, ★ congrF_step, flatMap_map_congr,
+  agreeEq_trans.
+Order.lean: ★ addF_inPlace, ★ addMutF_inPlace, ★ addRootF_inPlace, ★ addMutRootF_inPlace, ★ keys_kept,
+  ★ flatMap_set, mkInner_parts.
+Per.lean: ★ cu_add, ★ cu_sub, ★ cu_makeMerged, ★ cu_step, ★ cu_reach, ★ add_congrP, ★ sub_congrP, ★ buildT_agreeP,
+  ★ buildT_agreeP_empty, ★ one_of_cu, ★ cu_edit, ★ cu_owned, ★ cu_ownedValues, ★ cu_agree, ★ stepS_wf,
+  ★ buildT_wf_any, cu_empty, cu_sub_root, ne_symm, eqTT_viaP, add_root_congrP, sub_root_congrP, congr_stepP.
+Programs.lean (single inputs, decide +kernel): fix_y22, fix_y22b, fix_y22c, fix_y22d, fix_y22e,
+  h91_stock_contents_differ, h91_fixed_agree, h91_control, h91_not_transitive.
+Axioms: results/r9-champ-axioms.txt.
+
+======================================================================
+10. LIBRARY GAPS (built here; sdk/lean untouched)
+======================================================================
+- flatMap_set: setting one element of a list maps to setting one element of its flatMap (with the index).
+- A per-node invariant over packed-bitmap trees passed through Edit (cu_edit) and through any agreement whose
+  leaf relation keeps it (cu_agree).
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+H8-1-immer.diff (fixes/H8-1-immer.diff; paths relative to the immer repository root: a/immer/detail/hamts/node.hpp).
+- Change: node.hpp copy_collision_replace writes the new value at the replaced one's position (the old values
+  before it, v, the old values after it), with the same exception cleanup as copy_collision_remove.
+- Applies: `git -C deps/immer apply --check` (deps/immer = the submodule commit 282629d0). It cannot be expressed
+  against the jank repository (champA9-1). The combined patch does not touch immer, so it applies with it.
+- Should pass: y22, y22b, y22c, y22d, y22e (deviations_r8_test.jank; their controls stay true), vH1, vH1b.
+- Read-checked: every caller (champ.hpp 581 do_add, 657 do_add_mut, 765 do_update, 860 do_update_if_exists, 944
+  do_update_mut, 1083 do_update_if_exists_mut) has an in-place branch writing `*fst = ...` at the same position,
+  so each copying path now equals its in-place path; no immer or jank code relies on the move to the front.
+- Checked: check.cpp against stock and patched immer (section 8); syntax: jank's detail/type.cpp (the explicit
+  instantiations of immer::set and immer::map) and persistent_hash_map.cpp with the patched immer, stock and
+  combined include trees.
+- A build must confirm: the five y22 tests and vH1/vH1b; no change in jank's suite (its .jank files never
+  assoc/conj into a hash map or set: grep finds conj on vectors only, in form/loop/recur/pass-loop-to-loop.jank
+  and cpp/loop/*.jank; form/map/hash/pass-nested.jank and form/set/*.jank build literals only).
+
+H8-1.diff (fixes/H8-1.diff; persistent_hash_map.cpp, transient_hash_map.cpp, persistent_hash_set.cpp). Also fixes
+S59 and U81 (one fix; no separate S59.diff/U81.diff), and H9-2's hash half.
+- Change: a helper reads the stored entry through immer's impl().get with an entry projection; assoc,
+  create_from_seq (hash-map), the array-map promotion constructor, assoc! and conj! of a [k v] store the STORED
+  key with the new value; assoc of the identical value returns the map itself; a hash set's conj of a member
+  returns the set itself. Transient sets are unchanged (section 5).
+- Applies alone to 94d32623 and to round 8's combined tree (all.diff does not touch these files).
+- Should pass: s59 (r3), u81 (r4), y22b and y22c (alone), vH1 (alone), vH2, vH2b, vH4, vH4b, vH4c; vH4-control stays
+  true. Still failing with it alone: y22, y22d, y22e, vH1b (need H8-1-immer.diff); r123 (array map, another id).
+- Read-checked: every caller of the changed functions (base_persistent_map conj -> assoc; seq.cpp merge_in_place ->
+  assoc_in_place; transient_array_map promotion -> assoc_in_place; context.cpp/ns_dynamic.cpp/atom.cpp/
+  multi_function.cpp assoc users treat the result as a new value, so returning the same map is harmless;
+  reset_meta mutates only fresh objects, never assoc/conj results); the identity test is object_ref == (oref.hpp
+  329-339, as runtime::is_identical).
+- Syntax: each file with stock includes and stock immer, with the combined tree's includes and the patched
+  immer (.r9-scratch/champ/syn-all.sh, comb/): exit 0.
+- Cost: one extra CHAMP lookup per hash-map assoc/assoc! (find_entry, then set); a build should time it. A
+  single-walk alternative is champ::update<Project, Default, Combine> on impl() with a combine that keeps the
+  stored key (persistent only; map_transient's impl() is const).
+- jank's suite: none of the 551 files assocs or conjs into a hash map or set (grep), so none compares identity
+  of such results or depends on which equal key is kept; core.jank's own uses at load time (namespaces,
+  bindings, multimethod tables, watches) treat assoc's result as a value.
+- Unity builds (CMake option jank_unity_build, default OFF): the two .cpp files' helpers have distinct names;
+  .r9-scratch/champ/unity.cpp includes the three changed files in one TU and compiles (-fsyntax-only).
+- Checked on immer (.r9-scratch/champ/immer-check/keepkey.cpp, the same impl().get calls): the stored key is
+  kept on assoc and assoc!, and with the patched immer its position too.
+
+H9-3.diff (fixes/H9-3.diff; persistent_array_map.cpp, transient_array_map.cpp). Also H9-2's array-map half.
+- Change: promote only when the key is absent (data.find(key).is_none()); persistent assoc of the identical
+  value returns the map itself.
+- Applies alone to 94d32623 and to the combined tree (whose persistent_array_map.cpp changes create_from_seq, U34,
+  elsewhere); syntax-checked on both (combined via patched copies).
+- Should pass: vH3, vH3b, vH2c, vH4b. jank's C++ unit tests test/cpp/jank/runtime/obj/persistent_array_map.cpp and
+  transient_array_map.cpp "promotion ... in assoc/conj" add a NEW key ('9') to 8 entries: they still promote.
+- A build must confirm: vH3/vH3b; the two C++ unit tests.
+
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 6 (REPORT-6, r6-fix2-report): "no public API returns the stored entry; keeping the stored key needs an
+  immer change" (S59, U81): impl() is public (map.hpp 480-481 "Semi-private", map_transient.hpp 314-316).
+- Round 8 (r8-champ-report section 2): "Not proved: the sequence theorem without a lawful equality ... none was
+  searched for": proved with the fix for every equality, and for stock under PER; a contents difference found and
+  run (H9-1).
+- Round 8: "For sets, returning the set when it holds the element would do": true for persistent sets; a
+  transient set's conj! of a member on a node it does not own still reorders (fixed by the immer half), and its
+  representative cannot match Clojure's key/value split (section 5).
+- REPORT-3's S59 fourth example (8-entry promotion) drew only the key; the promotion itself reorders and changes
+  the map's kind (H9-3).

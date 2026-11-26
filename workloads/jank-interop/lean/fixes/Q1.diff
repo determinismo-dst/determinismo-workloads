@@ -1,0 +1,265 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -5969,7 +5969,11 @@
+   ;; (if (instance? clojure.lang.LineNumberingPushbackReader *in*)
+   ;;   (.readLine ^clojure.lang.LineNumberingPushbackReader *in*)
+   ;;   (.readLine ^java.io.BufferedReader *in*))
+-  (throw (ex-info "TODO: port read-line"  {})))
++  ;; jank has no reader type yet: a function bound to *in* (the nREPL server binds one for each
++  ;; eval, reading its session's stdin) gives the next line, or nil at the end of the input.
++  (if (fn? *in*)
++    (*in*)
++    (throw (ex-info "TODO: port read-line"  {}))))
+ 
+ (defn read-string
+   "Reads one object from the string s. Optionally include reader
+--- a/compiler+runtime/src/jank/jank/nrepl/server/core.jank
++++ b/compiler+runtime/src/jank/jank/nrepl/server/core.jank
+@@ -76,34 +76,67 @@
+     (.write client (cpp/cast std.string msg-str))
+     nil))
+ 
++(declare handle-request)
++
++(defn- next-request
++  "Reads the next request from the client, keeping what follows it in `buffer`."
++  [client* buffer]
++  (let [[req remainder] (read-message client* @buffer)]
++    (vreset! buffer remainder)
++    req))
++
++(defn- wait-input
++  "An eval of `req` reads *in* with nothing buffered: as nREPL's session reader does
++  (middleware/session.clj session-in 44-53), tell the client with need-input, then wait.
++  This thread is the connection's only one, so it reads and handles the requests that come
++  meanwhile (the stdin op among them) until `ready?` (the session's input changed) is true or
++  the client is gone. Returns `(ready?)`."
++  [client* buffer req ready?]
++  (write-message client* (response-for req {:status [:need-input]}))
++  (loop []
++    (when (and (not (ready?)) (connected? client*))
++      (when-let [r (next-request client* buffer)]
++        (handle-request client* buffer r))
++      (recur)))
++  (ready?))
++
++(defn- handle-request
++  "Handles one request and writes its replies."
++  [client* buffer req]
++  (try
++    (log "<-" (pr-str (abbreviate req 20)))
++    (let [resps (responses-for req
++                               (binding [jank.nrepl.server.handler.eval/*wait-input*
++                                         (fn [ready?] (wait-input client* buffer req ready?))]
++                                 (handle-message req)))]
++      (doseq [resp resps]
++        (log "->" (pr-str (abbreviate resp 20)))
++        (write-message client* resp)))
++    (catch std.exception e
++      (write-message
++       client*
++       (response-for req {:status [:error :done]
++                          :err    (str "An exception was thrown from the nREPL handler:" (.what e))})))
++    (catch jank.runtime.object_ref e
++      (write-message
++       client*
++       (response-for req {:status [:error :done]
++                          :err    (str "An exception was thrown from the nREPL handler:" (pr-str e))})))
++    (catch jank.error_ref e
++      (write-message
++       client*
++       (response-for req {:status [:error :done]
++                          :err    (str "An exception was thrown from the nREPL handler:" (.-message (cpp/* e)))})))))
++
+ (defn handle-client
+   "For as long as the client is connected, read requests and write replies."
+   [client*]
+-  (loop [[req remainder] nil]
+-    (when (connected? client*)
+-      (when req
+-        (try
+-          (log "<-" (pr-str (abbreviate req 20)))
+-          (let [resps (responses-for req (handle-message req))]
+-            (doseq [resp resps]
+-              (log "->" (pr-str (abbreviate resp 20)))
+-              (write-message client* resp)))
+-          (catch std.exception e
+-            (write-message
+-             client*
+-             (response-for req {:status [:error :done]
+-                                :err    (str "An exception was thrown from the nREPL handler:" (.what e))})))
+-          (catch jank.runtime.object_ref e
+-            (write-message
+-             client*
+-             (response-for req {:status [:error :done]
+-                                :err    (str "An exception was thrown from the nREPL handler:" (pr-str e))})))
+-          (catch jank.error_ref e
+-            (write-message
+-             client*
+-             (response-for req {:status [:error :done]
+-                                :err    (str "An exception was thrown from the nREPL handler:" (.-message (cpp/* e)))})))))
+-      (recur (read-message client* remainder)))))
++  (let [buffer (volatile! nil)]
++    (loop [req nil]
++      (when (connected? client*)
++        (when req
++          (handle-request client* buffer req))
++        (recur (next-request client* buffer))))))
+ 
+ (defn -main [& args]
+   (when (some #{"-v" "--verbose"} args)
+--- a/compiler+runtime/src/jank/jank/nrepl/server/handler/describe.jank
++++ b/compiler+runtime/src/jank/jank/nrepl/server/handler/describe.jank
+@@ -12,6 +12,7 @@
+               :info        {}
+               :completions {}
+               :complete    {}
+-              :close       {}}
++              :close       {}
++              :stdin       {}}
+    :versions {:jank {:version-string cpp/JANK_VERSION}}
+    :status   [:done]})
+--- a/compiler+runtime/src/jank/jank/nrepl/server/handler/eval.jank
++++ b/compiler+runtime/src/jank/jank/nrepl/server/handler/eval.jank
+@@ -1,5 +1,5 @@
+ (ns jank.nrepl.server.handler.eval
+-  (:require [clojure.string :refer [blank?]]
++  (:require [clojure.string :refer [blank? index-of starts-with?]]
+             [jank.nrepl.server.handler :refer [handle-message]]
+             [jank.nrepl.server.eval :refer [safe-eval]]
+             [jank.nrepl.server.capture :refer [with-capture]]
+@@ -15,11 +15,98 @@
+ (binding [*ns* default-ns]
+   (clojure.core/refer-clojure))
+ 
++;; Each session's *in*, as nREPL's session middleware keeps it (session.clj session-in, add-stdin):
++;; the text its stdin ops sent that is not read yet, :eof once the client ends the input (an empty
++;; stdin), and :skip-lf after a line ended by a \r at the end of the text (so that a \n sent next
++;; completes that \r\n). jank keeps no other session state, so an entry is made on first use.
++(def ^:private session-inputs (atom {}))
++
++(defn- add-input [in text]
++  (let [in (or in {})]
++    (if (empty? text)
++      (assoc in :eof true)
++      (let [text (if (and (:skip-lf in) (starts-with? text "\n")) (subs text 1) text)]
++        (assoc in :text (str (:text in) text) :skip-lf false)))))
++
++(defn- take-line
++  "Java's readLine on a session's input: [line in'] with the line's terminator (\\n, \\r or \\r\\n)
++  dropped; at an end of input the rest of the text, or nil when there is none (the end is used up);
++  nil when no line is complete and the input has not ended."
++  [in]
++  (let [text (or (:text in) "")
++        n    (index-of text "\n")
++        r    (index-of text "\r")
++        i    (if (and n r) (min n r) (or n r))]
++    (cond
++      i
++      (let [crlf? (and (= i r) (= (inc i) n))
++            end   (if crlf? (+ i 2) (inc i))]
++        [(subs text 0 i)
++         (assoc in
++                :text (subs text end)
++                :skip-lf (and (= i r) (not crlf?) (= end (count text))))])
++
++      (:eof in)
++      [(when-not (empty? text) text) (assoc in :text "" :eof false)]
++
++      :else nil)))
++
++(defn- skip-eol
++  "nREPL skips one end of line left on a session's *in* after every eval (interruptible_eval.clj
++  skip-stdin-newline 57-70, clojure.main/skip-if-eol), so that a later read-line does not return
++  the end of the line the eval's form was on."
++  [in]
++  (let [text (or (:text in) "")]
++    (cond
++      (starts-with? text "\r\n") (assoc in :text (subs text 2))
++      (= text "\r") (assoc in :text "" :skip-lf true)
++      (or (starts-with? text "\n") (starts-with? text "\r")) (assoc in :text (subs text 1))
++      :else in)))
++
++(def ^:dynamic *wait-input*
++  "Bound by the server (core.jank handle-request) while it handles a request: called with a
++  function telling whether the input changed, it sends need-input and handles the connection's
++  requests until it did (true) or the client is gone (false). Unbound: nothing can wait."
++  nil)
++
++(defn- session-reader
++  "What *in* is while an eval of `session` runs: read-line calls it for the next line. With
++  nothing to read it waits as nREPL's reader does (need-input, then the stdin op), through
++  *wait-input*; when it cannot wait (no server, no session, the client gone), it throws."
++  [session]
++  (fn []
++    (loop []
++      (let [old                 @session-inputs
++            [line in :as taken] (take-line (get old session))]
++        (cond
++          (some? taken)
++          (if (compare-and-set! session-inputs old (assoc old session in))
++            line
++            (recur))
++
++          ;; nREPL's reader asks again (need-input) each time it finds nothing left to read
++          (and session
++               *wait-input*
++               (let [before (get old session)]
++                 (*wait-input* #(not (identical? before (get @session-inputs session))))))
++          (recur)
++
++          :else
++          (throw (ex-info "need-input: nothing to read on *in*"
++                          {:status :need-input :session session})))))))
++
++(defmethod handle-message :stdin [msg]
++  ;; nREPL (session.clj add-stdin 386-397): an empty or missing stdin ends the input. Without a
++  ;; session nREPL feeds a new ephemeral session, which nothing reads.
++  (when-let [session (get msg "session")]
++    (swap! session-inputs update session add-input (get msg "stdin" "")))
++  {:status [:done]})
++
+ ;; NOTE: when eval'ing forms interactively, nREPL clients will send a code snippet
+ ;; and possibly the location (line/column) in a source file. Using this info during
+ ;; eval helps preserve correct source information relative to the entire file,
+ ;; which is useful for things such as error reporting and logging.
+-(defn- do-eval [ns code file-path line col inspect?]
++(defn- do-eval [session ns code file-path line col inspect?]
+   (if (empty? code)
+     {:status [:no-code :done]}
+     ;; TODO: Once we have threads, we can spawn a background thread to capture and
+@@ -31,10 +118,13 @@
+         (let [{:keys [ret stdout stderr]} (with-capture
+                                             (fn []
+                                               (binding [*ns*   target-ns
+-                                                        *file* file-path]
++                                                        *file* file-path
++                                                        *in*   (session-reader session)]
+                                                 ;; the evaluation may change the namespace
+                                                 [(safe-eval code line col) *ns*])))
+               [success res-ns]            ret]
++          (when session
++            (swap! session-inputs #(if (contains? % session) (update % session skip-eol) %)))
+           (cond
+             ;; Eval results in error.
+             (not success)
+@@ -64,7 +154,8 @@
+              {:status [:done]}]))))))
+ 
+ (defmethod handle-message :eval [msg]
+-  (do-eval (get msg "ns")
++  (do-eval (get msg "session")
++           (get msg "ns")
+            (get msg "code" "")
+            (get msg "file" "NO_SOURCE_PATH")
+            (get msg "line" 1)
+@@ -72,7 +163,8 @@
+            (some-> (get msg "inspect") parse-boolean)))
+ 
+ (defmethod handle-message :load-file [msg]
+-  (do-eval (get msg "ns")
++  (do-eval (get msg "session")
++           (get msg "ns")
+            (get msg "file" "")
+            (get msg "file-path" "NO_SOURCE_PATH")
+            (get msg "line" 1)

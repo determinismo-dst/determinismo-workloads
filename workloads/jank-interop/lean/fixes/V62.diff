@@ -1,0 +1,74 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -1461,6 +1461,18 @@
+     {
+       return l->to_real();
+     }
++  }
++
++  /* RT.floatCast: an error outside Float's range (compared as doubles, so ##Inf too), else the
++   * value rounded to single precision. jank has no Float box: the result is that float's value
++   * as a double, which is how Clojure computes and compares with a Float (DoubleOps). */
++  f64 float_cast(f64 const d);
++
++  template <typename L>
++  [[gnu::always_inline, gnu::flatten, gnu::hot]]
++  f64 to_float(L const &l)
++  {
++    return float_cast(to_real(l));
+   }
+ 
+   bool is_number(object_ref const o);
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -44,6 +44,18 @@
+     throw std::runtime_error{ util::format(
+       "A `real` value was required here, but a `{}` was provided.",
+       object_type_str(o.get_type())) };
++  }
++
++  f64 float_cast(f64 const d)
++  {
++    constexpr f64 max_float{ std::numeric_limits<f32>::max() };
++    if(d < -max_float || d > max_float)
++    {
++      throw make_box(
++        util::format("Value out of range for float: {}", obj::small_real{ d }.to_string()))
++        .erase();
++    }
++    return static_cast<f64>(static_cast<f32>(d));
+   }
+ 
+   object_ref promoting_add(object_ref const l, object_ref const r)
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -209,10 +209,10 @@
+ (def ^{:arglists '([x])
+        :doc "Coerce to float"
+        :inline (fn* [o]
+-                 (list 'cpp/jank.runtime.to_real o))}
++                 (list 'cpp/jank.runtime.to_float o))}
+   float
+   (fn* real [o]
+-    (cpp/jank.runtime.to_real o)))
++    (cpp/jank.runtime.to_float o)))
+ 
+ ;; Sequences.
+ (def ^{:arglists '([coll])
+--- a/compiler+runtime/include/cpp/jank/runtime/core/array.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/array.hpp
+@@ -48,6 +48,14 @@
+     return a[i];
+   }
+ 
++  /* A float array's element as Clojure computes with it: a Float widened to a double
++   * (Numbers' DoubleOps). As a C++ float, `+ - * /` and comparisons with an int would round to
++   * single precision. */
++  inline f64 aget(obj::array_ref<f32> const a, i64 const i)
++  {
++    return (*a)[i];
++  }
++
+   object_ref aget(object_ref const a, i64 const i);
+ 
+   template <typename T>

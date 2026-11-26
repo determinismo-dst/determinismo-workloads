@@ -1,0 +1,58 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
+@@ -8,6 +8,27 @@
+ 
+ namespace jank::runtime::obj
+ {
++  /* RT.longCast(double): NaN is 0; a value outside [Long.MIN_VALUE, Long.MAX_VALUE], compared as
++   * doubles, is an error ("Value out of range for long"); 2^63 itself (Long.MAX_VALUE as a
++   * double) saturates, as Java's (long) cast does. */
++  static i64 long_cast(f64 const data, object const &o)
++  {
++    constexpr f64 two_63{ 9223372036854775808.0 };
++    if(std::isnan(data))
++    {
++      return 0;
++    }
++    if(data < -two_63 || data > two_63)
++    {
++      throw make_box(util::format("Value out of range for long: {}", o.to_string())).erase();
++    }
++    if(data >= two_63)
++    {
++      return std::numeric_limits<i64>::max();
++    }
++    return static_cast<i64>(data);
++  }
++
+   /***** boolean *****/
+   boolean::boolean()
+     : object{ obj_type, obj_behaviors }
+@@ -357,12 +378,7 @@
+ 
+   i64 real::to_integer() const
+   {
+-    if(std::isnan(data))
+-    {
+-      return 0;
+-    }
+-
+-    return static_cast<i64>(data);
++    return long_cast(data, *this);
+   }
+ 
+   f64 real::to_real() const
+@@ -476,12 +492,7 @@
+ 
+   i64 small_real::to_integer() const
+   {
+-    if(std::isnan(data))
+-    {
+-      return 0;
+-    }
+-
+-    return static_cast<i64>(data);
++    return long_cast(data, *this);
+   }
+ 
+   f64 small_real::to_real() const

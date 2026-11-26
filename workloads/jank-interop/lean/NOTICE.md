@@ -16,8 +16,9 @@ README.md). Each part follows its project's license:
   cpp_dec_float), used by `Jank/R7/Num/` (cpp_dec_float's arithmetic, printing and hash) and
   `Jank/R8/Boost/` (cpp_dec_float<100>'s digits, Newton division and rounding).
 - **immer** (Boost Software License 1.0): `Jank/R3/Immer/` and `Jank/R4/Immer/` (the RRB vector
-  and CHAMP, and their `_mut` paths); `Jank/R5/Core/Champ*.lean`, `Jank/R6/Champ/`, `Jank/R7/Champ/` and `Jank/R8/Champ/` prove laws over
-  round 3's CHAMP.
+  and CHAMP, and their `_mut` paths); `Jank/R5/Core/Champ*.lean`, `Jank/R6/Champ/`, `Jank/R7/Champ/`, `Jank/R8/Champ/` and `Jank/R9/Champ/` prove laws over
+  round 3's CHAMP; `fixes/H8-1-immer.diff` (round 9) changes immer's `copy_collision_replace`, under
+  immer's license.
 - **folly** (Apache License 2.0): `Jank/R3/Runtime/` (SharedMutex, fbvector), reused by
   `Jank/R4/Runtime/`.
 - **bdwgc** (the Boehm-Demers-Weiser GC license, MIT-style): `Jank/R3/Runtime/` (reachability,
@@ -28,7 +29,8 @@ README.md). Each part follows its project's license:
   AddMethodCandidate's acting context); `Jank/R5/Native/` reads LLVM's `cantFail` and ORC's
   `LoadDynamicLibrary`.
 - **Boost.Process** (Boost Software License 1.0): `Jank/R4/Feedback/Shell.lean` (v1's
-  `build_args` and its POSIX pipe handling, as `jank.shell` reaches them).
+  `build_args` and its POSIX pipe handling, as `jank.shell` reaches them) and `Jank/R9/Coord/Shell.lean`
+  (`build_args` and `make_entry` again, with a proof of when they give the arguments back).
 - **stduuid** (MIT): `Jank/R4/Core/Uuid.lean` (`uuid::from_string`).
 - **nlohmann json** (MIT): `Jank/R4/Core/Json.lean` (the number lexer's outcome, `get<i64>`,
   `dump_float`).
@@ -42,6 +44,10 @@ README.md). Each part follows its project's license:
   (String.toUpperCase/toLowerCase per code point, and the word classes its final-sigma rule follows);
   no JDK source was read or copied. `Jank/R8/Dec/` models Java's BigDecimal scale and MathContext
   rounding from their documented behavior, checked against the JVM.
+- **libstdc++'s `std::stable_sort` and `std::map` lookups, and OpenJDK's TimSort for fewer than 32
+  elements** (round 9, `Jank/R9/Seq/`): models of their algorithms as documented, checked by running
+  g++ 15's library and Clojure 1.12.3 on the JVM; neither source was read or copied. `Jank/R9/Str/`
+  models Java's String (UTF-16 units, `hashCode`) from its documentation, checked against the JVM.
 - **Clojure** (Eclipse Public License 1.0): the specification side, Clojure's behavior as
   documented and as its sources implement it; **clojure.data.json** 2.5.2 (EPL 1.0) likewise for
   jank's port of it.

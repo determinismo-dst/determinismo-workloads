@@ -1,0 +1,437 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/re_pattern.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/re_pattern.hpp
+@@ -26,4 +26,32 @@
+     jtl::immutable_string pattern{};
+     std::regex regex{};
+   };
++
++  /* A place in a string's bytes where a regex search begins or a match starts or ends: a byte
++   * offset, and whether the place is between the two UTF-16 halves (surrogates) of the four-byte
++   * character there. Java's regex positions are UTF-16 units; that one has no byte offset. */
++  struct regex_position
++  {
++    usize byte{};
++    bool inside{};
++
++    bool operator==(regex_position const &) const = default;
++  };
++
++  /* java.util.regex.Matcher.find over s, from `from`: the first match at or after it. On a match,
++   * `start` and `end` are its bounds, and `from` becomes the next find's start: the end, or, after an
++   * empty match, one UTF-16 unit further, which is a whole character (never one byte of it) or the
++   * middle of a four-byte one. A search from such a middle runs on `scratch`, a copy whose character
++   * there is its two surrogates in their three-byte forms, and `m`'s groups then point into it.
++   * Returns false when no match is left; `from` is then past the end. */
++  bool regex_find(std::regex const &re,
++                  std::string const &s,
++                  regex_position &from,
++                  std::string &scratch,
++                  std::smatch &m,
++                  regex_position &start,
++                  regex_position &end);
++
++  /* The bytes of s from a to b; half of a four-byte character is its surrogate's three-byte form. */
++  std::string regex_slice(std::string const &s, regex_position const a, regex_position const b);
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/re_pattern.cpp
+@@ -28,4 +28,164 @@
+     buff('"');
+     return buff.release();
+   }
++
++  /* The four-byte character at byte i of s, when there is one (a lead F0..F7 and three
++   * continuation bytes, of value U+10000 or more), else 0. */
++  static u32 pair_at(std::string const &s, usize const i)
++  {
++    if(s.size() < i + 4 || (static_cast<u8>(s[i]) & 0xF8) != 0xF0)
++    {
++      return 0;
++    }
++    u32 cp{ static_cast<u32>(static_cast<u8>(s[i]) & 0x07) };
++    for(usize k{ 1 }; k < 4; ++k)
++    {
++      auto const b(static_cast<u8>(s[i + k]));
++      if((b & 0xC0) != 0x80)
++      {
++        return 0;
++      }
++      cp = (cp << 6) | (b & 0x3Fu);
++    }
++    return cp < 0x10000 ? 0 : cp;
++  }
++
++  /* A surrogate's three-byte form. */
++  static void append_surrogate(std::string &out, u32 const unit)
++  {
++    out.push_back(static_cast<char>(0xE0 | (unit >> 12)));
++    out.push_back(static_cast<char>(0x80 | ((unit >> 6) & 0x3F)));
++    out.push_back(static_cast<char>(0x80 | (unit & 0x3F)));
++  }
++
++  static u32 high_surrogate(u32 const cp)
++  {
++    return 0xD800 + ((cp - 0x10000) >> 10);
++  }
++
++  static u32 low_surrogate(u32 const cp)
++  {
++    return 0xDC00 + ((cp - 0x10000) & 0x3FF);
++  }
++
++  /* One UTF-16 unit past `at`: past the whole character there (a byte that starts none counts
++   * alone), or into the middle of a four-byte one. Past the end, the position is beyond it. */
++  static regex_position next_unit(std::string const &s, regex_position const at)
++  {
++    if(at.inside)
++    {
++      return { at.byte + 4, false };
++    }
++    if(s.size() <= at.byte)
++    {
++      return { s.size() + 1, false };
++    }
++    if(pair_at(s, at.byte) != 0)
++    {
++      return { at.byte, true };
++    }
++    auto const b0(static_cast<u8>(s[at.byte]));
++    usize n{ (b0 & 0xE0) == 0xC0 ? 2u : (b0 & 0xF0) == 0xE0 ? 3u : (b0 & 0xF8) == 0xF0 ? 4u : 1u };
++    if(s.size() < at.byte + n)
++    {
++      n = 1;
++    }
++    for(usize k{ 1 }; k < n; ++k)
++    {
++      if((static_cast<u8>(s[at.byte + k]) & 0xC0) != 0x80)
++      {
++        n = 1;
++        break;
++      }
++    }
++    return { at.byte + n, false };
++  }
++
++  bool regex_find(std::regex const &re,
++                  std::string const &s,
++                  regex_position &from,
++                  std::string &scratch,
++                  std::smatch &m,
++                  regex_position &start,
++                  regex_position &end)
++  {
++    if(s.size() < from.byte)
++    {
++      return false;
++    }
++
++    if(!from.inside)
++    {
++      /* With match_prev_avail past the start, `^` and `\b` see the text before, as Java's do. */
++      if(!std::regex_search(s.cbegin() + static_cast<std::ptrdiff_t>(from.byte),
++                            s.cend(),
++                            m,
++                            re,
++                            from.byte == 0 ? std::regex_constants::match_default
++                                           : std::regex_constants::match_prev_avail))
++      {
++        from = { s.size() + 1, false };
++        return false;
++      }
++      start = { static_cast<usize>(m[0].first - s.cbegin()), false };
++      end = { static_cast<usize>(m[0].second - s.cbegin()), false };
++    }
++    else
++    {
++      /* Java searches from between the two surrogates of the character at from.byte: search a copy
++       * where that character is its two halves, from between them. */
++      auto const cp(pair_at(s, from.byte));
++      scratch.clear();
++      append_surrogate(scratch, high_surrogate(cp));
++      append_surrogate(scratch, low_surrogate(cp));
++      scratch.append(s, from.byte + 4);
++      if(!std::regex_search(scratch.cbegin() + 3,
++                            scratch.cend(),
++                            m,
++                            re,
++                            std::regex_constants::match_prev_avail))
++      {
++        from = { s.size() + 1, false };
++        return false;
++      }
++      auto const map([&](usize const pos, bool const is_start) -> regex_position {
++        /* 3 is the middle; past the low half's 3 bytes, the copy is s from from.byte + 4. A byte
++         * pattern ending inside the low half's bytes ends after the character. */
++        if(pos < 6 && (is_start || pos == 3))
++        {
++          return { from.byte, true };
++        }
++        return { from.byte + 4 + (pos < 6 ? 0 : pos - 6), false };
++      });
++      start = map(static_cast<usize>(m[0].first - scratch.cbegin()), true);
++      end = map(static_cast<usize>(m[0].second - scratch.cbegin()), false);
++    }
++
++    from = end == start ? next_unit(s, end) : end;
++    return true;
++  }
++
++  std::string regex_slice(std::string const &s, regex_position const a, regex_position const b)
++  {
++    std::string out;
++    auto i(a.byte);
++    if(a.inside)
++    {
++      if(b == a)
++      {
++        return out;
++      }
++      append_surrogate(out, low_surrogate(pair_at(s, i)));
++      i += 4;
++    }
++    if(i < b.byte)
++    {
++      out.append(s, i, b.byte - i);
++    }
++    if(b.inside && !(a.inside && a.byte == b.byte))
++    {
++      append_surrogate(out, high_surrogate(pair_at(s, b.byte)));
++    }
++    return out;
++  }
+ }
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/re_matcher.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/re_matcher.hpp
+@@ -25,7 +25,12 @@
+     /*** XXX: Everything here is immutable after initialization. ***/
+     re_pattern_ref re;
+     /* TODO: jtl::immutable_string here. */
++    /* The whole input: re-find searches it from `next` (Matcher.find's position, which keeps the
++     * text before for `^` and `\b`), not the rest copied after each match. */
+     std::string match_input{};
+     object_ref groups{};
++    regex_position next{};
++    /* The copy a search from the middle of a four-byte character runs on (regex_find). */
++    std::string scratch{};
+   };
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -969,21 +969,23 @@
+     }
+   }
+ 
++  /* Matcher.find: the next match from where the last one ended, or one UTF-16 unit (a whole
++   * character) past it when it was empty, so re-seq ends; the input is searched whole, so `^`
++   * matches only at its start. */
+   object_ref re_find(object_ref const m)
+   {
+     std::smatch match_results{};
+     auto const matcher(try_object<obj::re_matcher>(m));
+-    std::regex_search(matcher->match_input, match_results, matcher->re->regex);
+-
+-    // Copy out the match result substrings before mutating the source
+-    // match_input string below.
++    obj::regex_position start, end;
++    /* Without a match, match_results stays empty and the groups are nil. */
++    obj::regex_find(matcher->re->regex,
++                    matcher->match_input,
++                    matcher->next,
++                    matcher->scratch,
++                    match_results,
++                    start,
++                    end);
+     matcher->groups = smatch_to_vector(match_results);
+-
+-    if(!match_results.empty())
+-    {
+-      matcher->match_input = match_results.suffix().str();
+-    }
+-
+     return matcher->groups;
+   }
+ 
+--- a/compiler+runtime/src/cpp/clojure/string_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/string_native.cpp
+@@ -215,13 +215,36 @@
+     return replace(s, match->data, replacement->data);
+   }
+ 
++  /* Matcher.replaceAll: the text between matches, each match's replacement, then the rest. The
++   * matches are Matcher.find's (obj::regex_find): after an empty match the search moves on by one
++   * UTF-16 unit, a whole character, where std::regex_iterator moves by one byte and cuts it. */
+   jtl::immutable_string replace(jtl::immutable_string const &s,
+                                 obj::re_pattern_ref const match,
+                                 jtl::immutable_string const &replacement)
+   {
+     std::string const s_str{ s.c_str() };
+     std::string const replacement_str{ replacement.c_str() };
+-    return std::regex_replace(s_str, match->regex, replacement_str);
++    std::string scratch;
++    std::smatch m;
++    obj::regex_position from, start, end, last;
++
++    if(!obj::regex_find(match->regex, s_str, from, scratch, m, start, end))
++    {
++      return s;
++    }
++
++    jtl::string_builder buff{};
++
++    do
++    {
++      buff(obj::regex_slice(s_str, last, start));
++      buff(m.format(replacement_str));
++      last = end;
++    } while(obj::regex_find(match->regex, s_str, from, scratch, m, start, end));
++
++    buff(obj::regex_slice(s_str, last, { s_str.size(), false }));
++
++    return buff.release();
+   }
+ 
+   jtl::immutable_string replace(jtl::immutable_string const &s,
+@@ -229,27 +252,27 @@
+                                 object_ref const replacement)
+   {
+     std::string const s_str{ s.c_str() };
+-    std::sregex_iterator const end{};
+-    std::sregex_iterator it(s_str.begin(), s_str.end(), match->regex);
++    std::string scratch;
++    std::smatch m;
++    obj::regex_position from, start, end, last;
+ 
+-    if(it == end)
++    if(!obj::regex_find(match->regex, s_str, from, scratch, m, start, end))
+     {
+       return s;
+     }
+ 
+-    std::string suffix{};
+     jtl::string_builder buff{};
+ 
+-    for(; it != end; ++it)
++    do
+     {
+-      buff((*it).prefix().str());
+-      auto const match_str(make_box<obj::persistent_string>((*it)[0].str()));
++      buff(obj::regex_slice(s_str, last, start));
++      auto const match_str(make_box<obj::persistent_string>(m[0].str()));
+       auto const replacement_value(replacement.call(make_box<obj::persistent_string>(match_str)));
+       buff(try_object<obj::persistent_string>(replacement_value)->data);
+-      suffix = (*it).suffix().str();
+-    }
++      last = end;
++    } while(obj::regex_find(match->regex, s_str, from, scratch, m, start, end));
+ 
+-    buff(suffix);
++    buff(obj::regex_slice(s_str, last, { s_str.size(), false }));
+ 
+     return buff.release();
+   }
+@@ -389,60 +412,67 @@
+    * -     Zero: The result has no limit, but all trailing empty string are removed
+    * - Negative: The result has no limit, and all trailing empty string are kept
+    */
++  /* Pattern.split: the pieces between Matcher.find's matches (obj::regex_find, which moves past an
++   * empty match by one UTF-16 unit, never one byte of a character), no empty leading piece for an
++   * empty match at the start, at most `limit` pieces when it is positive, and no trailing empty
++   * pieces when it is zero. */
+   obj::persistent_vector_ref
+   split(jtl::immutable_string const &s, obj::re_pattern_ref const re, i64 const limit)
+   {
+     detail::native_transient_vector vec;
++    std::string const s_str{ s.data(), s.size() };
++    std::string scratch;
++    std::smatch m;
++    obj::regex_position from, start, end, index;
++    bool const limited{ limit > 0 };
++    usize pieces{};
+ 
+-    if(s.empty() || limit == 1)
++    while(obj::regex_find(re->regex, s_str, from, scratch, m, start, end))
+     {
+-      vec.push_back(make_box<obj::persistent_string>(s));
+-    }
+-    else
+-    {
+-      std::cregex_iterator it(s.begin(), s.end(), re->regex);
+-      std::cregex_iterator const end{};
+-
+-      /* Ignore leading empty strings just like Java */
+-      if(it != end && it->length(0) == 0 && it->position(0) == 0)
++      if(!limited || std::cmp_less(pieces, limit - 1))
+       {
+-        ++it;
+-      }
+-
+-      auto prev(s.begin());
+-      if(limit > 0)
+-      {
+-        for(int i{}; it != end && i < limit - 1; ++i, ++it)
+-        {
+-          vec.push_back(
+-            make_box<obj::persistent_string>(jtl::immutable_string{ prev, (*it)[0].first }));
+-          prev = (*it)[0].second;
++        if(index == obj::regex_position{} && start == index && end == start)
++        {
++          continue;
+         }
++        vec.push_back(make_box<obj::persistent_string>(obj::regex_slice(s_str, index, start)));
++        ++pieces;
++        index = end;
+       }
+-      else
++      else if(std::cmp_equal(pieces, limit - 1))
+       {
+-        for(; it != end; ++it)
+-        {
+-          vec.push_back(
+-            make_box<obj::persistent_string>(jtl::immutable_string{ prev, (*it)[0].first }));
+-          prev = (*it)[0].second;
+-        }
++        vec.push_back(
++          make_box<obj::persistent_string>(obj::regex_slice(s_str, index, { s_str.size(), false })));
++        ++pieces;
++        index = end;
+       }
+-      vec.push_back(make_box<obj::persistent_string>(jtl::immutable_string{ prev, s.end() }));
++    }
+ 
+-      /* Discard all trailing empty strings to match java.lang.String/split behavior. */
+-      if(std::cmp_equal(0, limit))
++    if(index == obj::regex_position{})
++    {
++      detail::native_transient_vector whole;
++      whole.push_back(make_box<obj::persistent_string>(s));
++      return make_box<obj::persistent_vector>(whole.persistent());
++    }
++
++    if(!limited || std::cmp_less(pieces, limit))
++    {
++      vec.push_back(
++        make_box<obj::persistent_string>(obj::regex_slice(s_str, index, { s_str.size(), false })));
++    }
++
++    /* Discard all trailing empty strings to match java.lang.String/split behavior. */
++    if(limit == 0)
++    {
++      auto n(vec.size());
++      for(; n > 0; --n)
+       {
+-        auto n(vec.size());
+-        for(; n > 0; --n)
++        if(!expect_object<obj::persistent_string>(vec[n - 1])->data.empty())
+         {
+-          if(!expect_object<obj::persistent_string>(vec[n - 1])->data.empty())
+-          {
+-            break;
+-          }
++          break;
+         }
+-        vec.take(n);
+       }
++      vec.take(n);
+     }
+ 
+     return make_box<obj::persistent_vector>(vec.persistent());

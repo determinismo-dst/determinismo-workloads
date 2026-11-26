@@ -1,0 +1,144 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_hash_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_hash_map.cpp
+@@ -9,6 +9,38 @@
+ 
+ namespace jank::runtime::obj
+ {
++  namespace
++  {
++    using native_entry = runtime::detail::native_persistent_hash_map::value_type;
++
++    /* immer's `find` gives the value only; this gives the stored entry. */
++    struct project_entry_ptr
++    {
++      native_entry const *operator()(native_entry const &e) const noexcept
++      {
++        return &e;
++      }
++    };
++
++    /* The stored entry whose key is `=` to `key`, or nullptr. */
++    template <typename M>
++    native_entry const *find_entry(M const &m, object_ref const key)
++    {
++      return m.impl()
++        .template get<project_entry_ptr, immer::detail::constantly<native_entry const *, nullptr>>(
++          key);
++    }
++
++    /* Clojure keeps the stored key when an `=` one is assoc'ed, and replaces only the value
++     * (BitmapIndexedNode.assoc, HashCollisionNode.assoc). immer's `set` stores the given key. */
++    template <typename M>
++    void set_keeping_key(M &m, object_ref const key, object_ref const val)
++    {
++      auto const stored(find_entry(m, key));
++      m.set(stored ? stored->first : key, val);
++    }
++  }
++
+   persistent_hash_map::persistent_hash_map(lazy_meta const &meta,
+                                            runtime::detail::native_array_map const &m,
+                                            object_ref const key,
+@@ -20,7 +52,7 @@
+     {
+       transient.set(e.first, e.second);
+     }
+-    transient.set(key, val);
++    set_keeping_key(transient, key, val);
+     data = transient.persistent();
+   }
+ 
+@@ -66,7 +98,7 @@
+                                                seq.to_code_string()) };
+       }
+       auto const val(*it);
+-      transient.set(key, val);
++      set_keeping_key(transient, key, val);
+     }
+     return make_box<persistent_hash_map>(transient.persistent());
+   }
+@@ -109,7 +141,14 @@
+   persistent_hash_map_ref
+   persistent_hash_map::assoc(object_ref const key, object_ref const val) const
+   {
+-    auto copy(data.set(key, val));
++    /* As PersistentHashMap.assoc: the map itself when the key is present with this very value,
++     * else the stored key with the new value. */
++    auto const stored(find_entry(data, key));
++    if(stored && stored->second == val)
++    {
++      return runtime::detail::untagged(this);
++    }
++    auto copy(data.set(stored ? stored->first : key, val));
+     return make_box<persistent_hash_map>(meta, std::move(copy));
+   }
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_hash_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_hash_map.cpp
+@@ -10,6 +10,34 @@
+ 
+ namespace jank::runtime::obj
+ {
++  namespace
++  {
++    /* Distinct names from persistent_hash_map.cpp's helpers, for unity builds. */
++    using transient_entry = runtime::detail::native_persistent_hash_map::value_type;
++
++    /* immer's `find` gives the value only; this gives the stored entry. */
++    struct project_transient_entry_ptr
++    {
++      transient_entry const *operator()(transient_entry const &e) const noexcept
++      {
++        return &e;
++      }
++    };
++
++    /* Clojure keeps the stored key when an `=` one is assoc'ed, and replaces only the value
++     * (TransientHashMap through BitmapIndexedNode.assoc and HashCollisionNode.assoc with an
++     * edit). immer's `set` stores the given key. */
++    void assoc_keeping_stored_key(runtime::detail::native_transient_hash_map &m,
++                                  object_ref const key,
++                                  object_ref const val)
++    {
++      auto const stored(m.impl()
++                          .template get<project_transient_entry_ptr,
++                                        immer::detail::constantly<transient_entry const *, nullptr>>(key));
++      m.set(stored ? stored->first : key, val);
++    }
++  }
++
+   transient_hash_map::transient_hash_map()
+     : object{ obj_type, obj_behaviors }
+   {
+@@ -96,7 +124,7 @@
+   transient_hash_map::assoc_in_place(object_ref const key, object_ref const val)
+   {
+     assert_active();
+-    data.set(key, val);
++    assoc_keeping_stored_key(data, key, val);
+     return runtime::detail::untagged(this);
+   }
+ 
+@@ -138,7 +166,7 @@
+         vec->count()) };
+     }
+ 
+-    data.set(vec->data[0], vec->data[1]);
++    assoc_keeping_stored_key(data, vec->data[0], vec->data[1]);
+     return runtime::detail::untagged(this);
+   }
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_hash_set.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_hash_set.cpp
+@@ -148,6 +148,11 @@
+ 
+   persistent_hash_set_ref persistent_hash_set::conj(object_ref const head) const
+   {
++    /* As PersistentHashSet.cons: the set itself when it holds an `=` element. */
++    if(data.find(head))
++    {
++      return runtime::detail::untagged(this);
++    }
+     auto set(data.insert(head));
+     auto ret(make_box<persistent_hash_set>(meta, std::move(set)));
+     return ret;

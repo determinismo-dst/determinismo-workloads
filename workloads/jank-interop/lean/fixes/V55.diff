@@ -1,0 +1,123 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -65,6 +65,27 @@
+   /* Only for fixed real sizes (i.e. real and small_real). */
+   f64 to_f64(object_ref const o);
+ 
++  namespace detail
++  {
++    /* Clojure's minus with an Object operand is add(x, negate(y)) (Numbers.minus(Object, Object),
++     * and the (long, Object) and (Object, long) overloads go through it): a long
++     * Long/MIN_VALUE as the subtrahend throws "long overflow" whatever x is. Two primitive
++     * longs (Numbers.minus(long, long)) subtract exactly, so the both-native template doesn't
++     * check. */
++    template <typename T>
++    [[gnu::always_inline]]
++    inline void check_negatable(T const &r)
++    {
++      if constexpr(std::is_integral_v<T> && std::is_signed_v<T> && sizeof(T) == sizeof(i64))
++      {
++        if(r == std::numeric_limits<i64>::min())
++        {
++          throw make_box("integer overflow").erase();
++        }
++      }
++    }
++  }
++
+   template <typename L, typename R>
+   requires(!detail::primitive_number<L> && !detail::primitive_number<R>)
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+@@ -197,6 +218,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
++              detail::check_negatable(typed_r->data);
+               return make_box(typed_l->data - typed_r->data).erase();
+             },
+             r,
+@@ -208,19 +230,26 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return make_box(typed_l->data - r->data).erase(); },
++        [](auto const typed_l, auto const r) {
++          detail::check_negatable(r->data);
++          return make_box(typed_l->data - r->data).erase();
++        },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return make_box(l->data - typed_r->data).erase(); },
++        [](auto const typed_r, auto const l) {
++          detail::check_negatable(typed_r->data);
++          return make_box(l->data - typed_r->data).erase();
++        },
+         r,
+         l);
+     }
+     else
+     {
++      detail::check_negatable(r->data);
+       return l->data - r->data;
+     }
+   }
+@@ -240,12 +269,16 @@
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, L const l) { return make_box(l - typed_r->data).erase(); },
++        [](auto const typed_r, L const l) {
++          detail::check_negatable(typed_r->data);
++          return make_box(l - typed_r->data).erase();
++        },
+         r,
+         l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
++      detail::check_negatable(r->data);
+       return l - r->data;
+     }
+     else
+@@ -269,12 +302,16 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, R const r) { return make_box(typed_l->data - r).erase(); },
++        [](auto const typed_l, R const r) {
++          detail::check_negatable(r);
++          return make_box(typed_l->data - r).erase();
++        },
+         l,
+         r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
++      detail::check_negatable(r);
+       return l->data - r;
+     }
+     else
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -120,6 +120,17 @@
+             {
+               i64 res{};
+ 
++              /* minusP(Object, Object) is addP(x, negateP(y)): negating Long/MIN_VALUE gives
++               * a BigInt, so the sum is a BigInt even when it fits a long. */
++              if constexpr(jtl::is_same<RT, obj::integer>)
++              {
++                if(typed_r->data == std::numeric_limits<i64>::min())
++                {
++                  return make_box<obj::big_integer>(native_big_integer{
++                    native_big_integer{ l_val } - native_big_integer{ typed_r->data } });
++                }
++              }
++
+               if(__builtin_sub_overflow(l_val, typed_r->data, &res))
+               {
+                 native_big_integer const l{ l_val };

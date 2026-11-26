@@ -1,0 +1,256 @@
+== T9: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked
+  every schedule, exact, flat store (12 UInt32 per state, table 2^20 slots), logs ordered by client, no edges kept
+  COMPLETE: 433,374 states found, 433,374 expanded, 2,019,280 step runs (14350 ms)
+  final states: 42 (0 with a violation); step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0; most threads: 5; codes wider than the store: 0
+== T9u: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  every schedule, exact, flat store (12 UInt32 per state, table 2^27 slots), logs ordered by client, no edges kept
+    … 16,000,000 expanded, 17,753,067 found (434543 ms)
+    … 32,000,000 expanded, 35,068,311 found (880928 ms)
+    … 48,000,000 expanded, 52,531,524 found (1339108 ms)
+  STOPPED: 66,000,266 states found, 60,955,648 expanded, 280,607,732 step runs (1677704 ms)
+  final states: 0 (0 with a violation); step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0; most threads: 5; codes wider than the store: 0
+== T3u: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  every schedule, exact, flat store (12 UInt32 per state, table 2^27 slots), logs ordered by client, no edges kept
+    … 4,194,304 expanded, 5,049,385 found (154943 ms)
+    … 8,388,608 expanded, 9,670,967 found (264414 ms)
+    … 12,582,912 expanded, 14,132,998 found (368123 ms)
+    … 16,777,216 expanded, 18,569,974 found (466455 ms)
+    … 20,971,520 expanded, 23,037,644 found (573600 ms)
+    … 25,165,824 expanded, 27,565,100 found (695159 ms)
+    … 29,360,128 expanded, 32,161,336 found (821867 ms)
+    … 33,554,432 expanded, 36,813,216 found (946910 ms)
+    … 37,748,736 expanded, 41,572,032 found (1075179 ms)
+    … 41,943,040 expanded, 46,197,051 found (1200473 ms)
+    … 46,137,344 expanded, 50,602,672 found (1313171 ms)
+    … 50,331,648 expanded, 54,939,821 found (1420022 ms)
+    … 54,525,952 expanded, 59,290,416 found (1529846 ms)
+    … 58,720,256 expanded, 63,666,560 found (1639595 ms)
+  STOPPED: 65,293,143 states found, 60,279,808 expanded, 277,379,169 step runs (1680070 ms)
+  final states: 0 (0 with a violation); step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0; most threads: 5; codes wider than the store: 0
+== I1: V37i: interrupt with a session, without one, then describe
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 197 states, 496 step runs, COMPLETE (2 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 29 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: i:[["session-idle" "done"]] j:[["error" "session-ephemeral" "done"]] c0-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: 
+== D3q: D3 with the fix: an eval of (read-line) with nothing sent, then the stdin op, then describe
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 51 states, 132 step runs, COMPLETE (0 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 1; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 23 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 1 (e.g. client 0 c0-0: 0 done replies)
+  distinct outcomes: 1
+    1 × STUCK client 0: c0-0:[["need-input"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 
+== D3b: type-ahead: stdin "hi\n" sent before two evals of (read-line), then describe
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 220 states, 564 step runs, COMPLETE (2 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 1; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 61 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 1 (e.g. client 0 c0-2: 0 done replies)
+  distinct outcomes: 1
+    1 × STUCK client 0: s:[["done"]] c0-1:[ value="hi"][["done"]] c0-2:[["need-input"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c0-1 printed "" got ""
+== D3c: stdin "a\r", "\nb", an end of input, then four evals of (read-line)
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 670 states, 1,702 step runs, COMPLETE (8 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 1; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 106 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 1 (e.g. client 0 c0-5: 0 done replies)
+  distinct outcomes: 1
+    1 × STUCK client 0: s:[["done"]] t:[["done"]] u:[["done"]] c0-3:[ value="a"][["done"]] c0-4:[ value="b"][["done"]] c0-5:[["need-input"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-4"); evals: c0-3 printed "" got "", c0-4 printed "" got ""
+== D3d: two connections, one session: connection 0 sends stdin then describes, connection 1 evaluates (read-line) twice
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 65,249 states, 300,918 step runs, COMPLETE (1177 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 23; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 80 steps
+  final or quiescent states: 23; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 23 (e.g. client 1 c1-0: 0 done replies)
+  distinct outcomes: 3
+    6 × STUCK client 0: s:[["done"]] c0-1:[["done"]] / client 1: c1-0:[["need-input"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 
+    5 × STUCK client 0: s:[["done"]] c0-1:[["done"]] / client 1: c1-0:[["need-input"]][ value="x"][["done"]] c1-1:[["need-input"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-0 printed "" got ""
+    12 × STUCK client 0: s:[["done"]] c0-1:[["done"]] / client 1: c1-0:[ value="x"][["done"]] c1-1:[["need-input"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-0 printed "" got ""
+== D3n: need-input: (read-line) sent without waiting, then stdin "hi\n", then describe
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 601 states, 1,510 step runs, COMPLETE (6 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 58 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: e:[["need-input"]][ value="hi"][["done"]] s:[["done"]] c0-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+== D3e: need-input, then the end of input (an empty stdin), then describe
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 601 states, 1,510 step runs, COMPLETE (6 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 58 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: e:[["need-input"]][ value=nil][["done"]] s:[["done"]] c0-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+== D3w: need-input, describe answered while the eval waits, then the client leaves
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 204 states, 476 step runs, COMPLETE (2 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 50 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 1 (e.g. client 0 e: 0 done replies)
+  distinct outcomes: 1
+    1 × FINAL client 0: e:[["need-input"]] c0-1:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+== D3p: a partial line: need-input, stdin "ab", need-input again, stdin "c\n", describe
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 1,150 states, 2,888 step runs, COMPLETE (13 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 70 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: e:[["need-input"]][["need-input"]][ value="abc"][["done"]] s:[["done"]] t:[["done"]] c0-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+== D3t: two connections, one session: connection 0's (read-line) waits, then describes; connection 1 sends stdin and describes
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 207,083 states, 905,418 step runs, COMPLETE (4031 ms)
+  final states: 52 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 72 steps
+  final or quiescent states: 52; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 20 (e.g. client 0 e: 0 done replies)
+  distinct outcomes: 4
+    20 × FINAL client 0: e:[["need-input"]][ value="x"][["done"]] c0-1:[["done"]] / client 1: s:[["done"]] c1-1:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+    10 × FINAL client 0: e:[["need-input"]][ value="x"] c0-1:[["done"]] / client 1: s:[["done"]] c1-1:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+    12 × FINAL client 0: e:[ value="x"][["done"]] c0-1:[["done"]] / client 1: s:[["done"]] c1-1:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+    10 × FINAL client 0: e:[["need-input"]] c0-1:[["done"]] / client 1: s:[["done"]] c1-1:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+== D1q: D1 with the fixes: a diverging eval, then interrupt and describe pipelined (World T8's step)
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }), diverging evals spin (World T8); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 229 states, 577 step runs, COMPLETE (4 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 12; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 30 steps
+  final or quiescent states: 3; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    3 × QUIESCENT client 0: c0-0:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 
+== I1: V37i: interrupt with a session, without one, then describe
+  step: round 3's (stock jank); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 197 states, 496 step runs, COMPLETE (2 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 29 steps
+  final or quiescent states: 1; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: i:[["error" "unknown-op" "done"] op=interrupt] j:[["error" "unknown-op" "done"] op=interrupt] c0-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: 
+== D3q: D3 with the fix: an eval of (read-line) with nothing sent, then the stdin op, then describe
+  step: round 3's (stock jank); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 191 states, 488 step runs, COMPLETE (2 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 62 steps
+  final or quiescent states: 1; with a reply holding only id and session: 1 (2 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: c0-0:[][][ err=#error][["done" "eval-error"]] s:[["error" "unknown-op" "done"] op=stdin] c0-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c0-0 printed "" got ""
+== D3n: need-input: (read-line) sent without waiting, then stdin "hi\n", then describe
+  step: round 3's (stock jank); cfg fixCapture false; every schedule, exact, logs ordered by client
+  graph: 719 states, 1,807 step runs, COMPLETE (9 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 62 steps
+  final or quiescent states: 1; with a reply holding only id and session: 1 (2 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    1 × FINAL client 0: e:[][][ err=#error][["done" "eval-error"]] s:[["error" "unknown-op" "done"] op=stdin] c0-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: e printed "" got ""
+== T9: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture true; every schedule, exact, logs ordered by client
+  graph: 277,740 states, 1,283,082 step runs, COMPLETE (7451 ms)
+  final states: 42 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 216 steps
+  final or quiescent states: 42; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    42 × FINAL client 0: c0-0:[["done"]] c0-1:[ value=#'user/f][["done"]] c0-2:[ out=r][ value=nil][["done"]] / client 1: c1-0:[["done"]] c1-1:[ value=#'bar/b][["done"]] c1-2:[ out=2|][ value=nil][["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c0-1 printed "" got "", c0-2 printed "r" got "r", c1-1 printed "" got "", c1-2 printed "2\n" got "2\n"
+== T9: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked
+  step: round 3's (stock jank); cfg fixCapture true; every schedule, exact, logs ordered by client
+  graph: 433,374 states, 2,019,280 step runs, COMPLETE (14141 ms)
+  final states: 42 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 228 steps
+  final or quiescent states: 42; with a reply holding only id and session: 42 (252 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    42 × FINAL client 0: c0-0:[["done"]] c0-1:[][][ value=#'user/f][["done"]] c0-2:[ out=r][][ value=nil][["done"]] / client 1: c1-0:[["done"]] c1-1:[][][ value=#'bar/b][["done"]] c1-2:[ out=2|][][ value=nil][["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c0-1 printed "" got "", c0-2 printed "r" got "r", c1-1 printed "" got "", c1-2 printed "2\n" got "2\n"
+== T3: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked
+  step: World TQ (fixes { q1 := true, q2 := true, v37i := true }); cfg fixCapture true; every schedule, exact, logs ordered by client
+  graph: 1,855,485 states, 8,608,981 step runs, COMPLETE (70097 ms)
+  final states: 245 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops: 0; blocked steps that moved: 0
+  acyclic (progress steps): true; longest progress path: 345 steps
+  final or quiescent states: 245; with a reply holding only id and session: 0 (0 such replies in all); protocol (every request, raw ones too: id, one done, last; every request answered at final states) broken: 0
+  distinct outcomes: 1
+    245 × FINAL client 0: c0-0:[["done"]] c0-1:[ value=#'user/f][["done"]] c0-2:[ out=r][ value=nil][["done"]] c0-3:[ err=#error][["done" "eval-error"]] c0-4:[ value=false][["done"]] / client 1: c1-0:[["done"]] c1-1:[ value=#'bar/b][["done"]] c1-2:[ value=2][["done"]] c1-3:[ out=2|][ value=nil][["done"]] c1-4:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c0-1 printed "" got "", c0-2 printed "r" got "r", c0-3 printed "" got "", c0-4 printed "" got "", c1-1 printed "" got "", c1-2 printed "" got "", c1-3 printed "2\n" got "2\n"
+== D4q: connection 0 runs a diverging eval; connection 1 sends stdin "hi\n", evaluates (read-line), describes (jank's capture) (fixes)
+  ≤3 preemptions, states expanded on demand, the spinning eval's step reported as blocked
+  COMPLETE: 67,466 states, 210,279 step runs, 124,320 scheduler states; timelines 30,770,332; step violations 0 (3104 ms)
+  quiescent or final states: 265; with a reply holding only id and session: 0; distinct outcomes: 4
+    58 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["done"]] c1-1:[ value="hi"][["done"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: c1-1 printed "" got ""
+    147 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["done"]] c1-1:[ value="hi"][["done"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "" got ""
+    46 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["done"]] c1-1:[ value="hi"][["done"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "" got ""
+    14 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["done"]] c1-1:[ value="hi"][["done"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"); evals: c1-1 printed "" got ""
+== D4q: connection 0 runs a diverging eval; connection 1 sends stdin "hi\n", evaluates (read-line), describes (jank's capture) (stock)
+  ≤3 preemptions, states expanded on demand, the spinning eval's step reported as blocked
+  COMPLETE: 79,615 states, 246,161 step runs, 145,438 scheduler states; timelines 42,733,596; step violations 0 (3864 ms)
+  quiescent or final states: 276; with a reply holding only id and session: 276; distinct outcomes: 4
+    177 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["error" "unknown-op" "done"] op=stdin] c1-1:[][][ err=#error][["done" "eval-error"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "" got ""
+    14 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["error" "unknown-op" "done"] op=stdin] c1-1:[][][ err=#error][["done" "eval-error"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"); evals: c1-1 printed "" got ""
+    46 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["error" "unknown-op" "done"] op=stdin] c1-1:[][][ err=#error][["done" "eval-error"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "" got ""
+    39 × QUIESCENT client 0: c0-0:[["done"]] / client 1: s:[["error" "unknown-op" "done"] op=stdin] c1-1:[][][ err=#error][["done" "eval-error"]] c1-2:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: c1-1 printed "" got ""
+W1 interleave (no bound): COMPLETE after 264,832 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 26 (16109 ms)
+W2 interleavePB ≤0: COMPLETE after 4 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 2 (0 ms)
+W3 interleavePB ≤0: COMPLETE after 4 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 2 (1 ms)
+W2 interleavePB ≤1: COMPLETE after 84 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 21 (7 ms)
+W3 interleavePB ≤1: COMPLETE after 336 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 25 (25 ms)
+W2 interleavePB ≤2: COMPLETE after 874 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 22 (77 ms)
+W3 interleavePB ≤2: COMPLETE after 11,938 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 27 (924 ms)
+W2 interleavePB ≤3: COMPLETE after 5,974 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 23 (529 ms)
+W3 interleavePB ≤3: COMPLETE after 276,982 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 29 (21995 ms)
+T9 interleavePB ≤0: COMPLETE after 64 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 6 (55 ms)
+T9 interleavePB ≤1: COMPLETE after 53,312 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 216 (48997 ms)
+T9u interleavePB ≤1: COMPLETE after 51,264 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 208 (48524 ms)
+T3 interleavePB ≤0: COMPLETE after 1,024 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 10 (1325 ms)
+T9u interleavePB ≤0: COMPLETE after 64 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 6 (82 ms)
+T3 interleavePB ≤1: STOPPED after 1,000,000 timelines; values not the path's modulo options: 0; decisions with < 2 options: 0; at the decision limit: 0; causality broken between consecutive timelines: 0; with a violation: 0; most decisions in a timeline: 352 (1454992 ms)
+eval sequences: 200000 ( 498172 evals compared), mismatches with readLine + skip-if-eol: 0
+random chunk sequences: 200000, read attempts that needed input: 167717 , mismatches with Java's readLine: 0
+stdin op reply: {:status [:done]}
+read-line after it: "hi"
+read-line with nothing buffered: [:need-input]
+no session: reply {:status [:done]} state {T {:text , :skip-lf false}}
+sessionless read: [:need-input]
+partial line, no end: [:need-input]
+missing stdin key = end of input; reads: [:line ab] [:need-input] [:need-input]
+read-line with *in* nil: TODO: port read-line
+interrupt with session: {:status [:session-idle :done]}
+interrupt without session: {:status [:error :session-ephemeral :done]}
+Q2's filterv over the eval branch with blank output: [{:value 1, :ns user} {:status [:done]}]
+1 eval (read-line); stdin hi; describe, pipelined in one chunk
+    {"id" "e", "session" "S", "status" ["need-input"]}
+    {"id" "s", "session" "S", "status" ["done"]}
+    {"id" "e", "ns" "user", "session" "S", "value" "\"hi\""}
+    {"id" "e", "session" "S", "status" ["done"]}
+    {"id" "d", "ops" {:stdin {}}, "session" "S", "status" ["done"]}
+2 eval (read-line) alone; then stdin "" (the end) in a later chunk
+    {"id" "e", "session" "S", "status" ["need-input"]}
+    {"id" "s", "session" "S", "status" ["done"]}
+    {"id" "e", "ns" "user", "session" "S", "value" "nil"}
+    {"id" "e", "session" "S", "status" ["done"]}
+3 eval (read-line); describe; then stdin hi
+    {"id" "e", "session" "S", "status" ["need-input"]}
+    {"id" "d", "ops" {:stdin {}}, "session" "S", "status" ["done"]}
+    {"id" "s", "session" "S", "status" ["done"]}
+    {"id" "e", "ns" "user", "session" "S", "value" "\"hi\""}
+    {"id" "e", "session" "S", "status" ["done"]}
+4 eval (read-line); the client leaves
+    {"id" "e", "session" "S", "status" ["need-input"]}
+5 type-ahead: stdin "a\nb\n", eval (read-line) twice
+    {"id" "s", "session" "S", "status" ["done"]}
+    {"id" "e1", "ns" "user", "session" "S", "value" "\"a\""}
+    {"id" "e1", "session" "S", "status" ["done"]}
+    {"id" "e2", "ns" "user", "session" "S", "value" "\"b\""}
+    {"id" "e2", "session" "S", "status" ["done"]}
+6 a partial line, then the rest
+    {"id" "e", "session" "S", "status" ["need-input"]}
+    {"id" "s", "session" "S", "status" ["done"]}
+    {"id" "e", "session" "S", "status" ["need-input"]}
+    {"id" "t", "session" "S", "status" ["done"]}
+    {"id" "e", "ns" "user", "session" "S", "value" "\"abc\""}
+    {"id" "e", "session" "S", "status" ["done"]}
+7 nested: eval (read-line) waits; an eval of (read-line) arrives, then two lines
+    {"id" "e1", "session" "S", "status" ["need-input"]}
+    {"id" "e2", "session" "S", "status" ["need-input"]}
+    {"id" "s", "session" "S", "status" ["done"]}
+    {"id" "e2", "ns" "user", "session" "S", "value" "\"x\""}
+    {"id" "e2", "session" "S", "status" ["done"]}
+    {"id" "e1", "session" "S", "status" ["need-input"]}
+    {"id" "t", "session" "S", "status" ["done"]}
+    {"id" "e1", "ns" "user", "session" "S", "value" "\"y\""}
+    {"id" "e1", "session" "S", "status" ["done"]}

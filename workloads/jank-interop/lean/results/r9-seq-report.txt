@@ -1,0 +1,512 @@
+Round 9, area T (Seq): sequences, laziness, transducers, ordering
+=====================================================================
+
+jank main 94d32623 (upstream-r5/; compiler+runtime = 7135b7708). Clojure 1.12.3 (JDK 23) through
+.r9-scratch/clj-eval.sh / clj-run.sh. jank was not built or run. Every jank path below is under
+upstream-r5/compiler+runtime/.
+
+Files
+- Lean: Jank/R9/Seq/Sort.lean, SortSearch.lean, SortProof.lean, Lazy.lean, PartitionAll.lean,
+  SortedNaN.lean, LazyState.lean (2,402 lines with the driver); driver Run/R9/Seq.lean
+  (exe jank9-seq: sort, predict, cases, lazy, pa, preorders,
+  preorders-random).
+- Tests: .r9-scratch/seq/tests.jank (42 deftests, ns jank-lean.deviations-r9-seq-test); Clojure
+  translation .r9-scratch/seq/clj/src/jank_lean/deviations_r9_seq_test.clj; run results/r9-seq-clj.txt
+  (42 tests, 42 assertions, 0 failures, 0 errors on Clojure 1.12.3).
+- Validation: .r9-scratch/seq/cc/stable.cpp and smap.cpp (g++-15, libstdc++ 15), .r9-scratch/seq/clj/
+  sortcheck.clj and lazycheck.clj (Clojure 1.12.3); outputs results/r9-seq-validation.txt.
+- Searches: results/r9-seq-sort.txt, results/r9-seq-pa.txt. Axioms: results/r9-seq-axioms.txt.
+- Probes (the Clojure values below): .r9-scratch/seq/probe/p1.clj .. p7.clj.
+
+What rounds 1-8 covered in this ground (read before choosing)
+- Round 2: R113 (sorted-*-by, rseq, subseq unported), R114-R116 (integer and real ranges), R117 (doseq
+  mutates held seqs), R118 (partition-by transducer after reduced), R119 (chunk-cons realizes its rest:
+  real ranges), R120 (coll?/empty), R121-R124 (get-in, bytes, find, sequence/eduction/halt-when/iteration
+  unported); Jank/Seq/ (Chunked: real ranges only; Transducers: map, filter, take, drop, take-while,
+  drop-while, take-nth, partition-all, partition-by, dedupe, distinct, keep, map-indexed, interpose,
+  cat over integers, 28,800/3,947,580 pipelines); compare on 24^2 pairs and sort length <= 3 under a
+  consistent compare (Jank/Compare.lean), sorted collections assuming a strict weak order (Jank/Core/
+  Sorted.lean, S1/S2).
+- Round 4: U66 (counted? on strings and map seqs, bounded-count), U80 (reduce-kv of a seq of entries),
+  U28/U30 (iterate's meta, realized?), cycle and nthrest values proved equal (Jank/R4/Core/Seqfns.lean).
+- Rounds 1/6/7: D12 (1/1N, 0.0/-0.0, () / (lazy-seq nil) hash), V85 (a set never finds its NaN).
+- Not covered before: which sort algorithm runs and what that means for comparisons that are not a total
+  preorder; the comparator's numeric result; which seqs are chunked (vectors, integer ranges);
+  iterate's next; apply's realization; dedupe's laziness; cycle and lazy-seq realized?; a lazy-seq body
+  that throws then is re-forced; IDrop; partition-all's long n; sorted collections searched for NaN.
+
+
+(1) Deviations
+--------------
+
+Each is a hypothesis from the replica, re-read against the source. "Clojure" is the value Clojure
+1.12.3 gave (run); "jank" is the predicted stock value. None is changed by fixes/combined/all.diff
+(no diff there touches these paths: seq.cpp sort/reduce, call.cpp apply_to, iterator.cpp,
+lazy_sequence.cpp, integer_range, persistent_sorted_map/set, the core.jank functions named), so the
+prediction with the combined patch is the same.
+
+T9-1. sort orders an input whose comparisons are not a total preorder differently (##NaN).
+- Program: (sort [3 ##NaN 1 2]); (sort < [3 ##NaN 1 2]); (sort-by :v [{:v 3} {:v ##NaN} {:v 1} {:v 2}]).
+- Clojure: (3 ##NaN 1 2) (TimSort: compare(NaN, 3) = 0, compare(1, NaN) = 0, compare(2, 1) = 1: one
+  ascending run, kept). jank: (1 2 3 ##NaN) (std::stable_sort: halves [3 NaN] and [1 2], merged).
+- Path: core.jank sort 5661-5670 / sort-by 5672-5682 -> core/seq.cpp sort 1098-1129 (less =
+  runtime::compare(a, b) < 0) and 1131-1176 (comparator: true, false, else to_int(o) < 0) ->
+  libstdc++ std::stable_sort. Clojure: core.clj sort -> java.util.Arrays.sort(a, comp) (TimSort),
+  AFunction.compare. NaN compares 0 with every number in both (number.cpp real::compare 342-356,
+  oref.hpp compare 830-860; Numbers.compare).
+- Both are stable sorts and agree on every total preorder: proved for every list of fewer than 32
+  elements and every integer key (SortProof.sorts_agree; for the replica's own sort, sort < ,
+  sort compare and sort > on numbers without NaN: replica_sort_agree*), and searched (every pattern of <= 8
+  elements, 400,000 random of 2..31). They differ on 35,698 of 87,380 lists over {0,1,2,NaN} of length
+  <= 8 (first at length 4). Boolean comparators that are total but not strict (<=, >=, constantly
+  true/false) agree too (complete to length 8 over 3 keys, 14 over 2; not covered by the proof).
+- Tests: vt1-sort-with-a-nan, vt1b-sort-by-a-nan-key, vt1c-sort-with-a-boolean-comparator-and-a-nan;
+  controls vt1d (leading NaN: [:nan 1 2 3] in both), vt1e (sort-by with <=: ties reversed alike).
+- Status: new. Confidence: high (both sort algorithms validated on 15,888 cases: the replica of
+  std::stable_sort against g++-15's own, the TimSort replica against Clojure 1.12.3).
+- Cause: one design choice (std::stable_sort for Arrays.sort). Shares nothing with earlier ids.
+
+T9-2. A comparator's numeric result is read as an i64, not as an int.
+- Program: (sort (fn [a b] (- a b)) [4294967296 0]); (sort-by :t (fn [a b] (- a b)) [{:t 3000000000} {:t 0}]).
+- Clojure: (4294967296 0) and [3000000000 0] (AFunction.compare returns n.intValue(): -2^32 -> 0,
+  -3000000000 -> 1294967296). jank: (0 4294967296) and [0 3000000000].
+- Path: core/seq.cpp 1148-1162 `to_int(o) < 0` (math.hpp to_int 1409-1436, object_ref::to_integer
+  oref.hpp 958-975: the i64). Clojure: AFunction.java compare 52-64 (Number.intValue()).
+- Agree whenever every difference the comparator returns is in the int range (proved,
+  minus_agree_in_int_range); 17,346 of 19,530 lists differ over {0, 1, 2^31, 3*10^9, 2^32}, length <= 6.
+- Tests: vt2-sort-with-a-subtracting-comparator-past-the-int-range, vt2b-sort-by-with-a-subtracting-
+  comparator; control vt2c. Status: new. Confidence: high. Cause: separate from T9-1 (the adaptor).
+
+T9-3. Vector seqs and integer ranges are not chunked: lazy map/filter/keep/map-indexed/keep-indexed/for
+over them realize one element at a time (Clojure: a chunk of up to 32).
+- Programs and values (Clojure / jank):
+  - (let [n (atom 0)] (first (map (fn [x] (swap! n inc) x) (range 100))) @n): 32 / 1;
+  - (let [n (atom 0)] (first (filter (fn [x] (swap! n inc) (odd? x)) [1 2 3 4 5])) @n): 5 / 1;
+  - (let [n (atom 0)] (first (for [x (range 50)] (do (swap! n inc) x))) @n): 32 / 1;
+  - (first (map (fn [x] (/ 10 x)) (range 3 -1 -1))): throws ArithmeticException / 10/3;
+  - (let [n (atom 0)] (into [] (take 3) (map (fn [x] (swap! n inc) x) (range 100))) @n): 32 / 3.
+- Path: core.jank map 2885-2933 (its [f coll] arity 2901-2911), filter 3864-3892, keep 2979-3008, map-indexed 2951-2977,
+  keep-indexed 3010-3044, for 3615-3700 all test chunked-seq? (seq.cpp is_chunked_seq 1071-1081:
+  behavior::chunkable). integer_range.hpp 64-67, 89-91: the chunkable members are commented out;
+  persistent_vector_sequence has none. Only range.hpp 70-73 (real ranges) and chunked_cons are
+  chunkable. Clojure: PersistentVector.ChunkedSeq, LongRange (IChunkedSeq, 32).
+- Tests: vt3-first-of-map-over-a-range-maps-a-chunk, vt3b-first-of-filter-over-a-vector-tests-a-chunk,
+  vt3c-first-of-for-over-a-range-evaluates-a-chunk, vt3d-first-of-map-computes-the-whole-chunk,
+  vt3e-into-take-over-a-mapped-range; control vt3f (a list: 1 in both).
+- Status: new (R119 is the opposite case: real ranges ARE chunked in jank and over-realize, every
+  chunk at once). Confidence: high. Cause: one (the chunkable behavior missing on two types).
+
+T9-4. iterate computes the next value one step early: iterator::next calls f.
+- Programs (Clojure / jank):
+  - (let [n (atom 0)] (doall (take 3 (iterate (fn [x] (swap! n inc) (inc x)) 0))) @n): 2 / 3;
+  - (vec (take 3 (iterate (fn [x] (if (< x 2) (inc x) (throw (ex-info "boom" {})))) 0))): [0 1 2] /
+    throws "boom";
+  - (let [n (atom 0)] (first (partition 2 (iterate (fn [x] (swap! n inc) (inc x)) 0))) @n): 1 / 2.
+- Path: obj/iterator.cpp next 35-48 (fn.call(current) at once, cached), next_in_place 50-65; seq.cpp
+  rest 351-369 -> more 341-349 -> next; core.jank take 3046-3069 evaluates (rest s) as an argument.
+  Clojure: Iterate.java next 54-59 makes an unrealized node; its first 47-52 calls f.
+- Proved: for every f, x and k >= 1, (doall (take k (iterate f x))) makes k calls in jank and k - 1 in
+  Clojure, with the same values (jank_iterate_take, clj_iterate_take).
+- Tests: vt4-take-of-iterate-calls-f-one-time-less, vt4b-take-of-iterate-never-computes-the-next-value,
+  vt4c-first-partition-of-iterate. Status: new. Confidence: high. Cause: one (also reaches
+  (range) = (iterate inc 0), filter/partition/split-at over an iterate).
+
+T9-5. apply realizes up to 12 elements of its argument seq before calling.
+- Programs (Clojure / jank), over a 15-element list:
+  - (let [n (atom 0)] (first (mapcat (fn [x] (swap! n inc) [x]) (list 1 .. 15))) @n): 4 / 12;
+  - (let [n (atom 0)] (apply (fn [& xs] (first xs)) (map (fn [x] (swap! n inc) x) (list 1 .. 15))) @n): 2 / 12.
+- Path: core.jank apply 1047-1058 -> core/call.cpp apply_to 18-156: args.fresh_seq(), then
+  sequence_length(s, max_params + 1) (seq.cpp 842-879; max_params 10, call.hpp 18): the loop's ++i
+  realizes the 12th. Clojure: apply -> RestFn.applyTo (RestFn.java 132-136, RT.boundedLength with the
+  required arity: r + 2 elements) or AFn.applyToHelper (boundedLength 20, then RT.seqToArray: all).
+  mapcat is (apply concat (apply map f colls)) in both (core.jank 3801-3807); concat's r is 2.
+- Proved for every length: jank min(len, 12), Clojure min(len, r + 2) for a variadic fn, len for a
+  fixed-arity one (jank_apply_realized, clj_apply_realized, clj_apply_fixed_realized,
+  mapcat_first_differs).
+- Tests: vt5-first-of-mapcat-realizes-four, vt5b-apply-of-a-variadic-fn-realizes-two; control vt5c.
+- Status: new. Confidence: high. Cause: one (also tree-seq and flatten through mapcat).
+
+T9-6. dedupe realizes 2 elements for its first output; Clojure a 32-output chunk plus a look-ahead.
+- Program: (let [n (atom 0) s (dedupe (map (fn [x] (swap! n inc) x) (list 1 2 3 4 5)))] (first s) @n).
+- Clojure: 5. jank: 2.
+- Path: core.jank dedupe 3911-3933 (its own lazy-seq; [x & more] takes (next s)). Clojure core.clj
+  dedupe: (sequence (dedupe) coll) -> RT.chunkIteratorSeq over TransformerIterator (RT.java 536-549,
+  TransformerIterator.java 66-107).
+- Proved: for every list of 3..33 elements, Clojure realizes all of them and jank 2
+  (dedupe_first_differs); 60 random lists of 1..60 checked against Clojure.
+- Test: vt6-first-of-dedupe-realizes-a-chunk. Status: new. Confidence: high. Cause: separate (jank's
+  sequence with an xform is "TODO: port", so dedupe was written by hand). Not testable: Clojure's
+  (first (dedupe (repeat 1))) hangs (it looks for a second output), jank's gives 1.
+
+T9-7. A cycle is not realized in jank.
+- Program: (realized? (cycle [1 2])). Clojure true (Cycle.isRealized: its current seq is set at
+  creation). jank false (cycle is (lazy-seq (concat coll (cycle coll))), core.jank 3150-3156;
+  lazy_sequence::is_realized before its body ran).
+- Test: vt7-a-cycle-is-realized. Status: new (round 4 proved cycle's values equal). Confidence: high.
+  Low impact. Cause: separate (cycle is not a Cycle object).
+
+T9-8. drop, nthnext and nthrest of a vector, range, string seq or repeat past the int range.
+- Program: (drop 3000000000 [1 2 3]); (nthnext [1 2 3] 3000000000); also nthrest, (range 5),
+  (seq "abc"), (repeat 3 :x). Clojure: ArithmeticException "integer overflow" (1.12's IDrop path casts
+  n to an int). jank: () and nil.
+- Path: core.jank drop 3097-3118, nthnext 2847-2854, nthrest 2856-2864 (walk rest; no IDrop). Clojure:
+  core.clj drop/nthnext/nthrest, IDrop (PersistentVector.java 441-448, LongRange.java 138-146,
+  StringSeq.java 61-68, Repeat.java 102-113).
+- Tests: vt8-drop-past-the-int-range-throws, vt8b-nthnext-past-the-int-range-throws. Status: new.
+  Confidence: high. Low impact (Clojure's own quirk; the values agree for every n in the int range).
+
+T9-9. The partition-all transducer uses n as given: a double n never fires, a negative n does not throw.
+- Program: (into [] (partition-all 2.0) [1 2 3 4 5]): Clojure [[1 2] [3 4] [5]] (([^long n] ...):
+  n is cast to 2); jank [[1 2 3 4 5]] ((= 2.0 (count p)) is false: number.cpp real::equal 267-282).
+  (into [] (partition-all -1) [1 2 3]): Clojure IllegalArgumentException "Illegal Capacity: -1"
+  ((java.util.ArrayList. n)); jank [[1 2 3]].
+- Path: core.jank partition-all 3261-3289. Clojure core.clj 7388-7409.
+- Proved: for every long n >= 0, input and stopping point the two agree (partition_all_agree); for
+  every double n, jank sends every non-empty input as one partition (jank_double_one_partition);
+  complete search: n in {-1, 0, 1, 2, 3} and {1.0, 2.0, 3.0}, inputs of length 0..12, 4 stopping points.
+- Tests: vt9-partition-all-transducer-with-a-double-size, vt9b-partition-all-transducer-with-a-
+  negative-size-throws. Status: new. Confidence: high. Low-medium impact.
+
+T9-10. A sorted map or set searched for ##NaN lands on another key, and dissoc/disj empty it.
+- Programs (Clojure / jank):
+  - (get (sorted-map 1 :a 2 :b 3 :c) ##NaN): :b / :a;
+  - (vec (dissoc (sorted-map 1 :a 2 :b 3 :c) ##NaN)): [[1 :a] [3 :c]] / [];
+  - (vec (disj (sorted-set 1 2) ##NaN)): [2] / [];
+  - (vec (assoc (sorted-map 1 :a 2 :b 3 :c) ##NaN :x)): [[1 :a] [2 :x] [3 :c]] / [[1 :x] [2 :b] [3 :c]].
+- Path: runtime/detail/type.hpp 49-65 (std::map/std::set, type.cpp 6: compare < 0);
+  persistent_sorted_map.cpp get 60-78, assoc 95-101 (copy[key] = val), dissoc 103-108 (copy.erase);
+  persistent_sorted_set.cpp disj 198-203. libstdc++: find/operator[] = lower_bound (the minimum
+  when the key is equivalent to every key), erase(k) = erase(equal_range(k)) = every element.
+  Clojure: PersistentTreeMap entryAt/add/remove stop at the first node comparing 0 (the root).
+- Proved for every tree shape: jank lands on the minimum, erases everything; Clojure lands on the
+  root (jank_lower_bound_nan, jank_equal_range_nan, clj_find_nan); libstdc++ checked with g++-15 on
+  192 trees (n = 1..64, three insertion orders).
+- Tests: vt10-get-of-a-nan-in-a-sorted-map, vt10b-dissoc-..., vt10c-disj-..., vt10d-assoc-...;
+  control vt10e (contains? true in both).
+- Status: new (round 2's Sorted.lean assumed a strict weak order, S1/S2, and modeled both sides by
+  one binary search, which hides this). Confidence: high. Note: area M (sorted collections) may
+  report the same programs. Cause: separate from T9-1 (search, not sort), same trigger (NaN).
+
+T9-11. realized? of a lazy seq is true once its body ran, not once its seq finished.
+- Programs (Clojure / jank):
+  - (let [inner (lazy-seq [1 2]) outer (lazy-seq inner)] (seq outer) (realized? inner)): false / true;
+  - (let [x (lazy-seq (lazy-seq (throw (ex-info "x" {}))))] (try (seq x) (catch ...)) (realized? x)):
+    false / true.
+- Path: lazy_sequence.cpp is_realized 168-172 (fn.is_nil() || sv.is_some()), realize 118-133, sval
+  145-156 (the outer unwraps the inner through sval: the inner's fn runs, its seq does not).
+  Clojure: LazySeq.java isRealized 289-301 (lock == null), realize 80-101 (lock cleared last), sval 67-73.
+- Proved (inner_realized_differs, outer_realized_after_inner_throw). Tests: vt11-an-inner-lazy-seq-
+  unwrapped-by-an-outer-one-is-not-realized, vt11b-a-lazy-seq-whose-inner-seq-threw-is-not-realized;
+  control vt11c. Status: new. Confidence: high. Low impact.
+
+T9-12. A lazy-seq body that threw runs again with its locals; Clojure's runs with them cleared.
+- Program: (let [n (atom 0) x (lazy-seq (swap! n inc) (throw (ex-info "boom" {})))] (try (seq x)
+  (catch ...)) (try (seq x) (catch ...)) @n). Clojure 1 (the body is a ^{:once true} fn*: the
+  compiler cleared the closed-over n at its use; the second run's (swap! nil inc) throws
+  NullPointerException). jank 2.
+- Path: core.jank lazy-seq 2026-2032 ((fn lazy-seq# [] body), an ordinary fn); lazy_sequence.cpp
+  force 136-143 keeps fn after a throw. Clojure: core.clj lazy-seq, LazySeq.java force 48-53.
+- Checked on Clojure with a var counter instead of a local: the body does run twice ([2 false]), so
+  the difference is the locals clearing. Model: LazyState.reforce_counts_all.
+- Test: vt12-a-lazy-seq-body-that-threw-runs-again-without-its-locals. Status: new. Confidence:
+  high on the value; low impact (a body whose re-run depends on its locals: in Clojure it fails with
+  NullPointerException, in jank it repeats its effects). Cause: separate (no once-fn locals clearing).
+
+T9-13. str of a lazy seq prints its contents; Clojure prints the object's name.
+- Program: (str (map inc [1 2])); also (format "%s" ...), (str (filter ...)), (str (concat ...)).
+- Clojure: "clojure.lang.LazySeq@402" (LazySeq is not an ASeq and has no toString: Object.toString,
+  the class and LazySeq.hashCode = the seq's List hash, 1026 for (2 3); deterministic). jank: "(2 3)".
+- Path: core.jank str 499-508 (.to_string) -> lazy_sequence.cpp to_string 83-91 (seq_to_string).
+  Seqs that are ASeqs in Clojure (vector seqs, ranges, lists, cons, sort's result) print their
+  contents in both (control vt16b).
+- Test: vt16-str-of-a-lazy-seq-is-its-object-name. Status: new. Confidence: high on the value;
+  host-specific text (a JVM class name), so the coordinator may judge it out of scope. Cause: separate.
+
+Known causes reached through this area's functions (tests added for the coordinator):
+- D12 (stock): (distinct [1 1N]) Clojure (1), jank (1 1N) (the hash set misses 1N); fixed by D12a/D12b
+  in the combined patch. Test vt13-distinct-of-1-and-1N. Same: (distinct? 1 2 1N), frequencies and
+  group-by past 8 keys. (distinct [0.0 -0.0]) agrees (one element: V84's miss needs a third value).
+- R119: (first (map f (range 0.0 100))) maps all 100 (Clojure 32); (take 5 (cycle (range 0.0 3)))
+  never ends in jank (chunk-cons of concat recurses). Not re-tested.
+- U66: counted? of set and sorted seqs (and keys/vals, vector seqs in jank) is true; Clojure false.
+  Not re-tested.
+- U80, V7 (reduce-kv on a list, rem by zero in take-nth 0: both throw, jank's not as an object).
+
+Controls (predicted to pass on jank): vt1d, vt1e, vt2c, vt3f, vt5c, vt10e, vt11c, vt14 (max-key keeps
+the last tie), vt14b (sort-by is stable), vt15 (for with an inner :while), vt15b (doseq with :let,
+:when and nesting), vt16b (str of a vector seq).
+Test names by id: T9-1 vt1-vt1c; T9-2 vt2, vt2b; T9-3 vt3-vt3e; T9-4 vt4-vt4c; T9-5 vt5, vt5b;
+T9-6 vt6; T9-7 vt7; T9-8 vt8, vt8b; T9-9 vt9, vt9b; T9-10 vt10-vt10d; T9-11 vt11, vt11b; T9-12 vt12;
+T9-13 vt16; D12 vt13. None is C++ interop or jank-only: all 42 run on Clojure 1.12.3.
+
+
+(2) Proofs (statements in words; Lean names)
+--------------------------------------------
+
+- Sort.sort_nan_example, Sort.sort_minus_example: the replicas give the T9-1 and T9-2 values (kernel).
+- Sort.intValue_id_in_int_range: for every long in [-2^31, 2^31), intValue is the identity.
+- Sort.minus_agree_in_int_range: for every two keys whose difference fits in an int, jank's comparator
+  adaptor (`to_int(o) < 0`) and Clojure's (`intValue < 0`) agree on a subtracting comparator.
+- Sort.intValue_sign_flips: -2^32 has intValue 0, 2^31 has intValue -2^31.
+- Lazy.jank_plain_calls / jank_calls: for every n and k, realizing k elements of (map f s) over an
+  integer range, a vector or a list calls f min(k, n) times in jank.
+- Lazy.clj_first_calls: for every n >= 1, (first (map f s)) over a LongRange or vector seq of n calls f
+  min(32, n) times in Clojure; first_map_differs: they differ for every n >= 2; list_agrees: a list
+  agrees for every n, k.
+- Lazy.clj_iterate_take, jank_iterate_take: for every f, x, k, (doall (take k (iterate f x))) gives the
+  same values with k - 1 (Clojure, k >= 1) and k (jank) calls.
+- Lazy.seqLength_spec, bounded_spec: the two counting loops (sequence_length, RT.boundedLength)
+  realize exactly min(len, max + 1) and min(len, limit + 2) nodes, for every length and bound.
+- Lazy.jank_apply_realized, clj_apply_realized, clj_apply_fixed_realized, mapcat_first_differs: apply
+  realizes min(len, 12) in jank, min(len, r + 2) (variadic) or len (fixed arity) in Clojure; mapcat's
+  first differs for every length >= 5.
+- Lazy.cljDedupeGo_short, dedupe_first_differs: for every list of 3..33 elements, (first (dedupe s))
+  realizes 2 in jank and all of them in Clojure.
+- PartitionAll.partition_all_agree: for every long n >= 0, input and stopping point, the transducers
+  agree; go_never, jank_double_one_partition: for every double n and non-empty input, jank sends one
+  partition; examples (kernel).
+- SortedNaN.jank_lower_bound_nan, upper_bound_nan, jank_equal_range_nan, clj_find_nan,
+  same_key_iff_no_left: for every binary search tree, the NaN probe's lower bound is the minimum,
+  equal_range is the whole tree, Clojure's search stops at the root; they land on one key exactly
+  when the root is the minimum.
+- LazyState.inner_realized_differs (every value), outer_realized_after_inner_throw,
+  reforce_counts_all (every number of forcings >= 1), str_lazy_example (T9-13's two strings, kernel).
+
+- SortProof (the agreement half of T9-1), for elements with an integer key κ compared by `<` (so
+  `compare`, `<`, `>`, and any comparator returning the sign of a key difference) and a tag τ that
+  strictly increases along the input:
+  - eq_of_perm_of_pairwise: two lists that are permutations of each other and both sorted by a
+    relation antisymmetric on their elements are equal;
+  - insertionSort_sorted (jank's __insertion_sort), mergeF_sorted (__move_merge), mergeB_sorted
+    (__move_merge_adaptive_backward), mergeAll_ok / mergeSortWithBuffer_ok (chunks of 7 and the
+    pairwise passes), stableSort_ok: jank's std::stable_sort returns a permutation sorted by key with
+    equal keys in input order, for every input;
+  - countRun_ok (countRunAndMakeAscending), binSearch_spec (binarySort's search finds the first key
+    above the pivot), insertAt_sorted, binarySort_ok, timSortSmall_ok: the same for Clojure's TimSort
+    of fewer than 32 elements;
+  - sorts_agree: for every such list of fewer than 32 elements, Clojure's result is jank's;
+    sorts_agree_ints: for every list of integers tagged by position;
+  - Natural.stableSort_map, Natural.timSortSmall_map (and the lemmas for every helper): both sorts
+    commute with mapping the elements when the comparators agree through the map;
+  - replica_sort_agree, replica_sort_agree_lt, replica_sort_agree_compare, replica_sort_agree_gt: so
+    the replica's own functions agree: for every list of numbers without NaN of fewer than 32,
+    Sort.cljSort and Sort.jankSort give the same list for (sort coll), (sort < coll),
+    (sort compare coll) and (sort > coll).
+Not proved: non-strict boolean comparators (<=, >=, constantly true/false: searched only, they agree);
+TimSort for n >= 32 is not replicated.
+
+
+(3) What was replicated (file -> what it mirrors)
+-------------------------------------------------
+
+- Jank/R9/Seq/Sort.lean:
+  - jank: core.jank sort 5661-5670, sort-by 5672-5682, comparator 5655-5659; core/seq.cpp sort
+    1098-1129 and 1131-1176 (the adaptor: jank_true, jank_false, to_int < 0); math.hpp to_int
+    1409-1436; libstdc++ 15 std::stable_sort (__stable_sort with a (n+1)/2 buffer,
+    __stable_sort_adaptive, __merge_sort_with_buffer with _S_chunk_size 7, __chunk_insertion_sort,
+    __insertion_sort and __unguarded_linear_insert, __merge_sort_loop / __move_merge,
+    __merge_adaptive forward and backward). Validated against g++-15's own on 15,888 cases.
+  - Clojure: core.clj sort/sort-by, AFunction.compare (Boolean true -1; false asks (comp y x); else
+    Number.intValue), java.util.TimSort for n < 32 (countRunAndMakeAscending, binarySort). Validated
+    against Clojure 1.12.3 on 15,888 cases.
+- Jank/R9/Seq/SortSearch.lean: the comparator families and the complete searches; the preorder census.
+- Jank/R9/Seq/SortProof.lean: the proofs that both replicas are stable sorts and agree (section 2).
+- Jank/R9/Seq/Lazy.lean:
+  - chunks: core.jank map 2901-2911 (and the identical branches of filter, keep, map-indexed,
+    keep-indexed, for), take 3046-3069; seq.cpp is_chunked_seq 1071-1081; integer_range.hpp 64-67;
+    Clojure LongRange/PersistentVector chunked seqs (chunk 32).
+  - iterate: iterator.cpp 20-65; Iterate.java 47-59.
+  - apply: core.jank apply 1047-1058, call.cpp apply_to 18-156, seq.cpp sequence_length 842-879;
+    RestFn.applyTo 132-136, AFn.applyToHelper 147-424, RT.boundedLength.
+  - dedupe: core.jank 3911-3933; RT.chunkIteratorSeq 536-549, TransformerIterator 66-107,
+    SeqIterator hasNext/next.
+- Jank/R9/Seq/PartitionAll.lean: core.jank partition-all 3261-3289 (xform arity); core.clj 7388-7409.
+- Jank/R9/Seq/SortedNaN.lean: persistent_sorted_map.cpp 60-108, persistent_sorted_set.cpp 193-203,
+  detail/type.hpp 49-65, type.cpp 6-9; libstdc++ _M_lower_bound, _M_upper_bound, _M_equal_range,
+  map::operator[] (validated with g++-15); PersistentTreeMap entryAt/add/remove.
+- Jank/R9/Seq/LazyState.lean: lazy_sequence.cpp 118-172 and to_string 83-91; LazySeq.java 48-101,
+  289-301 (and its missing toString: Object.toString with hashCode); the two lazy-seq macros.
+- Read and found to agree with Clojure (core.jank text identical up to whitespace and docstrings):
+  take, take-while, drop (lazy), drop-last, drop-while, split-at, split-with, interleave, interpose,
+  partition, partition-all (lazy), partition-by (lazy), frequencies, group-by, reductions, take-last,
+  mapv, filterv, mapcat, distinct, distinct?, filter, remove, repeatedly, dorun, doall, max-key,
+  min-key, replace, partitionv, partitionv-all, splitv-at, bounded-count, random-sample, last,
+  butlast, ffirst, nfirst, nnext, fnext, lazy-cat, when-first, tree-seq, flatten, doseq (but R117's
+  fresh-seq/next-in-place), for, transducer arities of map, filter, keep, keep-indexed, map-indexed,
+  take, take-while, take-nth, drop, drop-while, interpose, distinct, dedupe, cat, completing,
+  transduce; seq.cpp reduce 908-921 (stops at a reduced, unwraps once: the same as Clojure's IReduce
+  paths for every collection tried), reduce_kv 923-974 (nil, vectors, every persistent map: sorted
+  included); lazy_sequence force/sval/unwrap (same steps as LazySeq).
+- Clojure runs (probes p1-p7) for: transducers with n = 0, negative, double; take-nth 0 and -1;
+  partition 0; partition-all 0; nthrest of a negative n; take-last 0; repeat 2.5 and -1; cycle nil;
+  (range 5 5 0), (range 0 5 0); reduce-kv on subvec, sorted maps, lists, map entries, seqs of maps;
+  max-key/min-key ties and NaN; sort with nil; stable sort-by; numeric equality in distinct, set,
+  frequencies, distinct?, dedupe. Each agrees with the jank code read, or is an earlier id.
+
+
+(4) What is not exact
+---------------------
+
+- Sort: keys are integers or NaN; doubles, ratios and BigInts compare the same way (one numCompare).
+  The agreement proof is generic (any element type with an integer key), stated on lists whose tags
+  strictly increase.
+  TimSort is replicated for n < 32 only; jank's std::stable_sort assumes the (n+1)/2 buffer is
+  allocated (it is for any realistic n; otherwise libstdc++ falls back to __stable_sort_adaptive_resize
+  or __inplace_stable_sort, not replicated).
+- Chunk counts: the model counts realizations by chunk arithmetic over the map body, not by running
+  objects; the Clojure side is validated (209 cases), the jank side is the code read.
+- dedupe: the model counts outputs by `prior != x` (Clojure's (= prior input)): numbers of different
+  kinds are not modeled.
+- partition-all: n is a long or an integral double; a non-integral double, ratio or BigInt n is not
+  modeled (Clojure casts each to a long; jank compares with =).
+- SortedNaN: the trees are any binary search trees; neither balancing algorithm is replicated, so
+  Clojure's root for a given insertion order is taken from the Clojure run.
+- LazyState: one outer and one inner seq; Clojure's locals clearing is modeled as "a body that used
+  its local once cannot increment again".
+
+
+(5) Still left out, and why
+---------------------------
+
+- Full TimSort (n >= 32, with runs of minRun, galloping and its "Comparison method violates its
+  general contract!" check): the deviations show at n = 4, so the small sort was enough; the
+  agreement proof covers n < 32.
+- sequence with an xform, eduction, halt-when, iteration, rseq, subseq, sorted-*-by: "TODO: port" or not
+  defined in jank (R113, R124), so no deviation by the rules.
+- Hash-map iteration order in frequencies/group-by results past 8 keys: area M / CHAMP rounds.
+- Strings as seqs (bytes): area W (LG3, R52).
+- doseq over held seqs: R117. Real ranges: R119.
+
+
+(6) Assumptions
+---------------
+
+- SeqA9-1. jank links libstdc++ 15 (Linux; the deps/ regex files are 15.3.0); g++-15 15.2's
+  std::stable_sort and std::map are the same algorithms. (Homebrew gcc 15.2 on the Mac.)
+- SeqA9-2. java.util.Arrays.sort(Object[], Comparator) is TimSort (no LegacyMergeSort.userRequested).
+- SeqA9-3. Booleans are the singletons jank_true/jank_false (make_box.hpp 24-27), so the adaptor's
+  `o == jank_true` sees every boolean a jank fn returns.
+- SeqA9-4. persistent_vector_sequence, integer_range and lazy_sequence are the types jank's (seq v),
+  (range n) and (lazy-seq ...) produce (persistent_vector.cpp seq 158-161, core.jank range 2827-2845,
+  2026-2032).
+- Earlier assumptions replaced: round 2's Sorted.lean S1/S2 ("a strict weak ordering"; "both sides
+  compare the same pairs in the same order") do not hold when a key compares 0 with everything:
+  SortedNaN.lean replaces them for that case (the result depends on the search, see T9-10).
+
+
+(7) Properties checked, with their source
+-----------------------------------------
+
+- sort is stable and orders by compare / the comparator (core.clj sort docstring; Arrays.sort).
+- A comparator fn's result is AFunction.compare's (AFunction.java).
+- Lazy seqs realize what Clojure 1.12.3 realizes (LazySeq, chunked seqs, Iterate, Cycle,
+  chunkIteratorSeq, RestFn/AFn applyTo): the counts were run on Clojure.
+- Transducers: each step, completion and early stop as in core.clj; partition-all's ^long.
+- realized? is LazySeq.isRealized / Cycle.isRealized.
+- drop/nthnext/nthrest follow core.clj 1.12 (IDrop).
+- Sorted collections answer get/assoc/dissoc/disj as PersistentTreeMap/Set do.
+- min-key/max-key ties, for/doseq modifiers (core.clj text).
+- str of a seq is its toString: RT.printString for an ASeq, Object.toString for a LazySeq (Java).
+
+
+(8) Search runs (exact bounds)
+------------------------------
+
+- Comparator families (jank9-seq sort; results/r9-seq-sort.txt), complete:
+  - compare over {0,1,2,NaN}, lengths 1..8: 87,380 lists, 35,698 differ (first at length 4); < and >
+    with NaN: the same counts;
+  - <=, >=, (constantly true), (constantly false) over {0,1,2}, lengths 1..8: 9,840 each, 0 differ;
+    <= and (constantly true) over {0,1}, lengths 1..14: 32,766 each, 0 differ;
+  - #(- %1 %2) over {0, 1, 2^31, 3*10^9, 2^32}, lengths 1..6: 19,530, 17,346 differ;
+  - controls (compare, compare fn, <, >, #(- %1 %2) over {0,1,5}) over 3 values, lengths 1..8: 0 differ.
+- Every total preorder pattern (jank9-seq preorders 8): lengths 1..8, n^n lists each (16,777,216 at 8):
+  0 differ. Random total preorders (preorders-random 200000 9001, 200000 31337; lengths 2..31 over
+  2..32 values): 400,000 lists, 0 differ.
+- Validation: 15,888 sort cases (every list of length <= 5 of each family, 300 random of length
+  2..31 per family): g++-15 std::stable_sort 0 differ from the replica, Clojure 1.12.3 0 differ;
+  std::map/std::set NaN probe: 192 trees, 0 differ; realization counts: 209 cases on Clojure 1.12.3,
+  0 differ (results/r9-seq-validation.txt).
+- partition-all (jank9-seq pa; results/r9-seq-pa.txt): n in {-1,0,1,2,3} as longs and {1,2,3} as
+  doubles, inputs of length 0..12, stops {1,2,3,1000}: 52 runs each; -1 differs in all 52 (Clojure
+  throws), 0..3 in none, the doubles in 44, 40, 36 (exactly when the input is longer than n).
+
+
+(9) Theorems (star: new for-every-input proof)
+----------------------------------------------
+
+- ★ Sort.intValue_id_in_int_range, ★ Sort.minus_agree_in_int_range; Sort.sort_nan_example,
+  Sort.sort_minus_example, Sort.intValue_sign_flips, Sort.intValue_examples.
+- ★ SortProof.eq_of_perm_of_pairwise, ★ SortProof.insertionSort_sorted, ★ SortProof.insertionSort_perm,
+  ★ SortProof.mergeF_sorted, ★ SortProof.mergeB_sorted, ★ SortProof.mergeAll_ok,
+  ★ SortProof.mergeSortWithBuffer_ok, ★ SortProof.stableSort_ok, ★ SortProof.countRun_ok,
+  ★ SortProof.binSearch_spec, ★ SortProof.insertAt_sorted, ★ SortProof.binarySort_ok,
+  ★ SortProof.timSortSmall_ok, ★ SortProof.sorts_agree, ★ SortProof.sorts_agree_ints,
+  ★ SortProof.Natural.stableSort_map, ★ SortProof.Natural.timSortSmall_map (with the helpers'
+  *_map lemmas), ★ SortProof.replica_sort_agree, ★ SortProof.replica_sort_agree_lt,
+  ★ SortProof.replica_sort_agree_compare, ★ SortProof.replica_sort_agree_gt.
+- ★ Lazy.jank_plain_calls, ★ Lazy.jank_calls, ★ Lazy.clj_first_calls, ★ Lazy.first_map_differs,
+  ★ Lazy.list_agrees, ★ Lazy.clj_iterate_take, ★ Lazy.jank_iterate_take, ★ Lazy.seqLength_spec,
+  ★ Lazy.bounded_spec, ★ Lazy.jank_apply_realized, ★ Lazy.clj_apply_realized,
+  ★ Lazy.clj_apply_fixed_realized, ★ Lazy.mapcat_first_differs, ★ Lazy.cljDedupeGo_short,
+  ★ Lazy.dedupe_first_differs; Lazy.apply_examples, Lazy.dedupe_examples.
+- ★ PartitionAll.partition_all_agree, ★ PartitionAll.go_never, ★ PartitionAll.jank_double_one_partition;
+  PartitionAll.examples.
+- ★ SortedNaN.jank_lower_bound_nan, ★ SortedNaN.upper_bound_nan, ★ SortedNaN.jank_equal_range_nan,
+  ★ SortedNaN.clj_find_nan, ★ SortedNaN.same_key_iff_no_left.
+- ★ LazyState.inner_realized_differs, LazyState.outer_realized_after_inner_throw,
+  LazyState.reforce_counts, ★ LazyState.reforce_counts_all, LazyState.str_lazy_example.
+- Axioms (results/r9-seq-axioms.txt): propext, Quot.sound and Classical.choice at most; no sorry, no
+  native_decide, no axiom declared (an earlier bv_decide proof was replaced by Int32.toInt_ofInt_of_le
+  because bv_decide adds its own axiom).
+
+
+(10) Library gaps
+-----------------
+
+- No uniqueness of sorted permutations (Mathlib's List.eq_of_perm_of_sorted) in Lean's core library:
+  proved here (SortProof.eq_of_perm_of_pairwise). List.mergeSort's lemmas were not needed.
+- Homebrew gcc 15.2's fixed stdio.h does not build against the macOS 15 SDK: the C++ checks include
+  only <algorithm>, <vector>, <map>, <set> and use write(2).
+- `decide` does not reduce well-founded recursion: the merges take fuel; theorems over them use
+  `decide +kernel`.
+
+
+(11) Fixes written
+------------------
+
+None written by this agent (no ids assigned; finding and confirming came first).
+
+Found in fixes/ with this area's ids, written by someone else at 04:55-04:56 (after this report's first
+draft listed them as clear local fixes; .r9-scratch/work/T9-2 and T9-9 are their work.sh copies). Not
+mine; checked here read-only:
+- fixes/T9-2.diff (core/seq.cpp: comparator_int_negative takes a long's or BigInt's low 32 bits, a
+  double's or ratio's (int) cast as `<= -1.0`, NaN 0): applies alone to 94d32623 and to round 8's
+  combined tree. Tagged small integers are i32 (oref.hpp 110-111) and take the to_int branch, which
+  is their intValue. By reading, vt2 and vt2b pass with it (vt2: -2^32's low bits 0; vt2b: -3*10^9's
+  are 1294967296); vt2c stays a control. A build must compile it (not syntax-checked here).
+- fixes/T9-9.diff (core.jank partition-all: n through to_int, ex-info "Illegal Capacity: n" for a
+  negative n when the transducer is applied): applies alone and to the combined tree; fwdref.py: new 0.
+  By reading, vt9 and vt9b pass with it (vt9b: an ex-info, which thrown? sees).
+
+Local fixes that would be clear:
+- T9-2: seq.cpp 1160 `static_cast<i32>(to_int(o)) < 0` for a long result (Java's intValue truncation).
+- T9-9: core.jank partition-all: `(let [n (long n)] ...)` and a throw for a negative n.
+- T9-11: lazy_sequence::is_realized could test a `realized` flag set at the end of realize().
+- T9-1, T9-3, T9-4, T9-5, T9-6, T9-10, T9-12, T9-13 are design choices (sort algorithm, chunking,
+  iterator object, apply's counting, dedupe without sequence, std::map, no locals clearing, printing).
+
+
+(12) Model errors of earlier rounds corrected
+---------------------------------------------
+
+- Round 2's Jank/Core/Sorted.lean S1/S2 modeled jank's std::map and Clojure's PersistentTreeMap by the
+  same binary search; with a key that compares 0 with every key the two searches land on different
+  entries (T9-10). Its results stand for strict weak orders.
+- Round 2's sort replica (Jank/Compare.lean, sort length <= 3) is right: no total preorder differs,
+  and NaN needs length 4 to show T9-1.
+- Round 4's cycle_agrees (values) stands; realized? differs (T9-7).
+- Round 2's Chunked.lean treats only real ranges as chunked in jank: right for jank; the Clojure side
+  it compared was real ranges only, so vectors and integer ranges (T9-3) were never compared.
+
+Work stopped: everything planned is in; TimSort for n >= 32 and the El bridge of the agreement proof
+were left out (sections 2, 5). No process left running; scratch build products removed (see final note).

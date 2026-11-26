@@ -1,0 +1,48 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -3263,23 +3263,28 @@
+    partitions with fewer than n items at the end.  Returns a stateful
+    transducer when no collection is provided."
+   ([n]
+-   (fn [rf]
+-     ;; OPTIMIZE: jvm clojure uses an array here for perf
+-     (let [part (volatile! [])]
+-       (fn
+-         ([] (rf))
+-         ([result]
+-          (let [p (deref part)
+-                result (if (empty? p)
+-                         result
+-                         (unreduced (rf result p)))]
+-            (rf result)))
+-         ([result input]
+-          (let [p (vswap! part conj input)]
+-            (if (= n (count p))
+-              (do (vreset! part [])
+-                  (rf result p))
+-              result)))))))
++   ;; Clojure's arity is ([^long n] ...): n is cast to a long when partition-all is called, and
++   ;; (java.util.ArrayList. n) refuses a negative n when the transducer is applied.
++   (let [n (cpp/jank.runtime.to_int n)]
++     (fn [rf]
++       (when (< n 0)
++         (throw (ex-info (str "Illegal Capacity: " n) {})))
++       ;; OPTIMIZE: jvm clojure uses an array here for perf
++       (let [part (volatile! [])]
++         (fn
++           ([] (rf))
++           ([result]
++            (let [p (deref part)
++                  result (if (empty? p)
++                           result
++                           (unreduced (rf result p)))]
++              (rf result)))
++           ([result input]
++            (let [p (vswap! part conj input)]
++              (if (= n (count p))
++                (do (vreset! part [])
++                    (rf result p))
++                result))))))))
+   ([n coll]
+    (partition-all n n coll))
+   ([n step coll]

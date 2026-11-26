@@ -1,0 +1,26 @@
+== stock immer (282629d0)
+map built: 2:0 1:0 
+assoc 1 :b : 1:1 2:0 
+assoc 2 :b : 2:1 1:0 
+update 1   : 1:7 2:0 
+upd_if_ex 1: 1:7 2:0 
+assoc! 1 on a new transient: 1:1 2:0 
+assoc! 1 in the making transient: 2:0 1:1 
+set built: 2 1 ; conj 1: 1 2 
+random: 200000 sequences, 2249685 steps; transient twin differs in order 170745, in contents 0; assoc/update of a present key reorders 341736
+== patched immer (H8-1-immer.diff)
+map built: 2:0 1:0 
+assoc 1 :b : 2:0 1:1 
+assoc 2 :b : 2:1 1:0 
+update 1   : 2:0 1:7 
+upd_if_ex 1: 2:0 1:7 
+assoc! 1 on a new transient: 2:0 1:1 
+assoc! 1 in the making transient: 2:0 1:1 
+set built: 2 1 ; conj 1: 2 1 
+random: 200000 sequences, 2249685 steps; transient twin differs in order 0, in contents 0; assoc/update of a present key reorders 0
+transient built, 0b assoc!'ed: 4a=1 1a=1 0a=2
+assoc 0c :3 (stored key kept): 4a=1 0a=3 1a=1
+plain set 0c :3 (stock jank): 4a=1 0c=3 1a=1
+transient built, 0b assoc!'ed: 4a=1 1a=1 0a=2
+assoc 0c :3 (stored key kept): 4a=1 1a=1 0a=3
+plain set 0c :3 (stock jank): 4a=1 1a=1 0c=3

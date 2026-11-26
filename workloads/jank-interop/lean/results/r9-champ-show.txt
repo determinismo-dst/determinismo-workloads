@@ -1,0 +1,12 @@
+(keys (hash-map 1 :a 7676047846 :a)): [7676047846, 1]
+(keys (assoc m 1 :b)): stock [1, 7676047846], fixed [7676047846, 1]
+(keys (assoc m 1 :a)): stock [1, 7676047846], fixed [7676047846, 1]
+(seq (conj (hash-set 1 7676047846) 1)): stock [1, 7676047846], fixed [7676047846, 1]
+transient chain / persistent chain keys: stock [7676047846, 1] / [1, 7676047846], fixed [7676047846, 1] / [7676047846, 1]
+(assoc! (transient m) 1 :b) keys: stock [1, 7676047846], fixed [7676047846, 1]
+H9-1 abstract (a=1 q=2 b=3): stock transient [1] persistent [3]; fixed [1] [1]; control [1] [1]
+jank hashes (round 3's cpp_dec_float replica): a 3969516785 q 3969516785 b 3969516785 (C++ on boost: 3969516785 each)
+jank =: (= a q) true (= q b) true (= a b) false; Clojure =: (= a q) false (= q b) false (= a b) false
+stock: (persistent! (-> (transient #{}) (conj! a) (conj! b) (conj! a) (disj! q)))) [a]; (-> #{} (conj a) (conj b) (conj a) (disj q)) [b]
+fixed: (persistent! (-> (transient #{}) (conj! a) (conj! b) (conj! a) (disj! q)))) [a]; (-> #{} (conj a) (conj b) (conj a) (disj q)) [a]
+Clojure 1.12.3: both #{a b} (its = is exact; .r9-scratch/champ/clj)

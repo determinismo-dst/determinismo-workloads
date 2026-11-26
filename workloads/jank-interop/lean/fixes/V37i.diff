@@ -1,0 +1,14 @@
+--- a/compiler+runtime/src/jank/jank/nrepl/server/handler/clone.jank
++++ b/compiler+runtime/src/jank/jank/nrepl/server/handler/clone.jank
+@@ -5,3 +5,11 @@
+ (defmethod handle-message :clone [_]
+   {:new-session (str (random-uuid))
+    :status [:done]})
++
++(defmethod handle-message :interrupt [msg]
++  ;; nREPL (session.clj interrupt-session 277-296): :session-idle when the session runs nothing,
++  ;; :session-ephemeral without a session. jank evaluates on the connection's own thread, so when
++  ;; a connection reads an interrupt, no eval it started is running.
++  (if (get msg "session")
++    {:status [:session-idle :done]}
++    {:status [:error :session-ephemeral :done]}))

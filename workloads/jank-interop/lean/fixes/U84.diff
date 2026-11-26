@@ -1,0 +1,217 @@
+--- a/compiler+runtime/src/cpp/clojure/data/json_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+@@ -8,6 +8,8 @@
+ #include <jank/runtime/behavior/nameable.hpp>
+ #include <jank/runtime/context.hpp>
+ #include <jank/runtime/core/make_box.hpp>
++#include <jank/runtime/obj/big_decimal.hpp>
++#include <jank/runtime/obj/big_integer.hpp>
+ #include <jank/runtime/obj/persistent_string.hpp>
+ #include <jank/runtime/obj/transient_hash_map.hpp>
+ #include <jank/runtime/obj/transient_vector.hpp>
+@@ -129,75 +131,154 @@
+     return write(x, opts).dump();
+   }
+ 
+-  static object_ref read(nlohmann::json const &json, read_options const &opts)
++  namespace
+   {
+-    switch(json.type())
++    /* data.json reads each number from its text: an integer is a Long, or a BigInt past Long's
++     * range, and with :bigdec a decimal is the BigDecimal of its text (read-number). nlohmann's
++     * DOM keeps only a double for a decimal, or for an integer past 64 bits, so the reader takes
++     * nlohmann's SAX events, whose number_float carries the number's text. */
++    struct sax_reader
+     {
+-      case nlohmann::json::value_t::null:
+-        return jank_nil;
+-      case nlohmann::json::value_t::string:
+-        return make_box<obj::persistent_string>(json.get<std::string>());
+-      case nlohmann::json::value_t::number_unsigned:
+-      case nlohmann::json::value_t::number_integer:
+-        return make_box(json.get<jtl::i64>());
+-      case nlohmann::json::value_t::number_float:
+-        {
+-          if(opts.bigdec)
+-          {
+-            return make_box<obj::big_decimal>(json.get<jtl::f64>());
+-          }
++      struct frame
++      {
++        obj::transient_vector_ref vec;
++        obj::transient_hash_map_ref map;
++        object_ref key;
++      };
+ 
+-          return make_box(json.get<jtl::f64>());
++      read_options const &opts;
++      ::jank::native_vector<frame> stack;
++      object_ref result;
++
++      void put(object_ref const value)
++      {
++        if(stack.empty())
++        {
++          result = value;
++          return;
+         }
+-      case nlohmann::json::value_t::boolean:
+-        return make_box(json.get<bool>());
+-      case nlohmann::json::value_t::array:
++        auto &top(stack.back());
++        if(top.map.is_some())
+         {
+-          obj::transient_vector v{};
+-
+-          for(auto const &element : json)
++          auto const v(opts.value_fn.is_some() ? opts.value_fn.call(top.key, value) : value);
++          if(opts.value_fn.is_nil() || opts.value_fn != v)
+           {
+-            v.conj_in_place(read(element, opts));
++            top.map->assoc_in_place(top.key, v);
+           }
+-
+-          return v.to_persistent();
+         }
+-      case nlohmann::json::value_t::object:
++        else
+         {
+-          obj::transient_hash_map m{};
++          top.vec->conj_in_place(value);
++        }
++      }
+ 
+-          for(auto const &[k, v] : json.items())
+-          {
+-            auto const key_initial(make_box<obj::persistent_string>(k));
+-            auto const value_initial(read(v, opts));
++      bool null()
++      {
++        put(jank_nil);
++        return true;
++      }
+ 
+-            auto const key(opts.key_fn.is_some() ? opts.key_fn.call(key_initial) : key_initial);
+-            auto const value(opts.value_fn.is_some() ? opts.value_fn.call(key, value_initial)
+-                                                     : value_initial);
+-            if(opts.value_fn.is_nil() || opts.value_fn != value)
+-            {
+-              m.assoc_in_place(key, value);
+-            }
+-          }
++      bool boolean(bool const b)
++      {
++        put(make_box(b));
++        return true;
++      }
+ 
+-          return m.to_persistent();
++      bool number_integer(nlohmann::json::number_integer_t const i)
++      {
++        put(make_box(static_cast<jtl::i64>(i)));
++        return true;
++      }
++
++      bool number_unsigned(nlohmann::json::number_unsigned_t const u)
++      {
++        if(u > static_cast<nlohmann::json::number_unsigned_t>(std::numeric_limits<jtl::i64>::max()))
++        {
++          put(make_box<obj::big_integer>(jtl::immutable_string{ std::to_string(u) }));
+         }
+-      case nlohmann::json::value_t::binary:
+-        throw std::runtime_error{ "JSON read error (unsupported type: binary)" };
+-      case nlohmann::json::value_t::discarded:
++        else
+         {
+-          if(opts.eof_error)
+-          {
+-            throw std::runtime_error{ "JSON read error (failed to parse)" };
+-          }
+-          return opts.eof_value;
++          put(make_box(static_cast<jtl::i64>(u)));
+         }
+-    }
++        return true;
++      }
++
++      bool number_float(nlohmann::json::number_float_t const d, nlohmann::json::string_t const &s)
++      {
++        if(s.find_first_of(".eE") == std::string::npos)
++        {
++          /* An integer past 64 bits. */
++          put(make_box<obj::big_integer>(jtl::immutable_string{ s }));
++        }
++        else if(opts.bigdec)
++        {
++          put(make_box<obj::big_decimal>(jtl::immutable_string{ s }));
++        }
++        else
++        {
++          put(make_box(static_cast<jtl::f64>(d)));
++        }
++        return true;
++      }
++
++      bool string(nlohmann::json::string_t &s)
++      {
++        put(make_box<obj::persistent_string>(s));
++        return true;
++      }
++
++      bool binary(nlohmann::json::binary_t &)
++      {
++        throw std::runtime_error{ "JSON read error (unsupported type: binary)" };
++      }
++
++      bool start_object(std::size_t)
++      {
++        stack.push_back({ {}, make_box<obj::transient_hash_map>(), {} });
++        return true;
++      }
++
++      bool key(nlohmann::json::string_t &k)
++      {
++        auto const key_initial(make_box<obj::persistent_string>(k));
++        stack.back().key = opts.key_fn.is_some() ? opts.key_fn.call(key_initial) : key_initial;
++        return true;
++      }
++
++      bool end_object()
++      {
++        auto const map(stack.back().map);
++        stack.pop_back();
++        put(map->to_persistent());
++        return true;
++      }
++
++      bool start_array(std::size_t)
++      {
++        stack.push_back({ make_box<obj::transient_vector>(), {}, {} });
++        return true;
++      }
++
++      bool end_array()
++      {
++        auto const vec(stack.back().vec);
++        stack.pop_back();
++        put(vec->to_persistent());
++        return true;
++      }
++
++      template <typename E>
++      bool parse_error(std::size_t, std::string const &, E const &ex)
++      {
++        throw ex;
++      }
++    };
+   }
+ 
+   object_ref read_str(jtl::immutable_string const &string, read_options const &opts)
+   {
+-    auto const json(nlohmann::json::parse(string));
+-    return read(json, opts);
++    sax_reader reader{ opts, {}, jank_nil };
++    nlohmann::json::sax_parse(std::string_view{ string.data(), string.size() }, &reader);
++    return reader.result;
+   }
+ }

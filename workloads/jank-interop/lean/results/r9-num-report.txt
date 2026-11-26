@@ -1,0 +1,616 @@
+Round 9, area N: numbers (DEC8-1, V55, V60, V61, V62/V63, V85, R72's speed)
+============================================================================
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). jank paths are under
+upstream-r5/compiler+runtime/. Clojure is 1.12.3 (JDK 23), run through the job slots. jank was not built or
+run: every jank value is a hypothesis from reading the source, from the Lean models (Jank/R9/Num/), or from the
+fixes' own C++ extracted into standalone programs. "combined" = round 8's tree (.r8-scratch/merge/tree,
+HEAD = fixes/combined/all.diff).
+
+Summary
+- Six fixes written, each applying alone to 94d32623 and, as a -combined variant, to round 8's tree; all six
+  also stack on both (checked with patch on scratch copies); every changed .cpp syntax-checks alone and
+  stacked, on stock and combined (exit 0), and a new TU instantiates every changed template.
+- No new cause found (no N9-n). Fourteen new instances of the assigned causes, each with a test; 29 tests,
+  29 of 29 pass on Clojure 1.12.3.
+- V62 is fixed in value only (rounding, range, arithmetic, comparison, float-array elements). jank has no
+  Float box, so printing and hashing stay wrong, and the fix makes (str (float 0.1)) print 17 digits, where
+  stock prints "0.1" by accident. That regression is stated and tested (vN5e).
+- R72's speed was measured with standalone copies (results/r9-num-bench.txt). Small values: + and - are
+  2.5-3x slower than stock, compare 9x, hash 4x (1 allocation); * is 9x faster, / 9x and str 26x.
+  An i64 fast path (R72f) beats stock on every small operation and equals R72's path on 939,000 checks
+  (proved in Lean for every input). Medium and large compare/hash are dominated by R72's digit count
+  through str().
+- Follow-up (the coordinator's request; section 13 at the end):
+  - V62b (fixes/V62b.diff, supersedes V62) is the Float kind, obj::single_real. vN5d, vN5e and vN5f now
+    pass; V62's regression is gone.
+  - R72f (.r9-scratch/num/R72f-combined.diff, combined only, after R72+X6) is written into big_decimal.cpp.
+    - The i64 fast path covers + - * compare hash.
+    - digit_count no longer converts to a string.
+    - add, multiply and negate skip round's copy at precision 0.
+  - R72f equals R72 bit for bit: 1,474,900 checks; round 8's area-D checker (229,699 cases) is identical
+    to R72 and has 0 differences from the JVM.
+  - Small values are now as fast as stock or faster, except divide and str (unchanged).
+  - Combined stacking order: DEC8-1, V55, V60, V61, V62b, V85, R72f.
+  - 33 tests, 33 of 33 pass on Clojure 1.12.3.
+
+(1) Deviations
+--------------
+No new cause. New instances, each its own test in .r9-scratch/num/tests.jank (ns jank-lean.r9-num-test); the
+predicted values are stock / combined / with this round's fix.
+
+DEC8-1: unary minus is (- 0 x) (core.jank 1393-1394) and -' is (-' 0 x) (1811-1812).
+- vN1-promoting-negation-of-positive-zero-is-negative-zero: (str (-' 0.0)).
+  - Clojure "-0.0". Predicted "0.0" / "0.0" / "-0.0".
+  - [literals] -' is never inlined: math.cpp promoting_sub 108-139, 0 - 0.0 is +0.0.
+  - New instance of DEC8-1, through -'. Confidence high.
+- vN1b-promoting-negation-keeps-a-negative-scale: (str (-' 1E+2M)).
+  - Clojure "-1E+2". Predicted "-100.0" / "-100" / "-1E+2" (combined + DEC8-1 only; DEC8-1 alone "-100.0").
+  - DEC8-1 with R72's scale. High.
+- vN1c-negating-the-int-minimum-is-a-long: (- -2147483648).
+  - Clojure 2147483648. Predicted -2147483648 / 2147483648 (LG2a) / 2147483648.
+  - The fn's sub(int 0, small_integer) is C++ int arithmetic (math.hpp sub 228-256).
+  - Already round 1's D1 ((neg -2147483648), REPORT.md 58); the test is new. High.
+- vN1d-promoting-negation-of-the-long-minimum-is-a-bigint: (pr-str (-' (n-long-min))).
+  - Clojure "9223372036854775808N". Predicted "-9223372036854775808N" / "9223372036854775808N" (LG2c) / same.
+  - Path: promoting_sub's overflow branch boxes the wrapped i64. Already V54 (D3). High.
+- Controls (pass on all three): vN1e (str (- -0.0)) "0.0"; vN1f ((fn [a] (- a)) 1/2) "-1/2"; vN1g (NaN? (- ##NaN)).
+
+V55: Clojure's Object minus negates its second operand first (Numbers.java minus(Object,Object) 162-165,
+LongOps.negate 578-582).
+- vN2-subtracting-long-min-from-a-double-through-a-fn-throws: ((fn [a b] (- a b)) 1.5 Long/MIN_VALUE).
+  - Clojure throws "long overflow". Predicted 9.223372036854776E18 / the same / throws "integer overflow" (an object).
+  - [fn] math.hpp sub object/object 182-226. A double left operand still negates the long first. High.
+- vN2b-subtracting-long-min-through-apply-throws: (apply - [-1 Long/MIN_VALUE]).
+  - Clojure throws. Predicted 9223372036854775807 / the same / throws. [fn value] High.
+- vN2c-control-subtracting-long-min-from-a-bigint-promoting: (-' 1N MIN) is 9223372036854775809N everywhere.
+
+V60: long of a double (RT.longCast(double), RT.java 1327).
+- vN3-long-of-two-to-the-63-saturates: ((fn [x] (long x)) 9.223372036854775807E18).
+  - Clojure 9223372036854775807: the range check compares with (double) Long.MAX_VALUE = 2^63, and (long)
+    saturates.
+  - Predicted -9223372036854775808 (x86-64 cvttsd2si; static_cast UB) / the same / 9223372036854775807.
+  - number.cpp real::to_integer 358-366, small_real::to_integer 477-485. New boundary of V60. High on x86-64
+    (arm64's fcvtzs saturates and would pass).
+- Controls: vN3b (long -2^63) = Long/MIN_VALUE; vN3c (long ##NaN) = 0.
+
+V61: a ratio's parts and biginteger are java.math.BigIntegers (printed without N).
+- vN4-denominator-prints-as-a-biginteger: (pr-str (denominator 1/2)).
+  - Clojure "2". Predicted "2N" / "2N" / "2". math.cpp denominator 599-602; big_integer.cpp to_code_string 143-146. High.
+- vN4b-biginteger-prints-without-n: (pr-str (biginteger 5)).
+  - Clojure "5". Predicted "5N" / "5N" / "5". core.jank biginteger 5873-5876 is to_big_integer.
+  - Round 3 noted it (REPORT-3 323) without a test. High.
+- Controls: vN4c (pr-str (inc (numerator 1/2))) "2N"; vN4d (pr-str (bigint (numerator 1/2))) "1N".
+
+V62/V63: float is a double (core.jank 210-216 -> math.hpp to_real 1438-1464). Clojure: RT.floatCast 1333-1370.
+- vN5-float-of-infinity-throws: (float ##Inf).
+  - Clojure throws "Value out of range for float: Infinity". Predicted ##Inf / ##Inf / throws an object. High.
+- vN5b-float-rounds-to-single-precision-through-a-fn: (double ((fn [x] (float x)) 0.1)).
+  - Clojure 0.10000000149011612. Predicted 0.1 / 0.1 / 0.10000000149011612. [fn] High.
+- vN5c-compare-of-a-float-and-its-double: (compare (float 0.1) 0.1).
+  - Clojure 1. Predicted 0 / 0 / 1. High.
+- vN5d-a-float-prints-with-floats-digits: (str (float 1/3)).
+  - Clojure "0.33333334". Predicted "0.3333333333333333" / same / "0.3333333432674408".
+  - No fix (no Float box). Fails on every version. High.
+- vN5e-a-short-float-prints-short-control-on-stock: (str (float 0.1)).
+  - Clojure "0.1". Predicted "0.1" / "0.1" / "0.10000000149011612".
+  - V62's printing regression: passes on stock by accident, FAILS WITH V62. High.
+- vN5f-a-floats-hash-is-float-hashcode: (hash (float 0.5)).
+  - Clojure 1056964608 (Float.hashCode = floatToIntBits). jank hashes the double (hash.cpp real).
+  - No fix. Fails on every version. High.
+- vN6-a-float-array-element-compares-as-a-double: (< (aget (float-array [16777217]) 0) 16777217).
+  - Clojure true (as doubles: 16777216.0 < 16777217).
+  - Predicted false (lt(float&, int): C++ converts 16777217 to float 16777216) / true (LG1's widen) / true.
+  - array.hpp aget 32-36 -> math.hpp lt 622-628. V63's class through a comparison. High.
+
+V85: no identity check in the hash collections' key equality (object.cpp 381-386 -> equal.cpp 19-22).
+- vN7-a-hash-set-of-the-nan-literal-contains-it: (contains? (hash-set ##NaN) ##NaN).
+  - Clojure true: LispReader's table (LispReader.java 755) makes ##NaN one object, and PersistentHashSet
+    finds it by Util.equiv's identity.
+  - Predicted false / false / true. High.
+- vN7b-distinct-keeps-one-of-the-same-nan: (let [x (id ##NaN)] (count (distinct [x x]))).
+  - Clojure 1. Predicted 2 / 2 / 1. core.jank distinct 3824-3850 uses a hash set. High.
+- vN7c-control-an-array-map-has-no-identity-check: (get {##NaN 1} ##NaN) is nil on both.
+  - PersistentArrayMap.indexOfObject 305 uses equivPred, which has no identity test. jank:
+    native_array_map.hpp 69 calls runtime::equal.
+- vN7d-control-equality-of-two-nan-literals: (= ##NaN ##NaN) is false on both and with V85.
+- vN7e-the-same-nan-object-equals-itself: ((fn [x] (= x x)) ##NaN).
+  - Clojure true. Predicted false on every version, V85 included.
+  - A NaN-boxed double has no identity beyond its bits. Raw-word identity in = would break vN7c and vN7d
+    instead (see (11) V85). Not fixed. High.
+
+Shared causes: DEC8-1 (one definition, two arities); V55 (the Object path's negate-first); V60 (an unchecked
+cast); V61 (one BigInt type for BigInt and BigInteger); V62/V63 (no Float type: one design choice); V85 (no
+identity in key equality). They are separate from each other. vN1c is D1, and vN1d is V54.
+
+(2) Proofs (Jank/R9/Num/Theorems.lean; axioms in results/r9-num-axioms.txt)
+---------------------------------------------------------------------------
+For every input:
+- fixNeg_boxable: DEC8-1's double negation maps every boxable word (below oref.hpp max_real) to a boxable word.
+  No negation can make D9's unboxable word.
+- fixNeg_eq_clj: off NaN, the fix is Java's dneg bit for bit, sign of zero included.
+- fixNeg_nan: on a NaN, both results are NaNs.
+- fixNegInteger_eq, fixNegSmall_eq: on integer and small_integer boxes, negate and promoting_negate are
+  LongOps.negate and negateP for every i64 and i32.
+- stockNegSmall_differs_iff: stock (- 0 x) differs from Clojure exactly at -2^31 (C++ int).
+- stockNegInteger_differs_iff: stock differs exactly at Long/MIN_VALUE.
+- negDec_scale: the fix keeps the scale.
+- stockNegDec_scale, stockNegDec_eq_iff, stockNegDec_value: on R72, stock's (- 0 x) has scale max(0, s).
+  It equals the fix iff s >= 0, and has the same value always.
+- fastAdd_eq, fastSub_eq, fastMul_eq, fastCmp_eq, withFast_add, withFast_cmp: whenever R72f's i64 fast path
+  answers, its result is R72's general result (unscaled value and scale, or the comparison).
+  So operators with the fast path in front are R72's, for every operand.
+- rne_half, rne_tie_even, rne_nearest: the rounding core of the float model (n / 2^k ties-to-even).
+  - It is within half a unit.
+  - It is even on a tie.
+  - No multiple of 2^k is closer.
+  That is IEEE-754 roundTiesToEven on the kept significand.
+Single inputs (decide +kernel):
+- fixNeg_pos_zero, fixNeg_neg_zero: (- 0.0) is -0.0, and (- -0.0) is 0.0.
+- clj_neg_nan_unboxable: a plain negation of jank's ##NaN is exactly max_real, the reason for the NaN branch.
+- float_examples: (float 0.1) = 0x3DCCCCCD; 1e40 and ##Inf throw; (float 16777217) = 16777216.
+- long_examples: (long 2^63) = Long/MAX_VALUE; 1e20 throws; NaN is 0; stock's 2^63 is Long/MIN_VALUE.
+Not proved (searched instead, (8)):
+- that floatCastBits as a whole, the bit assembly around rne (normal, subnormal, carry into the next binade,
+  range check), is IEEE single rounding for every double;
+- longCastBits for every double;
+- the C++ fast path's compact() (a one-limb cpp_int test) equals inI64.
+
+(3) What was replicated
+-----------------------
+- Jank/R9/Num/Model.lean:
+  - maxReal, isNaN64: oref.hpp 94, 113.
+  - fixNegBits, fixNegInteger, fixNegSmall: DEC8-1's math.cpp negate_number.
+  - stockNegSmall, stockNegInteger: core.jank 1393-1394 -> math.hpp sub(int, object) 228-256 (C++ int or long).
+  - Dec, exactAdd, exactMul, negDec, exactSub: R72's impl.inc 168-180 and the binary minus 755-759.
+  - stockNegDec: (- 0 x) on R72.
+  - cmpDec: compareTo.
+  - mulPow10?, fastAdd, fastSub, fastMul, fastCmp: .r9-scratch/num/bench/fast.inc.
+  - rne, decodeD, aboveFloatMax, floatCastBits: V62's math.cpp float_cast = RT.floatCast(double) and Java's d2f.
+  - longCastBits: V60's number.cpp long_cast = RT.longCast(double).
+  - stockLongBits: number.cpp 358-366 on x86-64.
+  - cljNegBits, cljNegLong: Numbers.java DoubleOps.negate, LongOps.negate/negateP (578-587).
+- Run/R9/Num.lean (exe jank9-num): reads Clojure's corpus and compares every model.
+- .r9-scratch/num/cxx/casts.cpp: the fixes' own C++ (float_cast, long_cast, negate of a real) on the same corpus.
+- .r9-scratch/num/bench/bench.cpp: round 8's R72 class (decl.inc/impl.inc), stock's
+  number<cpp_dec_float<100>, et_off>, and R72f.
+
+(4) What is not exact
+---------------------
+- Exceptions compare as "throws". The fixes throw boxed strings that thrown? sees ("integer overflow",
+  "Value out of range for float: ...", "Value out of range for long: ..."), where Clojure throws
+  ArithmeticException or IllegalArgumentException. Message texts use jank's double printing.
+- V55's check runs wherever an operand is an object. Clojure's primitive paths differ:
+  - (- -1 0 Long/MIN_VALUE) with literals is primitive in Clojure (nary inline: Long/MAX_VALUE). jank's
+    3-arity is a fn call, so V55 throws.
+  - (let [b (long x)] (- -1 b)) is primitive in Clojure. jank's long returns an object, so V55 throws.
+  Both need an operand equal to Long/MIN_VALUE.
+- V85 gives NaN-boxed values raw-word identity in hash keys. Clojure's identity depends on boxing:
+  (let [x ##NaN] (contains? (hash-set x) x)) is false in Clojure (a primitive local boxed twice) and true
+  with V85.
+- The benchmark ran on the Mac (arm64, clang -O2, boost from deps/) in place of jank's x86-64 build. Treat
+  the ratios as meaningful and the absolute ns as indicative. Allocation counts are C++ heap only (jank's
+  GC box excluded).
+
+(5) Still left out, and why
+---------------------------
+- V62's Float box: printing (Float.toString), hash (Float.hashCode, -0.0f -> 0) and class are not fixed.
+  - The coherent design is a new number kind holding the float's value in an f64:
+    - math.hpp's templates then compute as DoubleOps unchanged;
+    - it needs an object_type value, visit.hpp's visit_number_like/visit_object cases, number.hpp/.cpp
+      (Float.toString from to_chars(float), Float.hashCode, equal/compare with real and small_real),
+      is_real, to_float returning it, and analyze/cpp_util.cpp's object_type switch.
+  - make_box(float) must stay small_real: suite file test/jank/cpp/if/pass-typed-object.jank returns
+    small_real_ref from make_box(f + 1).
+  - Not written: about 250 lines in 7 files. The value-only V62 makes vN5e regress.
+- V85 for = itself on NaN-boxed values (vN7e): not coherent without object identity for doubles.
+- X6's var deref per decimal operation: not measured, since it needs jank's var.
+  - Per operation it is a function-static guard, var->deref() (the dynamic-binding check) and is_nil
+    (X6-combined.diff, current_math_context).
+- R72f as a jank diff: not written (optional). Measured standalone only.
+
+(6) Assumptions (NumA9-n)
+-------------------------
+- NumA9-1: jank's x86-64 build converts an out-of-range double with cvttsd2si (0x8000000000000000), as
+  REPORT-6 V60 assumed. This is the stock prediction of vN3.
+- NumA9-2: static_cast<float> of a double is IEEE roundTiesToEven in jank's build (default FP environment).
+  Checked on the Mac against Clojure: 45,662 doubles, 0 differences.
+- NumA9-3: the analyzer resolves cpp/jank.runtime.aget on an f32_array_ref to the new non-template
+  overload, since C++ overload resolution prefers a non-template on an exact match. Checked by
+  static_assert in .r9-scratch/num/cc/tu-num.cpp.
+- NumA9-4: cpp/jank.runtime.negate, promoting_negate, to_float and to_java_big_integer resolve through
+  math.hpp in jank's prelude as promoting_sub does. Not checked by a build.
+- NumA9-5: jank's ##NaN literal boxes to jank_nan's word (0x7FF8000000000000) at every use (vN7).
+- NumA9-6: Homebrew clang 22 / Apple clang headers stand in for jank's LLVM in the syntax checks (CoordA8-1).
+Replaced: none.
+
+(7) Properties checked, with sources
+------------------------------------
+- 39 (REPORT-8): unary minus negates. Numbers.minus(Object) 130-133 and minusP 134-137 are ops(x).negate and
+  negateP: LongOps 578-587 (throw, or promote to BigInt, on MIN), DoubleOps (-x), RatioOps, BigIntOps,
+  BigDecimalOps (negate(mc)).
+- RT.floatCast(Object) 1333 and floatCast(double) 1365: a range check against +-Float.MAX_VALUE as doubles,
+  then (float). Float.floatToRawIntBits as the observed value.
+- RT.longCast(double) 1327: a range check against (double) Long.MIN/MAX, then (long), which saturates at 2^63.
+- Numbers.minus(Object, Object) 162 and minusP 167: add(x, negate(y)) and addP(x, negateP(y)).
+- Util.equiv (Util.java 24-36): identity first. PersistentHashMap/PersistentHashSet look keys up with it.
+  PersistentArrayMap.indexOfObject (305) uses equivPred, without identity.
+- A BigInteger prints with its toString (no N); numerator/denominator/biginteger return BigIntegers; BigIntOps
+  arithmetic returns BigInts.
+- Every Clojure value in (1) was run on Clojure 1.12.3: .r9-scratch/num/probe1.clj (about 250 forms, output in
+  probe1.out) and the 29 tests.
+
+(8) Search runs (exact bounds)
+------------------------------
+- The corpus (.r9-scratch/num/corpus.clj, written by Clojure 1.12.3 itself; SplittableRandom with 5 mixed
+  seeds) has 45,662 doubles and 2,008 longs:
+  - specials;
+  - 2^e for e in [-1100, 1100) step 7, and -2^e for e in [-160, 140);
+  - 20,000 uniform bit patterns;
+  - 15,000 values at, beside and exactly between floats (the ties);
+  - 10,000 doubles below 2^70.
+- Lean (jank9-num check; results/r9-num-check.txt):
+  - F: float_cast vs RT.floatCast, 45,662 doubles (8,854 throw in Clojure). 0 differ.
+  - N: negate vs Numbers.minus, 45,662. 0 differ; stock (- 0 x) differs 5 (the +0.0 entries).
+  - L: long_cast vs RT.longCast, 45,662 (14,185 throw). 0 differ; stock's x86-64 cast differs 14,186.
+  - I: negate/promoting_negate vs LongOps, 2,008 longs. 0 differ; stock differs 2 (Long/MIN, Integer/MIN).
+- C++ (the fixes' own code, .r9-scratch/num/cxx/casts.cpp; results/r9-num-cxx-check.txt): float_cast,
+  negate and long_cast each 0 of 45,662 differ.
+- R72f vs R72 (bench.cpp): 187,800 pairs x 5 operations (+ - * compare hash) = 939,000 checks, 0 differ.
+  - The pairs come from unscaled values of 1-20 digits, scales -3..22, and the i64 edges (2^63-1, -2^63,
+    2^63, and nearby).
+- Tests: 29 deftests, 29 of 29 pass on Clojure 1.12.3 (.r9-scratch/num/clj/run-1.12.3.txt). None is jank-only.
+- Complete: none of these is a complete walk. The proofs cover what the searches only sample: rounding core,
+  negation, and fast path.
+
+R72's speed (results/r9-num-bench.txt; ns/op, C++ allocations/op). Corpus:
+- small: 8 digits, scale 3 (fits an i64);
+- medium: 30 digits, scale 12;
+- large: 120 digits, scale 60;
+- 64 operand pairs each; divisors 2, 4, 5, 8, 0.5, 1.25, 16, 0.25.
+
+Small values (stock / R72 / R72f):
+- +: 17.5 / 44.2 / 6.5
+- -: 18.3 / 56.2 / 5.7
+- *: 159.7 / 16.8 / 5.8
+- /: 1063.4 / 122.9 (R72f has no division)
+- compare: 4.0 / 37.6 / 3.8
+- str: 1304.2 (5 allocs) / 49.9 (R72 only)
+- hash: 12.4 / 53.3 (1 alloc) / 1.8
+- Allocations are 0 everywhere else: cpp_int keeps up to 128 bits inline.
+
+Medium values (stock / R72):
+- +: 17.8 / 54.1
+- -: 19.2 / 69.0
+- *: 157 / 77 (3 allocs)
+- /: 1049 / 153
+- compare: 3.8 / 119 (1 alloc)
+- str: 1299 / 154 (2 allocs)
+- hash: 12.2 / 153 (3 allocs)
+
+Large values (stock / R72):
+- +: 17.6 / 121 (4 allocs)
+- -: 18.6 / 171 (6 allocs)
+- *: 167 / 89 (3 allocs)
+- /: 1067 / 312 (4 allocs)
+- compare: 3.9 / 596 (9.3 allocs)
+- str: 1237 / 705 (13 allocs)
+- hash: 12.4 / 643 (18 allocs)
+
+R72f is the same as R72 beyond i64.
+
+What a fix would change:
+- R72f: Java's intCompact as an i64 fast path, proved equal above. It makes every small operation at least
+  as fast as stock and allocation-free (hash 1 -> 0).
+- R72's compare and precision() count digits through str() (impl.inc 33-41, digit_count). A non-allocating
+  count (bit length times log10(2), then one comparison with a power of ten) would remove compare's 1-9
+  allocations and most of its cost at medium and large sizes. Not written.
+- X6: skip the deref when *math-context* has no binding. Unmeasured.
+
+(9) Theorems (★ new for every input)
+------------------------------------
+★ fixNeg_boxable, ★ fixNeg_eq_clj, ★ fixNeg_nan, ★ fixNegInteger_eq, ★ fixNegSmall_eq,
+★ stockNegSmall_differs_iff, ★ stockNegInteger_differs_iff, ★ negDec_scale, ★ stockNegDec_scale,
+★ stockNegDec_eq_iff, ★ stockNegDec_value, ★ fastAdd_eq, ★ fastSub_eq, ★ fastMul_eq, ★ fastCmp_eq,
+★ withFast_add, ★ withFast_cmp, ★ rne_half, ★ rne_tie_even, ★ rne_nearest; lemmas rne_eq, rne_cases,
+mulPow10?_some; single inputs fixNeg_pos_zero, fixNeg_neg_zero, clj_neg_nan_unboxable, float_examples,
+long_examples.
+
+Axioms (results/r9-num-axioms.txt):
+- No sorry, no native_decide. Every theorem rests on propext, Classical.choice and Quot.sound at most,
+  except fixNeg_boxable and fixNeg_nan.
+- Those two are proved with bv_decide (allowed by RULES 4). #print axioms lists bv_decide's generated
+  certificate axioms (fixNeg_boxable._native.bv_decide.ax_1_5, fixNeg_nan._native.bv_decide.ax_1_6) beside
+  them.
+- lake build jank9-num: 11 jobs, success.
+
+(10) Library gaps
+-----------------
+- bv_decide's proofs show as generated axioms in #print axioms in this toolchain (v4.36.0).
+- Nat.pos_pow_of_pos is gone (Nat.two_pow_pos used); String.dropRight is missing (List.take used).
+- No Rat without imports: decimal values are compared by cross-scaling (cmpDec).
+
+(11) Fixes written
+------------------
+All diffs: paths a/compiler+runtime/..., each `git -C upstream-r5 apply --check` clean (upstream-r5 stays
+clean).
+- Combined variants are .r9-scratch/num/<id>-combined.diff, each applying to .r8-scratch/merge/tree.
+  DEC8-1, V60, V62 and V85 also apply there unchanged; their variants have the same changed lines.
+- Stacking: all six apply in order DEC8-1 V55 V60 V61 V62 V85 on stock and on combined.
+- Syntax checks (.r9-scratch/num/syn-stock.txt, syn-comb.txt):
+  - every changed .cpp alone and stacked, on both trees: exit 0;
+  - tu-num.cpp (sub, add, mul, div, lt over 11 operand kinds; to_float; aget; negate; numerator): exit 0;
+  - round 8's tu-stock.cpp and tu.cpp: exit 0 on the stacked trees.
+  - The first stacked run had a reject: V61 and V62 inserted beside each other in math.cpp. V62's
+    float_cast was moved above promoting_add, and the second stacked run is clean.
+- fwdref.py: new 0 for each changed core.jank, alone and combined, and for all stacked.
+- jank's suite:
+  - No pass-*.jank file uses unary -, -', numerator, denominator, biginteger, long, float or float-array.
+  - The (float ...) and (long ...) hits are C++ inside cpp/raw.
+  - reader-macro/symbolic-value/pass-nan.jank's (NaN? ##NaN) is unchanged.
+  - cpp/if/pass-typed-object.jank and cpp/call/overload/pass-match.jank keep make_box(float) ->
+    small_real_ref, which no fix touches.
+  - clojure/set.jank 44's #(- (count %)) negates a boxed count, the same value.
+  - So the 549 should hold.
+
+DEC8-1 (fixes/DEC8-1.diff: math.hpp declarations, math.cpp negate_number/negate/promoting_negate, core.jank
+-'s and -''s 1-arities).
+- Per kind:
+  - integer: MIN throws "integer overflow", or becomes a BigInt for -'.
+  - small_integer: widened to i64.
+  - real: a NaN is kept as it is, anything else gets -data.
+  - ratio: the numerator is negated.
+  - BigInt: negated.
+  - BigDecimal: its own unary minus, which on combined is R72's negate(x, current context), so with X6 it
+    rounds like BigDecimal.negate(mc).
+- Should pass:
+  - alone: y38, y38b, vN1, vN1c, vN1d, lg2e;
+  - combined: also y37, y37b, vN1b (they need R72's scale);
+  - controls vN1e-g.
+- Read-checked:
+  - (- x) and (-' x) are never inlined, so the operand is always an object;
+  - visit_number_like rejects non-numbers as before;
+  - make_box gets concrete numbers (cpp_int's expression templates are wrapped);
+  - set.jank 44 is the only unary - in jank's .jank sources.
+- REPORT-8's suggested (cpp/jank.runtime.mul -1 x) was not used: see (12).
+- A build must check: JIT resolution of the two new functions.
+
+V55 (fixes/V55.diff: math.hpp detail::check_negatable in sub's object branches; math.cpp promoting_sub).
+- A long Long/MIN_VALUE subtrahend throws "integer overflow" whenever either operand is an object or a typed
+  ref. Two natives keep Numbers.minus(long, long).
+- -' with two long kinds and a MIN subtrahend gives a BigInt.
+- Should pass: v55 (both assertions), vN2, vN2b. Control vN2c.
+- The combined variant edits LG2a's checked_sub lines.
+- Read-checked: integer data is i64, so the check fires; small_integer i32, BigInt, ratio, double and
+  BigDecimal data never match. bool and char natives are excluded by size.
+- Build must check: the instantiations (tu-num.cpp covers 11 kinds on each side).
+
+V60 (fixes/V60.diff: number.cpp long_cast for real/small_real::to_integer).
+- RT.longCast(double): NaN is 0, outside [-2^63, 2^63] it throws an object, and 2^63 saturates. The message
+  is built only on the throw.
+- Should pass: v60 (both), vN3. Controls vN3b, vN3c.
+- Read-checked: to_integer's callers are all conversions: int, long, the array constructors, aset, array
+  indices, std_format, convert<integral>, inc/dec/abs/zero? of typed reals. Throwing on out-of-range doubles
+  makes each defined. Clojure's RT.intCast/longCast throw there too.
+- (int 1e20) through the fn now throws too (S40's class; Clojure's message says int).
+
+V61 (fixes/V61.diff: big_integer.hpp java_big_integer flag, big_integer.cpp to_code_string, math.hpp/.cpp
+numerator/denominator return object_ref, to_java_big_integer, to_big_integer unflags, core.jank biginteger).
+- Should pass: v61, vN4, vN4b. Controls vN4c, vN4d.
+- Read-checked:
+  - the flag affects to_code_string only, so equality, hash and compare are unchanged;
+  - arithmetic constructs fresh boxes (BigInts);
+  - c_api.cpp 1004 is to_big_integer's only C++ caller;
+  - numerator's return type changes from native_big_integer (auto-boxed) to object_ref.
+- Build must check: the analyzer's use of the new return type.
+
+V62 (fixes/V62.diff: math.hpp float_cast/to_float, math.cpp float_cast, core.jank float, array.hpp
+aget(f32_array_ref) returning f64; covers V63).
+- Should pass: v62 (3 assertions), v63, g452-g454, vN5, vN5b, vN5c, vN6.
+- Still failing: vN5d (printing), vN5f (hash).
+- NEWLY FAILING: vN5e. (str (float 0.1)) becomes "0.10000000149011612" (no Float box).
+- y7 keeps throwing on combined: V64c's to_real(char) throws before float_cast.
+- Read-checked:
+  - float's inline and fn bodies;
+  - aset-float (def-aset with float) now range-checks, as Clojure's does;
+  - float_array's static_cast<f32> is unchanged (Clojure's float-array does not check either);
+  - make_box(float) is untouched.
+- Build must check: the aget overload's selection, and every program that prints a float.
+
+V85 (fixes/V85.diff: object.cpp std::equal_to<object_ref> identity first; equal.cpp pointer identity).
+- Decision, with Clojure's results (probe1.out):
+  - Clojure's hash collections test identity (PersistentHashMap via Util.equiv), and array maps do not
+    (equivPred).
+  - = on primitives has no identity, and jank's NaN-boxed doubles are like primitives.
+  - So the hash collections' key equality (immer's std::equal_to: hash maps, hash sets, transients, the
+    reader's duplicate-key tables, ir/hoist_literals) tests the raw word first.
+  - runtime::equal tests identity only for heap objects. Those are never NaN-boxed: a collection is equal
+    to itself, as in Clojure.
+  - Raw-word identity in runtime::equal was rejected. It would make (= ##NaN ##NaN), (get {##NaN 1} ##NaN)
+    and (= [##NaN] [##NaN]) differ from Clojure.
+- Should pass: v85 (all five values), vN7, vN7b. Controls vN7c, vN7d. Still failing: vN7e.
+- Read-checked: persistent_hash_set::equal uses contains (identity now); array maps use runtime::equal
+  (unchanged for NaN-boxed keys).
+- Reader: #{##NaN ##NaN} becomes a duplicate-key error in jank (parse.cpp 722's table). Clojure's reader
+  rejects it too (one ##NaN object); not run.
+
+(12) Model errors of earlier rounds corrected
+---------------------------------------------
+- REPORT-8 DEC8-1's suggested fix, ([x] (cpp/jank.runtime.mul -1 x)), is not negate:
+  - on stock, mul(int -1, small_integer -2^31) is C++ int arithmetic and wraps (vN1c);
+  - -' is not covered (vN1, vN1b, vN1d);
+  - -1 * NaN gives a negative quiet NaN, D9's unboxable word, wherever the multiply becomes a negation:
+    LLVM folds fmul x, -1.0 into fneg, and clj_neg_nan_unboxable shows the word.
+  The written fix is a dedicated negate.
+- REPORT-6 V85 ("Clojure's Util.equiv tests k1 == k2 first") is right for = and hash maps, but a fix
+  in runtime::equal would be wrong:
+  - Clojure's (= ##NaN ##NaN) compares primitives;
+  - its array maps have no identity test;
+  - (contains? (hash-set ##NaN) ##NaN) is true because the reader's ##NaN is one object.
+- REPORT-8 1.4 ("(str (float 0.1)) would still differ" with a float fix): on stock it agrees by accident (no
+  rounding). It is the rounding fix that makes it differ (vN5e). The disagreement on stock is with
+  non-short floats ((float 1/3), vN5d).
+
+(13) Follow-up: V62b (Clojure's Float) and R72f (written)
+=========================================================
+Written at the coordinator's request, under the same rules. Stacking order on round 8's tree:
+DEC8-1, V55, V60, V61, V62b, V85, R72f. Use the -combined variants, with V62b-combined in place of
+V62-combined. On 94d32623 the alone diffs stack in the same order (V62b in place of V62); R72f is
+combined only.
+All stacks were applied with patch -F0 (no fuzz) on scratch copies: no reject.
+
+V62b: fixes/V62b.diff (704 lines; applies alone to 94d32623) and .r9-scratch/num/V62b-combined.diff (708 lines;
+applies to round 8's tree). It contains V62's value part, so V62b supersedes V62: use one or the other.
+- Representation: obj::single_real, a heap number kind (object_type::single_real, after small_real).
+  - It holds the float's value as the f64 it widens to. math.hpp's templates therefore compute and compare
+    with it as Numbers' DoubleOps do (a Float operand gives a double result), unchanged.
+  - Printing is Float.toString, from to_chars(float): the shortest digits, or the closest of the 1- and
+    2-digit decimals when the shortest has 1 digit (the JDK 19+ javadoc rule). The layout is plain for
+    1e-3 <= |f| < 1e7, else d.ddd...E<n>.
+  - pr-str prints ##NaN, ##Inf and ##-Inf (core_print.clj 138-143).
+  - The hash is Float.hashCode (floatToIntBits, one NaN), 0 for -0.0f (Numbers.hasheqFrom 1147).
+  - equal compares with real and small_real by value, and they compare with it (Numbers.equal: both
+    FLOATING).
+  - compare goes through visit_number_like. to_integer is RT.longCast of its value, range-checked like V60
+    and written separately so V60 and V62b stack. to_real gives the value.
+- Files:
+  - object.hpp: the enumerator and object_type_str.
+  - obj/number.hpp and number.cpp: the struct, plus real/small_real equal.
+  - visit.hpp: visit_object's and visit_number_like's cases.
+  - math.hpp:
+    - the single_real_ref alias and valid_boxed_math;
+    - abs/inc/dec/is_zero's real branches;
+    - float_cast (RT.floatCast) and to_float returning a single_real_ref.
+  - math.cpp: float_cast; is_real; is_nan/is_infinite; to_big_integer/to_big_decimal; promoting_add's NaN
+    branches.
+  - core/array.hpp: aget of a float array is a single_real.
+  - obj/array.hpp: box_element for nth/get/seq of a float array.
+  - core.jank: float -> to_float.
+  - analyze/cpp_util.cpp: literal_type.
+  - codegen/cpp_processor.cpp: a single_real constant, unboxed and boxed (it was "Unimplemented constant
+    codegen").
+  - clojure/data/json_native.cpp and detail/std_format.hpp: treated as a real.
+- Unchanged on purpose:
+  - make_box(float) and convert<float> still give small_real: C++ interop floats stay doubles.
+  - Suite file cpp/if/pass-typed-object.jank needs make_box(float) to be a small_real_ref.
+- Should pass:
+  - v62 (3 assertions), v63, g452-g454;
+  - vN5, vN5b, vN5c, vN5d, vN5e, vN5f, vN5g, vN5h, vN6;
+  - control vN5i.
+- Still differs:
+  - vN5j: (double? (float 1)) is true, since core.jank 1960-1963 makes double? = float?.
+  - class/type names.
+  - data.json writes a Float through its double (17 digits where data.json prints Float.toString).
+  - One GC allocation per aget of a float array (the price of returning Clojure's boxed Float).
+  - Interop floats (cpp/float, C++ returns) are doubles: Java would box them as Floats.
+  - (contains? #{0.5} (float 0.5)) depends on CHAMP slots, since the hashes differ as in Clojure. Not run.
+- Read-checked:
+  - every switch over object_type: object_type_str and visit_object (no -Wswitch-enum pragma) get a case;
+    the others have the pragma and a default;
+  - every use of obj::real/small_real outside oref.hpp: ratio.cpp's operators take the f64 data through
+    small_real_ref's implicit constructor, as for real;
+  - rtti's generic try_object/expect_object;
+  - aset-float, which now range-checks through float, as Clojure's does;
+  - float_array's construction (e.to_real() works for single_real).
+  - Every suite file that makes or reads a float was read: cpp/cast/pass-compatible,
+    member/pass-access-union, if/pass-compatible-primitive-type, if/pass-typed-object,
+    literal-type/template/pass-variadic, call/overload/pass-match and pass-match-with-compatible-types,
+    new/builtin/pass-trait-conversion, literal-type/fn/pass-non-void, auto-box/pass-closure,
+    pass-native-type-to-typed-object, pass-argument, call/member/pass-unqualified and pass-match,
+    case/pass-implicitly-compatible-primitive-type, auto-box/pass-int-to-float, and the fail-* float files.
+    All of them use C++ floats (cpp/float, C++ returns, unions): make_box(float)/convert<float>, untouched.
+    None calls clojure.core/float or float-array. So the 549 should hold.
+- Checks:
+  - Syntax (.r9-scratch/num/syn-v62b.txt): exit 0 for 12 .cpp files, V62b alone and in the full stack, on
+    stock and on round 8's tree (number, math, core/array, obj/array, cpp_util, cpp_processor,
+    json_native, object, equal, rtti, ratio, to_string; plus big_integer in the stacks).
+    runtime/core.cpp shows only stock's own 5 errors (delay_ref, GC thread macros, JANK_VERSION), the
+    same on 94d32623.
+  - .r9-scratch/num/cc/tu-v62b.cpp instantiates add, sub, mul, div, lt, lte, min, max and pow for a
+    single_real_ref against itself, object_ref, integer_ref, real_ref, int, long, double and float. It also
+    instantiates abs, inc, dec, is_zero, to_real, to_int, sqrt, tan, to_float on 4 operand kinds, aget,
+    the array's nth/seq, visit_object and visit_number_like. Exit 0 alone and stacked, on both trees.
+  - Round 8's tu-stock.cpp and tu.cpp: exit 0 on the stacks.
+  - Round 9's tu-num.cpp fails only its own V62 assertion (aget is an f64), superseded.
+  - Warnings under jank's flags (-Wall -Wextra -Wswitch-enum ...; .r9-scratch/num/warn-v62b.txt): no new
+    warning in number, math, core/array, object, cpp_util, cpp_processor, json_native.
+  - fwdref.py: new 0 alone and in the full stack.
+- Search: .r9-scratch/num/v62b/fcheck.cpp runs float_text and to_hash extracted verbatim from the diff
+  (extracted.inc). On 30,803 floats from Clojure 1.12.3 (.r9-scratch/num/v62b/floats.clj) it differs from
+  Clojure in 0 str, 0 pr-str and 0 hash (results/r9-num-float-text-check.txt). The 30,803 floats are:
+  - specials;
+  - every power of two 2^-150 .. 2^127;
+  - m·10^k for m in {1, 2, 5, 9, 99, 999} and k = -45..38;
+  - 30,000 uniform bit patterns, NaNs and infinities included.
+- A build must confirm:
+  - std::to_chars(float) shortest and with precision 1 in jank's standard library (libstdc++ 11+ or
+    libc++ 17+);
+  - the analyzer's handling of the new typed ref (to_float and aget return single_real_ref);
+  - the PCH;
+  - that cpp_util's resolve_scope("jank.runtime.obj.single_real_ref") finds the alias.
+
+R72f: .r9-scratch/num/R72f-combined.diff (333 lines; combined only, on top of R72+X6, src/cpp/jank/runtime/obj/
+big_decimal.cpp, inside R72's spliced impl region). No result changes.
+- Fast path (Java's intCompact): when both unscaled values fit an i64 (one limb), and the alignment by
+  10^k and the operation fit (__builtin_*_overflow):
+  - exact_add, exact_multiply, compare, and binary minus at precision 0 (add(l, negate(r)) as an i64
+    difference);
+  - hasheq strips zeros and hashes two 32-bit words in an i64.
+  - These are the Lean model's fastAdd/fastSub/fastMul/fastCmp: ★ fastAdd_eq, fastSub_eq, fastMul_eq and
+    fastCmp_eq hold for every input.
+- digit_count (precision(), compare's adjusted exponents, rounding):
+  - one limb: counted against powers of ten in a u64;
+  - more limbs: estimated from the bit length, then settled exactly by 10^(d-1) <= |v| < 10^d. The
+    loops make the count exact whatever the estimate.
+  - No decimal string either way.
+- The general path also changed:
+  - powers of ten up to 10^511 come from a table built once, and are multiplied and compared by
+    reference;
+  - hasheq strips zeros in place (integer_modulus, /= 10) and hashes the limbs directly, without a word
+    vector;
+  - add, multiply and negate return the exact result without round's copy at precision 0.
+- Checks (results/r9-num-r72f-check.txt):
+  - The code as written in the diff (its impl region extracted to .r9-scratch/num/r72f/impl-r72f.inc) is
+    compiled beside round 8's impl.inc in .r9-scratch/num/r72f/cmp.cpp.
+  - 3,430 values: 3,120 random of 1-20 digits with scales -3..22, the i64 edges, and 300 of 21-160 digits
+    with scales -50..149. 205,800 pairs give 1,474,900 checks of + - * / compare hash precision str, 1 in 4
+    pairs under a random context of 1-12 digits and mode. 0 differ.
+  - Round 8's area-D checker (.r8-scratch/dec/check/cases.txt, 229,699 cases, through round 8's
+    standalone.cpp on impl-r72f.inc): the output is byte-identical to R72's (cxx.out) and has 0 differences
+    from the JVM's (jvm.out, Clojure 1.12.3).
+- Syntax (.r9-scratch/num/syn-r72f.txt): big_decimal.cpp exit 0 alone on round 8's tree, with no new
+  warning under jank's flags. In the full stack (DEC8-1 ... V85, R72f): big_decimal, math, number, ratio and
+  string_builder exit 0; tu-v62b.cpp and round 8's tu.cpp exit 0.
+- Benchmark (results/r9-num-r72f-bench.txt; ns/op and C++ allocations/op; the same corpus as before; stock /
+  R72 / R72f).
+  - Small values:
+    - +: 17.4 / 45.9 / 9.1
+    - -: 18.8 / 57.1 / 8.8
+    - *: 160 / 18.5 / 9.7
+    - /: 1061 / 122 / 124
+    - compare: 3.9 / 38.2 / 3.6
+    - hash: 12.3 / 52.6 (1 alloc) / 2.4 (0)
+    - str: 1309 / 51 / 51
+  - Medium values:
+    - +: 17.6 / 56.3 / 31.8
+    - -: 19.8 / 68.5 / 40.8
+    - *: 159 / 76.8 (3) / 53.9 (2)
+    - compare: 3.8 / 119.5 (1) / 17.8 (0)
+    - hash: 12.2 / 155.6 (3) / 13.5 (0)
+  - Large values:
+    - +: 17.4 / 121.7 (4) / 85.1 (3)
+    - -: 19.1 / 170.7 (6) / 112.6 (4)
+    - *: 168 / 90.5 (3) / 72.0 (2)
+    - compare: 3.9 / 604 (9.3) / 41.1 (1.3)
+    - hash: 12.3 / 640 (18) / 56.2 (1.3)
+  - Division and str are unchanged.
+  - Beyond i64, + and - still allocate for the aligned operands and the sum; stock's fixed-size
+    cpp_dec_float never allocates.
+- A build must confirm:
+  - std::countl_zero (C++20 <bit>);
+  - boost's integer_modulus and in-place /= on cpp_int in jank's boost pin;
+  - the one-time table's thread-safe static initialization (function-local static, as R72's own table);
+  - speed in jank itself, since X6's per-operation var deref (current_math_context) is still not measured.
+
+Tests: .r9-scratch/num/tests.jank has 33 deftests (4 new for V62b: vN5g, vN5h, vN5i (control), vN5j). The
+comments of vN5d, vN5e and vN5f give the V62b predictions. 33 of 33 pass on Clojure 1.12.3
+(.r9-scratch/num/clj/run-1.12.3.txt).

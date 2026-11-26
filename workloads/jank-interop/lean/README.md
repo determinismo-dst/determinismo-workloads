@@ -58,6 +58,16 @@ on the real jank.
   every schedule by an exact graph, diverging evals, interrupt and stdin inside World T, and the sdk's
   walk proved. [REPORT-8.md](REPORT-8.md). Tests:
   [tests/jank_lean/deviations_r8_test.jank](tests/jank_lean/deviations_r8_test.jank).
+- **Round 9** (main 94d32623): round 8's real run reconciled (X20's path through seq.cpp's guard,
+  the six fail/error changes predicted, the 186 still failing grouped and 109 of them given fixes),
+  round 8's open items fixed (H8-1 in immer and jank, DEC8-1, the nREPL's stdin and empty replies,
+  V62b's single-precision float, strings indexed by UTF-16 units, errors as catchable objects: A34),
+  R72f (BigDecimal's speed, bit for bit R72), and two new areas: sequences, laziness and sorting
+  (T9-1 to T9-13) and maps, sets and indices (M9-1 to M9-11), with CHAMP's H9-1 to H9-3 and the
+  nREPL's Q9-1 to Q9-3. [REPORT-9.md](REPORT-9.md). Tests:
+  [tests/jank_lean/deviations_r9_test.jank](tests/jank_lean/deviations_r9_test.jank) (181, the 173
+  Clojure-runnable ones passing on Clojure 1.12.3); the combined patch with immer's half in
+  [fixes/combined/](fixes/combined/).
 
 ## What the real jank said
 

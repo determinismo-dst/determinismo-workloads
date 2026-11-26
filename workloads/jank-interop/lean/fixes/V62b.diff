@@ -1,0 +1,704 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/object.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/object.hpp
+@@ -24,6 +24,7 @@
+     big_decimal,
+     real,
+     small_real,
++    single_real,
+     ratio,
+ 
+     persistent_string,
+@@ -133,6 +134,8 @@
+         return "real";
+       case object_type::small_real:
+         return "small_real";
++      case object_type::single_real:
++        return "single_real";
+       case object_type::ratio:
+         return "ratio";
+ 
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/number.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/number.hpp
+@@ -171,4 +171,44 @@
+     /*** XXX: Everything here is immutable after initialization. ***/
+     f64 data{};
+   };
++
++  /* Clojure's java.lang.Float: what `float` returns (RT.floatCast) and what a float array holds.
++   * The single-precision value is kept as the f64 it widens to, so math.hpp computes and compares
++   * with it as Numbers' DoubleOps do (a Float operand gives a double result). It prints with
++   * Float.toString and hashes with Float.hashCode (Numbers.hasheqFrom), and it equals a double of
++   * the same value (both are FLOATING in Numbers.equal). */
++  struct single_real : object
++  {
++    static constexpr object_type obj_type{ object_type::single_real };
++    static constexpr object_behavior obj_behaviors{ object_behavior::compare
++                                                    | object_behavior::number_like };
++    static constexpr bool pointer_free{ true };
++
++    single_real();
++    single_real(single_real &&) noexcept = default;
++    single_real(single_real const &) = default;
++    single_real(f32 const d);
++
++    /* behavior::object_like */
++    bool equal(object const &) const override;
++    jtl::immutable_string to_string() const override;
++    void to_string(jtl::string_builder &buff) const override;
++    jtl::immutable_string to_code_string() const override;
++    uhash to_hash() const override;
++
++    /* behavior::comparable */
++    i64 compare(object const &) const override;
++
++    /* behavior::comparable extended */
++    i64 compare(single_real const &) const;
++
++    /* behavior::number_like */
++    i64 to_integer() const override;
++    f64 to_real() const override;
++
++    /*** XXX: Everything here is immutable after initialization. ***/
++    f64 data{};
++  };
++
++  using single_real_ref = oref<single_real>;
+ }
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
+@@ -1,4 +1,10 @@
++#include <bit>
++#include <charconv>
+ #include <cmath>
++#include <limits>
++#include <string_view>
++#include <cstdlib>
++#include <string>
+ 
+ #include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/oref.hpp>
+@@ -270,6 +276,12 @@
+     {
+       auto const i(expect_object<small_real>(runtime::detail::untagged(&o)));
+       return data == i->data;
++    }
++
++    if(o.type == object_type::single_real)
++    {
++      auto const f(expect_object<single_real>(runtime::detail::untagged(&o)));
++      return data == f->data;
+     }
+ 
+     if(o.type != object_type::real)
+@@ -388,6 +400,12 @@
+     {
+       auto const i(expect_object<real>(runtime::detail::untagged(&o)));
+       return data == i->data;
++    }
++
++    if(o.type == object_type::single_real)
++    {
++      auto const f(expect_object<single_real>(runtime::detail::untagged(&o)));
++      return data == f->data;
+     }
+ 
+     if(o.type != object_type::small_real)
+@@ -485,7 +503,217 @@
+   }
+ 
+   f64 small_real::to_real() const
++  {
++    return data;
++  }
++
++  /***** single_real *****/
++  single_real::single_real()
++    : object{ obj_type, obj_behaviors }
++  {
++  }
++
++  single_real::single_real(f32 const d)
++    : object{ obj_type, obj_behaviors }
++    , data{ static_cast<f64>(d) }
++  {
++  }
++
++  bool single_real::equal(object const &o) const
++  {
++    if(o.type == object_type::small_real)
++    {
++      auto const i(expect_object<small_real>(runtime::detail::untagged(&o)));
++      return data == i->data;
++    }
++
++    if(o.type == object_type::real)
++    {
++      auto const i(expect_object<real>(runtime::detail::untagged(&o)));
++      return data == i->data;
++    }
++
++    if(o.type != object_type::single_real)
++    {
++      return false;
++    }
++
++    auto const f(expect_object<single_real>(runtime::detail::untagged(&o)));
++    return data == f->data;
++  }
++
++  /* Float.toString (JDK 19+): the decimal with the fewest digits that rounds to f (of two, the
++   * closest); when that has one digit, the closest of the one- and two-digit decimals that round
++   * to f. Plain for 10^-3 <= |f| < 10^7, else d.ddd...E<n>, always with a digit after the point. */
++  static std::string float_text(f32 const f)
++  {
++    if(std::isnan(f))
++    {
++      return "NaN";
++    }
++    if(std::isinf(f))
++    {
++      return f < 0 ? "-Infinity" : "Infinity";
++    }
++    if(f == 0.0f)
++    {
++      return std::signbit(f) ? "-0.0" : "0.0";
++    }
++
++    std::string digits;
++    int exponent{};
++    auto const parse([&](char const * const begin, char const * const end) {
++      std::string_view const text{ begin, static_cast<size_t>(end - begin) };
++      auto const e{ text.find('e') };
++      digits.clear();
++      for(char const c : text.substr(0, e))
++      {
++        if(c >= '0' && c <= '9')
++        {
++          digits += c;
++        }
++      }
++      exponent = std::atoi(std::string{ text.substr(e + 1) }.c_str());
++    });
++
++    char shortest[32];
++    auto const r1{
++      std::to_chars(shortest, shortest + sizeof(shortest), f, std::chars_format::scientific)
++    };
++    parse(shortest, r1.ptr);
++    if(digits.size() == 1)
++    {
++      char two[32];
++      auto const r2{ std::to_chars(two, two + sizeof(two), f, std::chars_format::scientific, 1) };
++      std::string const two_text{ two, r2.ptr };
++      if(std::strtof(two_text.c_str(), nullptr) == f)
++      {
++        parse(two, r2.ptr);
++      }
++    }
++    while(digits.size() > 1 && digits.back() == '0')
++    {
++      digits.pop_back();
++    }
++
++    auto const n{ static_cast<int>(digits.size()) };
++    std::string out{ f < 0 ? "-" : "" };
++    if(-3 <= exponent && exponent < 7)
++    {
++      if(exponent >= 0)
++      {
++        for(int i{}; i <= exponent; ++i)
++        {
++          out += i < n ? digits[static_cast<size_t>(i)] : '0';
++        }
++        out += '.';
++        if(n > exponent + 1)
++        {
++          out += digits.substr(static_cast<size_t>(exponent + 1));
++        }
++        else
++        {
++          out += '0';
++        }
++      }
++      else
++      {
++        out += "0.";
++        out.append(static_cast<size_t>(-exponent - 1), '0');
++        out += digits;
++      }
++    }
++    else
++    {
++      out += digits[0];
++      out += '.';
++      out += n > 1 ? digits.substr(1) : std::string{ "0" };
++      out += 'E';
++      out += std::to_string(exponent);
++    }
++    return out;
++  }
++
++  jtl::immutable_string single_real::to_string() const
+   {
++    jtl::string_builder sb;
++    to_string(sb);
++    return sb.release();
++  }
++
++  void single_real::to_string(jtl::string_builder &buff) const
++  {
++    buff(float_text(static_cast<f32>(data)));
++  }
++
++  jtl::immutable_string single_real::to_code_string() const
++  {
++    /* core_print.clj's print-method Float. */
++    if(std::isinf(data))
++    {
++      return data < 0 ? "##-Inf" : "##Inf";
++    }
++    if(std::isnan(data))
++    {
++      return "##NaN";
++    }
++    return to_string();
++  }
++
++  uhash single_real::to_hash() const
++  {
++    /* Numbers.hasheqFrom: 0 for -0.0f, else Float.hashCode, which is floatToIntBits (one
++     * canonical NaN). */
++    auto const f{ static_cast<f32>(data) };
++    if(f == 0.0f)
++    {
++      return 0;
++    }
++    if(std::isnan(f))
++    {
++      return 0x7fc00000u;
++    }
++    return std::bit_cast<u32>(f);
++  }
++
++  i64 single_real::compare(object const &o) const
++  {
++    return visit_number_like(
++      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [&]() -> i64 {
++        throw std::runtime_error{ util::format(
++          "Objects of type `{}` are not comparable to `single_real`.",
++          object_type_str(o.type)) };
++      },
++      runtime::detail::untagged(&o));
++  }
++
++  i64 single_real::compare(single_real const &o) const
++  {
++    return (o.data < data) - (data < o.data);
++  }
++
++  i64 single_real::to_integer() const
++  {
++    /* RT.longCast(Object) of a Float: its double value, range-checked. */
++    constexpr f64 two_63{ 9223372036854775808.0 };
++    if(std::isnan(data))
++    {
++      return 0;
++    }
++    if(data < -two_63 || data > two_63)
++    {
++      throw make_box(util::format("Value out of range for long: {}", to_string())).erase();
++    }
++    if(data >= two_63)
++    {
++      return std::numeric_limits<i64>::max();
++    }
++    return static_cast<i64>(data);
++  }
++
++  f64 single_real::to_real() const
++  {
+     return data;
+   }
+ }
+--- a/compiler+runtime/include/cpp/jank/runtime/visit.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/visit.hpp
+@@ -120,6 +120,8 @@
+         return fn(expect_object<obj::real>(erased), std::forward<Args>(args)...);
+       case object_type::small_real:
+         return fn(expect_object<obj::small_real>(erased), std::forward<Args>(args)...);
++      case object_type::single_real:
++        return fn(expect_object<obj::single_real>(erased), std::forward<Args>(args)...);
+       case object_type::persistent_string:
+         return fn(expect_object<obj::persistent_string>(erased), std::forward<Args>(args)...);
+       case object_type::keyword:
+@@ -488,6 +490,8 @@
+         return fn(expect_object<obj::real>(erased), std::forward<Args>(args)...);
+       case object_type::small_real:
+         return fn(expect_object<obj::small_real>(erased), std::forward<Args>(args)...);
++      case object_type::single_real:
++        return fn(expect_object<obj::single_real>(erased), std::forward<Args>(args)...);
+       case object_type::ratio:
+         return fn(expect_object<obj::ratio>(erased), std::forward<Args>(args)...);
+       default:
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -12,6 +12,7 @@
+     using nil_ref = oref<struct nil>;
+     using integer_ref = oref<struct integer>;
+     using real_ref = oref<struct real>;
++    using single_real_ref = oref<struct single_real>;
+     using ratio_ref = oref<struct ratio>;
+     using big_integer_ref = oref<struct big_integer>;
+     using big_decimal_ref = oref<struct big_decimal>;
+@@ -38,6 +39,7 @@
+                                                     obj::small_integer_ref,
+                                                     obj::real_ref,
+                                                     obj::small_real_ref,
++                                                    obj::single_real_ref,
+                                                     obj::big_integer_ref,
+                                                     obj::big_decimal_ref,
+                                                     obj::ratio_ref>);
+@@ -1027,7 +1029,9 @@
+       }
+       else if constexpr(jtl::decay_t<decltype(l)>::value_type::obj_type == object_type::real
+                         || jtl::decay_t<decltype(l)>::value_type::obj_type
+-                          == object_type::small_real)
++                          == object_type::small_real
++                        || jtl::decay_t<decltype(l)>::value_type::obj_type
++                          == object_type::single_real)
+       {
+         return std::abs(l->to_real());
+       }
+@@ -1248,7 +1252,9 @@
+       }
+       else if constexpr(jtl::decay_t<decltype(l)>::value_type::obj_type == object_type::real
+                         || jtl::decay_t<decltype(l)>::value_type::obj_type
+-                          == object_type::small_real)
++                          == object_type::small_real
++                        || jtl::decay_t<decltype(l)>::value_type::obj_type
++                          == object_type::single_real)
+       {
+         return l->to_real() + 1;
+       }
+@@ -1326,7 +1332,9 @@
+       }
+       else if constexpr(jtl::decay_t<decltype(l)>::value_type::obj_type == object_type::real
+                         || jtl::decay_t<decltype(l)>::value_type::obj_type
+-                          == object_type::small_real)
++                          == object_type::small_real
++                        || jtl::decay_t<decltype(l)>::value_type::obj_type
++                          == object_type::single_real)
+       {
+         return l->to_real() - 1;
+       }
+@@ -1367,7 +1375,9 @@
+       }
+       else if constexpr(jtl::decay_t<decltype(l)>::value_type::obj_type == object_type::real
+                         || jtl::decay_t<decltype(l)>::value_type::obj_type
+-                          == object_type::small_real)
++                          == object_type::small_real
++                        || jtl::decay_t<decltype(l)>::value_type::obj_type
++                          == object_type::single_real)
+       {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wfloat-equal"
+@@ -1463,6 +1473,18 @@
+     }
+   }
+ 
++  /* RT.floatCast: an error outside Float's range (compared as doubles, so ##Inf too), else the
++   * value rounded to single precision. */
++  f32 float_cast(f64 const d);
++
++  /* Clojure's float: a Float (obj::single_real). */
++  template <typename L>
++  [[gnu::always_inline, gnu::flatten, gnu::hot]]
++  obj::single_real_ref to_float(L const &l)
++  {
++    return make_box<obj::single_real>(float_cast(to_real(l)));
++  }
++
+   bool is_number(object_ref const o);
+   object_ref number(object_ref const o);
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -46,13 +46,25 @@
+       object_type_str(o.get_type())) };
+   }
+ 
++  f32 float_cast(f64 const d)
++  {
++    constexpr f64 max_float{ std::numeric_limits<f32>::max() };
++    if(d < -max_float || d > max_float)
++    {
++      throw make_box(
++        util::format("Value out of range for float: {}", obj::small_real{ d }.to_string()))
++        .erase();
++    }
++    return static_cast<f32>(d);
++  }
++
+   object_ref promoting_add(object_ref const l, object_ref const r)
+   {
+     return visit_number_like(
+       [](auto const typed_l, auto const r) -> object_ref {
+         using LT = typename decltype(typed_l)::value_type;
+ 
+-        if constexpr(jtl::is_any_same<LT, obj::real, obj::small_real>)
++        if constexpr(jtl::is_any_same<LT, obj::real, obj::small_real, obj::single_real>)
+         {
+           if(std::isnan(to_real(typed_l)))
+           {
+@@ -64,13 +76,13 @@
+           [](auto const typed_r, auto const &l_val) -> object_ref {
+             using RT = typename decltype(typed_r)::value_type;
+ 
+-            if constexpr(jtl::is_any_same<RT, obj::real, obj::small_real>)
++            if constexpr(jtl::is_any_same<RT, obj::real, obj::small_real, obj::single_real>)
+             {
+               if(std::isnan(to_real(typed_r)))
+               {
+                 return jank_nan;
+               }
+-              if constexpr(jtl::is_any_same<LT, obj::real, obj::small_real>)
++              if constexpr(jtl::is_any_same<LT, obj::real, obj::small_real, obj::single_real>)
+               {
+                 auto const r_val(to_real(typed_r));
+                 if(std::isinf(l_val) && std::isinf(r_val) && l_val != r_val)
+@@ -625,7 +637,8 @@
+ 
+   bool is_real(object_ref const o)
+   {
+-    return detail::is_tagged_small_real(o.raw()) || o.get_type() == object_type::real;
++    return detail::is_tagged_small_real(o.raw()) || o.get_type() == object_type::real
++      || o.get_type() == object_type::single_real;
+   }
+ 
+   bool is_ratio(object_ref const o)
+@@ -644,7 +657,7 @@
+       [=](auto const typed_o) -> bool {
+         using T = typename jtl::decay_t<decltype(typed_o)>::value_type;
+ 
+-        if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++        if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::single_real>)
+         {
+           return std::isnan(typed_o->data);
+         }
+@@ -662,7 +675,7 @@
+       [=](auto const typed_o) -> bool {
+         using T = typename jtl::decay_t<decltype(typed_o)>::value_type;
+ 
+-        if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++        if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::single_real>)
+         {
+           return std::isinf(typed_o->data);
+         }
+@@ -766,7 +779,7 @@
+         {
+           return make_box<obj::big_integer>(typed_o->data);
+         }
+-        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::big_decimal>)
++        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::single_real, obj::big_decimal>)
+         {
+           auto const d{ native_big_decimal(typed_o->data) };
+           return make_box<obj::big_integer>(d.convert_to<native_big_integer>());
+@@ -802,7 +815,7 @@
+         {
+           return make_box<obj::big_decimal>(typed_o->to_real());
+         }
+-        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::single_real>)
+         {
+           if(std::isnan(typed_o->data))
+           {
+--- a/compiler+runtime/include/cpp/jank/runtime/core/array.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/array.hpp
+@@ -6,6 +6,7 @@
+ #include <jtl/immutable_string.hpp>
+ 
+ #include <jank/runtime/obj/array.hpp>
++#include <jank/runtime/obj/number.hpp>
+ #include <jank/runtime/rtti.hpp>
+ #include <jank/util/fmt.hpp>
+ 
+@@ -48,6 +49,13 @@
+     return a[i];
+   }
+ 
++  /* A float array's element is a Float, as Clojure's aget boxes it; arithmetic on it is DoubleOps.
++   * As a C++ float, `+ - * /` and comparisons with an int would round to single precision. */
++  inline obj::single_real_ref aget(obj::array_ref<f32> const a, i64 const i)
++  {
++    return make_box<obj::single_real>((*a)[i]);
++  }
++
+   object_ref aget(object_ref const a, i64 const i);
+ 
+   template <typename T>
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/array.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/array.hpp
+@@ -85,6 +85,19 @@
+                                                     | object_behavior::array_like };
+     static constexpr bool pointer_free{ false };
+ 
++    /* A float element boxes as Clojure's Float (obj::single_real); others as convert<T> does. */
++    static object_ref box_element(T const &e)
++    {
++      if constexpr(jtl::is_same<T, f32>)
++      {
++        return make_box<single_real>(e);
++      }
++      else
++      {
++        return convert<T>::into_object(e);
++      }
++    }
++
+     static usize validate_size(i64 const size)
+     {
+       if(size < 0)
+@@ -185,7 +198,7 @@
+     object_ref nth(object_ref const index) const override
+     {
+       auto const i(index.to_integer());
+-      return convert<T>::into_object(operator[](i));
++      return box_element(operator[](i));
+     }
+ 
+     object_ref nth(object_ref const index, object_ref const fallback) const override
+@@ -195,7 +208,7 @@
+       {
+         return fallback;
+       }
+-      return convert<T>::into_object(operator[](i));
++      return box_element(operator[](i));
+     }
+ 
+     /* behavior::get */
+@@ -208,7 +221,7 @@
+       {
+         return {};
+       }
+-      return convert<T>::into_object(data[i]);
++      return box_element(data[i]);
+     }
+ 
+     object_ref get(object_ref const key, object_ref const fallback) const override
+@@ -218,7 +231,7 @@
+       {
+         return fallback;
+       }
+-      return convert<T>::into_object(data[i]);
++      return box_element(data[i]);
+     }
+ 
+     bool contains(object_ref const key) const override
+@@ -239,7 +252,7 @@
+ 
+       for(usize i{}; i < size; ++i)
+       {
+-        a[i] = convert<T>::into_object(data[i]);
++        a[i] = box_element(data[i]);
+       }
+ 
+       return make_box<native_array_sequence>(a, size);
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -209,10 +209,10 @@
+ (def ^{:arglists '([x])
+        :doc "Coerce to float"
+        :inline (fn* [o]
+-                 (list 'cpp/jank.runtime.to_real o))}
++                 (list 'cpp/jank.runtime.to_float o))}
+   float
+   (fn* real [o]
+-    (cpp/jank.runtime.to_real o)))
++    (cpp/jank.runtime.to_float o)))
+ 
+ ;; Sequences.
+ (def ^{:arglists '([coll])
+--- a/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
++++ b/compiler+runtime/src/cpp/jank/analyze/cpp_util.cpp
+@@ -695,6 +695,20 @@
+           {
+             static auto const type{ cppinterop::get_type_from_scope(
+               resolve_scope("jank.runtime.obj.small_real_ref").expect_ok()) };
++            return type;
++          }
++        }
++      case jank::runtime::object_type::single_real:
++        {
++          if(!is_boxed)
++          {
++            static auto const type{ double_type() };
++            return type;
++          }
++          else
++          {
++            static auto const type{ cppinterop::get_type_from_scope(
++              resolve_scope("jank.runtime.obj.single_real_ref").expect_ok()) };
+             return type;
+           }
+         }
+--- a/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+@@ -145,6 +145,12 @@
+         {
+           jtl::string_builder sb;
+           sb(o.to_real());
++          return sb.release();
++        }
++        if(auto const f{ dyn_cast<obj::single_real>(o) }; f.is_some())
++        {
++          jtl::string_builder sb;
++          sb(f->data);
+           return sb.release();
+         }
+         return o.to_code_string();
+@@ -300,7 +306,21 @@
+             else
+             {
+               util::format_to(buffer, "_jank_small_real({})", typed_o->data);
++            }
++          }
++          else if constexpr(std::same_as<T, obj::single_real>)
++          {
++            if(!is_boxed)
++            {
++              util::format_to(buffer, "{}", typed_o->data);
+             }
++            else
++            {
++              util::format_to(
++                buffer,
++                "jank::runtime::make_box<jank::runtime::obj::single_real>(static_cast<jtl::f32>({}))",
++                typed_o->data);
++            }
+           }
+           else if constexpr(std::same_as<T, obj::big_integer>)
+           {
+--- a/compiler+runtime/src/cpp/clojure/data/json_native.cpp
++++ b/compiler+runtime/src/cpp/clojure/data/json_native.cpp
+@@ -56,7 +56,8 @@
+                                       obj::integer,
+                                       obj::small_integer,
+                                       obj::real,
+-                                      obj::small_real>)
++                                      obj::small_real,
++                                      obj::single_real>)
+         {
+           return typed_o->data;
+         }
+--- a/compiler+runtime/include/cpp/jank/runtime/detail/std_format.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/detail/std_format.hpp
+@@ -24,7 +24,7 @@
+           auto v{ typed_o->to_integer() };
+           std::vformat_to(out, fmt, std::make_format_args(v, std::forward<Args>(args)...));
+         }
+-        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real>)
++        else if constexpr(jtl::is_any_same<T, obj::real, obj::small_real, obj::single_real>)
+         {
+           auto v{ typed_o->to_real() };
+           std::vformat_to(out, fmt, std::make_format_args(v, std::forward<Args>(args)...));

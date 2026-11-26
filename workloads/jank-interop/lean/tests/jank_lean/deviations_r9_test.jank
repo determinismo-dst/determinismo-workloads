@@ -1,0 +1,1479 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 9 (main 94d32623): predictions from REPORT-9, each test asserting
+; Clojure 1.12's result (checked on Clojure 1.12.3), so a failure confirms one. Tests named
+; "control" are predicted to pass on jank.
+; Paths (REPORT-6 section 3): jank types a literal or a let-bound literal natively (an `int` when it
+; fits 32 bits, else a `long`), inlines two-argument `+ - * / < <= > >= min max`, `count`, `inc`,
+; `dec`, `hash`, `zero?`, `abs`, ... into core/math.hpp's templates on those native types, and passes
+; a fn parameter as an object. Each test's comment says which path it runs:
+;   [literals] / inlined: the call written directly with literal or native arguments;
+;   [let]: let-bound literals, still native;
+;   [fn] / fn value: the values pass through a fn's object parameters, or the clojure.core fn is
+;   called as a value (apply), so no native operand reaches the template.
+; Each comment gives jank's predicted value on stock 94d32623, and with the fix that should make the
+; test pass (fixes/<id>.diff, in fixes/combined/all.diff).
+; Every form is inside a deftest body, so it is compiled, not interpreted at the top level.
+; Forms jank may refuse go through `ev` (eval of read-string), so a refusal fails its own test.
+; Tests marked "; native" need jank's native typing to show the deviation (they run on Clojure too).
+; Non-ASCII text is written with \u escapes or (char n): run under a UTF-8 locale.
+; Run each test in its own process, from tests/ with `--module-path .`.
+(ns jank-lean.deviations-r9-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]
+            [clojure.set :as set]
+            [clojure.walk :as walk]))
+
+(defn- id [x] x)
+
+(defn- ev [s] (eval (read-string s)))
+
+(defmacro z5-throwing-macro [] (throw (ex-info "ve5" {:z5 1})))
+
+(defn- n-sub [a b] (- a b))
+
+(defn- n-subp [a b] (-' a b))
+
+(defn- n-long [x] (long x))
+
+(defn- n-long-min [] (dec' -9223372036854775807))
+
+(defn- nrepl-handle [msg]
+  (require 'jank.nrepl.server.handler.clone)
+  (require 'jank.nrepl.server.handler.describe)
+  (require 'jank.nrepl.server.handler.eval)
+  ((resolve 'jank.nrepl.server.handler/handle-message) msg))
+
+(defn- statuses [r] (set (map name (:status r))))
+
+(defn- vq-responses-for [req r]
+  (let [resps (if (sequential? r) r [r])]
+    (map #(merge % (select-keys req ["id" "session"])) resps)))
+
+(defn- nan-key [x] (if (== x x) x :nan))
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area E - errors as objects (A34, V7a, V9, V18, X20b; E9-1)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;;;; A34: an arity error (invalid_arity, a std::runtime_error) reaches an object catch.
+
+; [fn value] ((fn [a] a)) with no argument: jank's call of the fn value throws invalid_arity<0>
+; (object.cpp 82, a std::runtime_error). Stock and round 8: escapes `thrown?` (error). A34: the
+; generated try converts it (pass).
+(deftest z1-an-arity-error-reaches-thrown
+  (is (thrown? ((id (fn [a] a))))))
+
+
+; [fn value] The caught arity error has a message. Stock and round 8: escapes (error). A34: the
+; converted ex-info's message, "Invalid call to ... with `0` args provided." (pass).
+(deftest z1b-a-caught-arity-error-has-a-message
+  (is (string? (try ((id (fn [a] a)))
+                    (catch cpp/jank.runtime.object_ref e (ex-message e))))))
+
+
+;;;; X20b: nth's own checks throw objects (seq.cpp nth 648-695, the vectors' nth).
+
+; [fn] A negative index on a vector: seq.cpp nth 656-660 rejects it first, std::runtime_error.
+; Stock and round 8: escapes (error). X20b (or A34): passes.
+(deftest z2-nth-of-a-vector-with-a-negative-index-reaches-thrown
+  (is (thrown? (nth (id [1 2]) (id -1)))))
+
+
+; [fn] Past the end of a seq: seq.cpp nth's walk 673-688, std::runtime_error. Stock and round 8:
+; error. X20b (or A34): passes.
+(deftest z2b-nth-past-the-end-of-a-seq-reaches-thrown
+  (is (thrown? (nth (map inc (id [1 2])) 5))))
+
+
+; [fn] What the object catch gets from nth past a vector's end has nil ex-data (Clojure:
+; IndexOutOfBoundsException, not an ExceptionInfo). Stock and round 8: persistent_vector::nth's
+; std::runtime_error escapes (error). X20b: an ex-info with nil data (pass); A34 alone: the
+; converted ex-info, nil data (pass).
+(deftest z2c-a-caught-index-error-has-no-ex-data
+  (is (nil? (try (nth (id [1 2]) 5)
+                 (catch cpp/jank.runtime.object_ref e (ex-data e))))))
+
+
+;;;; V7a (A34's error_ref half): analysis and load errors reach an object catch.
+
+; [fn] eval of an unresolved symbol: context::eval's expect_ok throws the analysis error_ref
+; (context_dynamic.cpp 220-226). Stock and round 8: escapes `thrown?` (error). A34/V7a: passes.
+(deftest z3-an-analysis-error-from-eval-reaches-thrown
+  (is (thrown? (eval (symbol "z3-no-such-name")))))
+
+
+; [fn] A missing namespace: load's expect_ok throws runtime_module_not_found (core.jank load
+; 4801-4812); stock load-lib's object catch misses it; round 8's load-lib rethrows it from its
+; error_ref catch. Stock and round 8: escapes (error). A34/V7a: load-lib's object catch gets the
+; converted ex-info and rethrows it; `thrown?` sees it (pass).
+(deftest z3b-a-missing-namespace-reaches-thrown
+  (is (thrown? (require (symbol "jank-lean.z3b-no-such-namespace")))))
+
+
+; [fn] A rethrown analysis error stays catchable: the inner catch's binding, rethrown, reaches
+; the outer catch. Stock and round 8: both catches miss it (error). A34/V7a: :outer (pass).
+(deftest z3c-a-rethrown-analysis-error-reaches-the-outer-catch
+  (is (= :outer (try (try (eval (symbol "z3c-no-such-name"))
+                          (catch cpp/jank.runtime.object_ref e (throw e)))
+                     (catch cpp/jank.runtime.object_ref _ :outer)))))
+
+
+;;;; V18: an analysis error made an object has Clojure's CompilerException data.
+
+; [fn] Clojure: (ex-data e) of eval's CompilerException is {:clojure.error/phase
+; :compile-syntax-check, :clojure.error/line .., :clojure.error/column .., :clojure.error/source ..}.
+; Stock and round 8: the error escapes (error). A34 alone: the converted ex-info's data is nil
+; (fail). A34 + V18: the data (pass).
+(deftest z4-a-caught-analysis-error-has-compiler-data
+  (is (= :compile-syntax-check
+         (try (eval (symbol "z4-no-such-name"))
+              (catch cpp/jank.runtime.object_ref e (:clojure.error/phase (ex-data e)))))))
+
+
+; [fn] And its cause is the error itself (Clojure: RuntimeException "Unable to resolve symbol...").
+; Stock and round 8: error. A34 alone: nil cause (fail). A34 + V18: the inner ex-info (pass).
+(deftest z4b-a-caught-analysis-error-has-a-cause
+  (is (some? (try (eval (symbol "z4b-no-such-name"))
+                  (catch cpp/jank.runtime.object_ref e (ex-cause e))))))
+
+
+; [fn] Clojure: CompilerException :macro-syntax-check whose cause is the ex-info. Stock and round 8:
+; the analysis error_ref escapes (error). A34 alone: the converted ex-info, no cause (fail).
+; A34 + V9 (+ V18): the cause chain holds {:z5 1} (pass).
+(deftest z5-a-macros-ex-info-is-the-cause
+  (is (= {:z5 1}
+         (try (eval (list `z5-throwing-macro))
+              (catch cpp/jank.runtime.object_ref e
+                (loop [e e]
+                  (when e
+                    (if (contains? (ex-data e) :z5) (ex-data e) (recur (ex-cause e))))))))))
+
+
+;;;; E9-1 (new): the runtime's errors thrown as strings have no ex-message.
+
+; [fn] (inc x) past Long/MAX_VALUE: math.hpp inc's object branch throws the string object
+; "Overflow on increment." (math.hpp 1186-1330). Clojure: ArithmeticException "integer overflow".
+; Stock: ex-message of a string throws (try_object, a std::runtime_error from inside the handler:
+; error). Round 8 (U62): nil (fail). With this area's fixes: nil (fail; E9-1 has no fix).
+(deftest z6-ex-message-of-an-overflow-is-a-string
+  (is (string? (try (inc (id 9223372036854775807))
+                    (catch cpp/jank.runtime.object_ref e (ex-message e))))))
+
+
+;;;; Controls.
+
+; [fn] An ex-info is caught as itself, everywhere. Passes on stock.
+(deftest z7-control-an-ex-info-reaches-its-catch
+  (is (= {:a 1} (try (throw (ex-info "x" {:a 1}))
+                     (catch cpp/jank.runtime.object_ref e (ex-data e))))))
+
+
+; [fn] An object rethrown from a catch is the same object at the outer catch (A34's inner try
+; passes objects through unchanged). Passes on stock and with A34.
+(deftest z7b-control-a-rethrown-object-is-the-same-object
+  (let [x (ex-info "x" {})]
+    (is (identical? x (try (try (throw x)
+                                (catch cpp/jank.runtime.object_ref e (throw e)))
+                           (catch cpp/jank.runtime.object_ref e e))))))
+
+
+; native: a handler before the object handler still gets the native exception it names (A34's
+; inner try rethrows it unchanged; jank's suite cpp/try/pass-catch-mixed.jank relies on this).
+; jank only (C++ exception types). Passes on stock and with A34.
+; The arity error is invalid_arity<0> (native_function_wrapper.hpp 53-61), a std::runtime_error.
+(deftest z7c-control-a-native-handler-before-the-object-handler-still-gets-it
+  (is (= :native (try ((id (fn [a] a)))
+                      (catch cpp/std.runtime_error _ :native)
+                      (catch cpp/jank.runtime.object_ref _ :object)))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area N - numbers (DEC8-1, V55, V60, V61, V62b, V85)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; DEC8-1 (unary minus is (- 0 x), core.jank 1393-1394; `-'`'s is (-' 0 x), 1811-1812). Fix DEC8-1:
+;; Numbers.minus(x)/minusP(x) as math.cpp negate/promoting_negate.
+(deftest z8-promoting-negation-of-positive-zero-is-negative-zero
+  ; [literals] (-' 0.0) is the fn's promoting_sub(0, 0.0) = +0.0 (math.cpp 108-134).
+  ; stock "0.0"; combined "0.0"; DEC8-1 "-0.0".
+  (is (= "-0.0" (str (-' 0.0)))))
+
+
+(deftest z8b-promoting-negation-keeps-a-negative-scale
+  ; [literals] promoting_sub(0, 1E+2M). stock "-100.0" (no scale, S5); combined "-100" (R72: scale
+  ; max(0, -2)); combined + DEC8-1 "-1E+2" (R72's negate keeps the scale). DEC8-1 alone: "-100.0".
+  (is (= "-1E+2" (str (-' 1E+2M)))))
+
+
+(deftest z8c-negating-the-int-minimum-is-a-long
+  ; [literals] -2147483648 fits an int: the fn's sub(int 0, small_integer) computes in C++ int and
+  ; wraps (D1, round 1's (neg -2147483648)). stock -2147483648; combined 2147483648 (LG2a);
+  ; DEC8-1 2147483648 (negate widens to i64).
+  (is (= 2147483648 (- -2147483648))))
+
+
+(deftest z8d-promoting-negation-of-the-long-minimum-is-a-bigint
+  ; [fn] promoting_sub(0, Long/MIN_VALUE) overflows and boxes the wrapped i64 (V54).
+  ; stock "-9223372036854775808N"; combined "9223372036854775808N" (LG2c); DEC8-1 the same.
+  (is (= "9223372036854775808N" (pr-str (-' (n-long-min))))))
+
+
+(deftest z8e-control-negation-of-negative-zero
+  ; [literals] 0 - (-0.0) is +0.0 in IEEE arithmetic too: "0.0" on stock, combined and DEC8-1.
+  (is (= "0.0" (str (- -0.0)))))
+
+
+(deftest z8f-control-negation-of-a-ratio
+  ; [fn] stock "-1/2" (0 - 1/2); DEC8-1 "-1/2" (the numerator negated).
+  (is (= "-1/2" (pr-str ((fn [a] (- a)) 1/2)))))
+
+
+(deftest z8g-control-negation-of-nan-is-nan
+  ; [literals] stock NaN (0 - NaN keeps the operand); DEC8-1 returns the NaN as it is (a negated
+  ; quiet NaN would be x86's 0xFFF8..., D9's unboxable word).
+  (is (NaN? (- ##NaN))))
+
+
+;; V55 (Clojure's Object minus negates its second operand first: Numbers.minus(Object, Object)).
+(deftest z9-subtracting-long-min-from-a-double-through-a-fn-throws
+  ; [fn] sub(object, object): 1.5 - (-2^63) as doubles. stock and combined 9.223372036854776E18;
+  ; V55 throws "integer overflow" (an object). Clojure: ArithmeticException "long overflow".
+  (is (thrown? (n-sub 1.5 (n-long-min)))))
+
+
+(deftest z9b-subtracting-long-min-through-apply-throws
+  ; [fn value] the variadic -'s sub(object, object). stock 9223372036854775807; combined the same
+  ; (LG2a: no overflow); V55 throws.
+  (is (thrown? (apply - [-1 (n-long-min)]))))
+
+
+(deftest z9c-control-subtracting-long-min-from-a-bigint-promoting
+  ; [fn] promoting_sub(BigInt 1N, Long/MIN_VALUE) is exact: 9223372036854775809N on every version.
+  (is (= 9223372036854775809N (n-subp 1N (n-long-min)))))
+
+
+;; V60 (`long` of a double: RT.longCast).
+(deftest z10-long-of-two-to-the-63-saturates
+  ; [fn] real::to_integer is static_cast<i64> of 2^63: undefined (x86-64 cvttsd2si gives
+  ; -9223372036854775808). stock and combined -9223372036854775808 (x86-64); V60 9223372036854775807
+  ; (Java's (long) cast saturates; RT.longCast's range check passes 2^63 = (double) Long.MAX_VALUE).
+  (is (= 9223372036854775807 (n-long 9.223372036854775807E18))))
+
+
+(deftest z10b-control-long-of-minus-two-to-the-63
+  ; [fn] -2^63 converts exactly on every version.
+  (is (= -9223372036854775808 (n-long -9.223372036854775808E18))))
+
+
+(deftest z10c-long-of-a-nan-is-zero-control
+  ; [fn] real::to_integer returns 0 for NaN on stock; V60 keeps it.
+  (is (= 0 (n-long ##NaN))))
+
+
+;; V61 (a ratio's parts and biginteger are java.math.BigIntegers, printed without N).
+(deftest z11-denominator-prints-as-a-biginteger
+  ; [fn] stock and combined "2N"; V61 "2".
+  (is (= "2" (pr-str ((fn [r] (denominator r)) 1/2)))))
+
+
+(deftest z11b-biginteger-prints-without-n
+  ; [fn] to_big_integer boxes a BigInt: stock and combined "5N"; V61 "5".
+  (is (= "5" (pr-str ((fn [x] (biginteger x)) 5)))))
+
+
+(deftest z11c-control-arithmetic-on-a-biginteger-is-a-bigint
+  ; [fn] BigIntOps: (inc (numerator 1/2)) is 2N on every version (V61 flags only what numerator,
+  ; denominator and biginteger return).
+  (is (= "2N" (pr-str (inc ((fn [r] (numerator r)) 1/2))))))
+
+
+(deftest z11d-control-bigint-of-a-biginteger-is-a-bigint
+  ; [fn] stock "1N"; V61 "1N" (bigint copies a flagged value without the flag).
+  (is (= "1N" (pr-str (bigint ((fn [r] (numerator r)) 1/2))))))
+
+
+;; V62 (`float` is a double: math.hpp to_real).
+(deftest z12-float-of-infinity-throws
+  ; [literals] to_real(f64): no range check. stock and combined ##Inf; V62 throws "Value out of
+  ; range for float" (an object). Clojure: IllegalArgumentException.
+  (is (thrown? (float ##Inf))))
+
+
+(deftest z12b-float-rounds-to-single-precision-through-a-fn
+  ; [fn] (float x) through the fn: to_real(object). stock 0.1; V62 0.10000000149011612.
+  (is (= 0.10000000149011612 (double ((fn [x] (float x)) 0.1)))))
+
+
+(deftest z12c-compare-of-a-float-and-its-double
+  ; [literals] compare(object, object). stock 0 (the same double); V62 1.
+  (is (= 1 (compare (float 0.1) 0.1))))
+
+
+(deftest z12d-a-float-prints-with-floats-digits
+  ; [literals] Float.toString. stock "0.3333333333333333" (the double 1/3); V62 "0.3333333432674408"
+  ; (the float's value printed as a double); V62b "0.33333334" (obj::single_real, Float.toString).
+  (is (= "0.33333334" (str (float 1/3)))))
+
+
+(deftest z12e-a-short-float-prints-short-control-on-stock
+  ; [literals] stock "0.1" (the double 0.1: no rounding); V62 "0.10000000149011612": V62's printing
+  ; regression (no Float box). Passes on stock and combined, fails with V62, passes with V62b.
+  (is (= "0.1" (str (float 0.1)))))
+
+
+(deftest z12f-a-floats-hash-is-float-hashcode
+  ; [literals] Numbers.hasheq of a Float is Float.hashCode (floatToIntBits). jank hashes the double
+  ; (hash.cpp real): fails on stock and with V62; V62b 1056964608 (single_real::to_hash).
+  (is (= 1056964608 (hash (float 0.5)))))
+
+
+;; V62b (Clojure's Float as obj::single_real): what V62's value-only fix could not reach.
+(deftest z12g-a-float-array-element-prints-as-a-float
+  ; [literals] inlined aget: stock float& boxed by make_box(float) as a double: "0.10000000149011612";
+  ; V62 the same (aget is an f64); V62b "0.1" (aget of a float array is a single_real).
+  (is (= "0.1" (str (aget (float-array [0.1]) 0)))))
+
+
+(deftest z12h-a-float-arrays-elements-print-as-floats
+  ; [fn] array::seq boxes each element with convert<float> (a double): stock and V62
+  ; "[0.10000000149011612 0.20000000298023224]"; V62b "[0.1 0.2]" (box_element).
+  (is (= "[0.1 0.2]" (pr-str (vec (float-array [0.1 0.2]))))))
+
+
+(deftest z12i-control-a-float-equals-a-double-of-its-value
+  ; [literals] Numbers.equal: both FLOATING. true on stock (one double), V62 and V62b
+  ; (single_real::equal and small_real::equal compare the f64 values).
+  (is (= true (= (float 0.5) 0.5))))
+
+
+(deftest z12j-a-float-is-not-a-double
+  ; [literals] double? is (instance? Double x). jank's double? is float? (core.jank 1960-1963): true on
+  ; stock, V62 and V62b. No fix (V62b keeps double? as is).
+  (is (= false (double? (float 1)))))
+
+
+;; V63 (a float array element computes in single precision).
+(deftest z13-a-float-array-element-compares-as-a-double
+  ; [literals] lt(float&, int): C++ converts 16777217 to float 16777216. stock false; combined true
+  ; (LG1 widens both); V62 true (aget of a float array is an f64).
+  (is (= true (< (aget (float-array [16777217]) 0) 16777217))))
+
+
+;; V85 (no identity check in the hash collections' key equality).
+(deftest z14-a-hash-set-of-the-nan-literal-contains-it
+  ; [literals] ##NaN is one object in Clojure (LispReader's table): PersistentHashSet finds it by
+  ; identity. jank: runtime::equal(NaN, NaN) is false. stock and combined false; V85 true.
+  (is (= true (contains? (hash-set ##NaN) ##NaN))))
+
+
+(deftest z14b-distinct-keeps-one-of-the-same-nan
+  ; [fn] distinct's seen set. stock and combined 2; V85 1.
+  (is (= 1 (let [x (id ##NaN)] (count (distinct [x x]))))))
+
+
+(deftest z14c-control-an-array-map-has-no-identity-check
+  ; [literals] PersistentArrayMap.indexOfObject uses equivPred (no identity): nil. jank's array map
+  ; uses runtime::equal: nil on stock, combined and V85.
+  (is (nil? (get {##NaN 1} ##NaN))))
+
+
+(deftest z14d-control-equality-of-two-nan-literals
+  ; [literals] Clojure's = on two literals compares primitives: false. jank false on every version
+  ; (V85 adds identity for heap objects only in =).
+  (is (= false (= ##NaN ##NaN))))
+
+
+(deftest z14e-the-same-nan-object-equals-itself
+  ; [fn] Util.equiv(x, x) is true by identity. jank's NaN is NaN-boxed (no identity): false on every
+  ; version, V85 included (a NaN-boxed double has no identity beyond its bits; giving = raw-word
+  ; identity would break z14c-style and z14d-style results instead). No fix.
+  (is (= true ((fn [x] (= x x)) ##NaN))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area W - strings as UTF-16 (W9u, W9h, W9c, W9r; W9-1)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; W9-1 (new). char-array of a string holds its bytes. core.jank char-array 6659-6667 (inline) ->
+;; core/array.cpp char_array(object_ref) 60-70 -> char_array(immutable_string) 50-58, one C char per
+;; byte. [fn] jank predicted: 2, on stock and with the fixes (char arrays would need 16-bit chars).
+(deftest z15-char-array-of-a-non-ascii-string-has-one-char
+  (is (= 1 (alength (char-array (identity "é"))))))
+
+
+;; R53/V77's count. [inlined count] persistent_string.cpp count 179-182 (bytes). jank: 4 on stock;
+;; with W9u 2 (utf16_length).
+(deftest z16-count-of-an-emoji-is-two-units
+  (is (= 2 (count (identity "😀")))))
+
+
+;; LG3 on a pair. [fn subs] persistent_string.cpp substring 138-155 keeps the byte F0; first of it
+;; walks 4 bytes past the end (R54) and to_integer's mbrtowc fails: not 55357 on stock. With W9u the
+;; cut keeps the high surrogate in its three-byte form, and to_integer decodes it: 55357.
+(deftest z17-subs-cuts-a-pair-into-its-high-surrogate
+  (is (= 55357 (int (first (subs (identity "😀") 0 1))))))
+
+
+;; Control. Stock rejoins the two byte halves; with W9u string_builder joins the two surrogates into
+;; the four-byte form, so the result equals the literal byte for byte. Passes on both.
+(deftest z18-control-halves-of-a-pair-join-back
+  (let [s (identity "😀")]
+    (is (= s (str (subs s 0 1) (subs s 1))))))
+
+
+;; Control. Stock's seq yields the whole 4-byte character; W9u's yields two surrogates, which str
+;; joins back. Passes on both.
+(deftest z19-control-apply-str-of-the-seq-of-an-emoji
+  (let [s (identity "a😀b")]
+    (is (= s (apply str (seq s))))))
+
+
+;; V78's char feeding index-of. Stock: (char 56832) throws "Unfinished character: 56832" (utf8.cpp
+;; to_char 170-194, wcrtomb; a C++ exception). With W9u: the needle is the lone low surrogate, and
+;; index-of searches units (jtl utf16_index_of): 1.
+(deftest z20-index-of-a-lone-low-surrogate-inside-a-pair
+  (is (= 1 (string/index-of (identity "😀") (str (char 56832))))))
+
+
+;; V71 on a pair. [inlined hash] immutable_string.hpp to_hash 648-660 runs over the bytes F0 9F 98 80.
+;; With W9h it runs over the units D83D DE00: -1934073014.
+(deftest z21-hash-of-an-emoji
+  (is (= -1934073014 (hash (identity "😀")))))
+
+
+;; StringBuilder.reverse makes a pair of a low surrogate followed by a high one. Stock: (char 56320)
+;; throws (V78). With W9u (+ W9c): [L][H] reversed by pieces is [H][L], which the builder joins.
+(deftest z22-reverse-turns-lone-surrogates-into-a-pair
+  (is (= [55296 56320] (mapv int (string/reverse (str (char 56320) (char 55296)))))))
+
+
+;; R62 on a pair: String.replace("", r) goes around every unit. Stock goes around every byte (invalid
+;; UTF-8; the seq then walks past the end, R54); R62a around code points ([45 55357 56832 45] with
+;; W9u's seq). With W9u (or W9u-combined): [45 55357 45 56832 45].
+(deftest z23-replace-of-an-empty-match-splits-a-pair
+  (is (= [45 55357 45 56832 45] (mapv int (string/replace (identity "😀") "" "-")))))
+
+
+;; R64's range at its edge. [fn] core.cpp to_char 1311-1319 -> utf8.cpp to_char 170-194: U+10000 is
+;; a character on stock (no exception); with R66 (round 8's patch) too. With W9c: an object
+;; "Value out of range for char: 65536".
+(deftest z24-char-past-ffff-throws
+  (is (thrown? (char (identity 65536)))))
+
+
+;; includes? with half a pair. Stock: (char 55357) throws (V78). With W9u: true (units).
+(deftest z25-includes-a-lone-high-surrogate
+  (is (string/includes? (identity "😀") (str (char 55357)))))
+
+
+;; Control, jank only (nREPL bencode, no Clojure counterpart). bencode.jank write: (count x) bytes on
+;; stock; with W9u byte_count. "2:" followed by the two bytes of é, on both.
+(deftest z26-control-bencode-writes-a-byte-length
+  (is (= "2:é" (do (require 'jank.nrepl.server.bencode)
+                        ((resolve 'jank.nrepl.server.bencode/write) (identity "é"))))))
+
+
+;; V75 on a pair (W9r). [fn] string_native.cpp split 392-449: libstdc++'s cregex_iterator steps one
+;; byte past an empty match (regex.tcc 556-584), cutting the 4 bytes apart (and stock's seq of a cut
+;; byte then walks past the end, R54). Java's Matcher.find moves one UTF-16 unit, into the middle of
+;; the pair. With W9r + W9u: the two halves, [[55357] [56832]].
+(deftest z27-split-on-an-empty-pattern-splits-a-pair
+  (is (= [[55357] [56832]] (mapv #(mapv int %) (string/split (identity "\ud83d\ude00") #"")))))
+
+
+;; R81 with an empty match (W9r). core.cpp re_find 972-988 searches the rest again after an empty
+;; match, so re-seq repeats "" forever (take 5 gives five). Java moves one unit (here past é): with
+;; W9r ["" ""].
+(deftest z28-re-seq-moves-past-an-empty-match
+  (is (= ["" ""] (vec (take 5 (re-seq #"" (identity "\u00e9")))))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area H - CHAMP (H8-1, S59, U81; H9-1 to H9-3)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;;;; H9-1 (new). A transient chain and its persistent twin differ in CONTENTS.
+;; The BigDecimals a = 2.084477E-26, q = 1.1000000000687110E-16 and b = 2.3000000001916567E-16 all hash
+;; to 3969516785 in jank (big_decimal.cpp to_hash 177-180: std::hash of cpp_dec_float<100>, a u32;
+;; found by search, .r9-scratch/champ/dec/triple.cpp, and recomputed with round 3's replica), so they
+;; share one CHAMP collision node. jank's = (big_decimal.cpp equal 146-155: |x - y| < 2^-52, D8) has
+;; (= a q) and (= q b) but not (= a b). conj a, conj b gives the node [b a]. Transient: conj! a writes a
+;; in place (the node is the transient's own, champ.hpp 652-655), and disj! q takes the first value =
+;; to q, b: #{a}. Persistent: conj a moves a to the front (copy_collision_replace, H8-1): [a b], and
+;; disj q takes a: #{b}. Clojure's = is exact: neither a nor b is q, and both chains give #{a b}.
+;; Shared cause: D8 (jank's =) meeting H8-1 (the reorder); either fix alone removes it.
+
+; [fn] control: without the repeated conj (no in-place write) both chains remove b. jank: true.
+(deftest z29-control-without-the-repeated-conj-the-twins-agree
+  (let [a (id 0.00000000000000000000000002084477M)
+        q (id 0.00000000000000011000000000687110M)
+        b (id 0.00000000000000023000000001916567M)]
+    (is (= (set (map str (persistent! (-> (transient #{}) (conj! a) (conj! b) (disj! q)))))
+           (set (map str (-> #{} (conj a) (conj b) (disj q))))))))
+
+
+; [fn] jank stock: false (#{"<a>"} against #{"<b>"}); true with H8-1-immer.diff, with H8-1.diff (conj of a
+; member returns the set) or with D8.diff (exact =; in the combined patch).
+(deftest z29-transient-and-persistent-twins-differ-in-contents
+  (let [a (id 0.00000000000000000000000002084477M)
+        q (id 0.00000000000000011000000000687110M)
+        b (id 0.00000000000000023000000001916567M)]
+    (is (= (set (map str (persistent! (-> (transient #{}) (conj! a) (conj! b) (conj! a) (disj! q)))))
+           (set (map str (-> #{} (conj a) (conj b) (conj a) (disj q))))))))
+
+
+; [fn] The same for a hash map: the transient keeps a (=> 3), the persistent twin keeps b (=> 2).
+; jank stock: false (#{"3"} against #{"2"}); true with H8-1-immer.diff or D8.diff; still false with
+; H8-1.diff alone (assoc of a new value still goes through immer's copy_collision_replace).
+(deftest z29b-transient-and-persistent-map-twins-differ-in-contents
+  (let [a (id 0.00000000000000000000000002084477M)
+        q (id 0.00000000000000011000000000687110M)
+        b (id 0.00000000000000023000000001916567M)]
+    (is (= (set (map str (vals (persistent! (-> (transient (hash-map)) (assoc! a 1) (assoc! b 2) (assoc! a 3)
+                                                (dissoc! q))))))
+           (set (map str (vals (-> (hash-map) (assoc a 1) (assoc b 2) (assoc a 3) (dissoc q)))))))))
+
+
+;;;; H9-2 (new). assoc of the value a key already holds, and conj of a member, return a new collection.
+;; Clojure: PersistentHashMap.assoc returns this when the node is unchanged (BitmapIndexedNode.assoc /
+;; HashCollisionNode.assoc: the value is the same object), PersistentArrayMap.assoc likewise, and
+;; PersistentHashSet.cons returns this when it holds the element. jank always boxes a new collection
+;; (persistent_hash_map.cpp assoc 110-114, persistent_hash_set.cpp conj 149-154,
+;; persistent_array_map.cpp assoc 70-89).
+
+; [fn] jank stock: false; true with H8-1.diff.
+(deftest z30-assoc-of-the-held-value-returns-the-hash-map-itself
+  (let [m (hash-map (id :k) (id :v))]
+    (is (identical? m (assoc m (id :k) (id :v))))))
+
+
+; [fn] jank stock: false; true with H8-1.diff.
+(deftest z30b-conj-of-a-member-returns-the-hash-set-itself
+  (let [s (hash-set (id 1) (id 2))]
+    (is (identical? s (conj s (id 1))))))
+
+
+; [fn] jank stock: false; true with H9-3.diff (the array-map half).
+(deftest z30c-assoc-of-the-held-value-returns-the-array-map-itself
+  (let [m (id {:k :v})]
+    (is (identical? m (assoc m (id :k) (id :v))))))
+
+
+; [fn] control: a new value gives a new map on both. jank: true.
+(deftest z30-control-assoc-of-another-value-is-a-new-map
+  (let [m (hash-map (id :k) (id :v))]
+    (is (not (identical? m (assoc m (id :k) (id :w)))))))
+
+
+;;;; H9-3 (new). assoc of a key already present in an 8-entry array map makes a hash map.
+;; persistent_array_map.cpp assoc 79-82 promotes whenever the map holds 8 entries (its comment says so),
+;; through persistent_hash_map(meta, array_map, key, val) (persistent_hash_map.cpp 12-25). The hash map
+;; iterates in CHAMP order: the longs 0..7 hash (Murmur3.hashLong, jank = Clojure) to the low 5 bits
+;; 0 4 20 19 6 23 17 3, all different, so the root's values in bit order: (0 7 1 4 6 3 2 5). Clojure's
+;; PersistentArrayMap.assoc replaces the value in place and stays an array map: (0 1 2 3 4 5 6 7).
+;; transient_array_map.cpp assoc_in_place 67-89 does the same through assoc! (into, zipmap of 8 pairs
+;; then one more assoc! of a present key).
+
+; [fn] jank stock: false (keys (0 7 1 4 6 3 2 5)); true with H9-3.diff.
+(deftest z31-assoc-of-a-present-key-keeps-an-8-entry-array-map
+  (let [m (into {} (map vector (range 8) (range 8)))]
+    (is (= (range 8) (keys (assoc m (id 0) :x))))))
+
+
+; [fn] the transient path. jank stock: false; true with H9-3.diff.
+(deftest z31b-assoc!-of-a-present-key-keeps-an-8-entry-array-map
+  (let [t (reduce (fn [t i] (assoc! t i i)) (transient {}) (range 8))]
+    (is (= (range 8) (keys (persistent! (assoc! t (id 0) :x)))))))
+
+
+; [fn] control: a ninth key promotes on both, and keeps every pair. jank: true.
+(deftest z31-control-a-ninth-key-keeps-every-pair
+  (let [m (into {} (map vector (range 8) (range 8)))]
+    (is (= 9 (count (assoc m (id 8) :x))))))
+
+
+;;;; S59 and U81 (known), the paths H8-1.diff changes besides s59 and u81.
+;; Clojure keeps the stored key of an = one (BitmapIndexedNode.assoc, HashCollisionNode.assoc;
+;; PersistentHashMap.create assocs through a transient). jank's immer set stores the given key.
+
+; [fn] hash-map's create_from_seq (persistent_hash_map.cpp 55-71). jank stock: false ([1] first); true
+; with H8-1.diff.
+(deftest z32-hash-map-keeps-the-first-of-equal-keys
+  (is (list? (first (keys (hash-map (id '(1)) :a (id [1]) :b))))))
+
+
+; [fn] the 8-entry promotion (persistent_hash_map.cpp 12-25; REPORT-3's fourth S59 example). jank stock:
+; false (a vector is stored); true with H8-1.diff, and with H9-3.diff (no promotion).
+(deftest z32b-assoc-at-the-promotion-keeps-the-stored-key
+  (let [m (into {} [[0 0] [1 1] [2 2] [3 3] [4 4] [5 5] [6 6] ['(1) 0]])]
+    (is (nil? (some vector? (keys (assoc m (id [1]) 1)))))))
+
+
+; [fn] a persistent set's conj of an = element (persistent_hash_set.cpp conj 149-154). jank stock: false;
+; true with H8-1.diff (the set itself).
+(deftest z32c-conj-keeps-the-stored-element
+  (is (list? (first (conj (hash-set (id '(1))) (id [1]))))))
+
+
+; [fn] control: Clojure's transient set keeps the first element as the key but stores the LAST as its
+; value (ATransientSet.conj -> impl.assoc(o, o)), and get returns the value: [1]. jank stores one object,
+; the last (S59), so get gives [1] too. H8-1.diff leaves transient sets as they are, so this stays
+; true; keeping the first element there would make get give (1) (a regression), so (first s) stays
+; jank's [1] where Clojure's is (1): S59's transient-set half has no exact fix in a one-slot set.
+(deftest z32-control-get-of-a-transient-built-set-is-the-last-element
+  (is (vector? (get (hash-set (id '(1)) (id [1])) [1]))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area Q - the nREPL (Q1, Q2, V37i; Q9-1 to Q9-3)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; Q9-1 (new). An eval of the empty string. nREPL 1.8.0 (interruptible_eval.clj 181-205, evaluator 72-178): "" is a
+;; string, so it is evaluated: the reader meets the end at once, no value is sent, and the ack sends
+;; {:status #{"done"}}. jank (handler/eval.jank do-eval 23-24): (empty? code) answers
+;; {:status [:no-code :done]}. jank predicted: #{"no-code" "done"} (stock and with every fix).
+; [handler] jank only.
+(deftest z33-nrepl-eval-of-empty-code-answers-done
+  (is (= #{"done"} (statuses (nrepl-handle {"op" "eval" "id" "e" "code" "" "ns" "user"})))))
+
+
+;; Q9-2 (new). An eval without a code field. nREPL 1.8.0 (interruptible_eval.clj 189-190):
+;; #{"error" "no-code" "done"}. jank: (get msg "code" "") is "" (handler/eval.jank 68), then do-eval
+;; 23-24: {:status [:no-code :done]}. jank predicted: #{"no-code" "done"}.
+; [handler] jank only.
+(deftest z34-nrepl-eval-without-code-is-an-error
+  (is (= #{"error" "no-code" "done"} (statuses (nrepl-handle {"op" "eval" "id" "e" "ns" "user"})))))
+
+
+;; Q9-3 (new). An eval in a namespace that does not exist. nREPL 1.8.0 (interruptible_eval.clj
+;; 196-198): {:status #{"error" "namespace-not-found" "done"} :ns ns}. jank (handler/eval.jank
+;; 27-29): {:status [:namespace-not-found :done]}, without :error (and without :ns).
+;; jank predicted: #{"namespace-not-found" "done"}.
+; [handler] jank only.
+(deftest z35-nrepl-eval-in-a-missing-ns-is-an-error
+  (is (= #{"error" "namespace-not-found" "done"}
+         (statuses (nrepl-handle {"op" "eval" "id" "e" "code" "1" "ns" "z35.no.such.ns"})))))
+
+
+;; Q1 (round 8), the read path. nREPL 1.8.0: a stdin op appends "hi\n" to the session's *in*
+;; (session.clj add-stdin 386-397), and an eval of (read-line) in that session returns "hi"
+;; (LineNumberingPushbackReader.readLine), so the eval's value is "\"hi\"". jank stock: the stdin op
+;; is unknown-op and read-line throws "TODO: port read-line" (core.jank 5966-5972, G14): no :value.
+;; With fixes/Q1.diff: the session's input holds "hi\n", do-eval binds *in* to its reader, core's
+;; read-line calls it: "\"hi\"". jank predicted: nil (stock), "\"hi\"" (Q1).
+; [handler] jank only.
+(deftest z36-nrepl-read-line-reads-the-sessions-stdin
+  (let [s (:new-session (nrepl-handle {"op" "clone" "id" "c"}))
+        _ (nrepl-handle {"op" "stdin" "id" "s" "session" s "stdin" "hi\n"})
+        rs (nrepl-handle {"op" "eval" "id" "e" "session" s "code" "(read-line)" "ns" "user"})]
+    (is (= "\"hi\"" (some #(get % :value) (filter map? (if (map? rs) [rs] rs)))))))
+
+
+;; Q2 (round 8), the error branch. nREPL 1.8.0 sends no message without content: :err only when
+;; something is written to *err* (print.clj replying-PrintWriter), then the caught middleware's
+;; {:ex :root-ex :status #{"eval-error"}} and the ack's done. jank stock (handler/eval.jank 41-48):
+;; [nil nil {:err ...} {:ex ... :status [:done :eval-error]}], and response-for turns each nil into
+;; {"id" "e"}: two messages holding only the id. With fixes/Q2.diff: none.
+;; jank predicted: false (stock), true (Q2).
+; [handler] jank only.
+(deftest z37-nrepl-failing-eval-sends-no-message-without-content
+  (let [req {"op" "eval" "id" "e" "code" "(throw (ex-info \"vq5\" {}))" "ns" "user"}]
+    (is (not-any? #(empty? (dissoc % "id" "session"))
+                  (vq-responses-for req (nrepl-handle req))))))
+
+
+;; Control. An eval's value reaches its reply (stock and with every fix): "3".
+; [handler] jank only.
+(deftest z38-control-nrepl-eval-value
+  (let [rs (nrepl-handle {"op" "eval" "id" "e" "code" "(+ 1 2)" "ns" "user"})]
+    (is (= "3" (some #(get % :value) (filter map? (if (map? rs) [rs] rs)))))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area T - sequences, laziness, transducers, ordering (T9-1 to T9-13)
+;;;; ---------------------------------------------------------------------------------------
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-1: sort's algorithm. jank sorts with libstdc++'s std::stable_sort (core/seq.cpp 1098-1176),
+;;;; Clojure with java.util.Arrays.sort (TimSort). Both are stable sorts and agree on every total
+;;;; preorder; ##NaN compares 0 with every number in both, so the comparisons are not one, and the
+;;;; two algorithms order the same input differently. Replica: Jank/R9/Seq/Sort.lean (validated on
+;;;; 11,836 cases against g++-15's std::stable_sort and Clojure 1.12.3).
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] (sort coll): core.jank 5661 -> seq.cpp sort 1098-1129, less = runtime::compare(a, b) < 0.
+; Clojure: one ascending run under NaN's zeros, kept: [3 :nan 1 2]. jank predicted: [1 2 3 :nan]
+; (the halves [3 NaN] and [1 2] are merged: 1 < 3, 2 < 3).
+(deftest z39-sort-with-a-nan
+  (is (= [3 :nan 1 2] (mapv nan-key (sort [3 ##NaN 1 2])))))
+
+
+
+; [fn] sort-by: core.jank 5672-5682 -> (sort (fn [x y] (compare (:v x) (:v y))) coll) -> seq.cpp
+; 1131-1176, the long result through to_int. Clojure [3 :nan 1 2]; jank predicted [1 2 3 :nan].
+(deftest z39b-sort-by-a-nan-key
+  (is (= [3 :nan 1 2] (mapv (comp nan-key :v) (sort-by :v [{:v 3} {:v ##NaN} {:v 1} {:v 2}])))))
+
+
+
+; [fn] (sort < coll): the boolean branch of seq.cpp 1148-1162 (less = (< a b)); Clojure's
+; AFunction.compare: (< a b) false and (< b a) false is 0. Clojure [3 :nan 1 2]; jank predicted
+; [1 2 3 :nan].
+(deftest z39c-sort-with-a-boolean-comparator-and-a-nan
+  (is (= [3 :nan 1 2] (mapv nan-key (sort < [3 ##NaN 1 2])))))
+
+
+
+; control: the NaN first; both give [:nan 1 2 3].
+(deftest z39d-control-sort-with-a-leading-nan
+  (is (= [:nan 1 2 3] (mapv nan-key (sort [##NaN 3 2 1])))))
+
+
+
+; control: a non-strict boolean comparator orders ties the same way in both (searched completely to
+; length 14 over two keys): ([1 :d] [1 :b] [2 :c] [2 :a]).
+(deftest z39e-control-sort-by-with-a-non-strict-comparator
+  (is (= [[1 :d] [1 :b] [2 :c] [2 :a]] (vec (sort-by first <= [[2 :a] [1 :b] [2 :c] [1 :d]])))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-2: a comparator's numeric result. jank: to_int(o) < 0 (seq.cpp 1160, an i64); Clojure:
+;;;; AFunction.compare takes n.intValue(), a long's low 32 bits. The sign differs when the result is
+;;;; outside the int range and its low 32 bits have another sign (or are 0).
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] (- 0 4294967296) is -2^32: Clojure's intValue is 0, the two compare equal and stay in place:
+; [4294967296 0]. jank predicted: [0 4294967296].
+(deftest z40-sort-with-a-subtracting-comparator-past-the-int-range
+  (is (= [4294967296 0] (vec (sort (fn [a b] (- a b)) [4294967296 0])))))
+
+
+
+; [fn] sort-by with the same comparator: Clojure's (. comp (compare ...)) is the same intValue:
+; -3000000000 is 1294967296 as an int, so 0 sorts after 3000000000: [3000000000 0].
+; jank predicted: [0 3000000000].
+(deftest z40b-sort-by-with-a-subtracting-comparator
+  (is (= [3000000000 0] (mapv :t (sort-by :t (fn [a b] (- a b)) [{:t 3000000000} {:t 0}])))))
+
+
+
+; control: differences inside the int range: (1 2 3) in both.
+(deftest z40c-control-subtracting-comparator-small-values
+  (is (= [1 2 3] (vec (sort (fn [a b] (- a b)) [3 1 2])))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-3: chunks. Clojure chunks the seqs of vectors and of (range n) (32 elements); jank's
+;;;; integer_range (integer_range.hpp 64-67, 89-91: chunkable commented out) and
+;;;; persistent_vector_sequence are not chunkable, so map/filter/keep/for (core.jank 2901-2911,
+;;;; 3877-3892, 2993-3008, 3664-3700) take the one-element branch. Replica: Jank/R9/Seq/Lazy.lean.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] map over (range 100): Clojure maps the first chunk: 32 calls. jank predicted: 1.
+(deftest z41-first-of-map-over-a-range-maps-a-chunk
+  (is (= 32 (let [n (atom 0)] (first (map (fn [x] (swap! n inc) x) (range 100))) @n))))
+
+
+
+; [fn] filter over a vector: Clojure tests the whole 5-element chunk: 5. jank predicted: 1.
+(deftest z41b-first-of-filter-over-a-vector-tests-a-chunk
+  (is (= 5 (let [n (atom 0)] (first (filter (fn [x] (swap! n inc) (odd? x)) [1 2 3 4 5])) @n))))
+
+
+
+; [fn] for over (range 50) (the chunked branch of for's inner-most loop): Clojure 32; jank predicted 1.
+(deftest z41c-first-of-for-over-a-range-evaluates-a-chunk
+  (is (= 32 (let [n (atom 0)] (first (for [x (range 50)] (do (swap! n inc) x))) @n))))
+
+
+
+; [fn] the chunk is computed before first returns: Clojure computes (/ 10 0) and throws
+; ArithmeticException. jank predicted: no exception, (first ...) is 10/3.
+(deftest z41d-first-of-map-computes-the-whole-chunk
+  (is (thrown? (first (map (fn [x] (/ 10 x)) (range 3 -1 -1))))))
+
+
+
+; [fn] into with (take 3) reduces the lazy map seq (seq.cpp reduce 908): Clojure realizes the first
+; chunk: 32. jank predicted: 3.
+(deftest z41e-into-take-over-a-mapped-range
+  (is (= 32 (let [n (atom 0)] (into [] (take 3) (map (fn [x] (swap! n inc) x) (range 100))) @n))))
+
+
+
+; control: a list is not chunked in either: 1.
+(deftest z41f-control-first-of-map-over-a-list
+  (is (= 1 (let [n (atom 0)] (first (map (fn [x] (swap! n inc) x) (list 1 2 3))) @n))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-4: iterate. jank's iterator::next (iterator.cpp 35-48) calls f at once; Clojure's
+;;;; Iterate.next makes an unrealized node whose first calls f. take's (rest s) is one call ahead.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] (doall (take 3 (iterate f 0))): Clojure 2 calls; jank predicted 3 (★ jank_iterate_take,
+; clj_iterate_take: k and k - 1 for every k >= 1).
+(deftest z42-take-of-iterate-calls-f-one-time-less
+  (is (= 2 (let [n (atom 0)] (doall (take 3 (iterate (fn [x] (swap! n inc) (inc x)) 0))) @n))))
+
+
+
+; [fn] the extra call is visible as an exception: Clojure [0 1 2]; jank predicted: throws the
+; ex-info "boom" (f of 2).
+(deftest z42b-take-of-iterate-never-computes-the-next-value
+  (is (= [0 1 2] (vec (take 3 (iterate (fn [x] (if (< x 2) (inc x) (throw (ex-info "boom" {})))) 0))))))
+
+
+
+; [fn] partition's (nthrest s 2) walks rest: Clojure 1 call; jank predicted 2.
+(deftest z42c-first-partition-of-iterate
+  (is (= 1 (let [n (atom 0)] (first (partition 2 (iterate (fn [x] (swap! n inc) (inc x)) 0))) @n))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-5: apply. jank's apply_to (core/call.cpp 18-22) counts the argument seq up to max_params + 1
+;;;; (sequence_length, seq.cpp 842-873): 12 elements realized. Clojure realizes required arity + 2
+;;;; for a variadic fn (RestFn.applyTo, RT.boundedLength), every element for a fixed-arity one.
+;;;; mapcat is (apply concat (apply map f colls)) in both.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] (first (mapcat f coll)) over 15 elements: Clojure 4 calls (concat's [x y & zs]); jank
+; predicted 12 (★ jank_apply_realized, clj_apply_realized).
+(deftest z43-first-of-mapcat-realizes-four
+  (is (= 4 (let [n (atom 0)] (first (mapcat (fn [x] (swap! n inc) [x]) (list 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15))) @n))))
+
+
+
+; [fn] apply of (fn [& xs] ...): Clojure 2; jank predicted 12.
+(deftest z43b-apply-of-a-variadic-fn-realizes-two
+  (is (= 2 (let [n (atom 0)] (apply (fn [& xs] (first xs)) (map (fn [x] (swap! n inc) x) (list 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15))) @n))))
+
+
+
+; control: apply of + realizes the whole (short) seq in both: 3.
+(deftest z43c-control-apply-plus
+  (is (= 3 (let [n (atom 0)] (apply + (map (fn [x] (swap! n inc) x) (list 1 2 3))) @n))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-6: dedupe. jank (core.jank 3926-3933) is a lazy-seq that destructures [x & more]: 2
+;;;; elements for the first output. Clojure's is (sequence (dedupe) coll): a 32-element chunk of
+;;;; outputs plus a look-ahead (RT.chunkIteratorSeq over TransformerIterator).
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] Clojure realizes all 5; jank predicted 2 (★ dedupe_first_differs: every length 3..33).
+(deftest z44-first-of-dedupe-realizes-a-chunk
+  (is (= 5 (let [n (atom 0) s (dedupe (map (fn [x] (swap! n inc) x) (list 1 2 3 4 5)))] (first s) @n))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-7: cycle is a lazy-seq in jank (core.jank 3150-3157), a Cycle in Clojure (Cycle.java), which is
+;;;; realized from the start.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] Clojure true (Cycle.isRealized: its current seq is set); jank predicted false
+; (lazy_sequence::is_realized before the body ran).
+(deftest z45-a-cycle-is-realized
+  (is (= true (realized? (cycle [1 2])))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-8: drop, nthnext and nthrest on an IDrop collection (vector, range, string seq, repeat) cast n
+;;;; to an int in Clojure 1.12 and throw past the int range. jank (core.jank 3097-3119, 2847-2865)
+;;;; walks rest.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] Clojure: ArithmeticException "integer overflow". jank predicted: () (no exception).
+(deftest z46-drop-past-the-int-range-throws
+  (is (thrown? (doall (drop 3000000000 [1 2 3])))))
+
+
+
+; [fn] the same for nthnext: Clojure throws; jank predicted nil.
+(deftest z46b-nthnext-past-the-int-range-throws
+  (is (thrown? (nthnext [1 2 3] 3000000000))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-9: the partition-all transducer. Clojure's ([^long n] ...) casts n to a long and allocates
+;;;; (java.util.ArrayList. n); jank (core.jank 3261-3281) compares (= n (count p)).
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] n = 2.0: Clojure [[1 2] [3 4] [5]]; jank predicted [[1 2 3 4 5]] (a double never = a count;
+; ★ jank_double_one_partition).
+(deftest z47-partition-all-transducer-with-a-double-size
+  (is (= [[1 2] [3 4] [5]] (into [] (partition-all 2.0) [1 2 3 4 5]))))
+
+
+
+; [fn] n = -1: Clojure throws IllegalArgumentException "Illegal Capacity: -1"; jank predicted
+; [[1 2 3]].
+(deftest z47b-partition-all-transducer-with-a-negative-size-throws
+  (is (thrown? (into [] (partition-all -1) [1 2 3]))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-10: a sorted map or set searched for ##NaN (which compares 0 with every number in both).
+;;;; jank's sorted collections are std::map/std::set (runtime/detail/type.hpp 49-65): find and
+;;;; operator[] are lower_bound, which lands on the minimum key, and erase(k) erases equal_range(k),
+;;;; which is every element. Clojure's PersistentTreeMap stops at the root. Replica:
+;;;; Jank/R9/Seq/SortedNaN.lean (every tree shape). Area M covers sorted collections too.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] get (inlined cpp/jank.runtime.get -> persistent_sorted_map.cpp get 60-68, data.find):
+; Clojure :b (the root's value); jank predicted :a (the minimum's).
+(deftest z48-get-of-a-nan-in-a-sorted-map
+  (is (= :b (get (sorted-map 1 :a 2 :b 3 :c) ##NaN))))
+
+
+
+; [fn] dissoc (persistent_sorted_map.cpp dissoc 103-108, copy.erase): Clojure removes the root:
+; [[1 :a] [3 :c]]; jank predicted [] (equal_range is the whole map).
+(deftest z48b-dissoc-of-a-nan-from-a-sorted-map
+  (is (= [[1 :a] [3 :c]] (vec (dissoc (sorted-map 1 :a 2 :b 3 :c) ##NaN)))))
+
+
+
+; [fn] disj (persistent_sorted_set.cpp disj 198-203): Clojure removes the root 1: [2];
+; jank predicted [].
+(deftest z48c-disj-of-a-nan-from-a-sorted-set
+  (is (= [2] (vec (disj (sorted-set 1 2) ##NaN)))))
+
+
+
+; [fn] assoc (persistent_sorted_map.cpp assoc 95-101, copy[key] = val): Clojure replaces the
+; root's value: [[1 :a] [2 :x] [3 :c]]; jank predicted [[1 :x] [2 :b] [3 :c]].
+(deftest z48d-assoc-of-a-nan-into-a-sorted-map
+  (is (= [[1 :a] [2 :x] [3 :c]] (vec (assoc (sorted-map 1 :a 2 :b 3 :c) ##NaN :x)))))
+
+
+
+; control: contains? is true in both (any equivalent key will do).
+(deftest z48e-control-contains-a-nan-in-a-sorted-set
+  (is (= true (contains? (sorted-set 1 2 3) ##NaN))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-11: realized? of a lazy seq. jank's lazy_sequence::is_realized (lazy_sequence.cpp 168-172) is
+;;;; `fn.is_nil() || sv.is_some()`: true once the body ran. Clojure's LazySeq.isRealized is
+;;;; `lock == null`: true only once seq() finished on that object (LazySeq.java 80-101, 289-301).
+;;;; Replica: Jank/R9/Seq/LazyState.lean.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] realizing outer unwraps inner through its sval (lazy_sequence.cpp 118-133, 145-165), which
+; runs inner's body but not its seq: Clojure false; jank predicted true.
+(deftest z49-an-inner-lazy-seq-unwrapped-by-an-outer-one-is-not-realized
+  (is (= false (let [inner (lazy-seq [1 2]) outer (lazy-seq inner)] (seq outer) (realized? inner)))))
+
+
+
+; [fn] the inner body throws while the outer is realized: the outer's body ran, its seq never
+; finished. Clojure false; jank predicted true (fn was cleared before the unwrap threw).
+(deftest z49b-a-lazy-seq-whose-inner-seq-threw-is-not-realized
+  (is (= false (let [x (lazy-seq (lazy-seq (throw (ex-info "x" {}))))]
+                 (try (seq x) (catch cpp/jank.runtime.object_ref _ nil))
+                 (realized? x)))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-12: re-forcing a lazy seq whose body threw. Clojure's lazy-seq body is a ^{:once true} fn*:
+;;;; the compiler clears its closed-over locals as the body uses them, so the second run sees nil
+;;;; and throws NullPointerException before its side effects. jank's lazy-seq (core.jank 2026-2032)
+;;;; is an ordinary fn; lazy_sequence.cpp force 136-143 keeps fn after a throw and runs it again.
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] two caught (seq x): Clojure 1 (the second run's (swap! n inc) has n cleared to nil);
+; jank predicted 2.
+(deftest z50-a-lazy-seq-body-that-threw-runs-again-without-its-locals
+  (is (= 1 (let [n (atom 0)
+                 x (lazy-seq (swap! n inc) (throw (ex-info "boom" {})))]
+             (try (seq x) (catch cpp/jank.runtime.object_ref _ nil))
+             (try (seq x) (catch cpp/jank.runtime.object_ref _ nil))
+             @n))))
+
+
+
+; control: realized? after the seq is realized directly: true in both.
+(deftest z49c-control-a-realized-lazy-seq
+  (is (= true (let [x (lazy-seq [1 2])] (seq x) (realized? x)))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Known causes reached by this area's functions, and controls
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] already D12 (1 and 1N are = but hash differently on stock): distinct's set misses 1N.
+; Clojure (1); jank predicted (1 1N) on stock, (1) with the combined patch (D12a/D12b).
+(deftest z51-distinct-of-1-and-1N
+  (is (= [1] (vec (distinct [1 1N])))))
+
+
+
+; control: max-key and min-key keep the last of tied keys in both (core.jank 6426-6460 is
+; core.clj's code): [3].
+(deftest z52-control-max-key-ties
+  (is (= [3] (max-key count [1] [2] [3]))))
+
+
+
+; control: sort-by with a strict comparator is stable in both.
+(deftest z52b-control-sort-by-is-stable
+  (is (= [[1 :a] [1 :c] [0 :b] [0 :d]] (vec (sort-by first > [[1 :a] [0 :b] [1 :c] [0 :d]])))))
+
+
+
+; control: for with :while on the inner binding (core.jank 3615-3700 is core.clj's macro): the inner
+; loop stops, the outer goes on: [[1 0] [2 0] [2 1]] in both.
+(deftest z53-control-for-with-an-inner-while
+  (is (= [[1 0] [2 0] [2 1]] (vec (for [x (range 3) y (range 3) :while (< y x)] [x y])))))
+
+
+
+; control: doseq with :let, :when and a nested binding (core.jank 2711-2764): [1 9] in both.
+(deftest z53b-control-doseq-with-let-when-and-nesting
+  (is (= [1 9] (let [acc (atom [])]
+                 (doseq [x (range 4) :let [y (* x x)] :when (odd? y) z [y]] (swap! acc conj z))
+                 @acc))))
+
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; T9-13: str of a lazy seq. Clojure's LazySeq has no toString of its own (it is not an ASeq), so
+;;;; str gives Object.toString: the class name and the hash (Util.hash of its seq: 1026 = 0x402 for
+;;;; (2 3)). jank's str (core.jank 499-508) calls .to_string, which lazy_sequence.cpp 83-91 prints as
+;;;; the contents. Host-specific text; reported because a program sees it (str, format "%s").
+;;;; ---------------------------------------------------------------------------------------
+
+
+; [fn] Clojure "clojure.lang.LazySeq@402"; jank predicted "(2 3)".
+(deftest z54-str-of-a-lazy-seq-is-its-object-name
+  (is (= "clojure.lang.LazySeq@402" (str (map inc [1 2])))))
+
+
+
+; control: a seq that is an ASeq in Clojure (a vector's seq) prints its contents in both: "(1 2)".
+(deftest z54b-control-str-of-a-vector-seq
+  (is (= "(1 2)" (str (seq [1 2])))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area M - maps, sets, vectors, destructuring, library namespaces (M9-1 to M9-11)
+;;;; ---------------------------------------------------------------------------------------
+
+
+
+;;;; M9-1: a vector (or string) index past 32 bits. Clojure's APersistentVector.valAt/containsKey/
+;;;; entryAt/assoc/invoke take any integer key (Util.isInteger) and cut it with intValue (its low 32
+;;;; bits); jank's persistent_vector get/contains/find/assoc/nth use the whole i64 (to_i64).
+
+; [literals] inlined get -> persistent_vector.cpp get 218-233. Clojure 2 (4294967297 cut to 1).
+; jank predicted: nil (4294967297 is out of range).
+(deftest z55-get-of-a-vector-with-an-index-past-32-bits
+  (is (= 2 (get [1 2 3] 4294967297))))
+
+
+; [fn] the same through a fn's object parameters. Clojure 2, jank nil.
+(deftest z55b-the-same-through-a-fn
+  (is (= 2 ((fn [v k] (get v k)) [1 2 3] (id 4294967297)))))
+
+
+; [literals] inlined contains? -> seq.cpp contains 518-533 -> persistent_vector.cpp contains 253-264.
+; Clojure true, jank false.
+(deftest z55c-contains?-of-a-vector-with-an-index-past-32-bits
+  (is (true? (contains? [1 2 3] 4294967297))))
+
+
+; [literals] assoc -> seq.cpp assoc 431-450 -> persistent_vector.cpp assoc 266-290. Clojure [1 :x 3].
+; jank predicted: std::runtime_error "The index `4294967297` is out of bounds ..." (the test errors).
+(deftest z55d-assoc-of-a-vector-with-an-index-past-32-bits
+  (is (= [1 :x 3] (assoc [1 2 3] 4294967297 :x))))
+
+
+; [literals] a string's get: persistent_string.cpp get 78-93 (to_i64). Clojure \b (RT.getFrom:
+; ((Number) key).intValue()). jank nil.
+(deftest z55e-get-of-a-string-with-an-index-past-32-bits
+  (is (= \b (get "abc" 4294967297))))
+
+
+; control: 2147483648 cuts to -2147483648 in Clojure, out of range in both. nil in both.
+(deftest z55f-control-an-index-whose-low-bits-are-negative
+  (is (nil? (get [1 2 3] 2147483648))))
+
+
+
+;;;; M9-2: a string indexed by a non-integer number. Clojure's RT.getFrom, RT.contains and RT.nthFrom
+;;;; accept any Number for a String (intValue); jank's persistent_string requires an integer.
+
+; [literals] inlined get -> persistent_string.cpp get 78-93 (is_integral). Clojure \b, jank nil.
+(deftest z56-get-of-a-string-with-a-double-index
+  (is (= \b (get "abc" 1.5))))
+
+
+; [fn] the same through a fn. Clojure \b, jank nil.
+(deftest z56b-the-same-through-a-fn
+  (is (= \b ((fn [s k] (get s k)) "abc" (id 1.5)))))
+
+
+; [literals] inlined contains? -> persistent_string.cpp contains 95-105. Clojure true.
+; jank predicted: std::runtime_error "The `contains?` operation on a `persistent_string` requires an
+; integer index, not a `real`." (the test errors).
+(deftest z56c-contains?-of-a-string-with-a-double-index
+  (is (true? (contains? "abc" 1.5))))
+
+
+; [literals] inlined nth -> seq.cpp nth 648-696 (to_int 1.5 is 1, not negative) ->
+; persistent_string.cpp nth 107-126. Clojure \b. jank predicted: std::runtime_error "The `nth`
+; operation on a `persistent_string` requires an integer index" (the test errors). U29's class
+; (vectors) on strings.
+(deftest z56d-nth-of-a-string-with-a-double-index
+  (is (= \b (nth "abc" 1.5))))
+
+
+
+;;;; M9-3: contains? on a collection that is not associative or a set. Clojure's RT.contains throws
+;;;; IllegalArgumentException "contains? not supported on type: ..."; jank's seq.cpp contains 518-533
+;;;; returns false for every object without the `get` behavior.
+
+; [literals] inlined contains? on a list. Clojure throws, jank false (no throw).
+(deftest z57-contains?-of-a-list-throws
+  (is (thrown? (contains? '(1 2) 0))))
+
+
+; [fn] the same through a fn. Clojure throws, jank false.
+(deftest z57b-the-same-through-a-fn
+  (is (thrown? ((fn [c k] (contains? c k)) '(1 2) (id 0)))))
+
+
+; [literals] a number. Clojure throws, jank false.
+(deftest z57c-contains?-of-a-number-throws
+  (is (thrown? (contains? 5 0))))
+
+
+; clojure.set/subset? with a list as the second set (set.jank 136-140, Clojure's code): Clojure
+; throws, jank false.
+(deftest z57d-subset?-against-a-list-throws
+  (is (thrown? (set/subset? #{0} '(0)))))
+
+
+; control: a set and nil. false in both.
+(deftest z57e-control-contains?-of-nil
+  (is (false? (contains? nil 0))))
+
+
+
+;;;; R121 (round 2), new instances: get-in on a root without lookup. seq.cpp get_in 473-511 returns nil
+;;;; at once when the root has no `get` behavior (lists, numbers, keywords, seqs), whatever the keys and
+;;;; the not-found value; Clojure's get-in is (reduce1 get m ks) / a loop of get with a sentinel.
+;;;; fixes/R121.diff (in the combined patch) drops the check: each test passes with it (r121 passed on
+;;;; the real jank with round 8's patch).
+
+; [literals] inlined get-in, no keys: Clojure (1 2), jank nil (R121: (1 2)).
+(deftest z58-get-in-of-a-list-with-no-keys
+  (is (= '(1 2) (get-in '(1 2) []))))
+
+
+; [literals] with a not-found value: Clojure :nf, jank nil (R121: :nf).
+(deftest z58b-get-in-of-a-number-with-a-not-found
+  (is (= :nf (get-in 5 [:a] :nf))))
+
+
+; [literals] no keys, a not-found value: Clojure 5 (the root), jank nil (R121: 5).
+(deftest z58c-get-in-of-a-number-with-no-keys
+  (is (= 5 (get-in 5 [] :nf))))
+
+
+; [fn] through a fn's object parameters (the inlined get_in again). Clojure (1 2), jank nil (R121: (1 2)).
+(deftest z58d-the-same-through-a-fn
+  (is (= '(1 2) ((fn [m ks] (get-in m ks)) (id '(1 2)) []))))
+
+
+; control: nil has the `get` behavior (nil.cpp get 2-arity returns the fallback). :nf in both.
+(deftest z58e-control-get-in-of-nil
+  (is (= :nf (get-in nil [:a] :nf))))
+
+
+
+;;;; M9-4: select-keys drops the map's metadata. core.jank 2400-2409 reduces into {}; Clojure's
+;;;; select-keys ends with (with-meta ret (meta map)).
+
+; Clojure {:m 1}, jank nil.
+(deftest z59-select-keys-keeps-the-map-metadata
+  (is (= {:m 1} (meta (select-keys (with-meta {:a 1 :b 2} {:m 1}) [:a])))))
+
+
+; clojure.set/project maps select-keys over the rel (set.jank 68-71): Clojure {:m 1}, jank nil.
+(deftest z59b-project-keeps-each-map-metadata
+  (is (= {:m 1} (meta (first (set/project #{(with-meta {:a 1 :b 2} {:m 1})} [:a]))))))
+
+
+
+;;;; R120 (round 2), new instances: coll? and empty of a cons and of a repeat. seq.cpp is_collection 77-87
+;;;; and empty 787-805 use behavior::collection_like (a static empty() and conj); obj::cons, obj::repeat,
+;;;; obj::chunked_cons and the native sequences have conj but no empty(). Clojure: Cons, Repeat and every
+;;;; ASeq are IPersistentCollection, and their empty() is (). fixes/R120.diff (in the combined patch)
+;;;; gives cons an empty(): the cons tests pass with it, the repeat tests still fail (no fix).
+
+; [literals] inlined coll? of a cons ((cons 1 '(2)) is an obj::cons: seq.cpp cons 371-385).
+; Clojure true, jank false (R120: true).
+(deftest z60-coll?-of-a-cons
+  (is (true? (coll? (cons 1 '(2))))))
+
+
+; [literals] (repeat 2 1) is an obj::repeat (repeat.cpp create 39-46). Clojure true, jank false
+; (with the combined patch too).
+(deftest z60b-coll?-of-a-repeat
+  (is (true? (coll? (repeat 2 1)))))
+
+
+; empty of a cons: Clojure (), jank nil (R120: ()).
+(deftest z60c-empty-of-a-cons-is-a-list
+  (is (list? (empty (cons 1 '(2))))))
+
+
+; empty of a repeat: Clojure (), jank nil (with the combined patch too).
+(deftest z60d-empty-of-a-repeat-is-a-list
+  (is (list? (empty (repeat 2 1)))))
+
+
+; control: (cons 1 nil) is a persistent_list in jank (seq.cpp cons 373-376). true in both.
+(deftest z60e-control-coll?-of-a-cons-onto-nil
+  (is (true? (coll? (cons 1 nil)))))
+
+
+
+;;;; M9-5: an 8-entry array map becomes a hash map on assoc of a key it already holds.
+;;;; persistent_array_map.cpp assoc 70-89 and transient_array_map.cpp assoc_in_place 67-89 promote when
+;;;; the map holds 8 entries before looking for the key (the comment there says so); the hash map's
+;;;; seq is CHAMP order. Clojure's PersistentArrayMap.assoc / TransientArrayMap.doAssoc replace a
+;;;; present key's value in place and keep insertion order. jank's order for the keys 0-7 (hashes
+;;;; Murmur3 hashLong, as Clojure's; low 5 bits 0 4 20 19 6 23 17 3): (0 7 1 4 6 3 2 5)
+;;;; (Jank.R9.Coll.Order promoted_keys; Clojure's own (hash-map 0 0 ... 7 7) shows the same order).
+
+; Clojure [0 1 2 3 4 5 6 7], jank [0 7 1 4 6 3 2 5].
+(deftest z61-assoc-of-a-present-key-keeps-an-8-entry-map-order
+  (is (= [0 1 2 3 4 5 6 7]
+         (let [m (into {} (map vector (range 8) (range 8)))]
+           (vec (keys (assoc m 0 :x)))))))
+
+
+; update (core.jank 3731-3743, assoc of the same key): Clojure [0 1 2 3 4 5 6 7], jank [0 7 1 4 6 3 2 5].
+(deftest z61b-update-keeps-an-8-entry-map-order
+  (is (= [0 1 2 3 4 5 6 7]
+         (let [m (into {} (map vector (range 8) (range 8)))]
+           (vec (keys (update m 3 inc)))))))
+
+
+; frequencies (core.jank 3330-3339, assoc! on (transient {})): the ninth element repeats a key.
+; Clojure [7 6 5 4 3 2 1 0], jank [0 7 1 4 6 3 2 5].
+(deftest z61c-frequencies-keeps-first-seen-order
+  (is (= [7 6 5 4 3 2 1 0] (vec (keys (frequencies [7 6 5 4 3 2 1 0 0]))))))
+
+
+; into {} (core.jank 3370-3383, conj! -> transient_array_map conj_in_place -> assoc_in_place).
+; Clojure [7 6 5 4 3 2 1 0], jank [0 7 1 4 6 3 2 5].
+(deftest z61d-into-a-map-with-a-repeated-key
+  (is (= [7 6 5 4 3 2 1 0]
+         (vec (keys (into {} [[7 0] [6 0] [5 0] [4 0] [3 0] [2 0] [1 0] [0 0] [0 1]]))))))
+
+
+; control: 7 entries stay an array map. [0 1 2 3 4 5 6] in both.
+(deftest z61e-control-a-7-entry-map
+  (is (= [0 1 2 3 4 5 6]
+         (let [m (into {} (map vector (range 7) (range 7)))]
+           (vec (keys (assoc m 0 :x)))))))
+
+
+
+;;;; M9-6: the map destructuring builds from a seq of keyword arguments is a hash map. core.jank
+;;;; destructure's pmap 3427-3436 converts with (apply hash-map gmap); Clojure 1.12's
+;;;; PersistentArrayMap/createAsIfByAssoc keeps argument order (and the first of equal keys).
+;;;; jank's order for the keys 2, 1 (hashes' low 5 bits 20, 4): (1 2) (Order kwargs_keys).
+
+; [fn] & {:as m}: Clojure [2 1], jank [1 2].
+(deftest z62-keyword-arguments-keep-their-order
+  (is (= [2 1] ((fn [& {:as m}] (vec (keys m))) 2 :x 1 :y))))
+
+
+; a list bound to a map form: Clojure [2 1], jank [1 2].
+(deftest z62b-a-seq-bound-to-a-map-form-keeps-its-order
+  (is (= [2 1] (let [{:as m} (list 2 :x 1 :y)] (vec (keys m))))))
+
+
+; equal keys: Clojure keeps the first key object ([1]), jank's hash-map keeps the last ('(1)),
+; S59's replacement (champ.hpp copy_inner_replace_value). Clojure true, jank false.
+(deftest z62c-keyword-arguments-keep-the-first-of-equal-keys
+  (is (true? ((fn [& {:as m}] (vector? (first (keys m)))) [1] :a '(1) :b))))
+
+
+; control: keys already in CHAMP order. [1 2] in both.
+(deftest z62d-control-keys-in-hash-order
+  (is (= [1 2] ((fn [& {:as m}] (vec (keys m))) 1 :x 2 :y))))
+
+
+
+;;;; M9-7: assert. core.jank 915-930 throws (ex-info "assertion failed" {:assertion (pr-str x)});
+;;;; Clojure throws AssertionError "Assert failed: <form>" (no data). fn's :pre/:post (core.jank
+;;;; 3560-3575) and derive's checks (4229-4240) go through it.
+
+; Clojure "Assert failed: (= 1 2)", jank "assertion failed".
+(deftest z63-assert-message-names-the-form
+  (is (= "Assert failed: (= 1 2)"
+         (try (assert (= 1 2)) (catch cpp/jank.runtime.object_ref e (ex-message e))))))
+
+
+; [fn] a :pre condition: Clojure "Assert failed: (pos? x)", jank "assertion failed".
+(deftest z63b-pre-condition-message-names-the-form
+  (is (= "Assert failed: (pos? x)"
+         (try ((fn [x] {:pre [(pos? x)]} x) -1) (catch cpp/jank.runtime.object_ref e (ex-message e))))))
+
+
+; ex-data of a failed assert: Clojure nil, jank {:assertion "false"}.
+(deftest z63c-a-failed-assert-carries-no-data
+  (is (nil? (try (assert false) (catch cpp/jank.runtime.object_ref e (ex-data e))))))
+
+
+; derive's (assert (not= tag parent)): Clojure "Assert failed: (not= tag parent)", jank "assertion failed".
+(deftest z63d-derive-of-a-tag-onto-itself-names-the-assertion
+  (is (= "Assert failed: (not= tag parent)"
+         (try (derive (make-hierarchy) ::a ::a) (catch cpp/jank.runtime.object_ref e (ex-message e))))))
+
+
+
+;;;; M9-8: clojure.walk's prewalk-demo and postwalk-demo print each form with println (walk.jank
+;;;; 27-37); Clojure's with prn.
+
+; Clojure "Walked: \"a\"\n", jank "Walked: a\n".
+(deftest z64-prewalk-demo-prints-readably
+  (is (= "Walked: \"a\"\n" (with-out-str (walk/prewalk-demo "a")))))
+
+
+; Clojure "Walked: \"a\"\n", jank "Walked: a\n".
+(deftest z64b-postwalk-demo-prints-readably
+  (is (= "Walked: \"a\"\n" (with-out-str (walk/postwalk-demo "a")))))
+
+
+; control: a number prints alike. "Walked: 1\n" in both.
+(deftest z64c-control-prewalk-demo-of-a-number
+  (is (= "Walked: 1\n" (with-out-str (walk/prewalk-demo 1)))))
+
+
+
+;;;; M9-9: update-vals of a sorted map stays sorted. core.jank 7748-7761 asks (transientable? m), and a
+;;;; persistent_sorted_map has to_transient (U33); Clojure asks IEditableCollection, which
+;;;; PersistentTreeMap is not, so the result is built in (transient {}).
+
+; Clojure false, jank true.
+(deftest z65-update-vals-of-a-sorted-map-is-not-sorted
+  (is (false? (sorted? (update-vals (sorted-map 1 2) inc)))))
+
+
+; Clojure [1 3 2] (an array map in insertion order), jank [1 2 3].
+(deftest z65b-update-vals-of-a-sorted-map-then-assoc
+  (is (= [1 3 2] (vec (keys (assoc (update-vals (sorted-map 3 :a 1 :b) str) 2 :x))))))
+
+
+
+;;;; M9-10: empty of a seq keeps the seq's metadata. seq.cpp empty 787-805 returns
+;;;; with_meta(T::empty(), meta(o)) for every collection; Clojure's ASeq.empty and LazySeq.empty
+;;;; return PersistentList.EMPTY (no metadata); only lists, vectors, maps, sets and Cons keep it.
+
+; a vector's seq: Clojure nil, jank {:m 1}.
+(deftest z66-empty-of-a-seq-has-no-metadata
+  (is (nil? (meta (empty (with-meta (seq [1 2 3]) {:m 1}))))))
+
+
+; a lazy seq: Clojure nil, jank {:m 1}.
+(deftest z66b-empty-of-a-lazy-seq-has-no-metadata
+  (is (nil? (meta (empty (with-meta (map inc [1 2]) {:m 1}))))))
+
+
+; control: a list keeps it. {:m 1} in both.
+(deftest z66c-control-empty-of-a-list-keeps-metadata
+  (is (= {:m 1} (meta (empty (with-meta '(1 2) {:m 1}))))))
+
+
+
+;;;; Instances of known causes.
+
+; D10 (parse-long is std::stoll, math.cpp parse_long 678-707): Java's Long.valueOf accepts every
+; Unicode decimal digit. Clojure 34, jank nil.
+(deftest z67-parse-long-of-arabic-indic-digits
+  (is (= 34 (parse-long "٣٤"))))
+
+
+; U81's code (zipmap builds in (transient (hash-map)), core.jank 2411-2422; Clojure (transient {})):
+; the key order. Clojure [2 1], jank [1 2].
+(deftest z68-zipmap-keeps-the-key-order
+  (is (= [2 1] (vec (keys (zipmap [2 1] [:a :b]))))))
+
+
+; control: keys already in CHAMP order. [1 2] in both.
+(deftest z68b-control-zipmap-in-hash-order
+  (is (= [1 2] (vec (keys (zipmap [1 2] [:a :b]))))))
+
+
+; U67 (a map entry is a 2-vector): MapEntry.empty() is nil in Clojure; jank [].
+(deftest z69-empty-of-a-map-entry-is-nil
+  (is (nil? (empty (first {:a 1})))))
+
+
+; U67: key of a vector throws in Clojure (ClassCastException); jank's key is (first e): 1.
+(deftest z69b-key-of-a-vector-throws
+  (is (thrown? (key [1 2]))))
+
+
+
+;;;; M9-11: a hash set's or hash map's seq order. Both index the 32-bit hash 5 bits at a time from the
+;;;; low end, and a long hashes alike in both (Murmur3 hashLong), but immer's CHAMP node lists its
+;;;; inline values before its sub-nodes (champ_iterator.hpp step_down/step_right), while Clojure's
+;;;; BitmapIndexedNode interleaves them by position. 5 and 9 share position 23 at the root, 8 is alone
+;;;; at 31: Clojure (9 5 8), jank (8 9 5) (Jank.R9.Coll.HashOrder set_5_9_8; cljOrd reproduces every
+;;;; Clojure order checked, champOrd the replica's CHAMP for (range n), n < 40).
+
+; hash-set (persistent_hash_set.cpp create_from_seq 45-53). Clojure [9 5 8], jank [8 9 5].
+(deftest z70-hash-set-seq-order
+  (is (= [9 5 8] (vec (hash-set 5 9 8)))))
+
+
+; printed: Clojure "#{9 5 8}", jank "#{8 9 5}".
+(deftest z70b-hash-set-printed-order
+  (is (= "#{9 5 8}" (str (hash-set 5 9 8)))))
+
+
+; a 12-entry map (into {} promotes at the 9th key in both): Clojure [0 7 1 4 6 3 2 11 9 5 10 8],
+; jank [0 7 1 4 6 3 2 10 8 11 9 5].
+(deftest z70c-hash-map-of-12-keys-seq-order
+  (is (= [0 7 1 4 6 3 2 11 9 5 10 8]
+         (vec (keys (into {} (map vector (range 12) (range 12))))))))
+
+
+; control: no two keys share a root position. [5 8] in both.
+(deftest z70d-control-hash-set-without-shared-positions
+  (is (= [5 8] (vec (hash-set 5 8)))))

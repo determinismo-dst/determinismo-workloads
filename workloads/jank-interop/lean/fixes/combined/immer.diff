@@ -1,0 +1,38 @@
+--- a/immer/detail/hamts/node.hpp
++++ b/immer/detail/hamts/node.hpp
+@@ -500,22 +500,25 @@
+         auto srcp = src->collisions();
+         auto dstp = dst->collisions();
+         assert(pos >= srcp && pos < srcp + n);
++        // The new value takes the replaced one's place, as the in-place
++        // writes of do_add_mut and do_update_mut do (`*fst = ...`): the
++        // order of a collision node does not change.
+         IMMER_TRY {
+-            new (dstp) T{std::move(v)};
++            dstp = detail::uninitialized_copy(srcp, pos, dstp);
+             IMMER_TRY {
+-                dstp = detail::uninitialized_copy(srcp, pos, dstp + 1);
+-                IMMER_TRY {
+-                    detail::uninitialized_copy(pos + 1, srcp + n, dstp);
+-                }
+-                IMMER_CATCH (...) {
+-                    detail::destroy(dst->collisions(), dstp);
+-                    IMMER_RETHROW;
+-                }
++                new (dstp) T{std::move(v)};
+             }
+             IMMER_CATCH (...) {
+-                dst->collisions()->~T();
++                detail::destroy(dst->collisions(), dstp);
+                 IMMER_RETHROW;
+             }
++            IMMER_TRY {
++                detail::uninitialized_copy(pos + 1, srcp + n, dstp + 1);
++            }
++            IMMER_CATCH (...) {
++                detail::destroy(dst->collisions(), dstp + 1);
++                IMMER_RETHROW;
++            }
+         }
+         IMMER_CATCH (...) {
+             deallocate_collision(dst, n);

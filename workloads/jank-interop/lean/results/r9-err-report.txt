@@ -1,0 +1,325 @@
+Round 9, area E (errors as objects): jank 94d32623 against Clojure 1.12.3
+Every jank path is under upstream-r5/compiler+runtime/ (94d32623 = 7135b7708's tree). Clojure results
+were run on Clojure 1.12.3 (.r9-scratch/err/probe/p1.clj, .r9-scratch/err/clj-run.txt). jank was not
+built or run.
+
+Files
+- Lean: Jank/R9/Err/Catch.lean (the catch, stock / V7a / A34, and the specification),
+  Jank/R9/Err/Paths.lean (reporting, load_module, the error ctor with V9/V18, nth with X20/X20b),
+  Jank/R9/Err/Axioms.lean; driver Run/R9/Err.lean (exe jank9-err; `walk`, `nth`, or both plus the
+  test table). Build: `lake build jank9-err` succeeds (14 jobs).
+- Results: results/r9-err-run.txt (walks and the test table), results/r9-err-axioms.txt,
+  results/r9-err-clj.txt (Clojure 1.12.3 run of the tests), results/r9-err-cxx.txt (standalone C++
+  check of the generated try's shape).
+- Tests: .r9-scratch/err/tests.jank (16 deftests ve1-ve7c), Clojure translation
+  .r9-scratch/err/clj/jank_lean/deviations_r9_err_test.clj.
+- Fixes: fixes/A34.diff, fixes/V7a.diff, fixes/V9.diff, fixes/V18.diff, fixes/X20b.diff; combined
+  variants .r9-scratch/err/{A34,V7a,V9,V18}-combined.diff; all of area E merged:
+  .r9-scratch/err/err-all-stock.diff (against 94d32623) and .r9-scratch/err/err-all-combined.diff
+  (against round 8's tree). Edit scripts: .r9-scratch/err/fix/{err.py,x20b.py,mk.sh}.
+
+======================================================================
+(1) DEVIATIONS
+======================================================================
+Known deviations this area fixes (statuses from round 5 and round 8's real run), then one new.
+
+V7 family / A34 (arity errors and every std::exception), V7a/V7l (analysis and load errors).
+- Program: (try ((identity (fn [a] a))) (catch cpp/jank.runtime.object_ref e :caught)); also
+  (eval 'nope), (require 'missing), (nth "€€a" -1), (re-pattern "(?i)a"), (slurp "/missing").
+- Clojure 1.12.3: every one is caught (ArityException "Wrong number of args (0) passed to: ...",
+  CompilerException, FileNotFoundException, StringIndexOutOfBoundsException, ...).
+- jank, stock and round 8: an error_ref (read/analysis/load errors) or a std::exception (arity
+  error invalid_arity<N>, native_function_wrapper.hpp 53-61; the runtime's checks; libstdc++'s
+  regex_error and filesystem_error) is not an object_ref, and the generated handler is
+  `catch(object_ref &)` (codegen gen(catch) cpp_processor.cpp 1105-1123, analyze_try
+  processor.cpp 2925-3150). It escapes every program catch, `thrown?` (clojure/test.jank 493-504)
+  and `is` (525-532).
+- Tests on the real jank (round 8, patched): r34, v07b, v07c, v09, v09b, v18, d15, u79, u80, u90,
+  v03, b30, s24, s27, s28, s32, s35, g480-g482 fail or err for this cause. New single-cause tests:
+  ve1, ve1b (A34), ve3, ve3b, ve3c (V7a), ve2, ve2b, ve2c (X20b), ve4, ve4b (V18), ve5 (V9).
+- Status: V7 (round 5), A34 (round 6's R34 note), X20's miss (round 8). Confidence: high.
+- Shared cause: one design choice, the C++ type of what is thrown. The fixes below remove it at
+  the catch (A34/V7a) and at nth's throw sites (X20b).
+
+V9 (ex-info data lost through load and macroexpansion), V18 (*e of a compile error has no data and
+no cause): as round 5 (B3, B12); tests v09, v09b, v18; new ve4, ve4b, ve5. Clojure: the
+CompilerException's cause is the ex-info; its data is {:clojure.error/phase ..., :line, :column,
+:source}. Fixed by V9 and V18 (with A34 or V7a for the catch).
+
+V15 (ex-info with a nil message): not fixed (section 5).
+
+E9-1 (new). The runtime's errors that are thrown as string objects have no ex-message.
+- Program: (try (inc ((fn [x] x) 9223372036854775807)) (catch Throwable e (ex-message e)))
+  (jank: `(catch cpp/jank.runtime.object_ref e ...)`).
+- Clojure 1.12.3: "integer overflow" (ArithmeticException).
+- Prediction: stock: ex-message of a string is try_object<exception_info>'s std::runtime_error,
+  thrown from inside the handler (core.cpp ex_message 1338-1341), so the test errs; round 8 (U62):
+  nil; with this area's fixes: nil.
+- Path: math.hpp `inc`, object branch (stock 1186-1330: `throw make_box("Overflow on
+  increment.").erase()`), a persistent_string object. 21 such string throws on stock
+  (math.hpp 6, math.cpp 7, evaluate.cpp 5, inst.cpp 2, ...), 69 in round 8's combined tree (R33b,
+  V64c, X20 and others added them, e.g. X20's `(rem 1 0)` "Divide by zero" is a string).
+- Test: ve6-ex-message-of-an-overflow-is-a-string. Status: new as a deviation (round 6 named the
+  string objects as the design for R33b; U62 made ex-message of a non-exception nil, which is right
+  for a program's own `(throw "x")` but leaves these). Confidence: high.
+- Shared cause: jank throws strings as exceptions; separate from A34 (A34 converts only what is
+  not an object; a string is an object, and a program's own string must stay a string).
+
+Not new: every other disagreement met (positions, message texts, the regex grammar) is an earlier
+item (R18, S22-S35, U62, U63, V10-V16).
+
+======================================================================
+(2) PROOFS (statements in words; Lean names)
+======================================================================
+Jank/R9/Err/Catch.lean (C++ handler matching on the thrown values and handler types jank uses):
+- fixed_eq_spec: for every handler list and every thrown value, the code A34 (or V7a) generates
+  (the nested try, literally: pass-through handlers, object pass-through, converters, then the
+  program's handlers) behaves as the specification: the first handler that matches natively wins,
+  and the first object handler also takes every value the variant converts, bound as the
+  converted ex-info.
+- fixed_stock_eq: with nothing converted, the generated code is the stock code.
+- fixed_eq_stock_of_not_conv: for every value not converted (objects, C++ ints, foreign values),
+  A34's code does exactly what stock does (no regression).
+- fixed_eq_stock_of_earlier: when a handler before every object handler matches the value
+  natively (jank's suite cpp/try/pass-catch-mixed.jank), stock and A34 give it that handler.
+- spec_eq_stock_of_none, spec_eq_stock_of_not_conv: without an object handler, or for a value not
+  converted, the specification is the stock code.
+- a34_object_sees: if no handler before the first object handler matches, every error_ref and
+  std::exception reaches that object handler as the converted object.
+- convErr_observed, convStd_observed: the object's ex-message is the error's message (what() for
+  a std::exception), ex-data nil, and an error stays attached.
+- vb_outcome_a34 / vb_outcome_stock_err / vb_outcome_stock_std: the tests' `vb-outcome` answers
+  :object with A34 for every error_ref and std::exception; stock answers :error / :native.
+- thrown_a34 / thrown_stock: `thrown?` sees each of them with A34; stock lets them escape.
+Jank/R9/Err/Paths.lean:
+- report_preserved: an error crossing any number n of program catches that rethrow (load-lib's at
+  each nested require) is printed by the CLI, with A34/V7a, exactly as stock prints the bare error.
+- report_stock: stock's printing of the same crossing (the catches don't see the error).
+- v7r_report: round 8's V7r object (a read-string error) prints as `#error {...}` on stock's
+  print_exception and as the error's report with A34/V7a's.
+- load_module_unwrap: a nested require's failure that a module's load-lib made an object is, at
+  the enclosing load_module, the same error stock returns.
+- v18_star_e: for every read, analysis or macro error, *e (and a converted catch) has ex-data and
+  an ex-cause with V18; stock has neither.
+- v9_data_kept: for every ex-info a module's top level or a macro throws, and every data map, the
+  data is reachable through ex-cause with V9 (round 5's jDataWith), whatever the phase; stock: not.
+- nth_fixed_eq_clj: with X20 and X20b, (nth coll i) agrees with Clojure for every collection kind
+  and every integer index: a value, nil, or a throw an object catch sees.
+- x20_miss: with X20 alone, every negative index on every string still throws a std::runtime_error
+  (seq.cpp 656-660): g480-g482.
+- nth_stock_std: stock's nth throws only std::runtime_errors.
+Not proved: that the C++ compiler compiles the emitted text (checked by syntax-only compiles and a
+standalone C++ program of the same shape, section 7); that every throw site of jank's runtime is
+modeled (the model has classes and types, not sites); V18's message text (abstracted).
+
+======================================================================
+(3) WHAT WAS REPLICATED
+======================================================================
+- Catch.lean: thrown values (object_ref, error_ref, std::exception classes runtime_error,
+  invalid_arity, regex_error, filesystem_error, logic_error, bad_cast; int; foreign) and handler
+  types; [except.handle] matching; stock gen(try)/gen(catch) (cpp_processor.cpp 1022-1123,
+  processor.cpp analyze_try 2925-3150); A34's/V7a's generated nested try; to_exception_object
+  (A34's exception_info.cpp); the tests' observers (vb-outcome, deviations_r5_test.jank 25-33;
+  thrown? and try-expr, clojure/test.jank 493-532).
+- Paths.lean: util/try.cpp print_exception 209-255 (stock and with the unwrap); load-lib's
+  catch-and-rethrow (core.jank 4836-4873); context.cpp load_module 324-354 (stock, unwrap, V9's
+  `thrown`); exception_info(error_ref) (exception_info.cpp 23-27; U44's message in the combined
+  tree) with V9's cause and V18's shape; seq.cpp nth 648-695, persistent_vector.cpp nth 321-339,
+  persistent_string.cpp nth 105-121 (X20's), with X20b; Clojure's RT.nth.
+- Reused unchanged: round 5's Jank/R5/Errors/Model.lean (JVal, JEx, JErr, Data, jExMessage,
+  jExData, jDataWith, compilerData).
+
+======================================================================
+(4) WHAT IS NOT EXACT
+======================================================================
+- Exceptions are compared by kind (object or not), message and data, not by Clojure class.
+- V18's outer message ("Syntax error compiling at (file:line:col).") is abstracted in the model;
+  jank's position is the token's (round 5: Clojure's is the enclosing list's), so the text
+  differs from Clojure's at the column.
+- Messages differ from Clojure's (jank's own texts), on every path; not claimed equal.
+- `:default` binds nil in jank (round 4/5 note); the model keeps the thrown value and the
+  observers ignore a :default binding.
+- jank's nREPL server's handle-client (nrepl/server/core.jank 79-105) catches std.exception,
+  object_ref, error_ref in that order: with A34 an error_ref from a handler reaches the object
+  branch, so its reply's :err is `(pr-str e)` of the ex-info instead of the error's message.
+  Modeled by fixed_eq_spec; not a Clojure-facing behavior.
+
+======================================================================
+(5) STILL LEFT OUT, AND WHY
+======================================================================
+- V15 (nil message): exception_info's message is a jtl::immutable_string, and ex-info's message
+  reaches C++ through convert<immutable_string> (round 5). A fix needs exception_info to mark a nil
+  message and core.cpp's ex_info to take an object_ref; the overload jank's analyzer then picks for
+  `(cpp/jank.runtime.ex_info msg map)` can't be settled without a build. Not written; v15 still
+  errs.
+- E9-1: needs every runtime string throw to become an ex-info (21 stock sites, 69 combined); not
+  written in the time. X20b's new sites are ex-infos already.
+- u80, u90 and the regex tests (b30, s24, s27, s28, s32, s35): with A34 the native error is caught
+  by `is` and reported as an :error (no longer an uncaught crash), but the value still differs from
+  Clojure's: reduce-kv over a seq (U80), sh's env (U90), std::regex's grammar (R18, S24-S35).
+- V11 (a delay whose body raises an error_ref runs again) and V12 (a future's error_ref ends the
+  process) are C++ catch sites, not program catches: A34 does not touch them (round 8's patch
+  fixes both).
+- analyze/processor.cpp's macro-expansion handler (3511-3529) turns an object into an error by
+  its printed text; an ex-info carrying an error (a macro body that caught and rethrew) keeps only
+  the text. Not changed (V9 keeps the object as the cause, which covers the data).
+- The round-5 world census was not rerun under the fixes; the test table (results/r9-err-run.txt)
+  and the walks stand in for it.
+
+======================================================================
+(6) ASSUMPTIONS
+======================================================================
+- errA9-1. jank's JIT compiles the emitted nested try with C++'s handler semantics (the same
+  [except.handle] rules round 5's errA5-2 assumes); checked with Apple clang on a standalone copy.
+- errA9-2. jank::error_ref is thrown by value as jtl::ref<error::base> (jtl/result.hpp panic 56,
+  evaluate.cpp 320); `catch(jank::error_ref const &)` matches it.
+- errA9-3. error::base is allocated on the GC heap (error.hpp 213 "We leak the stack trace... get
+  these errors off the GC heap"), so V9's object_ref field is traced.
+- errA9-4. visit.hpp (in the JIT prelude, prelude.hpp) includes exception_info.hpp, so the
+  generated code sees to_exception_object (visit.hpp 70).
+- Round 5's errA5-1..5 stand. None replaced.
+
+======================================================================
+(7) PROPERTIES CHECKED, WITH THEIR SOURCES
+======================================================================
+- A Clojure catch of Throwable sees every exception (Clojure special form `try`; jank's book
+  cpp-interop/native-exceptions.md: jank values are caught as object_ref).
+- A handler written before the object handler keeps precedence (C++ [except.handle]; jank's suite
+  cpp/try/pass-catch-mixed.jank asserts it).
+- ex-data of an exception other than ExceptionInfo is nil (core.clj ex-data docstring; Clojure run).
+- ex-message of a Throwable is its message (core.clj ex-message; Clojure run: "integer overflow").
+- A CompilerException carries :clojure.error/* data and the cause (Clojure run, probe p1).
+- A failed require removes the namespace it created (core.clj load-lib; round 5 B2).
+- jank's own reporting of an uncaught error is unchanged by the fixes (report_preserved,
+  load_module_unwrap).
+
+======================================================================
+(8) SEARCH RUNS (exact bounds)
+======================================================================
+- walk (Run/R9/Err.lean): complete. Every valid handler list of length <= 4 over 9 handler types
+  (2,482 lists: :default only last, no type twice) x 9 thrown values = 22,338 cases, under stock,
+  V7a and A34: generated code = specification in 67,014 of 67,014; A34 differs from stock in 3,862
+  cases, V7a in 1,808; 0 regressions (a value not converted handled differently).
+- nth: complete over 8 collection kinds x indices -3..4 (64 cases): agree with Clojure (value / nil
+  / object throw): stock 15, X20 22, X20+X20b 64.
+- Standalone C++ (.r9-scratch/err/cxx/nested.cpp, results/r9-err-cxx.txt): 9 cases of the emitted
+  shape (error_ref, runtime_error, object, logic_error, int; a native handler before the object
+  one; a rethrow from the object handler): every result as the model predicts.
+- Clojure 1.12.3: probe p1 (40 programs: the classes, messages and data of each error kind);
+  tests: 14 of 14 Clojure-runnable tests pass (ve7c is jank only: C++ exception types).
+- Syntax-only compiles (.r8-scratch/merge/syn.sh, LLVM 22 headers for 23): every changed .cpp
+  for each fix alone on 94d32623, and the merged fixes on 94d32623 and on round 8's tree:
+  cpp_processor.cpp, exception_info.cpp, context.cpp, error/analyze.cpp, seq.cpp,
+  persistent_vector.cpp, array_chunk.cpp, transient_vector.cpp compile; util/try.cpp shows only the
+  3 errors stock shows too (the cpptrace stub lacks formatter::symbol_mode and stacktrace
+  begin/end).
+
+======================================================================
+(9) THEOREMS (★ = new for-every-input proof)
+======================================================================
+★ fixed_eq_spec, ★ fixed_stock_eq, ★ fixed_eq_stock_of_not_conv, ★ fixed_eq_stock_of_earlier,
+★ spec_eq_stock_of_none, ★ spec_eq_stock_of_not_conv, ★ a34_object_sees, ★ convErr_observed,
+★ convStd_observed, ★ vb_outcome_a34, vb_outcome_stock_err, vb_outcome_stock_std, ★ thrown_a34,
+thrown_stock, ★ report_preserved, report_stock, v7r_report, ★ load_module_unwrap, ★ v18_star_e,
+★ v9_data_kept, ★ nth_fixed_eq_clj, ★ x20_miss, ★ nth_stock_std; helpers convertible_not_obj,
+catches_object_iff, convert_obj, inner_nil, nomatch_inner, inner_cons_nomatch, rethrow_err,
+rethrow_obj, layers_obj, data_has_nil. No sorry, no native_decide, no axiom declared; every main
+theorem rests on propext, Quot.sound and (v9_data_kept) Classical.choice at most
+(results/r9-err-axioms.txt).
+
+======================================================================
+(10) LIBRARY GAPS
+======================================================================
+- The sdk has no exception model: round 5's thrown-value types are reused and refined with C++
+  handler types and a nested-try semantics.
+- `matches` is a Lean keyword (the matching relation is `catches`).
+
+======================================================================
+(11) FIXES WRITTEN
+======================================================================
+Each applies alone to 94d32623 (`git -C upstream-r5 apply --check`; upstream-r5 stays clean).
+Round 8's tree: X20b applies as is; A34, V7a, V9, V18 have -combined variants. The merged forms:
+err-all-stock.diff and err-all-combined.diff (A34 + V9 + V18 + X20b; V7a is A34's subset). No
+.jank file is changed (no fwdref check needed).
+
+A34 (cpp_processor.cpp gen(try); exception_info.hpp/.cpp to_exception_object; util/try.cpp
+print_exception; context.cpp load_module)
+- Design: the catch, once. When a try has a `catch(object_ref &)`, gen(try) wraps the body in an
+  inner try: `catch(T) { throw; }` for each handler before the object one, `catch(object_ref
+  const &) { throw; }`, `catch(jank::error_ref const &e) { throw
+  jank::runtime::to_exception_object(e); }`, `catch(std::exception const &e) { throw ...(e); }`.
+  to_exception_object(error_ref): exception_info(e), the error's message, nil data, the error's
+  causes as ex-causes. to_exception_object(std::exception): what(), nil data (not ex_info, so
+  round 8's V16 `{}` doesn't apply: Clojure's ex-data of a non-ExceptionInfo is nil). Reporting:
+  print_exception of an exception_info carrying an error prints the error's report (it printed
+  `#error {...}`); load_module returns the carried error, so nested require failures keep their
+  report and causes.
+- Should pass: r34 (with R34, in round 8's patch), v07b, v07c, d15, u79, v03 (with V3),
+  g480-g482, ve1, ve1b, ve2, ve2b, ve2c, ve3, ve3b, ve3c; without V7r also v07, x27, s17, a13,
+  y10. With V9: v09, v09b, ve5. With V18: v18 (V18 alone suffices), ve4, ve4b.
+- Still failing, and why: u80, u90, b30, s24, s27, s28, s32, s35 (now :error inside `is`, the
+  value differs: section 5); v15 (no fix); ve6 (E9-1).
+- What in jank relies on today's behavior (read): clojure.test's try-expr and test-var (a native
+  error now becomes an :error report instead of ending the process); thrown?; load-lib (stock:
+  object catch; round 8: also an error_ref catch): it now removes the namespace and rethrows the
+  ex-info, which load_module and print_exception unwrap; get-possibly-unbound-var and the tap loop
+  (now also catch natives); the nREPL server's handle-client (section 4). The terminal REPL and
+  c_api print through print_exception (unwrapped). safe_eval keeps an exception_info as *e, and
+  `(str *e)` is the error's report (exception_info::to_string), so nREPL's eval-error text is
+  unchanged.
+- jank's suite: the generated code changes only for a try with an object handler. Read the 57
+  test/jank files that contain `catch`: form/try/* (ordering, catch-all, nested, rethrow,
+  unboxed position, finally), cpp/try/* (std exceptions, primitives, pointers, string literals,
+  slicing, mixed, rethrow, finally), cpp/throw/*, form/fn/named-recur/pass-undefined-arity.jank
+  (a typed invalid_arity<1> catch, no object handler: unchanged), form/throw/*, form/if/
+  pass-throw-condition.jank. They hold: objects pass the inner try unchanged, C++ values of other
+  types are untouched, and pass-catch-mixed's `std.runtime_error` handler before the object
+  handler still gets its exception (fixed_eq_stock_of_earlier; the standalone check). The fail-
+  files there are analysis errors at the top level, untouched. No test/jank file uses
+  clojure.test.
+- Build must check: the PCH and every JIT'd try with an object handler compile (the emitted text
+  was checked in a standalone program, not in jank's JIT); jank's 549 passing suite files; that no
+  jank-level catch relied on a native passing an object handler.
+
+V7a (the same files) - A34 without the std::exception converter: jank errors only. Covers V7a and
+V7l: an analysis error from eval and a load error from require/load (both error_refs) reach a
+program's catch; load-lib's catch now sees them. Should pass: v07b, v07c, ve3-ve3c, and with V9
+v09, v09b, ve5. V7l has no separate diff: the load path's errors are error_refs, which V7a
+converts at load-lib's own catch, and V7a's load_module and print_exception changes keep the
+load path's reporting. A34 contains V7a (apply one of them).
+
+V9 (error.hpp `base::thrown`; error/analyze.cpp analyze_macro_expansion_exception(object);
+context.cpp load_module's object handler; exception_info.cpp exception_info(error_ref))
+- The object a module's top level or a macro's body threw stays with the error; exception_info
+  built from the error takes it as its cause (Clojure: the CompilerException's cause). Should pass
+  with A34 or V7a: v09, v09b, ve5. Alone: *e of such an error has the ex-info as ex-cause.
+  Read-checked: error::base's copy is deleted and its move defaulted (the field moves); operator==
+  compares kind, source and message only.
+
+V18 (exception_info.cpp exception_info(error_ref))
+- A lex/parse, analysis or macro-expansion error made an object (*e in safe_eval, evaluate.cpp
+  750; A34's converter) gets Clojure's CompilerException shape: message "Syntax error {compiling |
+  macroexpanding | reading source} at (file:line:col).", data {:clojure.error/phase,
+  :clojure.error/line, :clojure.error/column, :clojure.error/source}, cause an ex-info with the
+  error's own message (and V9's object as its cause). The `error` stays attached, so the printed
+  report is unchanged. Should pass: v18 (alone), ve4, ve4b (with A34/V7a); u44 still passes (its
+  message is a non-empty string).
+
+X20b (core/seq.cpp nth, both arities; persistent_vector.cpp, array_chunk.cpp, transient_vector.cpp
+nth)
+- nth's checks (negative index, past the end of a walked seq, not indexable, out of range,
+  non-integer index) throw an ex-info with jank's message and nil data instead of a
+  std::runtime_error. Should pass: g480, g481, g482, ve2, ve2b, ve2c; v13 keeps passing (its future
+  now keeps the ex-info). Read: every caller of these nth functions in src/cpp catches nothing
+  around them; delay.cpp's and the future's object handlers keep the object (v10 holds).
+  Applies to round 8's tree as is.
+
+======================================================================
+(12) MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 8's X20: its g480-g482 prediction did not follow `(nth s -1)` to seq.cpp 656-660, which
+  throws before persistent_string::nth (x20_miss proves it for every string and negative index).
+- Round 6's "V7: changing that is the error design itself" and "V9/V18 need errors to carry a
+  cause object": the catch can convert once (A34), and one field carries the object (V9).
+- Round 8's V7r leaves read-string errors printed as `#error {...}` at the CLI (v7r_report);
+  A34/V7a's print_exception change restores the report.

@@ -1,0 +1,113 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/big_integer.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/big_integer.hpp
+@@ -50,6 +50,9 @@
+ 
+     /*** XXX: Everything here is immutable after initialization. ***/
+     native_big_integer data{};
++    /* Clojure's java.math.BigInteger (numerator, denominator, biginteger), printed without the N
++     * of a BigInt. Arithmetic on it gives BigInts (Numbers.BigIntOps), so only these make it. */
++    bool java_big_integer{};
+   };
+ 
+   template <typename T>
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_integer.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_integer.cpp
+@@ -142,6 +142,10 @@
+ 
+   jtl::immutable_string big_integer::to_code_string() const
+   {
++    if(java_big_integer)
++    {
++      return to_string();
++    }
+     return to_string() + 'N';
+   }
+ 
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -1403,8 +1403,9 @@
+ 
+   f64 rand();
+ 
+-  native_big_integer numerator(object_ref const o);
+-  native_big_integer denominator(object_ref const o);
++  /* A ratio's parts are java.math.BigIntegers (Ratio.numerator, Ratio.denominator). */
++  object_ref numerator(object_ref const o);
++  object_ref denominator(object_ref const o);
+ 
+   template <typename L>
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+@@ -1479,6 +1480,8 @@
+ 
+   bool is_big_integer(object_ref const o);
+   obj::big_integer_ref to_big_integer(object_ref const o);
++  /* Clojure's biginteger: the BigInteger of the same value. */
++  obj::big_integer_ref to_java_big_integer(object_ref const o);
+ 
+   bool is_big_decimal(object_ref const o);
+   obj::big_decimal_ref to_big_decimal(object_ref const o);
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -591,16 +591,23 @@
+     return dis(gen);
+   }
+ 
+-  native_big_integer numerator(object_ref const o)
++  static obj::big_integer_ref make_java_big_integer(native_big_integer const &i)
+   {
+-    return try_object<obj::ratio>(o)->data.numerator;
++    auto const ret{ make_box<obj::big_integer>(i) };
++    ret->java_big_integer = true;
++    return ret;
+   }
+ 
+-  native_big_integer denominator(object_ref const o)
++  object_ref numerator(object_ref const o)
+   {
+-    return try_object<obj::ratio>(o)->data.denominator;
++    return make_java_big_integer(try_object<obj::ratio>(o)->data.numerator);
+   }
+ 
++  object_ref denominator(object_ref const o)
++  {
++    return make_java_big_integer(try_object<obj::ratio>(o)->data.denominator);
++  }
++
+   bool is_number(object_ref const o)
+   {
+     return visit_number_like([=](auto const) -> bool { return true; },
+@@ -757,6 +764,11 @@
+ 
+         if constexpr(std::same_as<T, obj::big_integer>)
+         {
++          /* bigint of a BigInteger is a BigInt (BigInt.fromBigInteger). */
++          if(typed_o->java_big_integer)
++          {
++            return make_box<obj::big_integer>(typed_o->data);
++          }
+           return typed_o;
+         }
+         else if constexpr(jtl::is_any_same<T,
+@@ -786,6 +798,11 @@
+       o);
+   }
+ 
++  obj::big_integer_ref to_java_big_integer(object_ref const o)
++  {
++    return make_java_big_integer(to_big_integer(o)->data);
++  }
++
+   bool is_big_decimal(object_ref const o)
+   {
+     return o.get_type() == object_type::big_decimal;
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -5873,7 +5873,7 @@
+ (defn biginteger
+   "Coerce to BigInteger"
+   [x]
+-  (cpp/jank.runtime.to_big_integer x))
++  (cpp/jank.runtime.to_java_big_integer x))
+ 
+ (defn bigdec
+   "Coerce to BigDecimal"

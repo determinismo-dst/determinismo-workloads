@@ -1,0 +1,47 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/seq.cpp
+@@ -1128,6 +1128,35 @@
+       coll);
+   }
+ 
++  /* AFunction.compare reads a comparator's number with Number.intValue: a long's or a BigInt's
++   * low 32 bits, a double's (and a ratio's double's) saturating (int) cast, NaN giving 0. Only
++   * the sign matters to the sort. */
++  static bool comparator_int_negative(object_ref const o)
++  {
++    auto const type(o.get_type());
++    if(type == object_type::integer)
++    {
++      return static_cast<i32>(static_cast<u32>(expect_object<obj::integer>(o)->data)) < 0;
++    }
++    if(type == object_type::big_integer)
++    {
++      native_big_integer const m{ native_big_integer{ 1 } << 32 };
++      native_big_integer low{ expect_object<obj::big_integer>(o)->data % m };
++      if(low < 0)
++      {
++        low += m;
++      }
++      return low >= (native_big_integer{ 1 } << 31);
++    }
++    if(type == object_type::real || type == object_type::small_real || type == object_type::ratio)
++    {
++      /* (int) d is negative exactly when d <= -1: it truncates toward zero, saturates, and
++       * gives 0 for NaN. */
++      return to_real(o) <= -1.0;
++    }
++    return to_int(o) < 0;
++  }
++
+   object_ref sort(object_ref const comp, object_ref const coll)
+   {
+     return visit_seqable(
+@@ -1157,7 +1186,7 @@
+           }
+           else
+           {
+-            return to_int(o) < 0;
++            return comparator_int_negative(o);
+           }
+         });
+ 

@@ -1,0 +1,31 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_array_map.cpp
+@@ -76,8 +76,15 @@
+      * promoting to a hash map.
+      *
+      * TODO: Benchmark if it's faster to have this behavior or to check first. */
+-    if(data.size() == runtime::detail::native_array_map::max_size)
++    /* As PersistentArrayMap.assoc: the map itself when the key holds this very value, and a key
++     * already present is replaced in place, at any size. */
++    auto const found(data.find(key));
++    if(found.is_some() && found.unwrap() == val)
+     {
++      return runtime::detail::untagged(this);
++    }
++    if(data.size() == runtime::detail::native_array_map::max_size && found.is_none())
++    {
+       return make_box<persistent_hash_map>(meta, data, key, val);
+     }
+     else
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/transient_array_map.cpp
+@@ -75,7 +75,8 @@
+      *
+      * TODO: Benchmark if it's faster to have this behavior or to check first. */
+     /* TODO: Benchmark how much does the promotion cost, from transient array map to transient hash map? */
+-    if(data.size() == runtime::detail::native_array_map::max_size)
++    /* As TransientArrayMap.doAssoc: a key already present is replaced in place, at any size. */
++    if(data.size() == runtime::detail::native_array_map::max_size && data.find(key).is_none())
+     {
+       auto const promoted_map{ make_box<transient_hash_map>(data) };
+       promoted_map->assoc_in_place(key, value);

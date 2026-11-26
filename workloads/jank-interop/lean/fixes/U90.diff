@@ -1,0 +1,12 @@
+--- a/compiler+runtime/src/jank/jank/shell.jank
++++ b/compiler+runtime/src/jank/jank/shell.jank
+@@ -108,7 +108,8 @@
+                 (if-let [env (:env opts)]
+                   (let [new-env (cpp/boost.process.v1.environment.)]
+                     (doseq [[k v] env]
+-                      (.emplace new-env (cpp/cast std.string k) (cpp/cast std.string v)))
++                      ;; Clojure's as-env-strings: (str (name k) "=" v).
++                      (.emplace new-env (cpp/cast std.string (name k)) (cpp/cast std.string (str v))))
+                     new-env)
+                   (cpp/cast boost.process.v1.environment (cpp/boost.this_process.environment))))]
+     {:exit (.-exit result) :out (.-out result) :err (.-err result)}))

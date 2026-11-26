@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -5797,6 +5797,25 @@
+   [x]
+   (cpp/jank.runtime.to_char x))
+ 
++(def ^{:doc "Returns escape string for char or nil if none"}
++  char-escape-string
++  {\newline "\\n"
++   \tab "\\t"
++   \return "\\r"
++   \" "\\\""
++   \\ "\\\\"
++   \formfeed "\\f"
++   \backspace "\\b"})
++
++(def ^{:doc "Returns name string for char or nil if none"}
++  char-name-string
++  {\newline "newline"
++   \tab "tab"
++   \space "space"
++   \backspace "backspace"
++   \formfeed "formfeed"
++   \return "return"})
++
+ (defn unchecked-byte
+   "Coerce to byte. Subject to rounding or truncation."
+   [#_Number x]

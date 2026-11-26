@@ -1,0 +1,69 @@
+--- a/compiler+runtime/src/jank/jank/shell.jank
++++ b/compiler+runtime/src/jank/jank/shell.jank
+@@ -13,10 +13,13 @@
+  jank.shell
+   (:require [clojure.string :as str])
+   (:include
++   "boost/process/v1/args.hpp"
+    "boost/process/v1/child.hpp"
+    "boost/process/v1/env.hpp"
+    "boost/process/v1/environment.hpp"
++   "boost/process/v1/exe.hpp"
+    "boost/process/v1/io.hpp"
++   "boost/process/v1/search_path.hpp"
+    "boost/process/v1/start_dir.hpp"
+    "sstream"))
+ 
+@@ -53,13 +56,27 @@
+     std::string out{};
+   };
+ 
+-  result sh(std::string const &cmd, std::string const &dir, std::string const &in, boost::process::v1::environment const &env)
++  /* Clojure's sh gives its strings to Runtime.exec as an argument array: each string is one
++   * argument, unquoted, and no shell sees them. The program is looked up on this process's PATH,
++   * as the JDK does. */
++  result sh(std::vector<std::string> const &argv, std::string const &dir, std::string const &in, boost::process::v1::environment const &env)
+   {
++    boost::process::v1::filesystem::path program{ argv.at(0) };
++    if(argv[0].find('/') == std::string::npos)
++    {
++      auto const found(boost::process::v1::search_path(argv[0]));
++      if(!found.empty())
++      {
++        program = found;
++      }
++    }
++    std::vector<std::string> const rest(argv.begin() + 1, argv.end());
+     boost::process::v1::opstream in_stream{};
+     boost::process::v1::ipstream out_stream{};
+     boost::process::v1::ipstream err_stream{};
+     boost::process::v1::child process(
+-          cmd,
++          boost::process::v1::exe = program,
++          boost::process::v1::args = rest,
+           boost::process::v1::std_out > out_stream,
+           boost::process::v1::std_err > err_stream,
+           boost::process::v1::std_in < in_stream,
+@@ -79,11 +96,9 @@
+ }
+ ")
+ 
+-(defn- shell-escape [s]
+-  (str "\"" (str/escape s {\" "\\\""}) "\""))
+-
+ (defn sh
+-  "Passes the given strings to `boost::process::v1::child` to launch a sub-process.
++  "Passes the given strings, each as one argument, to `boost::process::v1::child` to launch a
++  sub-process.
+ 
+   Options are
+ 
+@@ -102,7 +117,7 @@
+   [& args]
+   (let [[cmd opts] (parse-args args)
+         result (cpp/jank.shell.sh
+-                (cpp/cast std.string (str/join " " (map shell-escape cmd)))
++                (cpp/cast (std.vector std.string) (vec cmd))
+                 (cpp/cast std.string (or (:dir opts) "."))
+                 (cpp/cast std.string (or (:in opts) ""))
+                 (if-let [env (:env opts)]

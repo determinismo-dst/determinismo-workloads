@@ -1,0 +1,147 @@
+--- a/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
++++ b/compiler+runtime/src/cpp/jank/codegen/cpp_processor.cpp
+@@ -1074,11 +1074,45 @@
+     }
+ 
+     util::format_to(b.body_buffer, "try {\n");
++
++    /* A catch of object_ref is Clojure's catch of Throwable, which sees every exception. jank
++     * also raises error_refs (read, analysis and load errors) and std::exceptions (the runtime's
++     * checks, arity errors, the C++ libraries'), and no object handler matches either.
++     * So, when this try has an object handler, an inner try makes them objects on their way
++     * there: what a handler placed before the object handler catches is rethrown unchanged (that
++     * handler still gets it), objects pass through, and an error_ref or a std::exception becomes an
++     * ex-info (runtime::to_exception_object). */
++    auto const object_catch{ std::ranges::find_if(inst->catches, [](auto const &c) {
++      return analyze::cpp_util::is_untyped_object(c.first)
++        && !analyze::cppinterop::is_pointer_type(c.first);
++    }) };
++    auto const converts{ object_catch != inst->catches.end() };
++    if(converts)
++    {
++      util::format_to(b.body_buffer, "try {\n");
++    }
+ 
+     auto const &jump_block{ has_finally ? inst->finally_block : inst->merge_block };
+ 
+     gen_until_jump(jump_block, b);
+ 
++    if(converts)
++    {
++      util::format_to(b.body_buffer, "}\n");
++      for(auto it{ inst->catches.begin() }; it != object_catch; ++it)
++      {
++        util::format_to(b.body_buffer,
++                        "catch({}) { throw; }\n",
++                        get_qualified_type_name(it->first));
++      }
++      util::format_to(b.body_buffer,
++                      "catch(jank::runtime::object_ref const &) { throw; }\n"
++                      "catch(jank::error_ref const &jank_error) "
++                      "{ throw jank::runtime::to_exception_object(jank_error); }\n"
++                      "catch(std::exception const &jank_exception) "
++                      "{ throw jank::runtime::to_exception_object(jank_exception); }\n");
++    }
++
+     util::format_to(b.body_buffer, "}\n");
+     for(auto const &catch_details : inst->catches)
+     {
+--- a/compiler+runtime/include/cpp/jank/runtime/obj/exception_info.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/obj/exception_info.hpp
+@@ -10,6 +10,7 @@
+   #endif
+ #endif
+ 
++#include <exception>
+ #include <memory>
+ 
+ #include <jank/error.hpp>
+@@ -55,3 +56,14 @@
+     jtl::option<error_ref> error;
+   };
+ }
++
++namespace jank::runtime
++{
++  /* What a program's catch of object_ref sees of an exception that isn't an object (the codegen of
++   * `try` calls these): an ex-info, as everything a Clojure catch of Throwable sees is an object. A
++   * jank error gives its message, nil data and the error itself (so printing it reports the error),
++   * with its causes as ex-causes; a std::exception gives its what() and nil data, as Clojure's
++   * exceptions other than ExceptionInfo. */
++  object_ref to_exception_object(error_ref const e);
++  object_ref to_exception_object(std::exception const &e);
++}
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+@@ -148,3 +148,25 @@
+     return make_box<obj::persistent_array_map>(trans);
+   }
+ }
++
++namespace jank::runtime
++{
++  object_ref to_exception_object(error_ref const e)
++  {
++    auto const ret{ make_box<obj::exception_info>(e) };
++    if(ret->message.empty())
++    {
++      ret->message = e->message;
++    }
++    if(!ret->cause.is_some() && e->cause)
++    {
++      ret->cause = expect_object<obj::exception_info>(to_exception_object(e->cause.as_ref()));
++    }
++    return ret.erase();
++  }
++
++  object_ref to_exception_object(std::exception const &e)
++  {
++    return make_box<obj::exception_info>(jtl::immutable_string{ e.what() }, jank_nil).erase();
++  }
++}
+--- a/compiler+runtime/src/cpp/jank/util/try.cpp
++++ b/compiler+runtime/src/cpp/jank/util/try.cpp
+@@ -10,6 +10,8 @@
+ #include <jank/error/report.hpp>
+ #include <jank/jit/object.hpp>
+ #include <jank/runtime/context.hpp>
++#include <jank/runtime/rtti.hpp>
++#include <jank/runtime/obj/exception_info.hpp>
+ #include <jank/runtime/core/munge.hpp>
+ 
+ namespace jank::util
+@@ -219,6 +221,15 @@
+     }
+     else if(e.get_type() == runtime::object_type::exception_info)
+     {
++      /* A jank error that a program's catch made an object (to_exception_object, or read-string's
++       * ex-info) and rethrew is reported as the error, as it was before the catch. */
++      auto const ex{ runtime::expect_object<runtime::obj::exception_info>(e) };
++      if(ex->error.is_some())
++      {
++        print_exception(ex->error.unwrap());
++        return;
++      }
++
+       /* TODO: I think the better solution may be to extract the stack trace to print
+        * with cpptrace, and the message to print as an error_ref, but I don't know if
+        * some REPL tooling relies on ex-infos printing a certain way. I suspect there is. */
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -345,6 +345,16 @@
+     }
+     catch(object_ref const e)
+     {
++      /* A jank error that a catch in the module made an object and rethrew (load-lib does, for
++       * a failed require) is that error, so its report and causes stay as they were. */
++      if(e.get_type() == object_type::exception_info)
++      {
++        auto const ex{ expect_object<obj::exception_info>(e) };
++        if(ex->error.is_some())
++        {
++          return ex->error.unwrap();
++        }
++      }
+       return error::runtime_unable_to_load_module(e.to_code_string());
+     }
+     catch(error_ref const e)

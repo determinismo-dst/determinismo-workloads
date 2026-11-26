@@ -1,0 +1,378 @@
+ROUND 9, AREA Q: THE nREPL (jank main 94d32623; compiler+runtime identical to 7135b7708)
+Files: Jank/R9/Nrepl/{Fix,Runs,Store,Theorems,Tree,TreeCheck}.lean, Run/R9/Nrepl.lean (exe jank9-nrepl),
+results/r9-nrepl-{report,axioms,runs}.txt, fixes/{Q1,Q2,V37i}.diff, .r9-scratch/nrepl/ (tests.jank, clj/, logic/,
+readcheck.clj, Q2-on-Q1.diff, job scripts and run outputs).
+jank paths: upstream-r5/compiler+runtime/src/jank/jank/nrepl/server/... unless another directory is named.
+nREPL paths: .r5-scratch/nrepl/nrepl-1.8.0/nrepl/... (read; its Java classes are not in the project, so it cannot run).
+
+SUMMARY
+- Fixes written (each applies alone to 94d32623 and to round 8's combined tree; together, with git apply, in the
+  order Q1, then .r9-scratch/nrepl/Q2-on-Q1.diff (Q2 rebased on Q1), then V37i):
+  - Q1: a per-session input, the stdin op, need-input with the wait nREPL does (the connection's thread handles
+    the requests that come while an eval waits, the stdin op among them), the end of input, skip-eol after each
+    eval, :stdin in describe, and core.jank's read-line calling a function bound to *in*.
+  - Q2: (filterv some? ...) on do-eval's two reply vectors: no message without content.
+  - V37i: interrupt answered #{session-idle done} with a session, #{error session-ephemeral done} without.
+- The fixes' code checked on the JVM (Clojure 1.12.3), copied verbatim: the line reader against Java's
+  LineNumberingPushbackReader.readLine and clojure.main/skip-if-eol (400,000 random sequences, 0 differences);
+  the patched server loop end to end over a fake socket (need-input, stdin, end of input, partial line, nested).
+- World TQ (World T with the fixes): T9 and T3 under every schedule, exact, COMPLETE: round 3's judge holds, every
+  request ends in one done, and NO final state holds a message without content (stock T9: 252 such messages over
+  its 42 final states). The stdin scenarios under every schedule (need-input, the end of input, a partial line,
+  two connections on one session), D4q (stdin beside a diverging eval) at <=3.
+- ★ Q2 for every request and reply vector (5 theorems); ★ Q1's take-line for every input (4 theorems).
+- ★ nREPLA6-1's tree half: every causal, bounded run function recording path values modulo options is exactly a
+  finite decision tree, and the sdk's exhaust over it is complete with its leaf count; instantiated at World T
+  (★ exhaust_worldT). The premise is checked on complete walks of World T, not proved for round 3's code.
+- T9u under every schedule with a flat store: stopped at 66,000,266 states (round 8: 22,000,971); T3u (first time
+  under every schedule): stopped at 65,293,143 states; nothing found in either.
+- New deviations: Q9-1, Q9-2, Q9-3 (do-eval's status sets: empty code, missing code, unknown namespace).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+Q9-1 (new). An eval of the empty string.
+  Program (jank's handler in-process): (handle-message {"op" "eval" "id" "e" "code" "" "ns" "user"})
+  nREPL 1.8.0: {:status #{"done"}} only. interruptible_eval.clj interruptible-eval 181-205: "" is a string, so
+    it is evaluated (evaluator 72-178): the reader meets the end at once, nothing is sent, the ack sends done.
+  jank (prediction, stock and with every fix): {:status [:no-code :done]} (handler/eval.jank do-eval 23-24,
+    (empty? code)).
+  Test: vq1-nrepl-eval-of-empty-code-answers-done. Path: handler.jank 3-8 → handler/eval.jank :eval 66-72 →
+    do-eval 22-24.
+  Status: new (REPORT-2 R132 called "" "fixed (no-code)" against jank's earlier value 0.0; no round compared the
+    status set with nREPL's; round 3's judge skips empty code, World.lean 377-378). Confidence: high (read on both
+    sides). Shared cause with Q9-2/Q9-3: do-eval's own status vocabulary (see below).
+Q9-2 (new). An eval without a code field.
+  Program: (handle-message {"op" "eval" "id" "e" "ns" "user"})
+  nREPL 1.8.0: {:status #{"error" "no-code" "done"}} (interruptible_eval.clj 189-190).
+  jank (prediction): {:status [:no-code :done]}: (get msg "code" "") is "" (handler/eval.jank 68), then do-eval
+    23-24. Missing code and empty code are one case in jank, two in nREPL.
+  Test: vq2-nrepl-eval-without-code-is-an-error. Status: new. Confidence: high.
+Q9-3 (new). An eval in a namespace that does not exist.
+  Program: (handle-message {"op" "eval" "id" "e" "code" "1" "ns" "vq3.no.such.ns"})
+  nREPL 1.8.0: {:status #{"error" "namespace-not-found" "done"} :ns "vq3.no.such.ns"} (interruptible_eval.clj
+    196-198).
+  jank (prediction): {:status [:namespace-not-found :done]}, no :error, no :ns (handler/eval.jank 27-29).
+  Test: vq3-nrepl-eval-in-a-missing-ns-is-an-error. Status: new (round 3's judge skips it, World.lean 379-381).
+    Confidence: high.
+  Shared cause of Q9-1..3: do-eval answers before evaluating with its own statuses (no :error); one cause, three
+    inputs. Impact low: a client that tests the status for "error" misses the two failures (Q9-2, Q9-3); one that
+    waits for a value or done after an empty eval sees an extra no-code status (Q9-1). No fix assigned (a fix would be two status vectors and a nil test
+    for code: handler/eval.jank 23-29, 68).
+Q1 and Q2 (round 8) and V37 (round 5): fixed this round (section 11); their tests y51, y51b, y52, v37, v37b stand;
+  new tests of the fixed paths: vq4 (Q1's read path: stdin then (read-line) in the session, "\"hi\"";
+  stock: no :value, read-line is "TODO: port" and stdin unknown-op) and vq5 (Q2's error branch: no message
+  holding only the id and session; stock: two).
+Tests (.r9-scratch/nrepl/tests.jank, 6 deftests, one assertion each): vq1-vq3 (Q9-1..3), vq4 (Q1), vq5 (Q2), vq6 (a
+  control: an eval's value). All jank only: they call jank's handler namespace in-process, as y51/y52 and v37 do,
+  and nREPL's Java classes are missing, so nREPL cannot answer them here; the expected values are read from nREPL
+  1.8.0's source. The Clojure translation (.r9-scratch/nrepl/clj/jank_lean/nrepl_r9_test.clj, every deftest dropped
+  as jank only) loads on Clojure 1.12.3: 0 tests, 0 failures (.r9-scratch/nrepl/clj-run.txt). Predicted on stock:
+  vq1-vq5 fail, vq6 passes; with Q1 and Q2: vq4 and vq5 pass, vq1-vq3 still fail (no fix assigned).
+Nothing else new. World TQ's runs show, for the fixed server, the limits of a fix inside jank's one-thread-per-
+  connection design (not deviations of stock jank; section 4): an eval waiting for input is fed only through its
+  own connection (an input sent through another connection is seen when the waiting connection next reads a
+  request); an eval arriving on a connection while another eval of it waits is handled inside the wait (LIFO).
+
+======================================================================
+2. PROOFS (statements in words; Lean names; ★ = for every input)
+======================================================================
+Q2 (Jank/R9/Nrepl/Theorems.lean), on round 2's model of core.jank response-for (Server.lean responseFor:
+  (merge resp (select-keys req ["id" "session"])), Data.lean merge/conjMap/assocMap/selectKeys):
+  ★ responseFor_nil_keys: for EVERY request, the message response-for makes from nil holds only keys taken from
+    the request, each `same` as "id" or "session" (the message without content).
+  ★ responseFor_keeps_keys: for EVERY request and EVERY reply map, the message keeps every key of the reply.
+  ★ dropNils_no_nil: Q2's (filterv some? v) leaves no nil and only elements of v.
+  ★ q2_messages: with Q2, for EVERY request and EVERY handler vector of maps and nils, every message is made from
+    one of the vector's maps and keeps all its keys: no message is made from a nil.
+  ★ stock_blank_out: on stock, an eval whose stdout is blank sends first a message holding only request keys.
+  (JVal.same is a partial def: the statements carry it as List.find? returns it, never evaluate it.)
+Q1 (Theorems.lean), on the Lean copy of fixes/Q1.diff's take-line (Fix.lean takeLine, termIdx):
+  ★ takeLine_line_clean: a line take-line returns holds no \n and no \r, for every session input.
+  ★ takeLine_none_iff: take-line asks for input (none) exactly when no terminator is buffered and no end of input
+    is queued.
+  ★ takeLine_split: when a terminator is buffered, line ++ terminator ++ the text left = the text, the terminator
+    \n, \r or \r\n: nothing lost or invented.
+  ★ takeLine_addInput: a line without terminators sent with \n to an empty input (no pending \r) is read back whole
+    and the input is left empty (type-ahead).
+nREPLA6-1, narrowed (Jank/R9/Nrepl/Tree.lean, TreeCheck.lean), on the sdk's own Decide/Search definitions and round
+  8's Walk.lean:
+  ★ agree_prefix: under Treelike, two paths with the same values below k give the same decisions below k and the
+    same name and options at k.
+  ★ build_run, ★ tree_of_treelike: EVERY run function `run : List Nat → List Taken` that is Treelike (bounded by D;
+    each recorded value is the path's value modulo its options, 0 beyond the path; >= 2 options; causal: the k-th
+    decision's existence, name and options depend only on the decisions before it) is exactly the run of the
+    finite tree `build run D []`, which is well formed (WF), on EVERY path.
+  ★ build_height: that tree's height is at most D.
+  ★ exhaust_of_treelike: the sdk's `exhaust` over any `Source → Ended` whose path runs record `run`'s decisions
+    and no violation completes with exactly that tree's leaves (via round 8's exh_gen, walk_paths, paths_length).
+  ★ exhaust_worldT: the same instantiated at round 3's World T (runTWith with interleavePB at any budget, or the
+    sdk's interleave): if World T's run function is Treelike and violation-free, exhaust over World T completes with
+    the leaf count, depth first, each leaf once: round 8's walk_count/exhaust_complete apply to World T itself.
+  Not proved: that World T's run function IS Treelike (it holds for code whose decisions all go through
+    Decisions.next and that sees the source only through the values next returns: a property of round 3's
+    Threads.lean, read, not proved), and that the subtree at a scheduler state is a function of that state (the
+    graph counters' premise). Treelike is CHECKED on complete walks of World T (section 8).
+Axioms (results/r9-nrepl-axioms.txt): propext, Classical.choice, Quot.sound at most; no sorry, no native_decide.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+- Fix.lean (World TQ): round 3's World T step (Threads.lean tConnStep) with the fixes, everything else round 3's:
+  - Q2: tConnStep's .evalReplies (Threads.lean 420-433) with dropNils before responses-for (fixes/Q2.diff,
+    handler/eval.jank 40-69 after the fix);
+  - Q1: addInput, termIdx/takeLine, skipEol, the :stdin dispatch, describe's ops with stdin, an eval of exactly
+    "(read-line)" whose evaluator steps are replaced by one read step: take-line on the session's input; with
+    nothing to read, need-input written, then core.jank's wait-input loop: round 3's .readMsg and .dispatch for
+    each request read meanwhile, back to the read when the session's input changed, the read failing when the
+    client is gone (fixes/Q1.diff: server/core.jank next-request, wait-input, handle-request, handle-client;
+    handler/eval.jank session-inputs, add-input, take-line, skip-eol, *wait-input*, session-reader, :stdin;
+    describe.jank; clojure/core.jank read-line). Session inputs live in TMem.temps under names no temp file has;
+  - V37i: the :interrupt dispatch (fixes/V37i.diff, handler/clone.jank).
+  - qStep8 / qStep8B: World T8's spinning eval (Diverge.lean t8Step/t8StepB's rule) over World TQ's step.
+- Store.lean: round 8's EG.expand (exactGraph) without edges, on a flat store (W UInt32 per state, an open-addressing
+  table that compares codes byte for byte: no hash trusted).
+- TreeCheck.lean `checkTreelike`: the sdk's exhaust's walk (nextPath), checking Treelike on each timeline.
+- .r9-scratch/nrepl/logic/check.clj and server.clj (Clojure 1.12.3): the fix's jank functions copied verbatim
+  (take-line, add-input, skip-eol, session-reader, the :stdin and :interrupt methods, read-line, next-request,
+  wait-input, handle-request, handle-client with the C++ catch types renamed), over Java's
+  LineNumberingPushbackReader and a fake socket.
+- nREPL side (read): session.clj session-in 45-53, add-stdin 386-406, interrupt-session 277-296, session 335-352;
+  interruptible_eval.clj skip-stdin-newline 57-70, evaluator 72-178, interruptible-eval 181-205; clojure.main
+  skip-if-eol 107-119; LineNumberingPushbackReader.readLine 91-113 (clojure-ref).
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- World T's abstractions stand (rounds 3-8: NA1-NA9, EA4-*, nREPLA5-1/2, nREPLA6-1..3, nREPLA8-1..3).
+- World TQ's read-line eval is recognized by its code being exactly "(read-line)" and its read is one atomic step;
+  *1/*e are not updated by it (nREPLA9-2). A second eval read on a connection while one of its evals waits for
+  input stops the timeline (.limit): World T keeps one eval per connection (nREPLA9-3); the jank fix handles it
+  nested (checked in the Clojure harness, case 7).
+- The fixed server's wait differs from nREPL's in what wakes it: nREPL's reader is woken by the stdin op on any
+  connection (the session thread waits on the queue while the connection's handler thread reads); jank's wait
+  reads the waiting connection's socket, so input sent through another connection is seen only when the waiting
+  connection reads its next request (D3t). Needs a second thread per connection (R128), outside a local fix.
+- QueuePollingReader's Java source is not in the project: the end of input is modeled as a queue entry used up by
+  the read that meets it (nREPLA9-1), and skip-eol does not use it up (nREPLA9-4).
+- nREPL's replies are read from its source, not run (its Java classes are missing; round 8's
+  results/r8-nrepl-clj.txt).
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- A proof that round 3's World T run function is Treelike, and that its subtree at a scheduler state is a function
+  of that state: both need the step function's (Threads.lean tConnStep, 200 lines over 30-odd types) dependence on
+  the decisions only through Decisions.next; checked, not proved.
+- T9u and T3u under every schedule to completion: the flat store reaches 66 and 65 million states in one 30-minute
+  job (3x round 8's T9u), but the job bound (1800 s) and the disk share (300 MB, far below the store) leave no resumable segment;
+  no reduction was proved sound in the time (a sleep-set or persistent-set reduction needs an independence relation
+  proved for tConnStep, the same obstacle as above).
+- No fix for Q9-1..3 (not assigned). read and read+string stay "TODO: port" (they need a character reader with
+  pushback over *in*; Q1 gives read-line only).
+- D4q every schedule (round 8's D4 stopped at 3 million states); bounded census only.
+
+======================================================================
+6. ASSUMPTIONS (IDs nREPLA9-n) AND EARLIER ONES REPLACED
+======================================================================
+Round 3's NA1-NA9, round 4's EA4-1..6, round 5's nREPLA5-1/2, round 6's nREPLA6-2..3, round 8's nREPLA8-1..3 stand.
+- nREPLA9-1. nREPL's QueuePollingReader (Java, not in the project) delivers the stdin text in order and an empty
+  stdin as one end-of-input entry used up by the read that meets it (a final partial line uses it; else a nil).
+  The Clojure check compares against Java's readLine under this reading.
+- nREPLA9-2. World TQ's read-line eval leaves *1/*e as they were (no scenario reads them after it).
+- nREPLA9-3. World TQ handles no eval nested inside another eval's wait (.limit, never reached in the scenarios run).
+- nREPLA9-4. nREPL's skip-stdin-newline does not use up an end of input queued alone (whether .ready is true for
+  it is QueuePollingReader's).
+- nREPLA9-5. World T's run function is Treelike (the premise of ★ exhaust_worldT); checked on complete walks.
+Replaced: nREPLA6-1 ("interleavePB over tProg is a decision tree whose subtree at a scheduler state is a function of
+  that state") is split: the tree half is now a theorem under nREPLA9-5 (★ tree_of_treelike, ★ exhaust_worldT);
+  the scheduler-state half stays (nREPLA6-1b).
+
+======================================================================
+7. PROPERTIES CHECKED (with sources)
+======================================================================
+- Round 3's World T judge, unchanged (Threads.lean tJudge, tStuck, judgeEnd): every request's replies carry its id
+  and session and end in exactly one done; no deadlock; values, ns, eval-errors and :out per client as Clojure's
+  spec; fd 1 restored (nREPL 1.8.0 transport and middleware; Clojure 1.12 Compiler.load).
+- protocolAt (new, Fix.lean): the same protocol for every request including raw ones, read from the sockets, every
+  request answered at final states.
+- emptyReplies (new): no reply holds only the id and session (nREPL 1.8.0: interruptible_eval.clj 156-158 sends the
+  value, 202 the done, print.clj sends :out/:err only when written).
+- The stdin op answers #{done} and feeds the session's *in* (session.clj add-stdin 386-397); an eval reading an
+  empty *in* gets need-input and waits (session.clj session-in 45-53); readLine's lines (LineNumberingPushbackReader
+  91-113) and the end of line skipped after each eval (interruptible_eval.clj 57-70, clojure.main 107-119);
+  interrupt of an idle session #{session-idle done}, without a session #{error session-ephemeral done}
+  (session.clj 277-296).
+- Treelike (TreeCheck.lean): the sdk's Decisions.next (Decide.lean 89-102) records path values modulo options, at
+  least two options, under the limit.
+
+======================================================================
+8. SEARCH RUNS (exact bounds; "complete" = every state or timeline within the bound)
+======================================================================
+Raw outputs: results/r9-nrepl-runs.txt (copied from .r9-scratch/nrepl/{flat-t9,flat-t9u,flat-t3u,jobA}.txt).
+Flat store (Store.lean), validation: T9 (round 3's, capture locked) every schedule, COMPLETE: 433,374 states,
+  2,019,280 step runs, 42 final states, nothing: exactly round 8's exactGraph numbers (results/r8-nrepl-t9.txt).
+T9u (jank's capture, R125's two properties set aside), every schedule, exact, breadth first, one job:
+  STOPPED at the 66,000,000-state bound at 1,678 s (the job's time bound is 1,800 s): 66,000,266 states found,
+  60,955,648 expanded, 280,607,732 step runs; no final state yet at that depth, no step violation, no deadlocked
+  state, no blocked step that moved, no progress self-loop; peak 3.56 GB (watchdog). Round 8 stopped at
+  22,000,971 found / 20,009,984 expanded (about 5 GB); round 6 at 14,309,663 (hashed).
+T3u (jank's capture, R125's two properties set aside), every schedule, exact, breadth first, one job: STOPPED at the
+  1,680-s deadline: 65,293,143 states found, 60,279,808 expanded, 277,379,169 step runs; no final state yet at that
+  depth, no step violation, no deadlocked state, no blocked step that moved, no progress self-loop; peak 3.52 GB.
+  Round 8 had T3u only bounded (<=3 complete, <=4 stopped at 12,505,525 states); round 6 none under every schedule.
+  Why both stop: the job bound. The store is about 100 bytes/state with the tables; a resumable split would need
+  the store on disk (66 M x 48 bytes = 3.2 GB), 10x the disk share.
+World TQ (the fixes; every schedule, exact, compact codec, logs ordered by client; Run/R9/Nrepl.lean `fix`):
+  T9 (capture locked, round 3's): COMPLETE, 277,740 states, 1,283,082 step runs, 42 final states, 0 with a violation
+    of round 3's judge, 0 step violations, 0 deadlocked, acyclic, longest progress path 216; replies holding only id
+    and session: 0; protocol for every request: 0 broken. Stock T9 on the same checks: 433,374 states (round 8's),
+    42 final states, nothing against round 3's judge, but all 42 with messages without content (252 in all, 6 per
+    final state: two for each eval that prints nothing, c0-1 and c1-1, one for each that prints, c0-2 and c1-2,
+    its blank :err). Fewer states with the fix: the nil messages
+    were steps of their own.
+  T3 (capture locked): COMPLETE, 1,855,485 states (stock: 3,174,744), 8,608,981 step runs, 245 final states, 0 with
+    a violation, 0 step violations, 0 deadlocked, acyclic, longest progress path 345; replies holding only id and
+    session: 0; protocol: 0 broken. One outcome: every request's replies as round 8's, minus the empty ones.
+  Stdin scenarios (one connection unless said; session "none", round 3's clients' session before a clone):
+  - D3n (eval (read-line) sent without waiting, stdin "hi\n", describe): 601 states, 1 final state: e gets
+    [need-input] [value "hi"] [done]; stdin [done]; describe [done]. Stock: 719 states, e [][][err][done eval-error],
+    stdin [error unknown-op done], 2 empty messages.
+  - D3e (the same with an empty stdin): 601 states, 1 final: e [need-input] [value nil] [done].
+  - D3p (stdin "ab" then "c\n"): 1,150 states, 1 final: e [need-input] [need-input] [value "abc"] [done] (nREPL asks
+    again after the partial line).
+  - D3w (describe while the eval waits, then the client leaves): 204 states, 1 final: e [need-input], describe [done];
+    the eval's failure is written to a closed socket (lost, as nREPL's would be); fd 1 restored.
+  - D3q (round 8's D3 without its own read-line: the client sends the eval and WAITS for its done before sending
+    stdin): 51 states, one quiescent state where both wait: e [need-input], the client never answers it. This is
+    nREPL's protocol (an eval reading *in* blocks until stdin comes); round 3's clients do not answer need-input.
+    D3b and D3c (type-ahead, then one read-line too many) end the same way after their lines: D3b c0-1 "hi";
+    D3c "a" then "b" (\r then \n sent separately count as one end of line; the end of input used up), then the
+    third read waits.
+  - D3d (two connections; 0 sends stdin "x\n" and describes, 1 evaluates (read-line) twice, waiting): 65,249
+    states, 23 quiescent states, 3 outcomes: the first eval reads "x" (12 without need-input, 5 after it) and the
+    second waits with need-input, or (6) the first waits with need-input although "x" came later through
+    connection 0 (the waiting connection reads only its own socket: section 4).
+  - D3t (two connections; 0's (read-line) waits then describes, 1 sends stdin "x\n" then describes): 207,083 states,
+    52 final states, 4 outcomes: e reads "x" with need-input (20) or without (12); or client 0 closes first (20: it
+    waits only for its describe): in 10 e's value reached it and its done was lost, in 10 e never saw "x" (it was
+    sent while connection 0 sat in its read: the cross-connection limit of section 4) and failed on the close.
+  - I1 (V37i): 197 states, 1 final: interrupt with a session [session-idle done], without [error session-ephemeral
+    done]. Stock: both [error unknown-op done].
+  - D1q (World T8's D1 with the fixes: a diverging eval, then interrupt and describe pipelined): 229 states, 3
+    quiescent states, one outcome: only the clone answered (V37i cannot help: the connection's thread is in the
+    eval; R128).
+  - D4q (World T8's D4 with the fixes, <=3 preemptions among the non-spinning threads, states expanded on demand):
+    COMPLETE, 67,466 states, 124,320 scheduler states, 30,770,332 timelines, 0 step violations; 265 quiescent
+    states, 4 outcomes, all with stdin [done], (read-line) [value "hi"] [done], describe [done], no message without
+    content; they differ only in where fd 1 is left (R125). Stock at <=3: 79,615 states, 276 quiescent, stdin
+    [error unknown-op done], the eval [][][err][done eval-error], every one of the 276 with empty messages.
+Treelike checked on World T (TreeCheck.lean checkTreelike over round 3's runTWith: every timeline of a complete
+  depth-first walk, the sdk's nextPath; values = the path's modulo options, >= 2 options, under the decision limit,
+  causality between consecutive timelines; Run/R9/Nrepl.lean `tree`), every one COMPLETE with 0 failures of any
+  condition and 0 violations; the walk counts equal round 8's graph counters (results/r8-nrepl-walk.txt, -t9.txt,
+  -unlocked.txt):
+  - W1 (one client cloning), the sdk's interleave (no bound): 264,832 timelines, at most 26 decisions;
+  - W2 (clone, describe), interleavePB <=0..<=3: 4, 84, 874, 5,974;
+  - W3 (two clients cloning), <=0..<=3: 4, 336, 11,938, 276,982;
+  - T9 (round 3's, capture locked) <=0: 64; <=1: 53,312 (at most 216 decisions);
+  - T9u <=0: 64; <=1: 51,264 (at most 208 decisions);
+  - T3 <=0: 1,024 (at most 10 decisions); T3 <=1 STOPPED at the 1,000,000-timeline bound (of 1,358,848; 1,455 s), 0 failures in what
+    it ran (at most 352 decisions).
+
+======================================================================
+9. THEOREMS (★ = new for-every-input proofs; axioms in results/r9-nrepl-axioms.txt)
+======================================================================
+Theorems.lean: ★ responseFor_nil_keys, ★ responseFor_keeps_keys, ★ dropNils_no_nil, ★ q2_messages,
+  ★ stock_blank_out, ★ takeLine_line_clean, ★ takeLine_none_iff, ★ takeLine_split, ★ takeLine_addInput; lemmas assocMap_keys_mono,
+  assocMap_keys_sub, foldl_assoc_mono, foldl_assoc_sub, jfind_same, selFold_keys, selectKeys_eq,
+  not_mem_take_of_le, termIdx_le, termIdx_none, findIdx_app10, findIdx_app13.
+Tree.lean: ★ agree_prefix, ★ build_wf, ★ build_run, ★ tree_of_treelike, ★ build_height, ★ exhaust_of_treelike;
+  lemmas taken_ext, pv_append_lt, pv_append_eq, pv_drop, foldr_max_le.
+TreeCheck.lean: ★ exhaust_worldT.
+
+======================================================================
+10. LIBRARY GAPS (built in the project; sdk/lean untouched)
+======================================================================
+- "A causal run function is a decision tree" for the sdk's Decisions/exhaust (Tree.lean): reading a tree off any
+  run function by prefixes, with the walk's completeness carried over (round 8's exh_gen reused).
+- A flat state store for exhaustive search in Lean: preallocated ByteArray codes, an open-addressing id table in a
+  ByteArray, codes compared byte for byte (Store.lean); ~100 bytes/state with the tables, against round 8's ~230.
+- Lean note: a structure with a `causal` field quantified over `k` needs the binder's type written (`(k : Nat)`):
+  `i < k` with `k` untyped leaves the LT instance stuck.
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+Each: unified diff against 94d32623 (`git -C upstream-r5 apply --check` passes; upstream-r5 left clean), and
+`git -C .r8-scratch/merge/tree apply --check` passes on round 8's combined tree (no -combined variant needed:
+all.diff touches none of these lines; its only nREPL change is completions.jank). Together: Q1 and Q2 both change
+handler/eval.jank and Q1 adds a line inside Q2's hunk context, so `git apply` of Q2 after Q1 fails (an earlier check
+with `patch`, which allows fuzz, had passed; corrected): .r9-scratch/nrepl/Q2-on-Q1.diff is Q2 rebased on Q1, and
+Q1, then Q2-on-Q1.diff, then V37i apply with `git apply` on copies of round 8's combined tree and of 94d32623 (Q2
+then Q1 fails as well). The merged handler/eval.jank is the one the Clojure harness and World TQ model. No .cpp changed (no syn.sh needed); every changed .jank file reads whole
+with Clojure's reader (.r9-scratch/nrepl/readcheck.clj, jank's ^(:* T) hints neutralized). fwdref.py on the
+patched clojure/core.jank: "new 0" against 94d32623 and against the combined tree's core.jank.
+
+Q1 (fixes/Q1.diff; 4 files: clojure/core.jank, nrepl/server/core.jank, handler/describe.jank, handler/eval.jank)
+  What it does:
+  - handler/eval.jank: a per-session input (session-inputs, an atom: session id → {:text :eof :skip-lf}), made on
+    first use (jank keeps no other session state); the :stdin method appends the text, an empty or missing stdin
+    ends the input, no session: nothing (nREPL's ephemeral session), reply {:status [:done]}; take-line is
+    Java's readLine on it (\n, \r, \r\n; the partial line at the end; nil at the end, which it uses up); skip-eol
+    after every eval of the session (nREPL's skip-stdin-newline); do-eval takes the session and binds *in* to
+    (session-reader session), a function read-line calls; with nothing to read it calls *wait-input* (bound by the
+    server) and reads again, and throws ex-info "need-input: ..." only when it cannot wait (in-process, no
+    session, the client gone).
+  - nrepl/server/core.jank: handle-client's body split into handle-request (the same try/catch, binding
+    *wait-input* around handle-message) and next-request (the remainder kept in a volatile); wait-input writes
+    {:status [:need-input]} with the eval's id and session (nREPL session-in), then reads and handles the
+    connection's requests until the session's input changes or the client is gone; a read that still finds no line
+    asks again (nREPL's reader sends need-input each time it finds the queue empty). With no eval waiting, the
+    loop is the old one (read, handle, read).
+  - describe.jank: :stdin in :ops. clojure/core.jank read-line: (if (fn? *in*) (*in*) (throw TODO: port read-line)):
+    console *in* (nil) is unchanged; read and read+string stay unported.
+  Tests that should pass with it: y51, y51b (deviations_r8_test.jank), vq4 (.r9-scratch/nrepl/tests.jank).
+  Still failing: none of these; Q9-1..3 are unrelated.
+  Read-checked: every caller of do-eval (:eval, :load-file); `binding` expands to (var
+    jank.nrepl.server.handler.eval/*wait-input*), loaded by core.jank's :require (line 11); declare (core.jank
+    5548) for handle-request; fn? (4054) and *in* (33) precede read-line (5966); the server's read-message,
+    write-message, connected? take the boxed client as before; jank's own suite has no nREPL handler test
+    (test/jank/**: none mention nrepl or read-line; test/bash/nrepl tests bencode only).
+  Logic checked on the JVM (Clojure 1.12.3, .r9-scratch/nrepl/logic/): the fix's functions copied verbatim:
+    200,000 random stdin chunk sequences with reads interleaved, then the end: 0 differences from Java's
+    LineNumberingPushbackReader.readLine (167,717 reads asked for input); 200,000 sequences of evals (498,172 evals,
+    each a readLine or not, then skip-if-eol): 0 differences; the patched server loop over a fake socket
+    (server.clj, server-out.txt): need-input then the line; the end of input gives nil; describe answered while
+    waiting; the client leaving; type-ahead; a partial line (need-input twice, as nREPL); a nested read-line eval.
+  A build must confirm: the AOT build of the four files; and test/bash/nrepl-proof (Linux CI, not in the 551):
+    describe now lists "stdin", which may enable nrepl/proof's stdin checks (its jank profile has a read-line
+    snippet with value "proof" and eof "nil" and no expected failure for it); with this fix they should pass if
+    proof uses need-input (send eval, wait for need-input, send stdin "proof\n" / ""), as nREPL clients do.
+  World TQ (section 8): T9 and T3 exact under every schedule keep round 3's judge with the fixes; D3n/D3e/D3p/D3w/D3t.
+
+Q2 (fixes/Q2.diff; handler/eval.jank do-eval 40-48 and 56-64)
+  (filterv some? [...]) around both reply vectors: blank :out/:err send no message.
+  Tests that should pass: y52, vq5. Read-checked: filterv (core.jank 3789) returns a vector, so responses-for's
+    sequential? branch is unchanged; the inspect branch and the pre-eval statuses return maps (unchanged); the
+    existing tests that look for :value (u40c, u44 in deviations_r4_test.jank; vb-nrepl-value in r5) filter maps
+    and still find it. ★ q2_messages proves the effect for every request and every reply vector.
+  A build must confirm: nothing beyond the AOT build of handler/eval.jank.
+
+V37i (fixes/V37i.diff; handler/clone.jank): a :interrupt method: with a session {:status [:session-idle :done]},
+  without {:status [:error :session-ephemeral :done]} (nREPL session.clj interrupt-session 277-296). jank evaluates
+  on the connection's thread, so when a connection reads an interrupt no eval it started is running (with Q1, an
+  interrupt read during an input wait is answered session-idle while that eval waits: nREPL would interrupt it).
+  Placed in clone.jank so that round 5's v37 harness (which requires clone and eval) loads it.
+  Tests that should pass: v37, v37b (deviations_r5_test.jank). describe does not list interrupt (left as it was,
+  so V37i and Q1 touch no common line).
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 8 (section 11): "Q1's local fix ... needs a per-session reader bound to *in* ... R127's design change, not a
+  local fix". A per-session input keyed by the session id needs none of R127's session state; need-input needs a
+  wait, which one connection's thread can do by handling the connection's requests while it waits (wait-input).
+- Round 8's D3 scenario defined read-line in the scenario; with Q1 read-line is core.jank's, reading *in*.
+- Round 3's judge skipped do-eval's own statuses (World.lean 377-381: "checked by the protocol"): they differ from
+  nREPL's (Q9-1..3).
+- Round 8's "nREPLA6-1 not proved": the tree half is proved under a checkable premise (section 2).

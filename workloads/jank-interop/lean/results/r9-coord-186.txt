@@ -1,0 +1,133 @@
+The 186 tests still failing with round 8's patch (results/r8c-patched-failures.tsv), grouped.
+kind: wrong fix / missing (with why) / model error.
+
+== analyzer (6)
+- R108: r108 -- missing, design: defn emits a named fn: recursion skips the var
+- R119: r119 -- missing, two units: chunk_cons realizes its rest: segfault
+- R28: r28 -- missing, two units: a named fn's own name is consulted after enclosing locals
+- R38: r38 -- missing, design: a-b and a_b munge alike
+- S36: s36 -- missing, design: literal locals are natively typed
+- S42: s42 -- missing, design: the 10-parameter limit
+
+== errors (10)
+- R34 + arity: r34 -- fix right, needs arity errors as objects (round 9: area E): R34 makes (:k) a call; invalid_arity is a std::runtime_error (fail -> error)
+- U79: u79 -- missing (round 9: area E): slurp of a missing file: std::filesystem error
+- V3: v03 -- fix right, needs C++ exceptions as objects (round 9: area E): V3 throws a C++ exception (fail -> error)
+- V7 (analysis): v07b -- missing, design (round 9: area E): an analysis error is an error_ref
+- V7 (load): v07c -- missing, design (round 9: area E): a load error is an error_ref
+- V9: v09 v09b -- missing, design (round 9: area E): an ex-info thrown while loading or by a macro loses its data
+- V15: v15 -- missing, representation (round 9: area E): ex-info message cannot be nil
+- V18: v18 -- missing, design (round 9: area E): *e of a compile error has no ex-data
+- D15: d15 -- missing (round 9: area E): transient after persistent!: C++ exception
+
+== interop (25)
+- R89: r89 -- missing (no fix written): an enum zero is falsy (error -> fail with S71)
+- S49/U4: s49 u04 -- missing, CppInterOp: explicit template arguments ignored (s49: error -> fail with S71)
+- S50/U5: s50 u05 -- missing, CppInterOp: function pointer with a reference parameter
+- S53/U6: s53 u06 -- missing, CppInterOp: no built-in operator candidates
+- U20-U26: u20 u21 u22 u23 u24 u25 u26 -- missing, CppInterOp: operator lookup, CTAD, cpp/delete
+- V25-V34: v25 v26 v27 v28 v29 v29b v30 v31 v32 v33 v34 -- missing, CppInterOp: value categories and operator templates
+
+== strings (66)
+- R52: b01 -- missing, design (round 9: area W): count is bytes
+- R53: b02 -- missing, design (round 9: area W): seq walks code points, Clojure UTF-16 units
+- R54/LG3: b03 -- missing, design (round 9: area W): subs cuts bytes; R54a stops at the end (error -> fail)
+- R58: b07 -- missing, design (round 9: area W): index-of returns byte offsets
+- LG3: lg3 -- missing, design (round 9: area W): subs indexes bytes
+- V65: v65 -- missing, design (round 9: area W): nth of a string is a byte
+- V66: v66 -- missing, design (round 9: area W): get/contains? index bytes
+- V67: v67 -- missing, design (round 9: area W): upper-case of a cut string
+- V68: v68 -- missing, design (round 9: area W): reverse of a cut string: invalid UTF-8 (C++ exception)
+- V71: v71 -- missing, design (round 9: area W): hash of a string hashes bytes
+- V75: v75 -- missing, design (round 9: area W): split on an empty pattern splits bytes
+- V76: v76 -- missing, design (round 9: area W): a lone surrogate escape is not kept
+- V77: v77 -- missing, design (round 9: area W): chars are code points, not UTF-16 units
+- V78: v78 -- missing, design (round 9: area W): (char 55296): C++ exception "Unfinished character"
+- V79: v79 x25b -- missing, design (round 9: area W): (char 128512) is accepted
+- X19: x19 x19b -- missing, design (round 9: area W): replace on an empty pattern splits bytes
+- R52 (gen): g465 g466 g467 g468 g469 g470 g471 g472 g473 -- missing, design (round 9: area W): count of non-ASCII text is bytes
+- V65 (gen): g483 g484 g485 -- missing, design (round 9: area W): nth of a string is a byte
+- V66 (gen): g495 g496 g497 g498 g499 g500 g501 g502 g503 g510 g511 g512 g513 g514 g515 g516 g517 g518 -- missing, design (round 9: area W): get/contains? index bytes
+- LG3 (gen): g528 g529 g530 g543 g544 g545 -- missing, design (round 9: area W): subs indexes bytes
+- R58 (gen): g558 g559 g560 g573 g574 g575 -- missing, design (round 9: area W): index-of/last-index-of return byte offsets
+- V74+R58 (gen): g561 g562 g563 g619 g620 g621 -- missing, design (round 9: area W): R58a fixes the negative start, the index stays a byte offset
+
+== printing (4)
+- R69: b16 -- missing, design: one to_string for str and print
+- R74: b21 -- missing, feature: *print-length* does not exist
+- R76: b23 -- missing, design: one to_string for str and print
+- V46: v46 -- missing, design (U39): an inst prints without its tag
+
+== regex (21)
+- R78: b24 -- missing, design (std::regex): . matches a byte
+- R79: b25 -- missing, design (std::regex): $ does not match before a final newline
+- R80/R81: b27 -- missing, design (std::regex): re-seq restarts with ^ anchored at each search
+- R18: b30 -- missing, design (std::regex): (?i) is a construction error (C++ exception)
+- S22-S24: s22 s23 s24 -- missing, design (std::regex): the regex reads bytes
+- S25-S33: s25 s26 s27 s28 s29 s30 s31 s32 s33 -- missing, design (std::regex): ECMAScript grammar and lookahead
+- S34: s34 -- missing, design (std::regex): matching recurses per character: segfault
+- S35: s35 -- missing, design (std::regex): NFA state limit
+- U35: u35 -- missing, design (std::regex): captures cleared at each start position
+- V35/V36: v35 v36 -- missing, design (std::regex): Unicode word boundary and line terminators
+
+== champ (2)
+- S59: s59 -- missing, library (round 9: area H): immer stores the given equal key
+- U81: u81 -- missing, library (round 9: area H): zipmap keeps the last equal key
+
+== runtime (11)
+- U12: u12 -- missing, design: a lazily compiled fn can't hold metadata
+- U18: u18 -- missing, design: no base binding frame
+- U33: u33 -- missing, design (on purpose): transient sorted maps exist
+- U40: u40 u40b -- missing, subsystem: line/column and var meta
+- U49: u49 -- partly fixed (U49a-d): ns-aliases is "TODO: port" (fail -> error)
+- U59: u59 -- partly fixed (U59b): the run-time output target is unset (U59a)
+- U67: u67 -- missing, design: map entries are 2-vectors
+- D21: d21 -- missing, feature: no timed deref
+- D23: d23 -- missing, feature: no set! of vars
+- D25: d25 -- missing, feature: no monitors (locking)
+
+== nrepl (3)
+- U40: u40c -- missing, subsystem: an eval's line does not reach the form's meta
+- V37: v37 v37b -- missing (round 9: area Q, optional): interrupt is an unknown op
+
+== library (10)
+- U65: u65 -- missing, subsystem: format is std::format
+- U80: u80 -- missing, local (not written): reduce-kv over a seq of entries: C++ exception
+- U84: u84 -- missing, local (not written): data.json :bigdec reads through a double
+- U85: u85 -- missing, library: nlohmann's DOM has no arbitrary precision
+- U88: u88 -- missing, local (not written): jank.shell escapes arguments for a shell
+- U90: u90 -- missing, local (not written): jank.shell :env wants strings (C++ exception)
+- U91/U92: u91 u92 -- missing, subsystem: pprint is prn; cl-format, print-table, root-cause missing
+- V47: v47 -- missing, feature: clojure.instant does not exist
+- V82: v82 -- missing, local (not written): char-name-string and char-escape-string do not exist
+
+== numbers (9)
+- V55: v55 -- missing, local (round 9: area N): Object '-' does not negate its second operand first
+- V60: v60 -- missing, local (round 9: area N): (long 1e20) does not throw
+- V61: v61 -- missing, local (round 9: area N): numerator prints as a BigInt
+- V62: v62 g452 g453 g454 -- missing, design (round 9: area N): float is a double (no float box)
+- V63: v63 -- missing (round 9: area N): a float array element computes in single precision
+- V85: v85 -- missing, local (round 9: area N): a hash set never finds its own NaN (no identity check)
+
+== H8-1 (5)
+- H8-1: y22 y22b y22c y22d y22e -- missing (round 9: area H): assoc/conj of a present key reorders a collision node
+
+== DEC8-1 (4)
+- DEC8-1: y37 y37b y38 y38b -- missing (round 9: area N): (- x) is (- 0 x)
+
+== Q1 (2)
+- Q1: y51 y51b -- missing (round 9: area Q): no stdin op, no session *in*
+
+== Q2 (1)
+- Q2: y52 -- missing (round 9: area Q): eval sends messages without content
+
+== reader (4)
+- R11: a11 -- missing, design: a symbol tag is quoted
+- R17: a17 -- missing, feature: namespaced map literals (now an object error with V7r)
+- R20: a20 -- missing, local (not written): "1-2" lexes as 1
+- R21: a21 -- missing, design: read forms carry :jank/source meta
+
+== X20 (3)
+- X20: g480 g481 g482 -- wrong fix (model error in its path): seq.cpp nth rejects a negative index first with a std::runtime_error; X20 changed persistent_string::nth only
+
+Counts by kind: missing 179, wrong fix 3, fix right 2, partly fixed 2

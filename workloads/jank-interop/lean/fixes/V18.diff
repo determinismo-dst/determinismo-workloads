@@ -1,0 +1,51 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/exception_info.cpp
+@@ -24,6 +24,48 @@
+     : object{ obj_type, obj_behaviors }
+     , error{ error }
+   {
++    /* A read, analysis or macro expansion error is Clojure's CompilerException: the message
++     * "Syntax error <doing> at (<file>:<line>:<column>).", the :clojure.error keys as data, and the error's
++     * own message as its cause's, so *e and a program's catch see data and a cause. */
++    auto const k{ error->kind };
++    jtl::immutable_string phase, doing;
++    if(k >= ::jank::error::kind::lex_unexpected_eof && k <= ::jank::error::kind::parse_internal_failure)
++    {
++      phase = "read-source";
++      doing = "reading source";
++    }
++    else if(k == ::jank::error::kind::analyze_macro_expansion_exception)
++    {
++      phase = "macro-syntax-check";
++      doing = "macroexpanding";
++    }
++    else if(k >= ::jank::error::kind::analyze_invalid_case
++            && k <= ::jank::error::kind::analyze_internal_failure)
++    {
++      phase = "compile-syntax-check";
++      doing = "compiling";
++    }
++    if(!phase.empty())
++    {
++      auto const &src{ error->source };
++      runtime::detail::native_array_map trans{};
++      trans.insert_unique(__rt_ctx->intern_keyword("clojure.error", "phase").expect_ok(),
++                          __rt_ctx->intern_keyword("", phase).expect_ok());
++      trans.insert_unique(__rt_ctx->intern_keyword("clojure.error", "line").expect_ok(),
++                          make_box(static_cast<i64>(src.start.line)));
++      trans.insert_unique(__rt_ctx->intern_keyword("clojure.error", "column").expect_ok(),
++                          make_box(static_cast<i64>(src.start.col)));
++      trans.insert_unique(__rt_ctx->intern_keyword("clojure.error", "source").expect_ok(),
++                          make_box(src.file));
++      data = make_box<persistent_array_map>(trans);
++      auto const inner{ make_box<exception_info>(error->message, jank_nil) };
++      cause = inner;
++      message = util::format("Syntax error {} at ({}:{}:{}).",
++                             doing,
++                             src.file,
++                             src.start.line,
++                             src.start.col);
++    }
+   }
+ 
+   static persistent_vector_ref frame_to_vec(cpptrace::stacktrace_frame const &frame)

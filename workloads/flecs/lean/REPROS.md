@@ -4,7 +4,7 @@ From the Lean replica of flecs v4.2.0 (the latest release), written blind from i
 rounds (REPORT.md to REPORT-6.md: each finding's minimal program, story, tape, code path and the
 documentation it breaks). Every entry below was reproduced on the real flecs v4.2.0: its C test
 (tests/flecs_lean) compiled against the release's single-file distribution with asserts on (a
-debug build: `FLECS_DEBUG` without `NDEBUG`), on macOS, and rounds 1-5's on Linux too (the
+debug build: `FLECS_DEBUG` without `NDEBUG`), on macOS and on Linux (the
 `flecs-lean` workflow); F47's race also in a release build (`NDEBUG`), as its entry says. A
 test returns 0 when flecs behaves as documented; the output shown is the real flecs's. Each entry's
 "Tracker" line says whether flecs's issues or PRs already have it (searched 2026-11-25).

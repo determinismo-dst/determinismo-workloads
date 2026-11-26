@@ -1,0 +1,14 @@
+diff --git a/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp b/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp
+index 112007bb8..1130ef4ce 100644
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/lazy_sequence.cpp
+@@ -100,7 +100,8 @@ namespace jank::runtime::obj
+     auto const s(seq());
+     if(s.is_nil())
+     {
+-      return 1;
++      /* An empty sequence hashes as the empty list, which it is `=` to. */
++      return persistent_list::empty()->to_hash();
+     }
+     return hash::ordered(s.erase());
+   }

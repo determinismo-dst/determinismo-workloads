@@ -13,6 +13,9 @@ finding's forms run on that build:
 - [LG1.diff](LG1.diff): `count` returns an `i64`, not the `usize` of `sequence_length`.
   `(< -1 (count "a"))` is true, `(max (count [1]) -1)` 1, `(min (count [1 2 3]) -1)` -1.
 
+- [LG7.diff](LG7.diff): an empty lazy sequence hashes as the empty list (`persistent_list::empty()`'s
+  hash), not 1. `(= #{()} (set [(lazy-seq)]))` is true, `(hash (lazy-seq))` 2277397642 like `(hash ())`;
+  on the build without it, false and 1.
 jank's own tests with all three patches applied: its 551 `pass-` files under test/jank, each in
 its own process, read whole and its forms evaluated in order (jank has no `load-file`; its test
 runner passes a file whose last form is `:success`): 549 pass on the original build and 549 on the

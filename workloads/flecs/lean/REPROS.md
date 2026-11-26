@@ -1,7 +1,7 @@
 # flecs repros
 
-From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in six
-rounds (REPORT.md to REPORT-6.md: each finding's minimal program, story, tape, code path and the
+From the Lean replica of flecs v4.2.0 (the latest release), written blind from its source in seven
+rounds (REPORT.md to REPORT-7.md: each finding's minimal program, story, tape, code path and the
 documentation it breaks). Every entry below was reproduced on the real flecs v4.2.0: its C test
 (tests/flecs_lean) compiled against the release's single-file distribution with asserts on (a
 debug build: `FLECS_DEBUG` without `NDEBUG`), on macOS and on Linux (the
@@ -542,7 +542,90 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/isa_second_base_onset.c fle
 # FAIL: OnSet events name a base that is not the entity's source for Position
 ```
 
+- [ ] **F48: adding or removing a DontFragment component on a base sends OnAdd and OnRemove to an instance that owns that component itself, and to its inheritors**; the ChildOf example of "Event Propagation" shows the same for OnSet (it reaches a grandchild through a child that owns the component). Story, code path and the docs it breaks: REPORT-7.md, F48.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/propagate_on_add_remove_dont_fragment_owner.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# events with source base: Position and Health (inst, inst2) 0; Defense OnAdd inst 1, inst2 1; Defense OnRemove inst 1, inst2 1
+# (b) OnSet from parent: Velocity (child, grandchild) 0; Mass child 1, grandchild 1
+# FAIL: inst owns Defense (7) throughout, yet it and inst2 got OnAdd and OnRemove events from base
+```
+
+- [ ] **F49: OnAdd and OnRemove, propagated or forwarded, name a base that is not the entity's source; in a diamond the same event comes twice** (table storage too). Story, code path and the docs it breaks: REPORT-7.md, F49.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/propagate_on_add_remove_second_base.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# (a) inst sees x=1, then x=1; OnAdd from b2 1, OnRemove from b2 1
+# (c) d: OnAdd from b4 2 (expected 1); control: OnAdd from b5 1 (expected 1)
+# FAIL: OnAdd/OnRemove events name a base that is not the entity's source (or come twice)
+```
+
+- [ ] **F50: no OnAdd or OnRemove is forwarded for an inherited DontFragment component**, through IsA and through the ChildOf example of "Event Forwarding". Story, code path and the docs it breaks: REPORT-7.md, F50.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/forward_on_add_remove_dont_fragment.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# inst: Position OnAdd 1 OnRemove 1; Health OnAdd 1 OnRemove 1; Defense OnAdd 0 OnRemove 0
+# (b) child = ChildOf parent: Velocity(up) OnAdd 1; Mass(up) OnAdd 0
+# FAIL: inst gained and lost the inherited Defense without an OnAdd and an OnRemove
+```
+
+- [ ] **F51: when a variant gains a base or loses an override, its inheritors get OnAdd or OnRemove but no OnSet, though their value changed** ("OnSet and Inheritance"). Story, code path and the docs it breaks: REPORT-7.md, F51.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/inheritor_onset_base_change.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# (a) inst reads x=-1, then x=1: OnSet 0, OnAdd 1
+# (b) inst2 reads x=5, then x=1: OnSet 0, OnRemove 1
+# FAIL: inst and inst2 got a new inherited value without an OnSet event
+```
+
+- [ ] **F52: instantiating a prefab whose Parent-storage child has an Inherit component aborts if that component has an on_set hook or is Sparse** (the ChildOf and auto-override controls work). The hook form stops at another internal assert than the replica's (`elem != NULL` in `flecs_new_entity`, not component_actions.c 679), an abort all the same. Story, code path and the docs it breaks: REPORT-7.md, F52.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_child_inherit_on_set_hook.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# controls: ChildOf child's Velocity {3, 4} (owned 1); auto-overridden Parent child's Velocity {3, 4} (owned 1)
+# fatal: flecs.c: 7976: assert(elem != NULL) (INTERNAL_ERROR)   <- flecs_new_entity <- ecs_new_w_id
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/prefab_parent_child_inherit_sparse.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 64655: assert(dst_ptr != NULL) (INTERNAL_ERROR)
+```
+
+- [ ] **F53: `ecs_iter_changed` and `ecs_iter_skip` abort inside a multi-threaded system once the world has worker threads** (a worker iterator; flecs.h states no such condition). Story, code path and the docs it breaks: REPORT-7.md, F53.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/iter_changed_multi_threaded_system.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# frame without threads: callback calls 1, changed 1
+# fatal: flecs.c: 79057: assert(it->next == ecs_query_next) (UNSUPPORTED)
+# FAIL: signal 6 in the frame with worker threads (the system's callback calls ecs_iter_changed)
+```
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/iter_skip_multi_threaded_system.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# fatal: flecs.c: 79095: assert(it->next == ecs_query_next) (INVALID_PARAMETER)
+```
+
+- [ ] **F54: the run callback of a single-threaded system over a trivially cached query gets `flecs_query_trivial_cached_next`, not `ecs_query_next` as system.h says, and `ecs_iter_skip` aborts there**. Story, code path and the docs it breaks: REPORT-7.md, F54.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26; #2445, open, is IsA between component ids, another feature).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/system_run_trivial_cache_next.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# control (EcsQueryDetectChanges): it->next == ecs_query_next 1, results 1, skipped without abort
+# system: it->next == ecs_query_next 0, results 1
+# fatal: flecs.c: 79095: assert(it->next == ecs_query_next) (INVALID_PARAMETER)
+```
+
 ## Predicted but not reproduced
+
+- F55 (round 7: the skip of a deleted table's order_by slice plants a one-element dirty state the
+  next table writes past): its test, built with `-DFLECS_USE_OS_ALLOC`, exits 0 on v4.2.0 (the new
+  table takes the freed memory, no guard changes): not reproduced.
 
 - F2 as first predicted (`batch_remove_dead_target_panic.c`): flecs behaved as documented; a model
   error, corrected in round 2 (the entry above).

@@ -264,7 +264,7 @@ def check (p : Prog) : List (String × String) := Id.run do
       continue
     n := n + 1
     if o != t then
-      out := out ++ [("P1 no use after free", s!"result {n}: a slice of table {t}, which ecs_delete freed during the iteration, names its memory, now table {o} [{if y.hasP then "P, " else ""}{y.tags.map (fun k => s!"T{k}")}] with count {y.count} (the store hands out the slot freed last: sparse.c 137-150, 380-393); the iterator returns it and copies the slice's _trs, columns, _ids and _sources (cache_iter.c 192-222), which flecs_query_cache_match_fini freed (match.c 18-46)")]
+      out := out ++ [("P1 no use after free", s!"result {n}: a slice of table {t}, which ecs_delete freed during the iteration, names its memory, now table {o} [{if y.hasP then "P, " else ""}{y.tags.map (fun k => s!"T{k}")}] with count {y.count} (the store hands out the slot freed last: sparse.c 137-150, 380-393); the iterator returns it and copies the slice's _trs, columns, _ids and _sources (cache_iter.c 192-222), which flecs_query_cache_match_fini freed (match.c 18-46); a debug build aborts there, in flecs_iter_assert_columns (eval_iter.c 251-271, called at 585: the freed columns and _trs disagree), before the result reaches the caller")]
     for i in [off:off + cnt] do
       let e := y.mem.getD i 0
       if i ≥ y.count then
@@ -330,5 +330,156 @@ def cases : List (String × Prog) := [
     { ntags := 2, delPolicy := #[true, false],
       init := [.newEnt true [] 2, .newEnt true [0] 4, .newEnt true [] 6],
       calls := [(1, .deleteTag 0), (1, .newEnt true [1] 9)] }) ]
+
+/-! ### Round 7: the dirty state planted in a zeroed table slot
+
+  The skip of a slice whose table was freed calls
+  `flecs_query_sync_match_monitor` (cache_iter.c 84-87), which calls
+  `flecs_table_get_dirty_state` (storage/table.c 1432-1450) on the slice's
+  table pointer: the store's zeroed memory.  Its `dirty_state` is NULL, so
+  a block of `column_count + 1` = 1 int32 is allocated and its pointer
+  written into the zeroed slot.  `flecs_table_new` (table_graph.c 433-470)
+  takes the slot with `flecs_sparse_add_t`, which does not zero it
+  (sparse.c 258-269), and neither it nor `flecs_table_init` sets
+  `dirty_state`: the next table created there starts with the 1-int block.
+  `flecs_table_mark_dirty` (storage/table.c 1397-1429), on every `ecs_set`
+  and `ecs_modified` of a column of that table, increments
+  `dirty_state[column]` with column >= 1; query monitors read
+  `dirty_state[tc.column + 1]` (change_detection.c 581-633).  The block
+  is freed with the new table's size (storage/table.c 1318:
+  `flecs_wfree_n(world, int32_t, table->column_count + 1, ...)`).
+
+  The model continues the iteration after the skip (round 6's `check`
+  stops at the first violation), then runs calls after it.  Property P1:
+  no write or read past an allocation.  The freed monitor written by the
+  same skip is round 6's F46 (P1, use after free), not counted again. -/
+
+inductive Post
+  /-- `ecs_new` with the type, after the iteration -/
+  | newEnt (hasP : Bool) (tags : List Nat)
+  /-- `ecs_set(world, e, P, ...)` on the k-th entity created after the
+      iteration -/
+  | setP (k : Nat)
+  deriving Repr, BEq, Inhabited
+
+def showPost : Post → String
+  | .newEnt p ts => s!"ecs_new [{if p then "P, " else ""}{ts.map (fun k => s!"T{k}")}]"
+  | .setP k => s!"ecs_set(n{k}, P)"
+
+structure Prog7 where
+  base : Prog
+  post : List Post
+  deriving Inhabited
+
+instance : Repr Prog7 := ⟨fun p _ => .text s!"{repr p.base}; after the iteration: {p.post.map showPost}"⟩
+
+/-- The slots holding a planted dirty state after the iteration (and the
+    round-6 P1 of the same skip, as a flag). -/
+def iterateLeaks (p : Prog) : Option (W × List Nat × Bool) := Id.run do
+  let mut w : W := { delPolicy := p.delPolicy }
+  for op in p.init do
+    match runOp w none op with
+    | some w' => w := w'
+    | none => return none
+  let (w1, slices) := buildSlices w
+  w := w1
+  let mut n := 0
+  let mut leaks : List Nat := []
+  let mut uaf := false
+  for (t, off, cnt) in slices do
+    let x := w.tables.getD t default
+    let occ := if x.live then some t else
+      (List.range w.tables.size).find? (fun t' =>
+        let y := w.tables.getD t' default
+        y.live && y.slot == x.slot)
+    match occ with
+    | none =>
+      -- the zeroed slot: count 0, skipped; the sync plants a dirty state
+      uaf := true
+      if !leaks.contains x.slot then leaks := x.slot :: leaks
+      continue
+    | some o =>
+      let y := w.tables.getD o default
+      if y.count == 0 then
+        if o != t then uaf := true
+        continue
+      if o != t then return none  -- round 6's P-IT3/P1 forms: not this model
+      n := n + 1
+      let _ := off + cnt
+      for (k, op) in p.calls do
+        if k == n then
+          match runOp w (some o) op with
+          | some w' => w := w'
+          | none => return none
+  return some (w, leaks, uaf)
+
+def check7 (p : Prog7) : List (String × String) := Id.run do
+  let some (w0, leaks, _) := iterateLeaks p.base | return []
+  if leaks.isEmpty then return []
+  let mut w := w0
+  -- the planted block per live table: a table created in a planted slot
+  let mut planted : List Nat := []   -- table indices
+  let mut created : Array Nat := #[] -- entity ids created after the iteration
+  let mut leaksLeft := leaks
+  for op in p.post do
+    match op with
+    | .newEnt hp ts =>
+      if ts.any (fun k => w.deadTags.contains k) then return []
+      let before := w.tables.size
+      let (w', t) := ensureTable w hp ts
+      w := w'
+      if w.tables.size > before then
+        let slot := (w.tables.getD t default).slot
+        if leaksLeft.contains slot then
+          planted := t :: planted
+          leaksLeft := leaksLeft.erase slot
+      w := newEnt w hp ts 0
+      created := created.push (w.ents.size - 1)
+    | .setP k =>
+      let some e := created[k]? | continue
+      let t := (w.ents.getD e default).table
+      let x := w.tables.getD t default
+      if !x.hasP then continue
+      if planted.contains t then
+        return [("P1 no write past an allocation", s!"ecs_set(P) on an entity of table {t} [P{String.join (x.tags.map (fun k => s!", T{k}"))}], created after the iteration in the slot of a table freed during it: the skip of that table's slice allocated a 1-element dirty state into the zeroed slot (cache_iter.c 84-87, change_detection.c 600-606, storage/table.c 1432-1450), which flecs_table_new keeps (table_graph.c 443, sparse.c 258-269); flecs_table_mark_dirty writes dirty_state[1] (storage/table.c 1397-1429), past the block")]
+  return []
+
+section
+variable {m : Type → Type} [Monad m] [Pick m]
+
+def genPost (ntags : Nat) (len : Nat) : m (List Post) := do
+  let mut out := []
+  for _ in [0:len] do
+    match (← Pick.pick "sl7.post" 2) with
+    | 0 => let (hp, ts) ← genType ntags; out := out ++ [Post.newEnt hp ts]
+    | _ => out := out ++ [Post.setP (← Pick.pick "sl7.k" 2)]
+  return out
+
+def genProg7 (ntags ninit ncalls npost : Nat) : m Prog7 := do
+  let b ← genProg ntags ninit ncalls
+  return { base := b, post := ← genPost ntags npost }
+
+end
+
+def shrink7 (p : Prog7) : List Prog7 :=
+  (shrink p.base).map (fun b => { p with base := b }) ++
+  (List.range p.post.length).map (fun i => { p with post := p.post.eraseIdx i })
+
+def cases7 : List (String × Prog7) := [
+  ("query_order_by_freed_slot_dirty_state: after the iteration, ecs_new [P, T1], then ecs_set P",
+    { base := { ntags := 2, delPolicy := #[true, false],
+                init := [.newEnt true [] 2, .newEnt true [0] 4, .newEnt true [] 6],
+                calls := [(1, .deleteTag 0)] },
+      post := [.newEnt true [1], .setP 0] }),
+  ("control: no delete during the iteration",
+    { base := { ntags := 2, delPolicy := #[true, false],
+                init := [.newEnt true [] 2, .newEnt true [0] 4, .newEnt true [] 6],
+                calls := [] },
+      post := [.newEnt true [1], .setP 0] }),
+  ("control: the delete before the iterator is created",
+    { base := { ntags := 2, delPolicy := #[true, false],
+                init := [.newEnt true [] 2, .newEnt true [0] 4, .newEnt true [] 6, .deleteTag 0],
+                calls := [] },
+      post := [.newEnt true [1], .setP 0] }) ]
 
 end Flecs.Slices

@@ -116,6 +116,9 @@ def vmF : Nat → Call → VMM Bool
           resetAfterBlockF me false
           return true
       vmF fuel (.runBlock redo)
+    | .all =>
+      -- round 7: only uncached queries have an All op; not in this VM
+      unmod "All (not in the fuel VM)"; return false
 
 /-- `ecs_query_next` until it returns false, with the fuel VM. -/
 def iterateF (ops : Array QOp) (cache : Array Nat) (types : Array (List Nat)) (counts : Array Nat) :

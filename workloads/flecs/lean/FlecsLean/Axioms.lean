@@ -4,6 +4,7 @@ import FlecsLean.TheoremsInh
 import FlecsLean.TheoremsR4
 import FlecsLean.TheoremsR5
 import FlecsLean.TheoremsR6
+import FlecsLean.TheoremsR7
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -62,3 +63,12 @@ import FlecsLean.TheoremsR6
 #print axioms Flecs.R6.spawner_cases
 #print axioms Flecs.R6.reused_slot_case
 #print axioms Flecs.R6.or_after_chain_iterate
+#print axioms Flecs.R7.propF_skips_owners
+#print axioms Flecs.R7.prop_dontFragment_reaches_owner
+#print axioms Flecs.R7.isa_dontFragment_silent
+#print axioms Flecs.R7.ev_cases
+#print axioms Flecs.R7.spawner_inherit_asserts
+#print axioms Flecs.R7.spawner_inherit_cases
+#print axioms Flecs.R7.worker_iter_calls_abort
+#print axioms Flecs.R7.run_trivial_next
+#print axioms Flecs.R7.dirty_state_case

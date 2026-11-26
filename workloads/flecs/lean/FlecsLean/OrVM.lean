@@ -36,7 +36,7 @@ import FlecsLean.Validator
 namespace Flecs.OrVM
 open Flecs.Val
 
-inductive Kind | setIds | cache | and_ | or_ | not_ | optional | end_ | yield | ifVar
+inductive Kind | setIds | cache | and_ | or_ | not_ | optional | end_ | yield | ifVar | all
   deriving Repr, BEq, Inhabited, DecidableEq
 
 /-- `ecs_query_op_t`: kind, labels, the term's component; `wr` is bit 0
@@ -167,7 +167,10 @@ def compileTerm (ts : Array VTerm) (i : Nat) : CM Unit := do
   if firstOr then modify fun c => { c with writtenOr := c.written }
   -- 1297-1302: flecs_query_select_all for Not/Optional on an unwritten source
   if !srcWritten && (isNot || isOpt) then
-    modify fun c => { c with unmodelled := some "select_all (compiler_term.c 787-830)" }
+    -- round 7: flecs_query_select_all (compiler_term.c 787-826): an All op
+    -- that writes $this (816) and `flecs_query_write_ctx(src, ctx, false)`
+    discard <| insert { kind := .all, wr := true }
+    modify fun c => { c with written := true }
   -- 1349-1353
   if (← get).condWritten && (!isOr || firstOr) then beginCondEval condWriteState
   -- 1361-1368
@@ -222,6 +225,9 @@ structure OpCtx where
   opIndex : Int := 0
   /-- `ecs_query_and_ctx_t::remaining` -/
   remaining : Nat := 0
+  /-- round 7: the table iterator of a select (`op_ctx->it`) or an All
+      (`op_ctx->cur`): the next table index to look at -/
+  tcur : Nat := 0
   deriving Inhabited
 
 structure VM where
@@ -265,6 +271,33 @@ def setCtx (i : Int) (f : OpCtx → OpCtx) : VMM Unit :=
   modify fun v => if i < 0 then v else { v with opCtx := v.opCtx.modify i.toNat f }
 
 def unmod (s : String) : VMM Unit := modify fun v => { v with unmodelled := v.unmodelled <|> some s }
+
+/-- Round 7: a select's table walk (`flecs_table_cache_iter` with
+    `EcsTableNotEmpty`, then `flecs_query_var_set_range(op, src, table, 0,
+    0)`, which sets `vars[0].entity = 0`, eval_utils.c 163-183). -/
+def selectTables (me : Int) (sel : List Nat → Bool) (redo : Bool) : VMM Bool := do
+  let v ← get
+  let oc ← ctxAt me
+  let start := if redo then oc.tcur else 0
+  let mut cur := start
+  while cur < v.types.size do
+    if sel (v.types.getD cur []) && v.counts.getD cur 0 != 0 then
+      setCtx me (fun c => { c with tcur := cur + 1 })
+      modify fun v => { v with this := some cur, thisEntityUnset := false }
+      return true
+    cur := cur + 1
+  setCtx me (fun c => { c with tcur := cur })
+  return false
+
+/-- `flecs_query_last_op_for_or_cond` (eval.c 1351-1364) -/
+def lastOpForOrCond (ops : Array QOp) (cur last : Int) : Int := Id.run do
+  let mut c := cur
+  for _ in [0:ops.size + 1] do
+    let o := if c < 0 then default else ops.getD c.toNat default
+    let atLast := c == last
+    c := c + 1
+    if o.next == last || atLast then return c
+  return c
 
 mutual
 
@@ -339,8 +372,17 @@ partial def dispatch (op : QOp) (redo : Bool) (fuel : Nat) : VMM Bool := do
       cur := cur + 1
     modify fun v => { v with cacheCur := cur }
     return false
+  | .all =>
+    -- flecs_query_all (eval.c 254-315): written $this: once
+    if (← wrAt me) then return !redo
+    selectTables me (fun _ => true) redo
   | .and_ =>
-    if !(← wrAt me) then unmod "select on an unwritten $this (eval.c 136-148)"; return false
+    if !(← wrAt me) then
+      -- round 7: flecs_query_select (eval.c 136-148) ->
+      -- flecs_query_select_w_id (52-134): the non-empty tables of the
+      -- component's table cache, one result per table (the component is
+      -- in a type once: `remaining` is 0)
+      return (← selectTables me (fun ty => ty.contains op.comp) redo)
     -- flecs_query_with on the written table
     let v ← get
     let some t := v.this | return false
@@ -354,7 +396,7 @@ partial def dispatch (op : QOp) (redo : Bool) (fuel : Nat) : VMM Bool := do
     setCtx me (fun c => { c with remaining := rem })
     return rem > 0
   | .or_ =>
-    if op.srcVar && !(← wrAt me) then unmod "select_or (eval.c 1390-1508)"; return false
+    if op.srcVar && !(← wrAt me) then return (← selectOr op me redo fuel)
     -- flecs_query_with_or
     let r ← runBlock redo fuel
     if r then setCtx me (fun c => { c with opIndex := op.next })
@@ -376,6 +418,49 @@ partial def dispatch (op : QOp) (redo : Bool) (fuel : Nat) : VMM Bool := do
         resetAfterBlock me false
         return true
     runBlock redo fuel
+
+/-- Round 7: `flecs_query_select_or` (eval.c 1390-1508), with
+    `flecs_query_run_until_for_select_or` (1366-1388). -/
+partial def selectOr (op : QOp) (me : Int) (redo0 : Bool) (fuel : Nat) : VMM Bool := do
+  let first := me + 1
+  let mut redo := redo0
+  if !redo then setCtx me (fun c => { c with opIndex := first })
+  let ops := (← get).ops
+  let firstOp ← vop (first - 1)
+  let last := firstOp.next
+  let mut curOp := (← ctxAt me).opIndex
+  let mut result := false
+  for _ in [0:64] do
+    let cur := (← ctxAt me).opIndex
+    modify fun v => { v with opIndex := cur }
+    -- 1414: ctx->written[cur] = ctx->written[first - 1] | op->written
+    setWr cur ((← wrAt (first - 1)) || op.wr)
+    -- run_until_for_select_or
+    let lfc := lastOpForOrCond ops cur last
+    let start := if redo then lfc - 1 else cur
+    discard <| runUntil redo (first - 1) start lfc fuel
+    result := (← get).opIndex == last
+    if result then
+      if first == cur then break
+      -- 1426-1480: is an earlier term of the chain true for this result?
+      setWr first (← wrAt last)
+      let saved ← ctxAt first
+      setCtx first (fun _ => {})
+      discard <| runUntil false (first - 1) first cur fuel
+      setCtx first (fun _ => saved)
+      if (← get).opIndex == last then
+        -- a duplicate: find the next result (`continue` tests cur_op)
+        redo := true
+        if curOp == last then break
+        continue
+      break
+    -- 1499-1504: no result, the next term of the chain
+    let ni := lastOpForOrCond ops (← ctxAt me).opIndex last
+    setCtx me (fun c => { c with opIndex := ni })
+    curOp := ni
+    redo := false
+    if curOp == last then break
+  return result
 
 end
 
@@ -438,6 +523,7 @@ def showOps (ops : Array QOp) : String :=
     let k := match o.kind with
       | .setIds => "SetIds" | .cache => "Cache" | .and_ => s!"And(C{o.comp})" | .or_ => "Or"
       | .not_ => "Not" | .optional => "Optional" | .end_ => "End" | .yield => "Yield" | .ifVar => "IfVar"
+      | .all => "All"
     s!"{i}:{k}[prev {o.prev}, next {o.next}]")
 
 inductive Outcome
@@ -487,6 +573,72 @@ def check (p : Prog) : List (String × String) := Id.run do
       out := out ++ [("PQ-OR1 results", s!"the cached query yields tables {got} but the tables {want} match its terms (ops: {showOps ops}{if marker then "; an op jumped to the Or marker label -2" else ""})")]
     return out
   | _ => return []
+
+/-! ### Round 7: uncached queries (select, select_or, All) -/
+
+/-- `flecs_query_compile` (compiler.c 1047-1190) for an uncached query: no
+    cache op, the terms in order (leading Optional terms last). -/
+def compileUncached (ts : Array VTerm) : CCtx := Id.run do
+  let prog : CM Unit := do
+    discard <| insert { kind := .setIds }
+    let n := ts.size
+    let mut startTerm := 0
+    for _ in [0:n] do
+      if startTerm < n && (ts.getD startTerm default).oper == .optional then startTerm := startTerm + 1
+      else break
+    let mut compiled : Array Bool := Array.replicate n false
+    let mut pass := startTerm
+    for _ in [0:2] do
+      for i in [pass:n] do
+        if compiled.getD i true then continue
+        if (ts.getD i default).oper == .optional && pass != 0 then break
+        compileTerm ts i
+        compiled := compiled.set! i true
+      if pass != 0 then pass := 0 else break
+    discard <| insert { kind := .yield }
+  let ((), c) := prog.run {}
+  return c
+
+/-- Run an uncached query (cache kind None). -/
+def runUncached (p : Prog) : Outcome :=
+  if p.tables.toList.eraseDups.length != p.tables.size then .skipped "duplicate table types" else
+  match finalizeTerms p.storage p.terms with
+  | .error e => .skipped e
+  | .ok _ =>
+    if p.storage.any (· == .dontFragment) then .skipped "DontFragment" else
+    let c := compileUncached p.terms
+    match c.unmodelled with
+    | some u => .unmodelled u
+    | none =>
+      let counts := p.tables.map (fun _ => 1)
+      let (got, vm) := iterate c.ops #[] p.tables counts
+      match vm.unmodelled with
+      | some u => .unmodelled u
+      | none =>
+        let want := (List.range p.tables.size).filter (fun t => matchesDoc p.terms (p.tables.getD t []))
+        .ran c.ops got want c.oob vm.markerReached
+
+/-- PQ-OR1 and P1 for the uncached query. -/
+def checkU (p : Prog) : List (String × String) := Id.run do
+  match runUncached p with
+  | .ran ops got want oob marker =>
+    let mut out := []
+    for o in oob do out := out ++ [("P1 no-crash", o)]
+    let g := got.mergeSort (· ≤ ·)
+    if g != want then
+      let kind := if got.length != got.eraseDups.length then "a table twice" else if g.all (want.contains ·) then "a table missing" else "a table that does not match"
+      out := out ++ [("PQ-OR1 results", s!"uncached: {kind}: the query yields tables {got} but the tables {want} match its terms (ops: {showOps ops}{if marker then "; an op jumped to the Or marker label -2" else ""})")]
+    return out
+  | _ => return []
+
+def outcomeKindU (p : Prog) : String :=
+  match runUncached p with
+  | .skipped w => if (w.splitOn "duplicate").length > 1 then "skipped: duplicate table types" else s!"skipped: rejected"
+  | .unmodelled u => s!"unmodelled: {u}"
+  | .ran ops got want oob _ =>
+    let sel := ops.any (fun o => o.kind == .or_) && ops.size > 0
+    let wrong := got.mergeSort (· ≤ ·) != want
+    s!"ran{if sel then " (Or chain)" else ""}: {if !oob.isEmpty then "out of bounds" else if wrong then "wrong results" else "right"}"
 
 /-! ### Generator -/
 

@@ -8,27 +8,27 @@
   the `self_up` list of its event id record.
 
   The calls and the events flecs delivers for them:
-  - `ecs_set(e, C, v)`: OnSet for e itself (component_actions.c 641-708),
-    then the propagation of `flecs_emit` (observable.c 1260-1269):
-    `flecs_propagate_entities` -> `flecs_emit_propagate` (468-492) ->
-    `flecs_emit_propagate_id` (366-427) walks the tables of `(IsA, e)` and
-    `flecs_emit_propagate_id_for_range` (310-364) invokes the observer for
+  - `ecs_set(e, C, v)`: OnSet for e itself (component_actions.c 641-702),
+    then the propagation of `flecs_emit` (observable.c 1312-1317):
+    `flecs_propagate_entities` -> `flecs_emit_propagate` (440-475) ->
+    `flecs_emit_propagate_id` (378-438) walks the tables of `(IsA, e)` and
+    `flecs_emit_propagate_id_for_range` (310-376) invokes the observer for
     every entity of a table unless the table owns C
     (`owned = flecs_component_get_table(cr, table) != NULL`, 323), then
     recurses into the entities of that table that are targets themselves,
-    again unless the table owns C (356).  A DontFragment component is never
+    again unless the table owns C (361).  A DontFragment component is never
     in a table type, so `owned` is always false for it.  The event's source
-    is e (`it->sources[0]`, 597-600).
+    is e (`it->sources[0]`, 598-599).
   - `ecs_add_pair(e, EcsIsA, b)`: `flecs_emit` forwards the ids reachable
-    through `(IsA, b)` (1147-1188, `flecs_emit_forward`, 784-870) with
-    `er_onset`: `flecs_reachable_cache_ensure` (708-781) lists the Inherit
+    through `(IsA, b)` (1196-1237, `flecs_emit_forward`, 799-888) with
+    `er_onset`: `flecs_reachable_cache_ensure` (708-780) lists the Inherit
     ids of b's table type, and for each `(IsA, bb)` pair of b's table the
-    reachable ids of `(IsA, bb)` that b's table does not have (729-764);
-    for each listed element `flecs_emit_forward_id` (612-706) invokes the
+    reachable ids of `(IsA, bb)` that b's table does not have (741-765);
+    for each listed element `flecs_emit_forward_id` (613-706) invokes the
     OnSet observers only when the element has a column in its source's
-    table (`if (storage_i != -1)`, 689-705; `ecs_table_type_to_column_index`
+    table (`if (storage_i != -1)`, 685-701; `ecs_table_type_to_column_index`
     is -1 for a Sparse component, storage/table.c 162-165) and, for the
-    self|up list, when e's table does not own C (697-700).  Instantiation
+    self|up list, when e's table does not own C (693-696).  Instantiation
     (`flecs_instantiate_dont_fragment`, instantiate.c 301-368) skips Inherit
     components of a base the instance has an IsA pair to (313-316), so it
     emits nothing for them.
@@ -187,7 +187,7 @@ def checkStep (stor : Storage) (pre : St) (op : Op) : St × List (String × Stri
       let why := match op with
         | .set _ _ =>
           if stor == Storage.dontFragment && (ent post x).own.isSome then
-            s!"e{x} owns C, but flecs_emit_propagate_id_for_range decides ownership by the table (observable.c 323: flecs_component_get_table), and a DontFragment component is in no table"
+            s!"e{x} owns C, but flecs_emit_propagate_id_for_range decides ownership by the table (observable.c 324: flecs_component_get_table), and a DontFragment component is in no table"
           else s!"the propagation walks every (IsA, target) table below e{s} that does not own C (observable.c 310-364), including entities whose primary source is another base"
         | .isa _ _ => s!"flecs_emit_forward forwards every reachable element of the new pair (observable.c 784-808), without asking whether another base already provides C"
         | .remove _ => "the re-exposed base"

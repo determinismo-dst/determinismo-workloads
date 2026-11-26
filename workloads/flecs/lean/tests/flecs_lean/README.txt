@@ -2,7 +2,8 @@ C tests for the predictions in ../../REPORT.md (round 1, F1-F14),
 ../../REPORT-2.md (round 2, F2 corrected and F15-F23), ../../REPORT-3.md
 (round 3, F24-F28), ../../REPORT-4.md (round 4, F29-F33, and the
 corrected F16, F17 and F26 tests), ../../REPORT-5.md (round 5,
-F34-F40) and ../../REPORT-6.md (round 6, F41-F47), against flecs v4.2.0.
+F34-F40), ../../REPORT-6.md (round 6, F41-F47) and ../../REPORT-7.md
+(round 7, F48-F55), against flecs v4.2.0.
 
 Each file is one program.  main() returns 0 when flecs behaves as its
 documentation says; a non-zero return or an abort confirms the prediction.
@@ -103,3 +104,43 @@ round 6):
                   -lpthread; ecs_init(); the order_by callback is a
                   rendezvous that detects two threads sorting at once; a
                   crash or an abort also confirms)
+
+Round 7 (all use ecs_mini() unless noted; none was run in round 7):
+  F48             propagate_on_add_remove_dont_fragment_owner.c (an instance
+                  that owns a DontFragment component gets the OnAdd and
+                  OnRemove of its base, and so does its own inheritor; (b)
+                  the ChildOf example of "Event Propagation": an OnSet
+                  reaches the grandchild through a child that owns the
+                  DontFragment component; table and Sparse are the controls)
+  F49             propagate_on_add_remove_second_base.c (OnAdd and OnRemove
+                  from a second base that is not the source, propagated and
+                  forwarded; a diamond gives OnAdd twice)
+  F50             forward_on_add_remove_dont_fragment.c (no forwarded OnAdd
+                  or OnRemove for an inherited DontFragment component, IsA
+                  and the ChildOf example of "Event Forwarding")
+  F51             inheritor_onset_base_change.c (no OnSet for the inheritors
+                  of a variant that gains a base or loses an override)
+  F52             prefab_parent_child_inherit_on_set_hook.c,
+                  prefab_parent_child_inherit_sparse.c (it includes the first
+                  file with FLECS_LEAN_SPARSE set). An abort confirms: the
+                  handler prints FAIL and exits 1.
+  F53             iter_changed_multi_threaded_system.c,
+                  iter_skip_multi_threaded_system.c (it includes the first
+                  file with FLECS_LEAN_SKIP set). Needs threads: link with
+                  -lpthread; ecs_mini() with FlecsPipeline and
+                  ecs_set_os_api_impl(). An abort or a crash confirms.
+  F54             system_run_trivial_cache_next.c (ecs_mini() with
+                  FlecsPipeline; an abort also confirms)
+  F55             query_order_by_freed_slot_dirty_state.c: build flecs.c and
+                  the test with -DFLECS_USE_OS_ALLOC (every flecs allocation
+                  is then one OS allocation, which the test's wrapper guards;
+                  the test returns 2, INCONCLUSIVE, without it):
+
+    cc -std=c99 -DFLECS_USE_OS_ALLOC -I ../../upstream/distr \
+        query_order_by_freed_slot_dirty_state.c ../../upstream/distr/flecs.c \
+        -o t && ./t; echo $?
+
+  F47 (round 6)   workers_order_by_sort_race.c is unchanged: a debug build
+                  confirms it by the abort at query/cache/order_by.c 87-88
+                  (ECS_UNSUPPORTED, "cannot sort query in multithreaded
+                  mode"), a release build (-DNDEBUG) by the race.

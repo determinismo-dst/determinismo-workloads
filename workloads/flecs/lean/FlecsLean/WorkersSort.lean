@@ -77,6 +77,8 @@ structure Mem where
   monHead : Nat := 1
   matchCount : Nat := 0
   acc : Array (Loc × Nat × Bool) := #[]
+  /-- a debug build (asserts on) -/
+  debug : Bool := false
   deriving Inhabited
 
 abbrev WM := ProcessM Mem PC
@@ -146,7 +148,16 @@ def step (races : Nat) (th : Nat) (pc : PC) : WM (StepResult PC) := do
     acc (.row pc.mn) true
     modMem (fun m => { m with rows := m.rows.set! pc.mn pc.a })
     return .ran { pc with s := 10, i := pc.i + 1 }
-  | 20 => acc .slices true; return .ran { pc with s := 21 }
+  | 20 =>
+    -- round 7 (the coordinator's run of F47): in a debug build
+    -- flecs_query_cache_build_sorted_table_range asserts
+    -- `!(world->flags & EcsWorldMultiThreaded)`, ECS_UNSUPPORTED, "cannot
+    -- sort query in multithreaded mode" (order_by.c 81-88), before it
+    -- writes the slices; every stage that sorted, or saw match_count move,
+    -- gets here (order_by.c 315-321)
+    if (← get).memory.debug then
+      violate "P-A1 no undocumented assert" s!"stage {th} reaches flecs_query_cache_build_sorted_tables in multi-threaded mode: a debug build aborts at order_by.c 87-88 (ECS_UNSUPPORTED, \"cannot sort query in multithreaded mode\"), which no documentation page states; a release build goes on and races (F47)"
+    acc .slices true; return .ran { pc with s := 21 }
   | 21 => acc .matchCount false; return .ran { pc with s := 22, reg := m.matchCount }
   | 22 =>
     acc .matchCount true
@@ -165,11 +176,12 @@ structure Cfg where
   rows : Nat := 3
   races : Nat := 1
   maxSteps : Nat := 400
+  debug : Bool := false
   deriving Repr, Inhabited
 
 def timeline (cfg : Cfg) (src : Source) : Ended := Id.run do
   let start : Process Mem PC :=
-    { memory := { rows := (List.range cfg.rows).reverse.toArray },
+    { memory := { rows := (List.range cfg.rows).reverse.toArray, debug := cfg.debug },
       threads := Array.replicate cfg.threads (some {}) }
   let body : WM Unit := do
     interleave { step := step cfg.races } cfg.maxSteps

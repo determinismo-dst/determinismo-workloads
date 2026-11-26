@@ -16,6 +16,9 @@ import FlecsLean.Spawner
 import FlecsLean.OnSetInh
 import FlecsLean.Slices
 import FlecsLean.WorkersSort
+import FlecsLean.EvInh
+import FlecsLean.SpawnInh
+import FlecsLean.IterKinds
 
 open Flecs
 
@@ -260,6 +263,30 @@ def orMain (args : List String) : IO UInt32 := do
   | ["lib", mode, seed, n, ncomp, len, ntab, prop] =>
     let g : EStateM Determinismo.Stop Determinismo.Decisions OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
     glib mode g OrVM.check prop n.toNat! seed.toNat! sh
+  | ["uncached-exhaust", limit, ncomp, len, ntab] =>
+    -- round 7: the same programs as an uncached query (select, select_or)
+    let g : TapeM OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
+    let shU := fun (sig : String) (p : OrVM.Prog) => gshrink OrVM.shrink OrVM.checkU sig p
+    let (st, done) := gexhaust g OrVM.checkU limit.toNat!
+    greport s!"or uncached-exhaust ncomp={ncomp} len={len} ntab={ntab} limit={limit} complete={done}" st (some shU)
+    let kinds := fun (p : OrVM.Prog) => [(OrVM.outcomeKindU p, "")]
+    let (st2, _) := gexhaust g kinds limit.toNat!
+    IO.println "  outcomes:"
+    for (k, c) in st2.byProperty do IO.println s!"    {k}: {c}"
+  | ["uncached-lib", mode, seed, n, ncomp, len, ntab, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions OrVM.Prog := OrVM.genProg ncomp.toNat! len.toNat! ntab.toNat!
+    glib mode g OrVM.checkU prop n.toNat! seed.toNat! (fun sig p => gshrink OrVM.shrink OrVM.checkU sig p)
+  | ["uncached-cases"] =>
+    for (nm, p) in OrVM.cases do
+      IO.println s!"== or uncached case {nm}"
+      match OrVM.runUncached p with
+      | .ran ops got want oob marker =>
+        IO.println s!"  ops: {OrVM.showOps ops}"
+        IO.println s!"  yields tables {got}; the terms match tables {want}; marker reached {marker}"
+        for o in oob do IO.println s!"  out of bounds: {o}"
+      | .skipped w => IO.println s!"  skipped: {w}"
+      | .unmodelled u => IO.println s!"  unmodelled: {u}"
+      for (pr, d) in OrVM.checkU p do IO.println s!"  PROPERTY {pr}: {d}"
   | ["cases"] =>
     for (nm, p) in OrVM.cases do
       IO.println s!"== or case {nm}"
@@ -427,6 +454,91 @@ def osiMain (args : List String) : IO UInt32 := do
   | _ => IO.println "usage: osi explore SEED N NENTS LEN | exhaust LIMIT NENTS LEN | lib MODE SEED N NENTS LEN PROP | cases"; return 1
   return 0
 
+def evMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : EvInh.Prog) => gshrink EvInh.shrink EvInh.check sig p
+  match args with
+  | ["explore", seed, n, nents, len] =>
+    let g : TapeM EvInh.Prog := EvInh.genProg nents.toNat! len.toNat!
+    greport s!"ev explore seed={seed} n={n} nents={nents} len={len}" (gexplore g EvInh.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, nents, len] =>
+    let g : TapeM EvInh.Prog := EvInh.genProg nents.toNat! len.toNat!
+    let (st, done) := gexhaust g EvInh.check limit.toNat!
+    greport s!"ev exhaust nents={nents} len={len} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, nents, len, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions EvInh.Prog := EvInh.genProg nents.toNat! len.toNat!
+    glib mode g EvInh.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in EvInh.cases do
+      IO.println s!"== ev case {nm}: {repr p}"
+      for es in EvInh.trace p do
+        IO.println s!"  events: {es.map (fun (k, x, s) => s!"{k.show}(e{x}, src e{s})")}"
+      for (pr, d) in EvInh.check p do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: ev explore SEED N NENTS LEN | exhaust LIMIT NENTS LEN | lib MODE SEED N NENTS LEN PROP | cases"; return 1
+  return 0
+
+def siMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : Spawn7.Prog) => gshrink Spawn7.shrink Spawn7.check sig p
+  match args with
+  | ["exhaust", limit, ncomp, nchild] =>
+    let g : TapeM Spawn7.Prog := Spawn7.genProg ncomp.toNat! nchild.toNat!
+    let (st, done) := gexhaust g Spawn7.check limit.toNat!
+    greport s!"si exhaust ncomp={ncomp} nchild={nchild} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, ncomp, nchild, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Spawn7.Prog := Spawn7.genProg ncomp.toNat! nchild.toNat!
+    glib mode g Spawn7.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in Spawn7.cases do
+      IO.println s!"== si case {nm}: {repr p}"
+      for k in [0:p.children.size] do
+        match Spawn7.instChild p k with
+        | .ok g => IO.println s!"  child {k}: owns {g.owns}, inherits {g.inherits}"
+        | .error e => IO.println s!"  child {k}: ASSERT {e}"
+      for (pr, d) in Spawn7.check p do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: si exhaust LIMIT NCOMP NCHILD | lib MODE SEED N NCOMP NCHILD PROP | cases"; return 1
+  return 0
+
+def ikMain (args : List String) : IO UInt32 := do
+  match args with
+  | ["exhaust", limit] =>
+    let g : TapeM IterKinds.Sys := IterKinds.genSys
+    let (st, done) := gexhaust g IterKinds.check limit.toNat!
+    greport s!"ik exhaust limit={limit} complete={done}" st none
+  | ["lib", mode, seed, n, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions IterKinds.Sys := IterKinds.genSys
+    glib mode g IterKinds.check prop n.toNat! seed.toNat! (fun _ s => s)
+  | ["cases"] =>
+    for (nm, s) in IterKinds.cases do
+      IO.println s!"== ik case {nm}: {IterKinds.showSys s}"
+      IO.println s!"  it->next = {(IterKinds.nextOf s).show}; outcome {match IterKinds.outcome s with | .ok r => r | .error e => "ABORT " ++ e}"
+      for (pr, d) in IterKinds.check s do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: ik exhaust LIMIT | lib MODE SEED N PROP | cases"; return 1
+  return 0
+
+def sl7Main (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : Slices.Prog7) => gshrink Slices.shrink7 Slices.check7 sig p
+  match args with
+  | ["explore", seed, n, ntags, ninit, ncalls, npost] =>
+    let g : TapeM Slices.Prog7 := Slices.genProg7 ntags.toNat! ninit.toNat! ncalls.toNat! npost.toNat!
+    greport s!"sl7 explore seed={seed} n={n}" (gexplore g Slices.check7 seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, ntags, ninit, ncalls, npost] =>
+    let g : TapeM Slices.Prog7 := Slices.genProg7 ntags.toNat! ninit.toNat! ncalls.toNat! npost.toNat!
+    let (st, done) := gexhaust g Slices.check7 limit.toNat!
+    greport s!"sl7 exhaust ntags={ntags} ninit={ninit} ncalls={ncalls} npost={npost} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, ntags, ninit, ncalls, npost, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions Slices.Prog7 := Slices.genProg7 ntags.toNat! ninit.toNat! ncalls.toNat! npost.toNat!
+    glib mode g Slices.check7 prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in Slices.cases7 do
+      IO.println s!"== sl7 case {nm}: {repr p}"
+      match Slices.iterateLeaks p.base with
+      | some (_, leaks, uaf) => IO.println s!"  slots with a planted dirty state: {leaks}; the skip also wrote a freed monitor (F46): {uaf}"
+      | none => IO.println "  skipped"
+      let r := Slices.check7 p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: sl7 explore SEED N NTAGS NINIT NCALLS NPOST | exhaust LIMIT NTAGS NINIT NCALLS NPOST | lib ... PROP | cases"; return 1
+  return 0
+
 def slMain (args : List String) : IO UInt32 := do
   let sh := fun (sig : String) (p : Slices.Prog) => gshrink Slices.shrink Slices.check sig p
   match args with
@@ -451,8 +563,12 @@ def slMain (args : List String) : IO UInt32 := do
 
 def wsortMain (args : List String) : IO UInt32 := do
   match args with
-  | [mode, threads, rows, races, n, seed, filt] =>
-    let cfg : WSort.Cfg := { threads := threads.toNat!, rows := rows.toNat!, races := races.toNat! }
+  | [mode, threads, rows, races, n, seed, filt] => wsortRun mode threads rows races n seed filt false
+  | [mode, threads, rows, races, n, seed, filt, "debug"] => wsortRun mode threads rows races n seed filt true
+  | _ => IO.println "usage: wsort explore|exhaust THREADS ROWS RACES N SEED FILTER [debug]"; return 1
+where
+  wsortRun (mode threads rows races n seed filt : String) (debug : Bool) : IO UInt32 := do
+    let cfg : WSort.Cfg := { threads := threads.toNat!, rows := rows.toNat!, races := races.toNat!, debug }
     let run := fun src =>
       let e := WSort.timeline cfg src
       match e.violation with
@@ -470,7 +586,6 @@ def wsortMain (args : List String) : IO UInt32 := do
       IO.println "  tape:"
       IO.println (Determinismo.tape c'.taken)
     return 0
-  | _ => IO.println "usage: wsort explore|exhaust THREADS ROWS RACES N SEED FILTER"; return 1
 
 def main (args : List String) : IO UInt32 := do
   match args with
@@ -613,6 +728,10 @@ def main (args : List String) : IO UInt32 := do
   | "osi" :: rest => return (← osiMain rest)
   | "sl" :: rest => return (← slMain rest)
   | "wsort" :: rest => return (← wsortMain rest)
+  | "ev" :: rest => return (← evMain rest)
+  | "si" :: rest => return (← siMain rest)
+  | "ik" :: rest => return (← ikMain rest)
+  | "sl7" :: rest => return (← sl7Main rest)
   | _ =>
     IO.println "usage: flecs-search explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | ei-explore SEED N LEN | ei-exhaust LIMIT LEN"
     return 1

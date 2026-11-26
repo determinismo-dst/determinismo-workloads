@@ -1,0 +1,339 @@
+ROUND 8, AREA Q: THE nREPL (jank main 94d32623; compiler+runtime identical to 7135b7708)
+Files: Jank/R8/Nrepl/{Codec,Exact,Diverge,Walk}.lean, Run/R8/Nrepl.lean (exe jank8-nrepl),
+results/r8-nrepl-{report,t3,t9,unlocked,div,walk,clj,axioms}.txt, .r8-scratch/nrepl/ (tests.jank, clj/, runs, scripts).
+jank paths: upstream-r5/compiler+runtime/src/jank/jank/nrepl/server/... unless another directory is named.
+
+SUMMARY
+- A compact state codec for World T: each state is a short array of small indices into tables of distinct
+  components (hash-consing). Proved for every table and every state: decoding a state's code gives a state
+  whose every component is the original or equal to it under round 6's state equality, and two states get one
+  code only if both are, component by component, equal to one stored state (★ decode_encode, ★ same_code).
+  T9's exact graph now takes 14 s (round 6: 83-128 s); T3's takes 156 s, about 2 GB with the counting stage.
+- T3 is DECIDED under every schedule with the exact graph: 3,174,744 states (the number round 6's hashed
+  search found), 14,872,458 step runs, 245 final states, acyclic, no violation, no step violation, no deadlock.
+  The log ordering is checked at every one of its states and steps (0 differ). So nothing at every budget,
+  and nothing in any of the sdk's own `interleave` timelines (≈3.24·10³⁹¹). Exact counts ≤0 … ≤24 (all budgets in one pass, ≤7: 1,052,312,021,480,394,247,552);
+  ≤0 … ≤6 equal round 6's, counts and eintr-0 counts.
+- The unlocked capture (jank's real code, R125's two properties set aside), beyond round 6's bounds:
+  T9u ≤4 complete, 766,250,832,880 timelines, nothing (round 6: ≤3); T3u ≤3 complete, 322,790,415,360
+  timelines, nothing (round 6: ≤2); ≤0 … ≤3 (T9u) and ≤0 … ≤2 (T3u) equal round 6's. T9u under every
+  schedule, exact: stopped at 22,000,971 states (round 6: 14.3 million hashed), nothing. T9u ≤5 stopped at
+  18,001,781 scheduler states, T3u ≤4 at 12,505,525 states (the memory bound), nothing in either.
+- World T8 (diverging evals, interrupt, stdin inside World T): V37 and R128 confirmed under every schedule
+  (one connection) and at ≤2 … ≤4 preemptions (two connections); every lost output is R125's; round 3's
+  capture lock (the set-aside of R125) deadlocks the other connection behind a diverging eval.
+- Two deviations: Q1 (the stdin op; R127/R128's class made precise): nREPL answers #{"done"} and lists the op,
+  jank answers unknown-op and does not list it; Q2 (new): an eval without output reaches the client as 4
+  messages, two of them holding only the id and session, where nREPL sends 2. Tests vq1, vq1b, vq2 (assembled
+  by the coordinator as y51, y51b, y52; jank only: they call jank's handler namespace, and nREPL's Java classes are
+  not in the project, so the Clojure side, .r8-scratch/nrepl/clj/, cannot run here).
+- ★ The sdk's walk, proved for every finite decision tree on the sdk's own definitions: nextPath is a plain
+  recursion (★ nextPath_eq); a tree program's decisions under Source.path are DT.run's (★ prog_run); the walk
+  runs the leaves depth first, each once (★ walk_paths, ★ walk_count); `exhaust` ends `.complete` with exactly
+  the number of leaves (★ exhaust_complete); the counters' recurrence (★ leaves_node). Not proved: that
+  interleavePB over World T is such a tree with subtrees determined by the scheduler state (nREPLA6-1).
+  Run instead, on World T itself: the sdk's `exhaust` over round 3's runT/runTWith gives exactly the graph
+  counters' numbers (W1 interleave 264,832; W2 ≤0..≤3 4, 84, 874, 5,974; W3 ≤0..≤3 4, 336, 11,938, 276,982).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+Q1 (new as an item; R127/R128's missing-op class, which rounds 4-5 named "stdin op absent" in their left-out
+lists without its replies or a test). The stdin op.
+  Program (jank's handler called in-process, as round 5's v37 tests do):
+    (let [s (:new-session (handle-message {"op" "clone" "id" "c"}))]
+      (handle-message {"op" "stdin" "id" "s" "session" s "stdin" "hi\n"}))
+  nREPL 1.8.0 (Clojure 1.12.3's reference server): {:status #{"done"}}, and "hi\n" is appended to the session's
+    *in* (middleware/session.clj add-stdin 386-397: `(.addInput qpr stdin)` then `(t/respond-to msg :status
+    :done)`; misc.clj response-for 53-78 makes the status a set). describe lists "stdin" (add-stdin's descriptor
+    399-406 `:handles {"stdin" ...}`; server.clj default-middleware 114-125 includes add-stdin; middleware.clj
+    52-62, used by wrap-describe 71, lists every descriptor's :handles).
+  jank (prediction): {:status [:error :unknown-op :done] :op "stdin"} (handler.jank 5-8, the :default method; no
+    file under nrepl/ mentions stdin), and describe's :ops (handler/describe.jank 5-17) has no :stdin.
+  World T8 (D3, every schedule, complete): an eval of (read-line) (core.jank 5966-5972 throws ex-info "TODO: port
+    read-line"; known G14) ends [:done :eval-error]; the stdin op that follows gets [error unknown-op done];
+    nREPL instead sends {:status #{"need-input"}} for the eval (session.clj session-in 44-53) and returns the
+    stdin op's text. So a client that answers need-input with stdin has no way to feed an eval in jank.
+  Tests: vq1-nrepl-stdin-op-is-answered-done, vq1b-nrepl-describe-lists-stdin (.r8-scratch/nrepl/tests.jank).
+  Path: core.jank handle-client 79-106 → handler.jank handle-message :default 5-8 (both tests); describe.jank 5-17
+    (vq1b).
+  Status: new as a stated deviation (rounds 4-5 listed "stdin op ... absent in jank: R127" as left out; no
+    replies, no test). Shares R127/R128's cause (jank's handler implements no session middleware: no stdin, no
+    interrupt (V37), no ls-sessions). Confidence: high (an 8-line multimethod; nREPL's code read; World T8 run).
+
+Q2 (new). An eval sends one message with only the id (and session) for each of :out and :err that is blank.
+  Program (jank's handler, then core.jank's responses-for as handle-client applies it):
+    (let [req {"op" "eval" "id" "e" "code" "1" "ns" "user"}]
+      (count (responses-for req (handle-message req))))
+  nREPL 1.8.0: 2 messages, {:id "e" :ns "user" :value "1"} and {:id "e" :status #{"done"}}
+    (middleware/interruptible_eval.clj 156-158 sends the value, 202 the done; :out is sent only when something is
+    printed, through the session's writer).
+  jank (prediction): 4: {"id" "e"}, {"id" "e"}, {:value "1" :ns "user" "id" "e"}, {:status [:done] "id" "e"}.
+    handler/eval.jank 57-64 returns [(when-not (blank? stdout) {:out stdout}) (when-not (blank? stderr) {:err
+    stderr}) {:value … :ns …} {:status [:done]}], with nil for blank output; core.jank responses-for 39-45 maps
+    response-for 33-37 over every element, and (merge nil (select-keys req ["id" "session"])) is the map of the
+    id and session (core.jank merge 5557-5563: (conj (or nil {}) m)); handle-client 87-90 writes each one. The
+    error branch (41-48) does the same, so a failing eval sends 2 such messages before its :err and :ex.
+  World T: every eval of rounds 3-8's scenarios shows them (the census of World T8 prints them as "[]", e.g.
+    D3's c0-1:[][][ value=#'user/read-line][["done"]]); round 3's judge accepted them (it asks only that the replies
+    carry the id and session and end in one done), so no earlier round reported them.
+  Test: vq2-nrepl-eval-sends-no-message-without-content. Path: handler.jank → handler/eval.jank do-eval 22-64 →
+    core.jank responses-for (the test applies core.jank's response-for as written, since core.jank needs jank's
+    native server header).
+  Status: new. Shares its line with R136 (the blank? test drops whitespace-only output) but is a separate effect.
+    Confidence: high (code read; World T reproduces it); impact low (clients that merge replies ignore them; a
+    client counting replies or expecting a status in every reply sees them).
+  Fix (described, not written; none assigned): remove the nils before responses-for, e.g. (keep identity …) or
+    `filterv some?` on do-eval's vector (handler/eval.jank 40-64). Every eval test of jank's suite that counts
+    messages would need checking.
+
+No other new deviation. What World T8 found is V37, R128 and R125 (section 8), all known:
+- V37 inside World T (D1, every schedule, complete): an interrupt pipelined after a diverging eval on its
+  connection is never answered; nor is a describe after it (R128: the connection's only thread is in the eval).
+  On a second connection (D2, ≤2/≤3/≤4) the interrupt is answered unknown-op at once.
+- R125 with a SILENT diverging eval (D2 on jank's capture): the other connection's `(println "x")` reaches its
+  client as "x\n", "x" or nothing (in 115 of 334 quiescent states at ≤3 nothing), and fd 1 is left on the
+  terminal or a temp file. Cause: R125's (capture.jank start/end on the process's fd 1); the lost bytes stay in
+  the diverging eval's temp file, which is read back only when that eval returns (never). nREPL gives the
+  printing eval :out "x\n" (per-session *out*). Not new: the same cause and property as R125.
+- Not a jank deviation, a note for any fix of R125: round 3's capture lock (the set-aside) makes every other
+  connection's eval wait forever behind a diverging eval (D2L: 16 of 30 quiescent states leave connection 1's
+  eval unanswered). A fix should give each eval its own output (as nREPL's session *out*), not a global lock.
+
+======================================================================
+2. PROOFS
+======================================================================
+(a) The codec (Jank/R8/Nrepl/Codec.lean), for EVERY table and EVERY state:
+  ★ intern_spec / ★ internH_spec: the index a table returns holds the value (the stored value is the value, or
+    equal to it under round 6's derived BEq), and every earlier index keeps its value. The table never trusts its
+    hash: a candidate is returned only after the BEq check, so no lemma about Std.HashMap or about the hash is
+    needed (the proof has no premise on BEq or Hashable).
+  ★ internAt_spec: the same with the fast path, whenever the caller's `fast` flag implies the stored value IS the
+    value (the driver's flag is a pointer comparison: ptrAddrUnsafe equality implies identity in Lean's runtime;
+    that runtime fact is the only one used; a run with the fast path off reproduces the same graph, section 8).
+  ★ encList_spec, ★ decList_holds, ★ decList_ext: the same for the thread list.
+  join_split: splitting a state into components loses nothing (join ∘ split = id, by structure eta).
+  ★ decode_encode: the tables only grow, and the code decodes to a state each of whose components (seven of the
+    memory, one per thread, the same number of threads) is identical or round-6-equal to the original.
+  ★ decodeC_ext: a code keeps its decoding when the tables grow.
+  ★ same_code: two states given one code at any two times are both, component by component, identical or
+    round-6-equal to one stored state.
+  Not proved: that round 6's derived BEq is Lean's `=` (nREPLA6-2; Lean cannot derive LawfulBEq for these nested
+  types and Float has no decidable equality). So the codec merges exactly the states round 6's exact graphs
+  merged; injectivity with respect to `=` rests on nREPLA6-2 as before.
+(b) The sdk's walk (Jank/R8/Nrepl/Walk.lean), on the sdk's own Decide.lean and Search.lean definitions:
+  ★ nextPath_eq: `nextPath` (a `while` loop, unfolded with Lean.Loop.forIn_eq_of_monadTail) equals npLoop, the
+    recursion "advance the last decision with an option left, drop those after it".
+  ★ nextPathL_cons: on lists, nextPath (x :: xs) is x.value before nextPath xs when that exists, else x advanced
+    alone when it has an option left, else none.
+  ★ next_feeds, ★ prog_run: a program taking a finite tree's decisions with the sdk's `decide` (Decisions.next
+    with its `% options` and first options after the given values) records exactly DT.run's decisions, for every
+    tree whose decisions have ≥ 2 options and every decision limit at least the tree's height.
+  ★ walk_paths: from the empty path, "run, then nextPath of what the run took" visits the tree's leaves in
+    depth-first order, each once, and then stops (nextPath gives none).
+  ★ walk_count, paths_length: so a complete walk runs exactly `leaves` timelines.
+  ★ exhaust_complete: the sdk's `exhaust` over such a tree program (any maxRuns ≥ leaves) returns
+    `.complete leaves`.
+  leaves_node (rfl): a decision's timelines are the sum over its options: the recurrence both counters compute.
+  Not proved (section 5): that interleavePB over tProg is such a tree whose subtree at a scheduler state depends
+  only on that state (nREPLA6-1, and the counters' choice rule copied from ThreadSearch.lean 23-63); that
+  round 6's countFrom (a partial def: opaque to proofs) or round 8's countLayers (array loops) evaluate the
+  recurrence. These rest on reading and on exact reproductions: round 6's 21 walk results; this round's
+  reproduction of round 6's T3 ≤0..≤6 and T9 ≤0..≤10 by a different counter; and new direct comparisons with
+  the sdk's own walk on World T (results/r8-nrepl-walk.txt): `exhaust` over round 3's runT (the sdk's
+  `interleave`, no preemption bound) on W1 (one client cloning) runs 264,832 timelines, the number the graph
+  counter gives (Exact.lean interCount); `exhaust` over runTWith ≤b (interleavePB) on W2 (clone, describe)
+  and W3 (two clients cloning) runs, for b = 0..3, exactly the layered counter's numbers.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+No new jank code is replicated in the codec and search files (they are tools over round 3's World T: tStep,
+tJudge, tStuck, interleavePB's choice rule, unchanged). New:
+- Diverge.lean (World T8): round 3's World T with
+  - a diverging eval: jank evaluates on the connection's own thread (core.jank handle-client 79-106 →
+    handler/eval.jank do-eval 22-64 → eval.jank safe-eval 4-16 → evaluate.cpp safe_eval); a loop or fn body is
+    JIT-compiled under the interpreter lock and called after it is released (evaluate.cpp eval(function_ref)
+    522-553 → jit/processor_dynamic.cpp processor::eval 444-459 → eval_string 590-608, `interpreter.lock()` at
+    601 around ParseAndExecute of the declaration only); fd 1 and 2 are already on the eval's temp files
+    (capture.jank start 18-37, with-capture 60-74). t8Step: an evaluation that exhausts the model's fuel without
+    output leaves the process unchanged and runs again (it holds no lock);
+  - requests sent without waiting (interrupt, stdin, pipelined evals) as bencoded bytes; jank's dispatch of an
+    unknown op (handler.jank 5-8) is round 3's (Threads.lean 288);
+  - read-line as core.jank 5966-5972 defines it (a fn throwing ex-info "TODO: port read-line"), defined by the
+    scenario's first eval (D3);
+  - the census at quiescent states (every reply of every request id, decoded from each socket's outbox with the
+    spec decoder, fd 1, each eval's printed bytes and its :out).
+- The nREPL side is nREPL 1.8.0's source (.r5-scratch/nrepl/nrepl-1.8.0, read): session.clj session-in 44-53,
+  add-stdin 386-406, interrupt-session (round 5), server.clj handle 38-47 and default-middleware 114-125, misc.clj
+  response-for 53-78, middleware.clj 52-62 (wrap-describe 71); and round 5's JVM measurement of interrupt.
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- World T's abstractions stand (rounds 3-6: NA1-NA9, EA4-*, nREPLA5-1/2, nREPLA6-1..3).
+- Logs ordered by client (canon) in every T run, as round 6 (nREPLA6-3). Now checked at every reachable state of
+  T3 and T9 (round 6's order check on the full graphs: 13,896,918 and 1,889,126 steps and final verdicts, 0 differ);
+  the unlocked and World T8 runs use the ordering without the check.
+- World T8: a diverging eval is one that exhausts the evaluator's fuel (4,000 steps) without output
+  (nREPLA8-1); a printing diverging loop is not modeled (its states never repeat: R125's class anyway).
+  The spin is a progress self-loop in the exact graphs (`div`) and a blocked step in the bounded census
+  (`divb`, t8StepB): the reachable states are the same; the bounded census counts preemptions among the other
+  threads only (the spinning thread yields for free, i.e. fair schedules).
+- The nREPL side of Q1 and World T8 is read from nREPL 1.8.0's source and round 5's measurement, not run this
+  round: the project holds nREPL's Clojure sources but not its Java classes (nrepl.SessionThread,
+  nrepl.DaemonThreadFactory, nrepl.in.QueuePollingReader, nrepl.out.*), so `nrepl.server` does not load
+  (ClassNotFoundException nrepl.DaemonThreadFactory, results/r8-nrepl-clj.txt), and nothing may be fetched.
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- T9u and T3u under every schedule: T9u's exact graph passes 22 million states (about 5 GB at the cap); a
+  larger run needs an on-disk store or a reduction of the unlocked fd interleavings.
+- A proof that interleavePB over World T's tProg is a decision tree whose subtree at a scheduler state is a
+  function of that state (it would need the step function's dependence on PKey alone, nREPLA6-1, for 30-odd
+  types and a 200-line tConnStep), and that the counters' array loops compute leaves_node's recurrence.
+- A printing diverging eval; stdin read by a real jank `read` (unported, G14).
+
+======================================================================
+6. ASSUMPTIONS (IDs nREPLA8-n) AND EARLIER ONES REPLACED
+======================================================================
+Round 3's NA1-NA9, round 4's EA4-1..6, round 5's nREPLA5-1/2, round 6's nREPLA6-1..3 stand.
+- nREPLA8-1. In World T8, an evaluation that exhausts the evaluator's fuel (4,000) without output is one that
+  never returns (the scenarios' only such form is `(loop [] (recur))`).
+- nREPLA8-2. Pointer identity of two Lean objects implies they are the same value (the codec's fast path;
+  checked: T9 with the fast path off gives the same states, tables and counts).
+- nREPLA8-3. nREPL 1.8.0's source is the spec of the stdin op's replies (its docstring and code agree).
+Replaced:
+- nREPLA6-4 (hash compaction had no collision): no longer needed for T3, which is now decided on the exact
+  graph; the hashed search's 3,174,744 states and 245 final states are confirmed exactly.
+
+======================================================================
+7. PROPERTIES CHECKED (with sources)
+======================================================================
+Round 3's World T judge, unchanged (Threads.lean tJudge, tStuck; runTWith): every request gets replies with its
+id and session ending in exactly one done (nREPL 1.8.0 transport/middleware); no hang or deadlock; the process
+stays up; each eval's :out is what it printed (session.clj per-session *out*); each client's values, :ns and
+eval-errors are its script's run alone (Clojure 1.12 Compiler.load); fd 1 is the terminal again after every eval.
+Unlocked runs: all but the output and fd 1 properties (R125's), as round 6 (tJudgeNoOut).
+World T8 (census at quiescent states): which requests are answered and how, against nREPL 1.8.0: an idle
+session's stdin op gets #{done} (session.clj 386-397); an eval reading *in* gets need-input (44-53); an
+interrupt of a running eval gets #{done} and the eval #{interrupted done}, an eval on another session runs and
+prints to its own client (round 5's measurement, results/r5-nrepl-interrupt-jvm.txt); describe is answered while
+an eval runs (server.clj handle 38-47 runs each message on the handle executor).
+New checks of the tools: the codec's fast path (T9 on and off: same states, tables and counts); the layered
+counter against round 6's counts (T9 ≤0..≤10, T3 ≤0..≤6) and against the bounded counter (T3 ≤0..≤4).
+
+======================================================================
+8. SEARCH RUNS (exact bounds; "complete" = every state or timeline within the bound)
+======================================================================
+T3 (results/r8-nrepl-t3.txt): every schedule, exact, COMPLETE: 3,174,744 states, 14,872,458 step runs, 155.8 s;
+  tables: 218 jank worlds, 597 fd tables, 165 temp-file lists, 963 socket arrays, 129 misc, 539 reply logs,
+  199 other logs, 8,157 threads; 120,852,844 components by the fast path. 245 final states, 0 with a violation,
+  0 step violations, 0 deadlocked states, 0 blocked steps that moved, 0 progress self-loops; acyclic; longest
+  progress path 369 steps. Scheduler states reachable at any budget: 7,044,374 (19,854,646 entries).
+  Exact interleavePB counts (complete, nothing, eintr-0 counts in the file):
+    ≤0 1,024; ≤1 1,358,848; ≤2 884,608,512; ≤3 377,378,112,512; ≤4 118,916,805,223,424;
+    ≤5 29,577,136,869,748,736; ≤6 6,057,877,513,946,363,904 (≤0 … ≤6 equal round 6's);
+    ≤7 1,052,312,021,480,394,247,552; ≤8 158,439,790,477,116,395,708,800;
+    ≤9 21,024,273,821,761,491,409,834,688; ≤10 2,491,412,627,491,356,057,094,149,088;
+    ≤12 25,958,449,398,345,625,482,965,676,343,424; ≤16 1,047,439,022,867,658,022,113,091,704,448,528,645,664;
+    ≤20 14,681,852,441,364,731,028,772,402,978,411,626,699,972,937,768;
+    ≤24 87,797,626,250,601,533,037,407,493,536,668,157,882,165,526,306,372,130 (every budget in the file).
+  Longest timeline at any budget: 1,187 step attempts (round 3's bound 6,000 never reached). Memory: about
+  2.2 GB at the counting stage.
+T9 (results/r8-nrepl-t9.txt): every schedule, exact, complete, 433,374 states, 2,019,280 step runs, 42 final
+  states, nothing, in 14.0 s with the fast path and 62.1 s without; both runs give the same tables and counts;
+  ≤0 … ≤10 equal round 6's (≤10 964,799,610,952,390,196,352,156), eintr-0 counts too.
+Unlocked (results/r8-nrepl-unlocked.txt):
+  T9u every schedule, exact, breadth first: STOPPED at the 22,000,000-state bound after 539 s: 22,000,971 states
+  found, 20,009,984 expanded, 90,748,112 step runs; no step violation, no deadlocked state, no blocked step that
+  moved (no final state yet at that depth). Round 6's hashed search stopped at 14,309,663.
+  Bounded counts (Exact.lean countBounded: scheduler states (state, cur, blocked, budget left) reached with at
+  most b preemptions, states expanded on demand, logs ordered by client; complete, nothing unless noted):
+    T3 cross-check: ≤0 … ≤5 equal the layered exact counts, and the scheduler states equal round 6's (372; 10,316;
+      86,798; 370,103; 1,070,474; 2,447,318).
+    T9u: ≤0 64; ≤1 51,264; ≤2 18,727,456; ≤3 4,411,340,832 (equal round 6's, eintr-0 counts too: 1; 600; 168,651;
+      31,137,737); ≤4 766,250,832,880 (eintr-0 4,284,337,118; 9,451,543 states, 28,544,757 step runs, 13,113,260
+      scheduler states, 3,822 final states, 221 s), NEW; ≤5 STOPPED at the 18,000,000-scheduler-state bound
+      (9,159,635 states, 18,001,781 scheduler states, 231 s, peak 3.5 GB), nothing in what it expanded.
+    T3u: ≤0 1,024; ≤1 1,303,552; ≤2 804,281,856 (equal round 6's; eintr-0 1; 978; 468,972); ≤3 322,790,415,360
+      (eintr-0 147,809,772; 4,989,499 states, 14,145,341 step runs, 5,124,240 scheduler states, 2,129 final states,
+      145 s), NEW; ≤4 STOPPED at the 12,500,000-state bound (12,505,525
+      states, 17,170,456 scheduler states, 394 s, peak 5.0 GB), nothing in what it expanded.
+    A first run of T9u ≤5 and T3u ≤4 without a state cap passed 5.6 GB and was killed by its watchdog
+    (.r8-scratch/nrepl/watchtree.sh); the capped reruns above stop by themselves.
+World T8 (results/r8-nrepl-div.txt):
+  D1 (one connection; clone, a diverging eval, interrupt and describe pipelined): every schedule, complete,
+    229 states; 3 quiescent states, one outcome: only the clone answered; fd 1 left on the eval's temp file.
+  D2L (D2 under round 3's capture lock): every schedule, complete, 93,757 states; 30 quiescent states, 2
+    outcomes: 16 with connection 1's eval never answered (it waits for the lock forever), 14 with connection 1
+    answered in full (its eval's capture ran before the lock was taken).
+  D2 (jank's capture; connection 0 diverges silently, connection 1 prints "x", interrupts, describes):
+    every schedule STOPPED at 3,000,135 states (200-s bound), nothing on any step. Bounded census (divb, every
+    state ≤ b preemptions among the non-spinning threads reach, complete): ≤2 16,395 states, 89 quiescent states,
+    5 outcomes; ≤3 77,200 states, 334 quiescent, 6 outcomes; ≤4 293,659 states, 1,010 quiescent, the same 6
+    outcomes. In all of them connection 0's describe is never answered (R128) and connection 1's interrupt gets
+    [error unknown-op done] (V37) and its describe done. Connection 1's (println "x") reaches it as "x\n" (in
+    237 + 181 + 35 + 104 of the 1,010 at ≤4), "x" (63) or nothing (390); fd 1 is left on the terminal (690) or a
+    temp file (320). Lost bytes are in connection 0's temp file (R125). D2L at ≤3: 13 quiescent, 9 with connection
+    1's eval unanswered (the lock), 4 answered in full. D1 at ≤3: 3 quiescent, as every schedule.
+  D3 (stdin): every schedule, complete, 321 states, 1 final state: the defn's value, (read-line) [done
+    eval-error], stdin [error unknown-op done], describe [done].
+  D4 (connection 0 diverges; connection 1 sends stdin then an eval): every schedule STOPPED at 3,000,758
+    states; ≤3 complete, 98,991 states, 304 quiescent, 4 outcomes, all with stdin [error unknown-op done] and the
+    eval's value 1 (they differ only in where fd 1 is left).
+The sdk's walk against the counters (results/r8-nrepl-walk.txt): W1 interleave 264,832 both; W2 ≤0..≤3 4, 84, 874,
+  5,974 both; W3 ≤0..≤3 4, 336, 11,938, 276,982 both (exhaust over round 3's runT / runTWith against Exact.lean's
+  interCount / countLayers).
+T3 with round 6's order check at every state and step of the full graph, and the sdk's interleave count:
+  COMPLETE, the same graph (3,174,744 states, 245 final states, nothing); the order check ran every one of the
+  13,896,918 (state, thread) steps and final verdicts also from the logs in the other order: 0 differ, 0 final
+  states report another first violation (579 s). The sdk's own `interleave` (thread.next at every step, no
+  preemption bound) has about 3.24·10³⁹¹ timelines on T3 (a 392-digit number, 8,695,991 (state, blocked) pairs;
+  results/r8-nrepl-t3.txt), every one without a violation.
+
+======================================================================
+9. THEOREMS (★ = for every input; axioms: results/r8-nrepl-axioms.txt: propext, Classical.choice, Quot.sound
+   at most; no sorry, no native_decide)
+======================================================================
+Codec.lean: ★ intern_spec, ★ internH_spec, ★ internAt_spec, ★ encList_spec, ★ decList_holds, ★ decList_ext,
+  join_split, ★ decode_encode, ★ decodeC_ext, ★ same_code; lemmas Tab.add_spec, Tab.ext_refl, Tab.ext_trans,
+  Tab.holds_ext, holdsAll_ext, hintsOk_ext, trivial_hints, Tabs.hintsOk_none.
+Walk.lean: ★ nextPath_eq (with loop_gen), ★ nextPathL_cons, nextPathL_nil, npLoop_cons, ★ next_feeds,
+  feeds_next, ★ prog_run, ★ walk_lift, ★ walk_node, ★ walk_paths, walkFrom_congr, ★ walk_of_walkFrom,
+  ★ walk_count, ★ paths_length, leaves_node, blocks_succ, blocks_end, le_foldr_max, ★ depth_le_height,
+  ★ treeRun_path, ★ exh_gen, ★ exhaust_complete.
+
+======================================================================
+10. LIBRARY GAPS (built in the project; sdk/lean untouched)
+======================================================================
+- Hash-consed state codes with a proof that needs no lawfulness of BEq or Hashable (the table checks every
+  candidate), and a pointer fast path whose premise is stated.
+- Counting every preemption budget at once over the scheduler-state graph (layers of an acyclic graph).
+- Bounded exploration of scheduler states with states expanded on demand.
+- Loop reasoning for the sdk's `while` (nextPath) and `for` (exhaust) through Lean 4.36's
+  Loop.forIn_eq_of_monadTail and List.forIn_cons; a decision-tree semantics of `decide` over Source.path.
+- Lean performance notes for these searches: an array field pushed while its structure still holds it is copied
+  whole on every push (Tab.add, EG.intern, a `match` on a `let mut` variable inside `do`); each cost a quadratic
+  slowdown here until rewritten. In the bounded explorer the edge array still arrived shared at the expansion
+  (measured with dbgTraceIfShared); taking the graph apart and rebuilding it there, with a dbgTraceIfShared on the
+  rebuilt fields so that the compiler cannot fold the rebuild away, made T3 ≤3 and ≤4 run in 16 s instead of
+  120 s (Exact.lean expandState).
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+None (none assigned). Q1's local fix would be a stdin handler, but jank has no session *in* to feed: the
+smallest coherent change is a per-session reader bound to *in* in do-eval (and need-input from a reader that
+blocks), which is R127's design change, not a local fix. Not written.
+
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 6's T3 "searched, not decided" (states kept as hashes): decided exactly; its hashed state and final-state
+  counts were right.
+- Round 6's "the T3 exact graph is past the memory bound": it is about 2 GB with the codec.
+- Round 6's "≤7 would exceed the few-GB bound": every budget to ≤24 in 1.5 GB-2.2 GB.
+- Round 5's World I resolved interrupt races by hand; inside World T (T8) under every schedule the outcomes are
+  the ones round 5 read (V37).

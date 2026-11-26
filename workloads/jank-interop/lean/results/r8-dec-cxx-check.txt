@@ -1,0 +1,41 @@
+C++ copy of R72/X6's decimal arithmetic (.r8-scratch/dec/cxx/standalone.cpp: decl.inc + impl.inc, the
+text spliced into type.hpp and big_decimal.cpp) against Clojure 1.12.3 (JDK 23) on 229699 cases
+(.r8-scratch/dec/check/cases.txt, gen.py; jvm.clj): disagreements 0.
+Sections: A complete exact binary ops (+ - * / quot rem) over u in [-12,12] x scale [-2,2] (125 values,
+15,625 ordered pairs each, 93,750); B complete unary (neg abs inc dec str hash) on the same 125 values (750);
+C complete small contexts: u in [-12,12] x scale [-1,1] (every 2nd as x, every 3rd as y: 38 x 25), precision
+1..2, all 8 rounding modes, + - * / quot rem (91,200); D 30,000 random context cases (x up to 10 digits,
+scale -5..8; y up to 6 digits, scale -4..6; precision 1..9; random mode; 10 ops); E 10,000 random exact
+cases (x up to 25 digits, scale -10..15; + - * / quot rem cmp hash str); F 1,999 bigdec of a random double
+(BigDecimal.valueOf) and 2,000 doubleValue of a random decimal (up to 30 digits, exponent +-330).
+Counts by operation and context:
+  * context: 18183
+  * exact: 16757
+  + context: 18193
+  + exact: 16724
+  - context: 18110
+  - exact: 16777
+  / context: 18219
+  / exact: 16737
+  abs context: 3050
+  abs exact: 125
+  cmp exact: 1116
+  dbl exact: 2000
+  dec context: 3037
+  dec exact: 125
+  hash exact: 1253
+  inc context: 3046
+  inc exact: 125
+  neg context: 2935
+  neg exact: 125
+  quot context: 18274
+  quot exact: 16733
+  rem context: 18153
+  rem exact: 16685
+  str exact: 1218
+  vod exact: 1999
+Clojure's exceptions among the answers:
+  throws: Divide by zero: 3872
+  throws: Division impossible: 1761
+  throws: Non-terminating decimal expansion; no exact representable decimal result.: 6723
+  throws: Rounding necessary: 5585

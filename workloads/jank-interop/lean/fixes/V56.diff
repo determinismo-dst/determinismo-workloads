@@ -1,0 +1,330 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -31,7 +31,71 @@
+     template <typename T>
+     concept typed_object = (behavior::object_like<typename T::value_type>);
+ 
++    /* Clojure's min and max (Numbers.min/max): a NaN operand is the result, the first one
++     * first; otherwise min is `lt(x, y) ? x : y` and max is `gt(x, y) ? x : y`, so on a tie
++     * both give the second operand ((max 1 1.0) is 1.0, (min 1.0 1) is 1). */
+     template <typename T>
++    [[gnu::always_inline]]
++    constexpr bool nan_operand(T const &t)
++    {
++      if constexpr(std::is_floating_point_v<T>)
++      {
++        return std::isnan(t);
++      }
++      else
++      {
++        return false;
++      }
++    }
++
++    /* Math.min and Math.max, which Clojure calls for two primitives of one type: for doubles
++     * a NaN operand is the result and -0.0 is below 0.0 (std::min and std::max return their
++     * first operand in both cases). */
++    template <typename C>
++    [[gnu::always_inline]]
++    C java_min(C const a, C const b)
++    {
++      if constexpr(std::is_floating_point_v<C>)
++      {
++        if(std::isnan(a))
++        {
++          return a;
++        }
++        if(a == 0 && b == 0 && std::signbit(b))
++        {
++          return b;
++        }
++        return a <= b ? a : b;
++      }
++      else
++      {
++        return std::min(a, b);
++      }
++    }
++
++    template <typename C>
++    [[gnu::always_inline]]
++    C java_max(C const a, C const b)
++    {
++      if constexpr(std::is_floating_point_v<C>)
++      {
++        if(std::isnan(a))
++        {
++          return a;
++        }
++        if(a == 0 && b == 0 && std::signbit(a))
++        {
++          return b;
++        }
++        return a >= b ? a : b;
++      }
++      else
++      {
++        return std::max(a, b);
++      }
++    }
++
++    template <typename T>
+     concept valid_boxed_math = (jtl::is_same<T, object_ref>
+                                 || jtl::is_any_same<T,
+                                                     obj::integer_ref,
+@@ -753,6 +817,14 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
++              if(detail::nan_operand(typed_l->data))
++              {
++                return typed_l.erase();
++              }
++              if(detail::nan_operand(typed_r->data))
++              {
++                return typed_r.erase();
++              }
+               return typed_l->data < typed_r->data ? typed_l.erase() : typed_r.erase();
+             },
+             r,
+@@ -765,6 +837,14 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, auto const r) -> object_ref {
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r->data))
++          {
++            return r.erase();
++          }
+           return typed_l->data < r->data ? typed_l.erase() : r.erase();
+         },
+         l,
+@@ -774,6 +854,14 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, auto const l) {
++          if(detail::nan_operand(l->data))
++          {
++            return l.erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
+           return l->data < typed_r->data ? l.erase() : typed_r.erase();
+         },
+         r,
+@@ -783,7 +871,7 @@
+     {
+       using C
+         = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::min(static_cast<C>(l->data), static_cast<C>(r->data));
++      return detail::java_min(static_cast<C>(l->data), static_cast<C>(r->data));
+     }
+   }
+ 
+@@ -803,6 +891,14 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
++          if(detail::nan_operand(l))
++          {
++            return make_box(l).erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
+           return l < typed_r->data ? make_box(l).erase() : typed_r.erase();
+         },
+         r,
+@@ -811,12 +907,12 @@
+     else if constexpr(detail::typed_object<R>)
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r->data));
++      return detail::java_min(static_cast<C>(l), static_cast<C>(r->data));
+     }
+     else
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r));
++      return detail::java_min(static_cast<C>(l), static_cast<C>(r));
+     }
+   }
+ 
+@@ -836,6 +932,14 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r))
++          {
++            return make_box(r).erase();
++          }
+           return typed_l->data < r ? typed_l.erase() : make_box(r).erase();
+         },
+         l,
+@@ -844,12 +948,12 @@
+     else if constexpr(detail::typed_object<L>)
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l->data), static_cast<C>(r));
++      return detail::java_min(static_cast<C>(l->data), static_cast<C>(r));
+     }
+     else
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::min(static_cast<C>(l), static_cast<C>(r));
++      return detail::java_min(static_cast<C>(l), static_cast<C>(r));
+     }
+   }
+ 
+@@ -859,7 +963,7 @@
+   auto min(L const l, R const r)
+   {
+     using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-    return std::min(static_cast<C>(l), static_cast<C>(r));
++    return detail::java_min(static_cast<C>(l), static_cast<C>(r));
+   }
+ 
+   template <typename L, typename R>
+@@ -880,7 +984,15 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return typed_l->data < typed_r->data ? typed_r.erase() : typed_l.erase();
++              if(detail::nan_operand(typed_l->data))
++              {
++                return typed_l.erase();
++              }
++              if(detail::nan_operand(typed_r->data))
++              {
++                return typed_r.erase();
++              }
++              return typed_r->data < typed_l->data ? typed_l.erase() : typed_r.erase();
+             },
+             r,
+             typed_l);
+@@ -892,7 +1004,15 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, auto const r) -> object_ref {
+-          return typed_l->data < r->data ? r.erase() : typed_l.erase();
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r->data))
++          {
++            return r.erase();
++          }
++          return r->data < typed_l->data ? typed_l.erase() : r.erase();
+         },
+         l,
+         r);
+@@ -901,7 +1021,15 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, auto const l) {
+-          return l->data < typed_r->data ? typed_r.erase() : l.erase();
++          if(detail::nan_operand(l->data))
++          {
++            return l.erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
++          return typed_r->data < l->data ? l.erase() : typed_r.erase();
+         },
+         r,
+         l);
+@@ -910,7 +1038,7 @@
+     {
+       using C
+         = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::max(static_cast<C>(l->data), static_cast<C>(r->data));
++      return detail::java_max(static_cast<C>(l->data), static_cast<C>(r->data));
+     }
+   }
+ 
+@@ -930,7 +1058,15 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? typed_r.erase() : make_box(l).erase();
++          if(detail::nan_operand(l))
++          {
++            return make_box(l).erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
++          return typed_r->data < l ? make_box(l).erase() : typed_r.erase();
+         },
+         r,
+         l);
+@@ -938,12 +1074,12 @@
+     else if constexpr(detail::typed_object<R>)
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r->data));
++      return detail::java_max(static_cast<C>(l), static_cast<C>(r->data));
+     }
+     else
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r));
++      return detail::java_max(static_cast<C>(l), static_cast<C>(r));
+     }
+   }
+ 
+@@ -963,7 +1099,15 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? make_box(r).erase() : typed_l.erase();
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r))
++          {
++            return make_box(r).erase();
++          }
++          return r < typed_l->data ? typed_l.erase() : make_box(r).erase();
+         },
+         l,
+         r);
+@@ -971,12 +1115,12 @@
+     else if constexpr(detail::typed_object<L>)
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l->data), static_cast<C>(r));
++      return detail::java_max(static_cast<C>(l->data), static_cast<C>(r));
+     }
+     else
+     {
+       using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-      return std::max(static_cast<C>(l), static_cast<C>(r));
++      return detail::java_max(static_cast<C>(l), static_cast<C>(r));
+     }
+   }
+ 
+@@ -986,7 +1130,7 @@
+   auto max(L const l, R const r)
+   {
+     using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r)>>;
+-    return std::max(static_cast<C>(l), static_cast<C>(r));
++    return detail::java_max(static_cast<C>(l), static_cast<C>(r));
+   }
+ 
+   template <typename L>

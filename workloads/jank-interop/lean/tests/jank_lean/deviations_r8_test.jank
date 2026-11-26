@@ -1,0 +1,723 @@
+; SPDX-License-Identifier: MIT
+; The Lean replica of jank, round 8 (main 94d32623): predictions from REPORT-8, each test asserting
+; Clojure 1.12's result (checked on Clojure 1.12.3), so a failure confirms one. Tests named
+; "control" are predicted to pass on jank.
+; Paths (REPORT-6 section 3): jank types a literal or a let-bound literal natively (an `int` when it
+; fits 32 bits, else a `long`), inlines two-argument `+ - * / < <= > >= min max`, `count`, `inc`,
+; `dec`, `hash`, `zero?`, `abs`, ... into core/math.hpp's templates on those native types, and passes
+; a fn parameter as an object. Each test's comment says which path it runs:
+;   [literals] / inlined: the call written directly with literal or native arguments;
+;   [let]: let-bound literals, still native;
+;   [fn] / fn value: the values pass through a fn's object parameters, or the clojure.core fn is
+;   called as a value (apply), so no native operand reaches the template.
+; Each comment gives jank's predicted value on stock 94d32623, and with the fix that should make the
+; test pass (fixes/<id>.diff, in fixes/combined/all.diff).
+; Every form is inside a deftest body, so it is compiled, not interpreted at the top level.
+; Forms jank may refuse go through `ev` (eval of read-string), so a refusal fails its own test.
+; Tests marked "; native" need jank's native typing to show the deviation (they run on Clojure too).
+; Non-ASCII text is written with \u escapes or (char n): run under a UTF-8 locale.
+; Run each test in its own process, from tests/ with `--module-path .`.
+(ns jank-lean.deviations-r8-test
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.string :as string]))
+
+(defn- id [x] x)
+
+(defn- ev [s] (eval (read-string s)))
+
+(defn- nrepl-handle [msg]
+  (require 'jank.nrepl.server.handler.clone)
+  (require 'jank.nrepl.server.handler.describe)
+  (require 'jank.nrepl.server.handler.eval)
+  ((resolve 'jank.nrepl.server.handler/handle-message) msg))
+
+(defn- statuses [r] (set (map name (:status r))))
+
+(defn- vq-responses-for [req r]
+  (let [resps (if (sequential? r) r [r])]
+    (map #(merge % (select-keys req ["id" "session"])) resps)))
+
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Coordinator - the reconciliation's fixes Y1 (rem of doubles), S3c, R99i, V56
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; New (Y1): `rem` of doubles. Clojure's Numbers.remainder(double, double) is n - (long)(n / d) * d in
+;; doubles (past the long range, the exact integer quotient), and a NaN or infinite quotient throws
+;; NumberFormatException "Infinite or NaN" (new BigDecimal(q)). jank: math.cpp rem(f64, f64) 178-202 is C's
+;; exact std::fmod, and throws std::runtime_error for a NaN or infinite operand. rem always goes through
+;; cpp/jank.runtime.rem with boxed operands (core.jank 1687-1693), so [literals] and [fn] run the same code.
+; [literals] Clojure 0.0 (the quotient 3.33e17 is not exact in a double). jank predicted: 1.0; with Y1: 0.0.
+(deftest y1-rem-of-doubles-with-a-large-quotient
+  (is (= 0.0 (rem 1e18 3.0))))
+
+
+; [fn] the same through a fn: Clojure 0.0, jank predicted 1.0.
+(deftest y1b-the-same-through-a-fn
+  (is (= 0.0 ((fn [a b] (rem a b)) (id 1e17) (id 3.0)))))
+
+
+; [literals] Clojure "0.0" (-4.0 - (long)(-2.0) * 2.0 = -4.0 - -4.0 = +0.0). jank predicted: "-0.0" (fmod keeps
+; the dividend's sign); with Y1: "0.0".
+(deftest y1c-rem-of-a-negative-double-with-no-remainder-is-plus-zero
+  (is (= "0.0" (str (rem -4.0 2.0)))))
+
+
+; [literals] Clojure throws (the quotient 1e600 is infinite). jank predicted: a value (fmod), no
+; exception; with Y1: throws an object.
+(deftest y1d-rem-with-an-infinite-quotient-throws
+  (is (thrown? (rem 1e300 1e-300))))
+
+
+; [literals] Control: a small exact quotient agrees: Clojure 1.5, jank 1.5.
+(deftest y1e-control-rem-of-small-doubles
+  (is (= 1.5 (rem 7.5 2.0))))
+
+
+;; S3's other operators (round 3 named division and `<`; S2 fixed division). Numbers' BigDecimalOps turns
+;; a ratio into a BigDecimal with numerator.divide(denominator): non-terminating -> ArithmeticException,
+;; for + - * as for the comparisons. jank: ratio.cpp operator+(ratio_data, native_big_decimal) 510-517
+;; divides with boost's Newton inverse, so 1/3 becomes 0.333...3 (about 125 digits) and nothing throws.
+; [literals] jank predicted: 1.333...3M, no exception (stock and with the round-7 patch); with S3c: throws
+; an object (passes).
+(deftest y2-a-ratio-plus-a-bigdecimal-throws-when-non-terminating
+  (is (thrown? (+ 1/3 1M))))
+
+
+; [fn] the same through a fn's object parameters (math.cpp add -> visit -> the same operator).
+; jank predicted: 1.333...3M, no exception; with S3c: throws (passes).
+(deftest y2b-the-same-through-a-fn
+  (is (thrown? ((fn [a b] (* a b)) (id 1/3) (id 1M)))))
+
+
+; [literals] Control: a terminating ratio is exact on both: 1/4 is 0.25.
+(deftest y2c-control-a-terminating-ratio-times-a-bigdecimal
+  (is (zero? (compare 0.25M (* 1/4 1M)))))
+
+
+;; R99's BigInt half: a double against a BigInt compares as doubles in Clojure (DoubleOps:
+;; BigInt.doubleValue). jank compares them exactly: big_integer.cpp compare 177-187 and number.cpp
+;; real::compare 342-350 use boost's exact mixed comparison (R99a/R99b changed BigDecimal only).
+; [fn] sorted-set compares through runtime::compare. Clojure: one element (compare is 0).
+; jank predicted: 2 (2^53+1 > 2^53 exactly); with R99i: 1 (passes).
+(deftest y3-a-sorted-set-merges-a-bigint-and-its-double
+  (is (= 1 (count (sorted-set 9007199254740993N 9007199254740992.0)))))
+
+
+; [fn] Clojure: 0. jank predicted: 1 (big_integer::compare, exact); with R99i: 0.
+(deftest y3b-compare-of-a-bigint-and-a-double
+  (is (= 0 (compare (id 9007199254740993N) (id 9007199254740992.0)))))
+
+
+; [fn] max through object parameters: as doubles the two tie, and Clojure's max returns the second
+; operand (gt(x, y) ? x : y). jank predicted: "9007199254740993N" (exact `<`, and a tie would give the
+; first, V57); with R99i and V56: "9.007199254740992E15".
+(deftest y3c-max-of-a-bigint-and-its-double-is-the-double
+  (is (= "9.007199254740992E15" (pr-str ((fn [a b] (max a b)) 9007199254740993N 9007199254740992.0)))))
+
+
+;; V57 with signed zeros through objects (Numbers.max(Object, Object): gt(-0.0, 0.0) is false, so 0.0).
+; [fn] jank predicted: "-0.0" (math.hpp object max `l < r ? r : l` keeps the first on a tie); with V56: "0.0".
+(deftest y4-max-of-minus-zero-and-zero-through-a-fn
+  (is (= "0.0" (str ((fn [a b] (max a b)) -0.0 0.0)))))
+
+
+;; V58's double part on let-bound doubles (Clojure: Math.max(-0.0, 0.0) is 0.0).
+; [let] jank predicted: "-0.0" (std::max(-0.0, 0.0) returns its first operand); with V56: "0.0".
+(deftest y4b-max-of-let-bound-minus-zero-and-zero
+  (is (= "0.0" (str (let [a -0.0 b 0.0] (max a b))))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area F - local fixes V64c, V51, V7r, S17h, R60, U74
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; V64c (V64's char part): a char is no number. Through a fn the boxed character reaches
+;; visit_number_like, whose "not a number" is a std::runtime_error on stock (visit.hpp 507).
+(deftest y5-a-char-element-through-a-fn-is-not-a-number
+  ; native
+  ; [fn] add(object, object) -> visit.hpp visit_number_like. jank predicted: a std::runtime_error
+  ; "not a number: \a" (uncaught by thrown?); with V64c the string object (passes).
+  (is (thrown? ((fn [a b] (+ a b)) (aget (char-array "a") 0) 1))))
+
+
+(deftest y6-control-int-of-a-char-element-is-its-code
+  ; native
+  ; [literals] stock inlines int to to_int(char) -> 97; with V64c to_int keeps its char branch -> 97;
+  ; in the combined tree S40's int is a fn: the boxed character's to_integer -> 97.
+  (is (= 97 (int (aget (char-array "a") 0)))))
+
+
+;; New form of V64's cause: `float` inlines to to_real, which takes a char as a number.
+(deftest y7-float-of-a-char-element-throws
+  ; native
+  ; [literals] to_real(char) (math.hpp 1438-1464) -> 97.0, no exception. With V64c alone a
+  ; std::runtime_error "Can't convert char to real." (uncaught); with V64c + R33b the string object.
+  (is (thrown? (float (aget (char-array "a") 0)))))
+
+
+;; V51: `hash` is an int. The let path (v51 covers inlined and apply).
+(deftest y8-a-let-bound-hash-is-signed
+  ; native
+  ; [let] the local takes to_hash's uhash. jank predicted: 3323962100; with V51 -971005196.
+  (is (= -971005196 (let [h (hash 2)] h))))
+
+
+(deftest y9-control-case-finds-hashed-tests
+  ; [fn] hash mode: case-hash (macroexpansion, through `hash`) and c_api.cpp to_case_integer_or_hash
+  ; (run time) must hash alike. jank predicted: :v on stock and with V51 (both sides signed).
+  (is (= :v ((fn [x] (case x "a" :a :b :b 1.5 :d [1] :v :none)) [1]))))
+
+
+;; V7r: a read error reaches an object catch as Clojure's exception, with no ex-data.
+(deftest y10-a-read-error-has-no-ex-data
+  ; [fn] read-string at run time -> core.cpp read_string. jank predicted: the error_ref "Unterminated
+  ; list" escapes the catch (uncaught jank error); with V7r an exception_info with nil data -> nil.
+  (is (nil? (try (read-string (identity "("))
+                 (catch cpp/jank.runtime.object_ref e (ex-data e))))))
+
+
+;; S17h: a hex literal can't end in M (Clojure: NumberFormatException "Invalid number: 0x10M").
+(deftest y11-a-hex-bigdecimal-literal-is-invalid
+  ; [fn] read-string at run time -> lex.cpp M branch with radix 16. jank predicted: 10M, no
+  ; exception; with S17h alone a read error (error_ref, uncaught); with S17h + V7r an object.
+  (is (thrown? (read-string (identity "0x10M")))))
+
+
+(deftest y11b-a-hex-bigdecimal-literal-with-an-e-is-invalid
+  ; [fn] as y11; the e is a hex digit. jank predicted: 100000M; with S17h + V7r an object.
+  (is (thrown? (read-string (identity "0x1e5M")))))
+
+
+;; U74: unchecked int arithmetic (Numbers.unchecked_int_*): ints, wrapping at 32 bits.
+(deftest y12-unchecked-subtract-int-wraps
+  ; [fn] the defn throws ex-info "TODO: port unchecked-subtract-int"; with U74 2147483647.
+  (is (= 2147483647 (unchecked-subtract-int -2147483648 1))))
+
+
+(deftest y12b-unchecked-multiply-int-wraps
+  ; [fn] stock: ex-info "TODO: port unchecked-multiply-int"; with U74 0.
+  (is (= 0 (unchecked-multiply-int 65536 65536))))
+
+
+(deftest y12c-unchecked-divide-int-of-min-by-minus-one-wraps
+  ; [fn] stock: ex-info "TODO: port unchecked-divide-int"; with U74 -2147483648.
+  (is (= -2147483648 (unchecked-divide-int -2147483648 -1))))
+
+
+(deftest y12d-unchecked-remainder-int-keeps-the-dividends-sign
+  ; [fn] stock: ex-info "TODO: port unchecked-remainder-int"; with U74 -1.
+  (is (= -1 (unchecked-remainder-int -7 2))))
+
+
+(deftest y12e-unchecked-negate-int-of-min-wraps
+  ; [fn] stock: ex-info "TODO: port unchecked-negate-int"; with U74 -2147483648.
+  (is (= -2147483648 (unchecked-negate-int -2147483648))))
+
+
+(deftest y12f-unchecked-inc-int-wraps
+  ; [fn] stock: ex-info "TODO: port unchecked-inc-int"; with U72 (the combined tree)
+  ; unchecked_inc's 2147483648; with U74 -2147483648.
+  (is (= -2147483648 (unchecked-inc-int 2147483647))))
+
+
+(deftest y12g-unchecked-add-int-checks-its-operands
+  ; [fn] RT.intCast: 2147483648 is no int (ArithmeticException "integer overflow"). stock: ex-info
+  ; "TODO: port unchecked-add-int" (passes for the wrong reason); with U74 the object "integer overflow".
+  (is (thrown? (unchecked-add-int 2147483648 0))))
+
+
+(deftest y12h-unchecked-add-wraps-longs
+  ; [fn] stock: ex-info "TODO: port unchecked-add"; with U74 -9223372036854775808.
+  (is (= -9223372036854775808 (unchecked-add 9223372036854775807 1))))
+
+
+(deftest y12i-unchecked-negate-of-a-zero-double-is-negative-zero
+  ; [fn] stock: ex-info "TODO: port unchecked-negate"; with U74 -0.0 (DoubleOps.negate).
+  (is (= "-0.0" (str (unchecked-negate 0.0)))))
+
+
+;; U74: rationalize (Numbers.rationalize through BigDecimal.valueOf).
+(deftest y13-rationalize-of-a-double
+  ; [fn] stock: ex-info "TODO: port rationalize"; with U74 1/10.
+  (is (= 1/10 (rationalize 0.1))))
+
+
+(deftest y13b-rationalize-of-a-whole-double-is-a-bigint
+  ; [fn] stock: ex-info "TODO: port rationalize"; with U74 100N.
+  (is (= "100N" (pr-str (rationalize 100.0)))))
+
+
+(deftest y13c-rationalize-of-the-smallest-double-takes-javas-two-digits
+  ; [fn] Double.toString(4.9E-324) has two digits: 49/10^325. stock: ex-info "TODO: port
+  ; rationalize"; with U74 the same ratio.
+  (is (= (/ 49 (apply * (repeat 325 10N))) (rationalize 4.9E-324))))
+
+
+(deftest y13d-rationalize-of-nil-is-nil
+  ; [fn] stock: ex-info "TODO: port rationalize"; with U74 nil.
+  (is (nil? (rationalize nil))))
+
+
+;; R60: Java's final sigma looks for a cased letter within the word (digits and mid-word marks
+;; don't end it): A1Σ lower-cases to a1ς (Unicode's own rule would give σ).
+(deftest y14-a-final-sigma-after-a-digit
+  ; [fn] stock: towlower maps Σ to σ always -> "a1σ"; with R60 "a1ς".
+  (is (= "a1ς" (string/lower-case (identity "A1Σ")))))
+
+
+(deftest y14b-control-capitalize-lower-cases-the-rest-alone
+  ; [fn] Clojure lower-cases (subs s 1) = "Σ" alone: no cased letter before it, so σ. stock:
+  ; towlower of the whole text "aσ", first byte upper-cased -> "Aσ" (passes); with R61a and only
+  ; to_lowercase's final sigma it would be "Aς"; R60's capitalize gives "Aσ".
+  (is (= "Aσ" (string/capitalize (identity "AΣ")))))
+
+
+(deftest y14c-control-capitalize-leaves-a-supplementary-first-character
+  ; [fn] Clojure's (subs s 0 1) is half of the surrogate pair, which toUpperCase leaves: "𐐨a"
+  ; stays. stock: the first byte (0xF0) is no ASCII letter -> unchanged (passes); with R61a the first
+  ; code point is upper-cased -> "𐐀a"; R60's capitalize leaves it -> unchanged.
+  (is (= "𐐨a" (string/capitalize (identity "𐐨a")))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area B - boost's cpp_dec_float<100> (S4 past 121 digits, the stock Newton division)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; S4 (reading): rd_string (cpp_dec_float.hpp 2270-2316) keeps 8 digits or fewer before the point
+;; and 120 after; 1.<120 zeros>1 has 122 digits at order 0.
+; [literals] jank predicted: 0 (the literal reads as 1), stock and patched.
+(deftest y15-a-literal-past-121-digits-at-order-0-is-cut
+  (is (= 1 (compare 1.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 1M))))
+
+
+; [literals] control: 121 digits at order 0 are kept. jank predicted: 1 (passes), stock and patched.
+(deftest y15b-control-a-literal-of-121-digits-at-order-0-is-kept
+  (is (= 1 (compare 1.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 1M))))
+
+
+; [literals] control: at order 7 the leading limb holds 8 digits, so 128 are kept.
+; jank predicted: 1 (passes), stock and patched.
+(deftest y15c-control-a-literal-of-122-digits-at-order-7-is-kept
+  (is (= 1 (compare 10000000.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 10000000M))))
+
+
+; [literals] 129 digits at order 7. jank predicted: 0, stock and patched.
+(deftest y15d-a-literal-past-128-digits-at-order-7-is-cut
+  (is (= 1 (compare 10000000.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 10000000M))))
+
+
+;; S4 (sums): operator+= (759-937) drops a smaller operand more than 120 digits below the larger
+;; one (793-802) and the limbs it shifts out; the sum keeps (o mod 8) + 121 digits, truncated.
+; [literals] jank predicted: 0 (1 + 1E-121 is 1), stock and patched.
+(deftest y16-a-sum-past-121-digits-is-cut
+  (is (= 1 (compare (+ 1M 1E-121M) 1M))))
+
+
+; [fn] the same operands through fn parameters. jank predicted: 0, stock and patched.
+(deftest y16b-a-sum-past-121-digits-is-cut-through-a-fn
+  (is (= 1 ((fn [a b] (compare (+ a b) a)) 1M 1E-121M))))
+
+
+; [literals] control: 1 + 1E-120 has 121 digits. jank predicted: 1 (passes), stock and patched.
+(deftest y16c-control-a-sum-of-121-digits-is-kept
+  (is (= 1 (compare (+ 1M 1E-120M) 1M))))
+
+
+; [literals] round 3's S4 program (+ 1 1E130M), with a BigDecimal 1. jank predicted: 0, stock and patched.
+(deftest y17-a-sum-with-1e130-keeps-the-one
+  (is (= 1 (compare (+ 1E130M 1M) 1E130M))))
+
+
+;; S4 (differences): with opposite signs operator+= truncates the smaller magnitude to the larger
+;; one's last limb before subtracting, so the difference is rounded AWAY from zero on that grid.
+; [literals] round 3's S4 program (- 1M 1E-130M) (s04), observed with compare.
+; jank predicted: 0 (the difference is 1), stock and patched.
+(deftest y18-a-difference-past-121-digits-is-not-rounded-down
+  (is (= -1 (compare (- 1M 1E-130M) 1M))))
+
+
+; [literals] 1 - 0.<121 nines> is 1E-121; the subtrahend keeps 128 digits (order -1), but its last
+; limb is dropped against 1 (grid 1E-120), so jank gives 1E-120. jank predicted: 1, stock and patched.
+(deftest y18b-a-difference-is-rounded-on-the-larger-operands-grid
+  (is (= 0 (compare (- 1M 0.9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M) 1E-121M))))
+
+
+;; S4 (products): operator*= (951-1012) forms the exact 32-limb product and keeps 16 limbs from the
+;; first nonzero one (609-643): (o mod 8) + 121 digits, truncated.
+; [literals] (1 + 1E-61)^2 = 1 + 2E-61 + 1E-122 has 123 digits. jank predicted: 0, stock and patched.
+(deftest y19-a-product-past-121-digits-is-cut
+  (is (= 1 (compare (* 1.0000000000000000000000000000000000000000000000000000000000001M 1.0000000000000000000000000000000000000000000000000000000000001M) 1.0000000000000000000000000000000000000000000000000000000000002M))))
+
+
+; [literals] control: (1 + 1E-60)^2 = 1 + 2E-60 + 1E-120 has 121 digits. jank predicted: 0 (passes),
+; stock and patched.
+(deftest y19b-control-a-product-of-121-digits-is-kept
+  (is (= 0 (compare (* 1.000000000000000000000000000000000000000000000000000000000001M 1.000000000000000000000000000000000000000000000000000000000001M) 1.000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000001M))))
+
+
+;; S2 (stock division), new instance: a divisor with no prime factor but 2. operator/= multiplies by
+;; calculate_inv's Newton inverse (1016-1047, 1222-1270); for 2^17 it is 7.6293945312499...9E-6.
+; [literals] jank predicted: stock -1; patched 0 (S2's exact quotient has 12 digits; passes).
+(deftest y20-the-newton-inverse-of-a-power-of-two-is-inexact
+  (is (= 0 (compare (/ 1M 131072M) 0.00000762939453125M))))
+
+
+; [fn] jank predicted: stock -1; patched 0 (passes).
+(deftest y20b-the-newton-inverse-of-a-power-of-two-is-inexact-through-a-fn
+  (is (= 0 ((fn [a b c] (compare (/ a b) c)) 1M 131072M 0.00000762939453125M))))
+
+
+; [literals] x8's program with P = 2^17, the smallest power of two for which it fails on stock
+; (stock fails for k = 17, 18, 19, 25, 26, 292 of 1..400). jank predicted: stock 1; patched 0 (passes).
+(deftest y20c-a-quotient-by-a-power-of-two-times-the-divisor-is-the-dividend
+  (is (= 0 (compare 1M (* 131072M (/ 1M 131072M))))))
+
+
+;; S4 after S2: exact_divide builds the exact quotient as text and rd_string keeps (o mod 8) + 121
+;; digits. 1/2^177 = 5^177 * 10^-177 has 124 digits at order -54 (-54 mod 8 = 2): 123 kept, so the
+;; product is below 1. The smallest k of 1..400 for which x8's program fails with the patch (it fails
+;; for every k >= 177).
+; [literals] jank predicted: stock 0 (passes: the Newton inverse times P rounds to 1); patched 1.
+(deftest y21-an-exact-quotient-past-the-kept-digits-is-cut
+  (is (= 0 (compare 1M (* 191561942608236107294793378393788647952342390272950272M (/ 1M 191561942608236107294793378393788647952342390272950272M))))))
+
+
+; [literals] control: 1/2^176 has 124 digits at order -53 (-53 mod 8 = 3): all kept.
+; jank predicted: 0 (passes), stock and patched.
+(deftest y21b-control-an-exact-quotient-within-the-kept-digits
+  (is (= 0 (compare 1M (* 95780971304118053647396689196894323976171195136475136M (/ 1M 95780971304118053647396689196894323976171195136475136M))))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area H - CHAMP
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; y22 (new). assoc/conj of a key already present reorders a hash map's or hash set's seq when the key
+;; shares its full 32-bit hash with a key stored after it. The longs 1 and 7676047846 both hash to
+;; 1392991556 (jank hash.cpp integer(i64) = Clojure's Murmur3.hashLong), so jank keeps them in one
+;; CHAMP collision node. Its order is the insertion order reversed: copy_collision_insert puts the new
+;; value first (immer node.hpp), so (hash-map 1 :a 7676047846 :a) iterates (7676047846 1). Then
+;; `assoc` of 1, the second in that node, goes through champ.hpp do_add 575-581 ->
+;; node.hpp copy_collision_replace 495-523, which writes the new pair FIRST and the others after:
+;; (1 7676047846). Clojure replaces the value in place (HashCollisionNode.assoc cloneAndSet /
+;; editAndSet) and PersistentHashSet.cons returns the set itself when it holds the key, so the order
+;; never changes. A transient keeps the order only in a collision node it made itself
+;; (do_add_mut 652-655 writes in place); on a node it did not make it copies (657-659) and reorders.
+
+; [fn] control: the premise, jank's hashes of the two longs are equal (both 1392991556).
+; jank predicted: true.
+(deftest y22-control-two-longs-of-one-hash
+  (is (= (hash (id 1)) (hash (id 7676047846)))))
+
+
+; [fn] control: assoc of the key stored first in the collision node keeps the order.
+; jank predicted: true ((7676047846 1) both).
+(deftest y22-control-assoc-of-the-first-key-keeps-the-order
+  (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+    (is (= (keys m) (keys (assoc m (id 7676047846) :b))))))
+
+
+; [fn] jank predicted: false ((7676047846 1) then (1 7676047846)).
+(deftest y22-assoc-of-a-present-key-reorders-the-map
+  (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+    (is (= (keys m) (keys (assoc m (id 1) :b))))))
+
+
+; [fn] jank predicted: false; also with the same value (assoc m 1 :a) the order changes.
+(deftest y22b-assoc-of-a-present-key-and-its-own-value-reorders-the-map
+  (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+    (is (= (keys m) (keys (assoc m (id 1) :a))))))
+
+
+; [fn] control: conj of the element stored first keeps the order. jank predicted: true.
+(deftest y22c-control-conj-of-the-first-element-keeps-the-order
+  (let [s (hash-set (id 1) (id 7676047846))]
+    (is (= (seq s) (seq (conj s (id 7676047846)))))))
+
+
+; [fn] jank predicted: false ((7676047846 1) then (1 7676047846)); Clojure's conj returns s itself.
+(deftest y22c-conj-of-a-member-reorders-the-set
+  (let [s (hash-set (id 1) (id 7676047846))]
+    (is (= (seq s) (seq (conj s (id 1)))))))
+
+
+; [fn] control: inside one transient the collision node is the transient's own, so assoc! writes in
+; place and keeps the order. jank predicted: true ((7676047846 1) both).
+(deftest y22d-control-assoc!-in-the-transient-that-made-the-node-keeps-the-order
+  (is (= (keys (persistent! (-> (transient (hash-map)) (assoc! (id 1) :a) (assoc! (id 7676047846) :a))))
+         (keys (persistent! (-> (transient (hash-map)) (assoc! (id 1) :a) (assoc! (id 7676047846) :a)
+                                (assoc! (id 1) :b)))))))
+
+
+; [fn] jank predicted: false (transient chain (7676047846 1), persistent chain (1 7676047846)): the same
+; steps through a transient and through persistent assoc give different orders.
+(deftest y22d-transient-and-persistent-assoc-chains-disagree-on-order
+  (is (= (keys (persistent! (-> (transient (hash-map)) (assoc! (id 1) :a) (assoc! (id 7676047846) :a)
+                                (assoc! (id 1) :b))))
+         (keys (-> (hash-map) (assoc (id 1) :a) (assoc (id 7676047846) :a) (assoc (id 1) :b))))))
+
+
+; [fn] jank predicted: false: a new transient does not own m's nodes, so assoc! copies the collision
+; node (champ.hpp 657-659, copy_collision_replace) and reorders as assoc does.
+(deftest y22e-assoc!-on-a-new-transient-reorders-the-map
+  (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+    (is (= (keys m) (keys (persistent! (assoc! (transient m) (id 1) :b)))))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area D - BigDecimal scale (R72) and with-precision (X6)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; y23 (R72): multiply keeps the scale s1 + s2 (Java's BigDecimal.multiply; Numbers' BigDecimalOps).
+;; jank: cpp_dec_float has no scale; str() prints the shortest digits and string_builder.cpp 240-249
+;; adds ".0" when there is no point.
+(deftest y23-bigdecimal-product-keeps-the-sum-of-the-scales
+  ; [literals] stock "3.0"; patched "3.0"; R72 "3.00".
+  (is (= "3.00" (str (* 1.5M 2.0M)))))
+
+
+(deftest y23b-bigdecimal-product-keeps-the-sum-of-the-scales-through-fn-parameters
+  ; [fn] stock "3.0"; patched "3.0"; R72 "3.00".
+  (is (= "3.00" ((fn [a b] (str (* a b))) 1.5M 2.0M))))
+
+
+;; y24 (R72): subtract keeps max(s1, s2).
+(deftest y24-bigdecimal-difference-keeps-the-larger-scale
+  ; [literals] stock "2.0"; patched "2.0"; R72 "2.00".
+  (is (= "2.00" (str (- 2.50M 0.5M)))))
+
+
+;; y25 (R72, S5's notation): a negative scale prints in E-notation (BigDecimal.toString).
+(deftest y25-bigdecimal-with-a-negative-scale-prints-scientific
+  ; [literals] 1E+2M is unscaled 1, scale -2. stock "100.0"; patched "100.0"; R72 "1E+2".
+  (is (= "1E+2" (str 1E+2M))))
+
+
+;; y26 (R72): a zero quotient keeps the preferred scale s1 - s2.
+(deftest y26-zero-quotient-keeps-the-preferred-scale
+  ; [literals] preferred scale 0 - 2. stock "0.0"; patched (S2's exact_divide) "0.0"; R72 "0E+2".
+  (is (= "0E+2" (str (/ 0M 5.00M)))))
+
+
+;; y27 (R72, S7's function): rem is BigDecimal.remainder, x - divideToIntegralValue(x, y) * y, at
+;; scale max(s1, s_q + s2). jank: math.cpp rem 269-289 is boost's fmod of the magnitudes.
+(deftest y27-bigdecimal-remainder-keeps-the-scale
+  ; [literals] rem inlines to math.cpp rem. stock "1.5"; patched "1.5"; R72 "1.50".
+  (is (= "1.50" (str (rem 7.50M 2)))))
+
+
+(deftest y27b-bigdecimal-remainder-keeps-the-scale-through-fn-parameters
+  ; [fn] stock "1.5"; patched "1.5"; R72 "1.50".
+  (is (= "1.50" ((fn [a b] (str (rem a b))) 7.50M 2))))
+
+
+;; y28 (R72 with D4): quot is divideToIntegralValue: the integer part t at scale
+;; max(s1 - s2, -trailingZeros(t)), here 1.0E+2.
+(deftest y28-bigdecimal-quot-keeps-the-preferred-scale
+  ; [literals] stock "100" (math.cpp quot 321-345 boxes a long); patched (D4: boost trunc) "100.0M";
+  ; R72 alone "100" (stock quot); R72-combined "1.0E+2M".
+  (is (= "1.0E+2M" (pr-str (quot 100M 1.0M)))))
+
+
+;; y29 (R72): inc is add(ONE): scale max(s, 0).
+(deftest y29-bigdecimal-inc-keeps-the-scale
+  ; [literals] math.hpp inc: data + 1ll. stock "2.5"; patched "2.5"; R72 "2.50".
+  (is (= "2.50" (str (inc 1.50M)))))
+
+
+;; y30 (R72): abs keeps the scale.
+(deftest y30-bigdecimal-abs-keeps-the-scale
+  ; [literals] math.hpp abs: -1ll * data. stock "1.5"; patched "1.5"; R72 "1.50".
+  (is (= "1.50" (str (abs -1.50M)))))
+
+
+(deftest y30b-bigdecimal-abs-keeps-the-scale-through-a-fn-parameter
+  ; [fn] stock "1.5"; patched "1.5"; R72 "1.50".
+  (is (= "1.50" ((fn [a] (str (abs a))) -1.50M))))
+
+
+;; y31 (R72 with U2): bigdec of a double is BigDecimal.valueOf: Double.toString's digits and layout
+;; ("1.0E10" is unscaled 10, scale -9).
+(deftest y31-bigdec-of-a-double-takes-double-tostring-layout
+  ; [literals] stock "10000000000.0" (math.cpp to_big_decimal: the double's binary value); patched
+  ; (U2: std::to_chars "1e+10") "10000000000.0"; R72 alone "10000000000" (the binary value, scale 0);
+  ; R72-combined (U2's shortest_decimal is decimal::value_of) "1.0E+10".
+  (is (= "1.0E+10" (str (bigdec 1e10)))))
+
+
+;; y32 (R72, S5's notation): an adjusted exponent below -6 prints in E-notation.
+(deftest y32-small-bigdecimal-prints-scientific
+  ; [literals] stock "1e-07.0" (boost's scientific text plus ".0"); patched "1e-07.0"; R72 "1E-7".
+  (is (= "1E-7" (str 1E-7M))))
+
+
+;; y33 (R72, S4): a sum keeps every digit (exact).
+(deftest y33-bigdecimal-sum-keeps-every-digit
+  ; [literals] stock "1.0" (cpp_dec_float keeps about 128 digits): false; patched false; R72 true.
+  (is (= (str "1." (apply str (repeat 129 "0")) "1") (str (+ 1M 1E-130M)))))
+
+
+;; y34 (R72): a ratio operand becomes a BigDecimal first (Numbers.toBigDecimal: 1/2 is 0.5,
+;; scale 1), so the sum keeps scale 2.
+(deftest y34-bigdecimal-and-ratio-sum-keeps-the-scale
+  ; [literals] ratio.cpp operator+ (decimal, ratio_data). stock "2.0"; patched "2.0"; R72 "2.00".
+  (is (= "2.00" (str (+ 1.50M 1/2)))))
+
+
+;; y35 (R72 with D4): quot of a BigDecimal and a ratio is BigDecimalOps.quotient (a BigDecimal).
+(deftest y35-quot-of-a-bigdecimal-and-a-ratio-is-a-bigdecimal
+  ; [literals] stock "3" (a long through doubles); patched "3" (D4 keeps the ratio-with-decimal
+  ; branch through doubles); R72 alone "3"; R72-combined "3M".
+  (is (= "3M" (pr-str (quot 1.5M 1/2)))))
+
+
+;; y36 (R72): negation keeps a positive scale. jank's (- x) is (- 0 x) (core.jank 1393-1394):
+;; 0 - x has scale max(0, s), which is s when s >= 0.
+(deftest y36-bigdecimal-negation-keeps-a-positive-scale
+  ; [literals] stock "-1.5"; patched "-1.5"; R72 "-1.50".
+  (is (= "-1.50" (str (- 1.50M)))))
+
+
+;; y37 (new, no fix written: unary minus is (- 0 x), core.jank 1393-1394): Clojure's (- x) is
+;; Numbers.minus(x) = negate(x), which keeps a negative scale; 0 - x takes max(0, s) = 0.
+(deftest y37-bigdecimal-negation-keeps-a-negative-scale
+  ; [literals] (- x) is not inlined (:inline-arities #{2}): the fn's (- 0 x). stock "-100.0";
+  ; patched "-100.0"; R72 "-100".
+  (is (= "-1E+2" (str (- 1E+2M)))))
+
+
+(deftest y37b-bigdecimal-negation-keeps-a-negative-scale-through-a-fn-parameter
+  ; [fn] stock "-100.0"; patched "-100.0"; R72 "-100".
+  (is (= "-1E+2" ((fn [a] (str (- a))) 1E+2M))))
+
+
+;; y38 (new, same cause as y37): (- 0.0) is -0.0 in Clojure (negation flips the sign); 0 - 0.0 is
+;; +0.0 in IEEE arithmetic.
+(deftest y38-negation-of-positive-zero-is-negative-zero
+  ; [literals] the fn's (- 0 x): sub(int 0, object 0.0). stock "0.0"; patched "0.0"; R72 "0.0".
+  (is (= "-0.0" (str (- 0.0)))))
+
+
+(deftest y38b-negation-of-positive-zero-is-negative-zero-through-a-fn-parameter
+  ; [fn] stock "0.0"; patched "0.0"; R72 "0.0".
+  (is (= "-0.0" ((fn [a] (str (- a))) 0.0))))
+
+
+;; Controls: what R72 must keep.
+(deftest y39-control-sum-of-one-place-bigdecimals
+  ; [literals] scale 1: stock "3.0" (boost "3" plus ".0"); patched "3.0"; R72 "3.0".
+  (is (= "3.0" (str (+ 1.5M 1.5M)))))
+
+
+(deftest y39b-control-bigdecimals-of-one-value-are-equal-across-scales
+  ; [literals] Numbers.equal: compareTo. stock true (D8's epsilon); patched true (exact); R72 true.
+  (is (= 1.50M 1.5M)))
+
+
+(deftest y39c-control-bigdecimals-of-one-value-hash-alike-across-scales
+  ; [literals] hasheq strips trailing zeros (466 both). stock true (one cpp_dec_float value);
+  ; patched true (N7-1); R72 true (decimal::hasheq).
+  (is (= (hash 1.50M) (hash 1.5M))))
+
+
+;; A control for the round-8 combined tree: its math.hpp min/max with a native number and a typed
+;; big_decimal_ref call detail::primitive_max(l, r->data), which does not instantiate (widen takes
+;; primitives only; .r8-scratch/dec/cc/tu-stock.cpp, 22 errors on the unchanged combined tree). If
+;; jank types a BigDecimal literal as big_decimal_ref here, the combined build fails to compile this.
+(deftest y40-control-max-of-an-int-and-a-bigdecimal-literal
+  ; [literals] max(int, object): stock "1.5"; patched "1.5" unless the typed instantiation is reached
+  ; (then a C++ compile error); R72 "1.5".
+  (is (= "1.5" (str (max 0 1.5M)))))
+
+
+;; y41-y42 (X6): with-precision binds *math-context*; BigDecimalOps rounds add, multiply, divide,
+;; quotient, remainder, negate, abs, inc, dec (and the ratio conversion, which divides) to the
+;; precision by the rounding mode. jank: core.jank 6487-6502 throws "TODO: port with-precision" while
+;; expanding; nothing defines *math-context*. Every one is [literals] inside ev.
+(deftest y41-with-precision-rounds-half-even
+  ; stock and patched: ex-info "TODO: port with-precision" (thrown by ev); X6 "2".
+  (is (= "2" (str (ev "(with-precision 1 :rounding HALF_EVEN (/ 5M 2))")))))
+
+
+(deftest y41b-with-precision-rounds-half-up
+  ; stock and patched: the ex-info; X6 "3".
+  (is (= "3" (str (ev "(with-precision 1 :rounding HALF_UP (/ 5M 2))")))))
+
+
+(deftest y43-with-precision-rounds-a-sum
+  ; stock and patched: the ex-info; X6 "2.23".
+  (is (= "2.23" (str (ev "(with-precision 3 (+ 1.2345M 1M))")))))
+
+
+(deftest y44-with-precision-negates-the-subtrahend-first
+  ; Numbers.minus is add(x, negate(y)) with both rounded: -0.051 becomes -0.05, 0.95 becomes 1 (one
+  ; rounding of 0.949 would give 0.9). stock and patched: the ex-info; X6 "1".
+  (is (= "1" (str (ev "(with-precision 1 (- 1M 0.051M))")))))
+
+
+(deftest y45-with-precision-rounds-abs-of-a-positive-bigdecimal
+  ; abs(mc) rounds a positive value too: X6 changes math.hpp abs for a BigDecimal. stock and patched:
+  ; the ex-info; X6 "1.23" (R72's abs path alone would box the value unrounded: "1.2345").
+  (is (= "1.23" (str (ev "(with-precision 3 (abs 1.2345M))")))))
+
+
+(deftest y46-with-precision-rounds-a-ratio-converted-by-bigdec
+  ; bigdec of a ratio divides (BigDecimalOps.divide), in the context. stock and patched: the ex-info;
+  ; X6 "0.33".
+  (is (= "0.33" (str (ev "(with-precision 2 (bigdec 1/3))")))))
+
+
+(deftest y47-math-context-is-bound-inside-with-precision
+  ; stock and patched: the ex-info; X6 true ({:precision 5 :rounding :HALF_UP}).
+  (is (true? (ev "(some? (with-precision 5 *math-context*))"))))
+
+
+(deftest y48-with-precision-rounds-floor
+  ; stock and patched: the ex-info; X6 "-0.334".
+  (is (= "-0.334" (str (ev "(with-precision 3 :rounding FLOOR (/ -1M 3))")))))
+
+
+(deftest y49-with-precision-rounds-inc
+  ; stock and patched: the ex-info; X6 "2.3".
+  (is (= "2.3" (str (ev "(with-precision 2 (inc 1.25M))")))))
+
+
+(deftest y50-with-precision-zero-is-exact
+  ; MathContext(0) is unlimited. stock and patched: the ex-info; X6 "0.25".
+  (is (= "0.25" (str (ev "(with-precision 0 (/ 1M 4))")))))
+
+
+(deftest y42-with-precision-divides-by-a-rounded-ratio
+  ; Numbers.toBigDecimal(1/3) divides in the context (0.33333), then 1 / 0.33333 rounds to 3.0000.
+  ; stock and patched: the ex-info; X6 "3.0000".
+  (is (= "3.0000" (str (ev "(with-precision 5 (/ 1M 1/3))")))))
+
+;;;; ---------------------------------------------------------------------------------------
+;;;; Area Q - nREPL (jank only)
+;;;; ---------------------------------------------------------------------------------------
+
+
+;; Q1 (new: makes R127/R128 precise for the stdin op). nREPL's stdin middleware answers a stdin op
+;; with #{"done"} and appends the text to the session's *in* (session.clj add-stdin 386-397);
+;; jank has no :stdin method (handler.jank 5-8, :default) and answers
+;; {:status [:error :unknown-op :done] :op "stdin"}. jank predicted: #{"error" "unknown-op" "done"}.
+; [handler] jank only (jank's handler namespace); no fix (R127's design change).
+(deftest y51-nrepl-stdin-op-is-answered-done
+  (let [s (:new-session (nrepl-handle {"op" "clone" "id" "c"}))
+        r (nrepl-handle {"op" "stdin" "id" "s" "session" s "stdin" "hi\n"})]
+    (is (= #{"done"} (statuses r)))))
+
+
+;; Q1b. describe lists the stdin op in nREPL (add-stdin's descriptor :handles "stdin"); jank's
+;; describe (handler/describe.jank 5-17) lists clone, describe, eval, load-file, lookup, info,
+;; completions, complete, close. jank predicted: false.
+; [handler] jank only (jank's handler namespace); no fix.
+(deftest y51b-nrepl-describe-lists-stdin
+  (is (contains? (:ops (nrepl-handle {"op" "describe" "id" "d"})) :stdin)))
+
+
+(deftest y52-nrepl-eval-sends-no-message-without-content
+  (let [req {"op" "eval" "id" "e" "code" "1" "ns" "user"}]
+    (is (= 2 (count (vq-responses-for req (nrepl-handle req)))))))

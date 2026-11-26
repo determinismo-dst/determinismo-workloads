@@ -1,20 +1,126 @@
 diff --git a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
-index 9035dd1..8c3d6c8 100644
+index 9035dd1..bc1fb7e 100644
 --- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
 +++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
-@@ -25,12 +25,82 @@ namespace jank::runtime
+@@ -25,12 +25,188 @@ namespace jank::runtime
  
    namespace detail
    {
-+    /* `bool` is integral to C++ but not a number to Clojure: `(+ true 1)` throws. */
++    /* `bool` is integral to C++ but not a number to Clojure: `(+ true 1)` throws. So is
++     * `char` (a char array's element): `(+ (aget (char-array "a") 0) 1)` throws (a Character
++     * is no Number). `to_int` still takes one, as RT.intCast(char) does. */
      template <typename T>
 -    concept primitive_number = (std::is_integral_v<T> || std::is_floating_point_v<T>);
-+    concept primitive_number
-+      = ((std::is_integral_v<T> && !jtl::is_same<T, bool>) || std::is_floating_point_v<T>);
++    concept primitive_number = ((std::is_integral_v<T> && !jtl::is_any_same<T, bool, char>)
++                                || std::is_floating_point_v<T>);
  
      template <typename T>
      concept typed_object = (behavior::object_like<typename T::value_type>);
  
++    /* Numbers' ops: a comparison with a double is a double comparison (DoubleOps), so a BigInt
++     * meets a double as its double value: (< 9007199254740992.0 9007199254740993N) is false and
++     * (compare 9007199254740992.0 9007199254740993N) is 0. boost compares the two exactly. Every
++     * other pair compares as before. */
++    template <typename A, typename B>
++    [[gnu::always_inline]]
++    bool lt_data(A const &a, B const &b)
++    {
++      if constexpr(std::is_floating_point_v<A> && jtl::is_same<B, native_big_integer>)
++      {
++        return a < b.template convert_to<f64>();
++      }
++      else if constexpr(jtl::is_same<A, native_big_integer> && std::is_floating_point_v<B>)
++      {
++        return a.template convert_to<f64>() < b;
++      }
++      else
++      {
++        return a < b;
++      }
++    }
++
++    template <typename A, typename B>
++    [[gnu::always_inline]]
++    bool lte_data(A const &a, B const &b)
++    {
++      if constexpr(std::is_floating_point_v<A> && jtl::is_same<B, native_big_integer>)
++      {
++        return a <= b.template convert_to<f64>();
++      }
++      else if constexpr(jtl::is_same<A, native_big_integer> && std::is_floating_point_v<B>)
++      {
++        return a.template convert_to<f64>() <= b;
++      }
++      else
++      {
++        return a <= b;
++      }
++    }
++
++    /* Clojure's min and max (Numbers.min/max): a NaN operand is the result, the first one
++     * first; otherwise min is `lt(x, y) ? x : y` and max is `gt(x, y) ? x : y`, so on a tie
++     * both give the second operand ((max 1 1.0) is 1.0, (min 1.0 1) is 1). */
++    template <typename T>
++    [[gnu::always_inline]]
++    constexpr bool nan_operand(T const &t)
++    {
++      if constexpr(std::is_floating_point_v<T>)
++      {
++        return std::isnan(t);
++      }
++      else
++      {
++        return false;
++      }
++    }
++
++    /* Math.min and Math.max, which Clojure calls for two primitives of one type: for doubles
++     * a NaN operand is the result and -0.0 is below 0.0 (std::min and std::max return their
++     * first operand in both cases). */
++    template <typename C>
++    [[gnu::always_inline]]
++    C java_min(C const a, C const b)
++    {
++      if constexpr(std::is_floating_point_v<C>)
++      {
++        if(std::isnan(a))
++        {
++          return a;
++        }
++        if(a == 0 && b == 0 && std::signbit(b))
++        {
++          return b;
++        }
++        return a <= b ? a : b;
++      }
++      else
++      {
++        return std::min(a, b);
++      }
++    }
++
++    template <typename C>
++    [[gnu::always_inline]]
++    C java_max(C const a, C const b)
++    {
++      if constexpr(std::is_floating_point_v<C>)
++      {
++        if(std::isnan(a))
++        {
++          return a;
++        }
++        if(a == 0 && b == 0 && std::signbit(a))
++        {
++          return b;
++        }
++        return a >= b ? a : b;
++      }
++      else
++      {
++        return std::max(a, b);
++      }
++    }
++
 +    /* Clojure compares and divides numbers as longs and doubles. A native operand is widened
 +     * before C++'s usual arithmetic conversions see it: otherwise an unsigned `usize` from
 +     * `count` meets a negative number as a huge unsigned one (`(< -1 (count [1]))` is false,
@@ -45,7 +151,7 @@ index 9035dd1..8c3d6c8 100644
 +      auto const wr{ widen(r) };
 +      if constexpr(std::is_same_v<decltype(wl), decltype(wr)>)
 +      {
-+        return std::min(wl, wr);
++        return java_min(wl, wr);
 +      }
 +      else
 +      {
@@ -68,7 +174,7 @@ index 9035dd1..8c3d6c8 100644
 +      auto const wr{ widen(r) };
 +      if constexpr(std::is_same_v<decltype(wl), decltype(wr)>)
 +      {
-+        return std::max(wl, wr);
++        return java_max(wl, wr);
 +      }
 +      else
 +      {
@@ -86,7 +192,7 @@ index 9035dd1..8c3d6c8 100644
      template <typename T>
      concept valid_boxed_math = (jtl::is_same<T, object_ref>
                                  || jtl::is_any_same<T,
-@@ -60,6 +130,140 @@ namespace jank::runtime
+@@ -60,6 +236,140 @@ namespace jank::runtime
      }
    }
  
@@ -227,7 +333,7 @@ index 9035dd1..8c3d6c8 100644
    /* Only for fixed integer sizes (i.e. integer and small_integer). */
    i64 to_i64(object_ref const o);
    /* Only for fixed real sizes (i.e. real and small_real). */
-@@ -72,9 +276,7 @@ namespace jank::runtime
+@@ -72,9 +382,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -238,7 +344,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -83,7 +285,7 @@ namespace jank::runtime
+@@ -83,7 +391,7 @@ namespace jank::runtime
          [](auto const typed_l, auto const r) -> object_ref {
            return visit_number_like(
              [](auto const typed_r, auto const typed_l) -> object_ref {
@@ -247,7 +353,7 @@ index 9035dd1..8c3d6c8 100644
              },
              r,
              typed_l);
-@@ -94,20 +296,20 @@ namespace jank::runtime
+@@ -94,20 +402,20 @@ namespace jank::runtime
      else if constexpr(jtl::is_same<L, object_ref>)
      {
        return visit_number_like(
@@ -271,7 +377,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -118,25 +320,23 @@ namespace jank::runtime
+@@ -118,25 +426,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -301,7 +407,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -147,25 +347,23 @@ namespace jank::runtime
+@@ -147,25 +453,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -331,7 +437,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -174,7 +372,7 @@ namespace jank::runtime
+@@ -174,7 +478,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    auto add(L const l, R const r)
    {
@@ -340,7 +446,7 @@ index 9035dd1..8c3d6c8 100644
    }
  
    object_ref promoting_add(object_ref const l, object_ref const r);
-@@ -186,9 +384,7 @@ namespace jank::runtime
+@@ -186,9 +490,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -351,7 +457,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -197,7 +393,7 @@ namespace jank::runtime
+@@ -197,7 +499,7 @@ namespace jank::runtime
          [](auto const typed_l, auto const r) -> object_ref {
            return visit_number_like(
              [](auto const typed_r, auto const typed_l) -> object_ref {
@@ -360,7 +466,7 @@ index 9035dd1..8c3d6c8 100644
              },
              r,
              typed_l);
-@@ -208,20 +404,20 @@ namespace jank::runtime
+@@ -208,20 +510,20 @@ namespace jank::runtime
      else if constexpr(jtl::is_same<L, object_ref>)
      {
        return visit_number_like(
@@ -384,7 +490,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -232,25 +428,23 @@ namespace jank::runtime
+@@ -232,25 +534,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -414,7 +520,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -261,25 +455,23 @@ namespace jank::runtime
+@@ -261,25 +561,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -444,7 +550,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -288,7 +480,7 @@ namespace jank::runtime
+@@ -288,7 +586,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    auto sub(L const l, R const r)
    {
@@ -453,7 +559,7 @@ index 9035dd1..8c3d6c8 100644
    }
  
    object_ref promoting_sub(object_ref const l, object_ref const r);
-@@ -300,9 +492,7 @@ namespace jank::runtime
+@@ -300,9 +598,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -464,7 +570,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -311,7 +501,7 @@ namespace jank::runtime
+@@ -311,7 +607,7 @@ namespace jank::runtime
          [](auto const typed_l, auto const r) -> object_ref {
            return visit_number_like(
              [](auto const typed_r, auto const typed_l) -> object_ref {
@@ -473,7 +579,7 @@ index 9035dd1..8c3d6c8 100644
              },
              r,
              typed_l);
-@@ -322,20 +512,20 @@ namespace jank::runtime
+@@ -322,20 +618,20 @@ namespace jank::runtime
      else if constexpr(jtl::is_same<L, object_ref>)
      {
        return visit_number_like(
@@ -497,7 +603,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -346,25 +536,25 @@ namespace jank::runtime
+@@ -346,25 +642,25 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -529,7 +635,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -375,25 +565,25 @@ namespace jank::runtime
+@@ -375,25 +671,25 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -561,7 +667,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -402,7 +592,7 @@ namespace jank::runtime
+@@ -402,7 +698,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    auto div(L const l, R const r)
    {
@@ -570,7 +676,7 @@ index 9035dd1..8c3d6c8 100644
    }
  
    template <typename L, typename R>
-@@ -412,9 +602,7 @@ namespace jank::runtime
+@@ -412,9 +708,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -581,7 +687,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -423,7 +611,7 @@ namespace jank::runtime
+@@ -423,7 +717,7 @@ namespace jank::runtime
          [](auto const typed_l, auto const r) -> object_ref {
            return visit_number_like(
              [](auto const typed_r, auto const typed_l) -> object_ref {
@@ -590,7 +696,7 @@ index 9035dd1..8c3d6c8 100644
              },
              r,
              typed_l);
-@@ -434,20 +622,20 @@ namespace jank::runtime
+@@ -434,20 +728,20 @@ namespace jank::runtime
      else if constexpr(jtl::is_same<L, object_ref>)
      {
        return visit_number_like(
@@ -614,7 +720,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -458,25 +646,23 @@ namespace jank::runtime
+@@ -458,25 +752,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -644,7 +750,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -487,25 +673,23 @@ namespace jank::runtime
+@@ -487,25 +779,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -675,7 +781,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -514,7 +698,7 @@ namespace jank::runtime
+@@ -514,7 +804,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    auto mul(L const l, R const r)
    {
@@ -684,7 +790,7 @@ index 9035dd1..8c3d6c8 100644
    }
  
    object_ref promoting_mul(object_ref const l, object_ref const r);
-@@ -526,9 +710,7 @@ namespace jank::runtime
+@@ -526,9 +816,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -695,7 +801,40 @@ index 9035dd1..8c3d6c8 100644
        return false;
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -570,24 +752,23 @@ namespace jank::runtime
+@@ -536,7 +824,7 @@ namespace jank::runtime
+       return visit_number_like(
+         [](auto const typed_l, auto const r) {
+           return visit_number_like(
+-            [](auto const typed_r, auto const typed_l) { return typed_l->data < typed_r->data; },
++            [](auto const typed_r, auto const typed_l) { return detail::lt_data(typed_l->data, typed_r->data); },
+             r,
+             typed_l);
+         },
+@@ -546,20 +834,20 @@ namespace jank::runtime
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return typed_l->data < r->data; },
++        [](auto const typed_l, auto const r) { return detail::lt_data(typed_l->data, r->data); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return l->data < typed_r->data; },
++        [](auto const typed_r, auto const l) { return detail::lt_data(l->data, typed_r->data); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data < r->data;
++      return detail::lt_data(l->data, r->data);
+     }
+   }
+ 
+@@ -570,24 +858,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -709,23 +848,23 @@ index 9035dd1..8c3d6c8 100644
      {
 -      return visit_number_like([](auto const typed_r, L const l) { return l < typed_r->data; },
 +      return visit_number_like(
-+        [](auto const typed_r, L const l) { return detail::widen(l) < typed_r->data; },
++        [](auto const typed_r, L const l) { return detail::lt_data(detail::widen(l), typed_r->data); },
                                 r,
                                 l);
      }
      else if constexpr(detail::typed_object<R>)
      {
 -      return l < r->data;
-+      return detail::widen(l) < r->data;
++      return detail::lt_data(detail::widen(l), r->data);
      }
      else
      {
 -      return l < r;
-+      return detail::widen(l) < detail::widen(r);
++      return detail::lt_data(detail::widen(l), detail::widen(r));
      }
    }
  
-@@ -598,24 +779,23 @@ namespace jank::runtime
+@@ -598,24 +885,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -739,32 +878,32 @@ index 9035dd1..8c3d6c8 100644
      {
 -      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data < r; },
 +      return visit_number_like(
-+        [](auto const typed_l, R const r) { return typed_l->data < detail::widen(r); },
++        [](auto const typed_l, R const r) { return detail::lt_data(typed_l->data, detail::widen(r)); },
                                 l,
                                 r);
      }
      else if constexpr(detail::typed_object<L>)
      {
 -      return l->data < r;
-+      return l->data < detail::widen(r);
++      return detail::lt_data(l->data, detail::widen(r));
      }
      else
      {
 -      return l < r;
-+      return detail::widen(l) < detail::widen(r);
++      return detail::lt_data(detail::widen(l), detail::widen(r));
      }
    }
  
-@@ -624,7 +804,7 @@ namespace jank::runtime
+@@ -624,7 +910,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    bool lt(L const l, R const r)
    {
 -    return l < r;
-+    return detail::widen(l) < detail::widen(r);
++    return detail::lt_data(detail::widen(l), detail::widen(r));
    }
  
    template <typename L, typename R>
-@@ -634,9 +814,7 @@ namespace jank::runtime
+@@ -634,9 +920,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -775,7 +914,40 @@ index 9035dd1..8c3d6c8 100644
        return false;
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -678,24 +856,23 @@ namespace jank::runtime
+@@ -644,7 +928,7 @@ namespace jank::runtime
+       return visit_number_like(
+         [](auto const typed_l, auto const r) {
+           return visit_number_like(
+-            [](auto const typed_r, auto const typed_l) { return typed_l->data <= typed_r->data; },
++            [](auto const typed_r, auto const typed_l) { return detail::lte_data(typed_l->data, typed_r->data); },
+             r,
+             typed_l);
+         },
+@@ -654,20 +938,20 @@ namespace jank::runtime
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return typed_l->data <= r->data; },
++        [](auto const typed_l, auto const r) { return detail::lte_data(typed_l->data, r->data); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return l->data <= typed_r->data; },
++        [](auto const typed_r, auto const l) { return detail::lte_data(l->data, typed_r->data); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data <= r->data;
++      return detail::lte_data(l->data, r->data);
+     }
+   }
+ 
+@@ -678,24 +962,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -789,23 +961,23 @@ index 9035dd1..8c3d6c8 100644
      {
 -      return visit_number_like([](auto const typed_r, L const l) { return l <= typed_r->data; },
 +      return visit_number_like(
-+        [](auto const typed_r, L const l) { return detail::widen(l) <= typed_r->data; },
++        [](auto const typed_r, L const l) { return detail::lte_data(detail::widen(l), typed_r->data); },
                                 r,
                                 l);
      }
      else if constexpr(detail::typed_object<R>)
      {
 -      return l <= r->data;
-+      return detail::widen(l) <= r->data;
++      return detail::lte_data(detail::widen(l), r->data);
      }
      else
      {
 -      return l <= r;
-+      return detail::widen(l) <= detail::widen(r);
++      return detail::lte_data(detail::widen(l), detail::widen(r));
      }
    }
  
-@@ -706,24 +883,23 @@ namespace jank::runtime
+@@ -706,24 +989,23 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -819,32 +991,32 @@ index 9035dd1..8c3d6c8 100644
      {
 -      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data <= r; },
 +      return visit_number_like(
-+        [](auto const typed_l, R const r) { return typed_l->data <= detail::widen(r); },
++        [](auto const typed_l, R const r) { return detail::lte_data(typed_l->data, detail::widen(r)); },
                                 l,
                                 r);
      }
      else if constexpr(detail::typed_object<L>)
      {
 -      return l->data <= r;
-+      return l->data <= detail::widen(r);
++      return detail::lte_data(l->data, detail::widen(r));
      }
      else
      {
 -      return l <= r;
-+      return detail::widen(l) <= detail::widen(r);
++      return detail::lte_data(detail::widen(l), detail::widen(r));
      }
    }
  
-@@ -732,7 +908,7 @@ namespace jank::runtime
+@@ -732,7 +1014,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    bool lte(L const l, R const r)
    {
 -    return l <= r;
-+    return detail::widen(l) <= detail::widen(r);
++    return detail::lte_data(detail::widen(l), detail::widen(r));
    }
  
    template <typename L, typename R>
-@@ -742,9 +918,7 @@ namespace jank::runtime
+@@ -742,9 +1024,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -855,7 +1027,67 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -794,29 +968,25 @@ namespace jank::runtime
+@@ -753,7 +1033,15 @@ namespace jank::runtime
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return typed_l->data < typed_r->data ? typed_l.erase() : typed_r.erase();
++              if(detail::nan_operand(typed_l->data))
++              {
++                return typed_l.erase();
++              }
++              if(detail::nan_operand(typed_r->data))
++              {
++                return typed_r.erase();
++              }
++              return detail::lt_data(typed_l->data, typed_r->data) ? typed_l.erase() : typed_r.erase();
+             },
+             r,
+             typed_l);
+@@ -765,7 +1053,15 @@ namespace jank::runtime
+     {
+       return visit_number_like(
+         [](auto const typed_l, auto const r) -> object_ref {
+-          return typed_l->data < r->data ? typed_l.erase() : r.erase();
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r->data))
++          {
++            return r.erase();
++          }
++          return detail::lt_data(typed_l->data, r->data) ? typed_l.erase() : r.erase();
+         },
+         l,
+         r);
+@@ -774,7 +1070,15 @@ namespace jank::runtime
+     {
+       return visit_number_like(
+         [](auto const typed_r, auto const l) {
+-          return l->data < typed_r->data ? l.erase() : typed_r.erase();
++          if(detail::nan_operand(l->data))
++          {
++            return l.erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
++          return detail::lt_data(l->data, typed_r->data) ? l.erase() : typed_r.erase();
+         },
+         r,
+         l);
+@@ -783,7 +1087,7 @@ namespace jank::runtime
+     {
+       using C
+         = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::min(static_cast<C>(l->data), static_cast<C>(r->data));
++      return detail::java_min(static_cast<C>(l->data), static_cast<C>(r->data));
+     }
+   }
+ 
+@@ -794,29 +1098,41 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -870,7 +1102,15 @@ index 9035dd1..8c3d6c8 100644
        return visit_number_like(
          [](auto const typed_r, L const l) -> object_ref {
 -          return l < typed_r->data ? make_box(l).erase() : typed_r.erase();
-+          return detail::widen(l) < typed_r->data ? make_box(detail::widen(l)).erase() : typed_r.erase();
++          if(detail::nan_operand(l))
++          {
++            return make_box(detail::widen(l)).erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
++          return detail::lt_data(detail::widen(l), typed_r->data) ? make_box(detail::widen(l)).erase() : typed_r.erase();
          },
          r,
          l);
@@ -879,7 +1119,15 @@ index 9035dd1..8c3d6c8 100644
      {
 -      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
 -      return std::min(static_cast<C>(l), static_cast<C>(r->data));
-+      return detail::primitive_min(l, r->data);
++      if constexpr(detail::primitive_number<jtl::decay_t<decltype(r->data)>>)
++      {
++        return detail::primitive_min(l, r->data);
++      }
++      else
++      {
++        /* A typed BigInt, ratio or BigDecimal: its data is no primitive to widen. */
++        return min(l, r.erase());
++      }
      }
      else
      {
@@ -889,7 +1137,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -827,29 +997,25 @@ namespace jank::runtime
+@@ -827,29 +1143,41 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -904,7 +1152,15 @@ index 9035dd1..8c3d6c8 100644
        return visit_number_like(
          [](auto const typed_l, R const r) -> object_ref {
 -          return typed_l->data < r ? typed_l.erase() : make_box(r).erase();
-+          return typed_l->data < detail::widen(r) ? typed_l.erase() : make_box(detail::widen(r)).erase();
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r))
++          {
++            return make_box(detail::widen(r)).erase();
++          }
++          return detail::lt_data(typed_l->data, detail::widen(r)) ? typed_l.erase() : make_box(detail::widen(r)).erase();
          },
          l,
          r);
@@ -913,7 +1169,15 @@ index 9035dd1..8c3d6c8 100644
      {
 -      using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
 -      return std::min(static_cast<C>(l->data), static_cast<C>(r));
-+      return detail::primitive_min(l->data, r);
++      if constexpr(detail::primitive_number<jtl::decay_t<decltype(l->data)>>)
++      {
++        return detail::primitive_min(l->data, r);
++      }
++      else
++      {
++        /* A typed BigInt, ratio or BigDecimal: its data is no primitive to widen. */
++        return min(l.erase(), r);
++      }
      }
      else
      {
@@ -923,7 +1187,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -858,8 +1024,7 @@ namespace jank::runtime
+@@ -858,8 +1186,7 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    auto min(L const l, R const r)
    {
@@ -933,7 +1197,7 @@ index 9035dd1..8c3d6c8 100644
    }
  
    template <typename L, typename R>
-@@ -869,9 +1034,7 @@ namespace jank::runtime
+@@ -869,9 +1196,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -944,7 +1208,67 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -921,29 +1084,25 @@ namespace jank::runtime
+@@ -880,7 +1205,15 @@ namespace jank::runtime
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return typed_l->data < typed_r->data ? typed_r.erase() : typed_l.erase();
++              if(detail::nan_operand(typed_l->data))
++              {
++                return typed_l.erase();
++              }
++              if(detail::nan_operand(typed_r->data))
++              {
++                return typed_r.erase();
++              }
++              return detail::lt_data(typed_r->data, typed_l->data) ? typed_l.erase() : typed_r.erase();
+             },
+             r,
+             typed_l);
+@@ -892,7 +1225,15 @@ namespace jank::runtime
+     {
+       return visit_number_like(
+         [](auto const typed_l, auto const r) -> object_ref {
+-          return typed_l->data < r->data ? r.erase() : typed_l.erase();
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r->data))
++          {
++            return r.erase();
++          }
++          return detail::lt_data(r->data, typed_l->data) ? typed_l.erase() : r.erase();
+         },
+         l,
+         r);
+@@ -901,7 +1242,15 @@ namespace jank::runtime
+     {
+       return visit_number_like(
+         [](auto const typed_r, auto const l) {
+-          return l->data < typed_r->data ? typed_r.erase() : l.erase();
++          if(detail::nan_operand(l->data))
++          {
++            return l.erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
++          return detail::lt_data(typed_r->data, l->data) ? l.erase() : typed_r.erase();
+         },
+         r,
+         l);
+@@ -910,7 +1259,7 @@ namespace jank::runtime
+     {
+       using C
+         = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r->data)>>;
+-      return std::max(static_cast<C>(l->data), static_cast<C>(r->data));
++      return detail::java_max(static_cast<C>(l->data), static_cast<C>(r->data));
+     }
+   }
+ 
+@@ -921,29 +1270,41 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -959,7 +1283,15 @@ index 9035dd1..8c3d6c8 100644
        return visit_number_like(
          [](auto const typed_r, L const l) -> object_ref {
 -          return l < typed_r->data ? typed_r.erase() : make_box(l).erase();
-+          return detail::widen(l) < typed_r->data ? typed_r.erase() : make_box(detail::widen(l)).erase();
++          if(detail::nan_operand(l))
++          {
++            return make_box(detail::widen(l)).erase();
++          }
++          if(detail::nan_operand(typed_r->data))
++          {
++            return typed_r.erase();
++          }
++          return detail::lt_data(typed_r->data, detail::widen(l)) ? make_box(detail::widen(l)).erase() : typed_r.erase();
          },
          r,
          l);
@@ -968,7 +1300,15 @@ index 9035dd1..8c3d6c8 100644
      {
 -      using C = std::common_type_t<jtl::decay_t<decltype(l)>, jtl::decay_t<decltype(r->data)>>;
 -      return std::max(static_cast<C>(l), static_cast<C>(r->data));
-+      return detail::primitive_max(l, r->data);
++      if constexpr(detail::primitive_number<jtl::decay_t<decltype(r->data)>>)
++      {
++        return detail::primitive_max(l, r->data);
++      }
++      else
++      {
++        /* A typed BigInt, ratio or BigDecimal: its data is no primitive to widen. */
++        return max(l, r.erase());
++      }
      }
      else
      {
@@ -978,7 +1318,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -954,29 +1113,25 @@ namespace jank::runtime
+@@ -954,29 +1315,41 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -993,7 +1333,15 @@ index 9035dd1..8c3d6c8 100644
        return visit_number_like(
          [](auto const typed_l, R const r) -> object_ref {
 -          return typed_l->data < r ? make_box(r).erase() : typed_l.erase();
-+          return typed_l->data < detail::widen(r) ? make_box(detail::widen(r)).erase() : typed_l.erase();
++          if(detail::nan_operand(typed_l->data))
++          {
++            return typed_l.erase();
++          }
++          if(detail::nan_operand(r))
++          {
++            return make_box(detail::widen(r)).erase();
++          }
++          return detail::lt_data(detail::widen(r), typed_l->data) ? typed_l.erase() : make_box(detail::widen(r)).erase();
          },
          l,
          r);
@@ -1002,7 +1350,15 @@ index 9035dd1..8c3d6c8 100644
      {
 -      using C = std::common_type_t<jtl::decay_t<decltype(l->data)>, jtl::decay_t<decltype(r)>>;
 -      return std::max(static_cast<C>(l->data), static_cast<C>(r));
-+      return detail::primitive_max(l->data, r);
++      if constexpr(detail::primitive_number<jtl::decay_t<decltype(l->data)>>)
++      {
++        return detail::primitive_max(l->data, r);
++      }
++      else
++      {
++        /* A typed BigInt, ratio or BigDecimal: its data is no primitive to widen. */
++        return max(l.erase(), r);
++      }
      }
      else
      {
@@ -1012,7 +1368,7 @@ index 9035dd1..8c3d6c8 100644
      }
    }
  
-@@ -985,15 +1140,21 @@ namespace jank::runtime
+@@ -985,15 +1358,21 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    auto max(L const l, R const r)
    {
@@ -1037,7 +1393,7 @@ index 9035dd1..8c3d6c8 100644
      {
        if constexpr(std::is_integral_v<L>)
        {
-@@ -1006,15 +1167,24 @@ namespace jank::runtime
+@@ -1006,15 +1385,29 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1057,6 +1413,11 @@ index 9035dd1..8c3d6c8 100644
 +          {
 +            return make_box(std::fabs(typed_l->data)).erase();
 +          }
++          /* BigDecimalOps.abs: abs(mc), which rounds a positive value too. */
++          else if constexpr(jtl::is_same<T, obj::big_decimal>)
++          {
++            return make_box(jank::abs(typed_l->data)).erase();
++          }
 +          else
 +          {
 +            return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
@@ -1065,7 +1426,19 @@ index 9035dd1..8c3d6c8 100644
          },
          l);
      }
-@@ -1048,7 +1218,7 @@ namespace jank::runtime
+@@ -1031,6 +1424,11 @@ namespace jank::runtime
+       {
+         return std::abs(l->to_real());
+       }
++      else if constexpr(jtl::decay_t<decltype(l)>::value_type::obj_type
++                        == object_type::big_decimal)
++      {
++        return make_box(jank::abs(l->data)).erase();
++      }
+       else
+       {
+         return l->data < 0ll ? make_box(-1ll * l->data).erase() : make_box(l->data).erase();
+@@ -1048,7 +1446,7 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1074,7 +1447,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref>)
-@@ -1071,7 +1241,7 @@ namespace jank::runtime
+@@ -1071,7 +1469,7 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1083,7 +1456,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref>)
-@@ -1091,9 +1261,7 @@ namespace jank::runtime
+@@ -1091,9 +1489,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L> || !detail::valid_boxed_math<R>)
      {
@@ -1094,7 +1467,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref> && jtl::is_same<R, object_ref>)
-@@ -1121,9 +1289,7 @@ namespace jank::runtime
+@@ -1121,9 +1517,7 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<R>)
      {
@@ -1105,7 +1478,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<R, object_ref>)
-@@ -1147,12 +1313,10 @@ namespace jank::runtime
+@@ -1147,12 +1541,10 @@ namespace jank::runtime
    {
      if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1120,7 +1493,31 @@ index 9035dd1..8c3d6c8 100644
      {
        return make_box(std::pow(l.to_real(), static_cast<f64>(r))).erase();
      }
-@@ -1191,7 +1355,7 @@ namespace jank::runtime
+@@ -1178,6 +1570,23 @@ namespace jank::runtime
+   object_ref rem(object_ref const l, object_ref const r);
+   object_ref quot(object_ref const l, object_ref const r);
+   object_ref unchecked_inc(object_ref const l);
++  /* Numbers.unchecked_*: longs wrap at 64 bits, other numbers as + - * do. */
++  object_ref unchecked_add(object_ref const l, object_ref const r);
++  object_ref unchecked_sub(object_ref const l, object_ref const r);
++  object_ref unchecked_mul(object_ref const l, object_ref const r);
++  object_ref unchecked_negate(object_ref const l);
++  object_ref unchecked_dec(object_ref const l);
++  /* Numbers.unchecked_int_*: the operands cast as RT.intCast does, the result wrapped at 32 bits. */
++  i32 unchecked_int_add(object_ref const l, object_ref const r);
++  i32 unchecked_int_sub(object_ref const l, object_ref const r);
++  i32 unchecked_int_mul(object_ref const l, object_ref const r);
++  i32 unchecked_int_div(object_ref const l, object_ref const r);
++  i32 unchecked_int_rem(object_ref const l, object_ref const r);
++  i32 unchecked_int_negate(object_ref const l);
++  i32 unchecked_int_inc(object_ref const l);
++  i32 unchecked_int_dec(object_ref const l);
++  /* Numbers.rationalize: a double or a BigDecimal as its exact ratio (a BigInt when whole). */
++  object_ref rationalize(object_ref const o);
+   object_ref promoting_inc(object_ref const l);
+   object_ref promoting_dec(object_ref const l);
+ 
+@@ -1191,7 +1600,7 @@ namespace jank::runtime
        {
          i64 res{};
  
@@ -1129,7 +1526,7 @@ index 9035dd1..8c3d6c8 100644
          {
            throw make_box("Overflow on increment.").erase();
          }
-@@ -1205,7 +1369,7 @@ namespace jank::runtime
+@@ -1205,7 +1614,7 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1138,7 +1535,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref>)
-@@ -1269,7 +1433,7 @@ namespace jank::runtime
+@@ -1269,7 +1678,7 @@ namespace jank::runtime
        {
          i64 res{};
  
@@ -1147,7 +1544,7 @@ index 9035dd1..8c3d6c8 100644
          {
            throw make_box("Overflow on increment.").erase();
          }
-@@ -1283,7 +1447,7 @@ namespace jank::runtime
+@@ -1283,7 +1692,7 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1156,7 +1553,7 @@ index 9035dd1..8c3d6c8 100644
        return object_ref{};
      }
      else if constexpr(jtl::is_same<L, object_ref>)
-@@ -1341,7 +1505,14 @@ namespace jank::runtime
+@@ -1341,7 +1750,14 @@ namespace jank::runtime
    [[gnu::always_inline, gnu::flatten, gnu::hot]]
    bool is_zero(L const l)
    {
@@ -1172,7 +1569,7 @@ index 9035dd1..8c3d6c8 100644
      {
  #pragma clang diagnostic push
  #pragma clang diagnostic ignored "-Wfloat-equal"
-@@ -1350,8 +1521,8 @@ namespace jank::runtime
+@@ -1350,8 +1766,8 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {
@@ -1183,7 +1580,21 @@ index 9035dd1..8c3d6c8 100644
        return false;
      }
      else if constexpr(jtl::is_same<L, object_ref>)
-@@ -1421,8 +1592,8 @@ namespace jank::runtime
+@@ -1410,7 +1826,12 @@ namespace jank::runtime
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   i64 to_int(L const l)
+   {
+-    if constexpr(detail::primitive_number<L>)
++    /* RT.intCast(char): a char's code, though it is no number to arithmetic. */
++    if constexpr(jtl::is_same<L, char>)
++    {
++      return static_cast<i64>(l);
++    }
++    else if constexpr(detail::primitive_number<L>)
+     {
+       if(std::isnan(l))
+       {
+@@ -1421,8 +1842,8 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L> && !std::same_as<L, obj::character_ref>)
      {
@@ -1194,7 +1605,7 @@ index 9035dd1..8c3d6c8 100644
        return 0;
      }
      else if constexpr(jtl::is_same<L, object_ref>)
-@@ -1454,7 +1625,7 @@ namespace jank::runtime
+@@ -1454,7 +1875,7 @@ namespace jank::runtime
      }
      else if constexpr(!detail::valid_boxed_math<L>)
      {

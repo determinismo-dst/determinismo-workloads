@@ -1,0 +1,98 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -179,7 +179,7 @@
+   {
+     if(r == 0)
+     {
+-      throw std::runtime_error{ "Division by zero is not permitted." };
++      throw make_box("Divide by zero").erase();
+     }
+     else if(std::isnan(l))
+     {
+@@ -205,7 +205,7 @@
+   {
+     if(r.numerator == 0)
+     {
+-      throw std::runtime_error{ "Division by zero is not permitted." };
++      throw make_box("Divide by zero").erase();
+     }
+ 
+     /* https://github.com/clojure/clojure/blob/clojure-1.12.5/src/jvm/clojure/lang/Numbers.java#L809 */
+@@ -273,7 +273,7 @@
+             {
+               if(typed_r->data == 0)
+               {
+-                throw std::runtime_error{ "Division by zero is not permitted." };
++                throw make_box("Divide by zero").erase();
+               }
+ 
+               auto const result{ boost::multiprecision::fmod(
+@@ -287,7 +287,7 @@
+             {
+               if(typed_r->data == 0)
+               {
+-                throw std::runtime_error{ "Division by zero is not permitted." };
++                throw make_box("Divide by zero").erase();
+               }
+ 
+               return make_box(native_big_integer{ typed_l_data }
+@@ -298,7 +298,7 @@
+             {
+               if(typed_r->data == 0)
+               {
+-                throw std::runtime_error{ "Division by zero is not permitted." };
++                throw make_box("Divide by zero").erase();
+               }
+               /* Prevents a floating point exception num = -2147483648 and div = -1,
+                * and for all div = -1, rem = 0.
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/persistent_string.cpp
+@@ -111,9 +111,11 @@
+       auto const i(to_i64(index));
+       if(i < 0 || data.size() <= static_cast<size_t>(i))
+       {
+-        throw std::runtime_error{
+-          util::format("The index `{}` is out of bounds for this `persistent_string`.", i)
+-        };
++        /* An object, as Clojure's StringIndexOutOfBoundsException is an exception a program
++         * catches. */
++        throw make_box(
++          util::format("The index `{}` is out of bounds for this `persistent_string`.", i))
++          .erase();
+       }
+       return make_box<character>(data[i]);
+     }
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -405,7 +405,14 @@
+         object_type_str(s.get_type())) };
+     }
+ 
+-    return str->substring(to_int(start)).expect_ok();
++    /* Out of range is an object, as Clojure's StringIndexOutOfBoundsException, not an error_ref
++     * no catch of a jank program sees. */
++    auto const res{ str->substring(to_int(start)) };
++    if(res.is_err())
++    {
++      throw make_box(res.expect_err()).erase();
++    }
++    return res.expect_ok();
+   }
+ 
+   obj::persistent_string_ref subs(object_ref const s, object_ref const start, object_ref const end)
+@@ -418,7 +425,14 @@
+         object_type_str(s.get_type())) };
+     }
+ 
+-    return str->substring(to_int(start), to_int(end)).expect_ok();
++    /* Out of range is an object, as Clojure's StringIndexOutOfBoundsException, not an error_ref
++     * no catch of a jank program sees. */
++    auto const res{ str->substring(to_int(start), to_int(end)) };
++    if(res.is_err())
++    {
++      throw make_box(res.expect_err()).erase();
++    }
++    return res.expect_ok();
+   }
+ 
+   i64 first_index_of(object_ref const s, object_ref const m)

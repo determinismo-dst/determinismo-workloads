@@ -1,0 +1,374 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -30,6 +30,46 @@
+ 
+     template <typename T>
+     concept typed_object = (behavior::object_like<typename T::value_type>);
++
++    /* Numbers' ops: a comparison with a double is a double comparison (DoubleOps), so a BigInt
++     * meets a double as its double value: (< 9007199254740992.0 9007199254740993N) is false and
++     * (compare 9007199254740992.0 9007199254740993N) is 0. boost compares the two exactly. Every
++     * other pair compares as before. */
++    template <typename A, typename B>
++    [[gnu::always_inline]]
++    bool lt_data(A const &a, B const &b)
++    {
++      if constexpr(std::is_floating_point_v<A> && jtl::is_same<B, native_big_integer>)
++      {
++        return a < b.template convert_to<f64>();
++      }
++      else if constexpr(jtl::is_same<A, native_big_integer> && std::is_floating_point_v<B>)
++      {
++        return a.template convert_to<f64>() < b;
++      }
++      else
++      {
++        return a < b;
++      }
++    }
++
++    template <typename A, typename B>
++    [[gnu::always_inline]]
++    bool lte_data(A const &a, B const &b)
++    {
++      if constexpr(std::is_floating_point_v<A> && jtl::is_same<B, native_big_integer>)
++      {
++        return a <= b.template convert_to<f64>();
++      }
++      else if constexpr(jtl::is_same<A, native_big_integer> && std::is_floating_point_v<B>)
++      {
++        return a.template convert_to<f64>() <= b;
++      }
++      else
++      {
++        return a <= b;
++      }
++    }
+ 
+     template <typename T>
+     concept valid_boxed_math = (jtl::is_same<T, object_ref>
+@@ -536,7 +576,7 @@
+       return visit_number_like(
+         [](auto const typed_l, auto const r) {
+           return visit_number_like(
+-            [](auto const typed_r, auto const typed_l) { return typed_l->data < typed_r->data; },
++            [](auto const typed_r, auto const typed_l) { return detail::lt_data(typed_l->data, typed_r->data); },
+             r,
+             typed_l);
+         },
+@@ -546,20 +586,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return typed_l->data < r->data; },
++        [](auto const typed_l, auto const r) { return detail::lt_data(typed_l->data, r->data); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return l->data < typed_r->data; },
++        [](auto const typed_r, auto const l) { return detail::lt_data(l->data, typed_r->data); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data < r->data;
++      return detail::lt_data(l->data, r->data);
+     }
+   }
+ 
+@@ -577,17 +617,17 @@
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_r, L const l) { return l < typed_r->data; },
++      return visit_number_like([](auto const typed_r, L const l) { return detail::lt_data(l, typed_r->data); },
+                                r,
+                                l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l < r->data;
++      return detail::lt_data(l, r->data);
+     }
+     else
+     {
+-      return l < r;
++      return detail::lt_data(l, r);
+     }
+   }
+ 
+@@ -605,17 +645,17 @@
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data < r; },
++      return visit_number_like([](auto const typed_l, R const r) { return detail::lt_data(typed_l->data, r); },
+                                l,
+                                r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data < r;
++      return detail::lt_data(l->data, r);
+     }
+     else
+     {
+-      return l < r;
++      return detail::lt_data(l, r);
+     }
+   }
+ 
+@@ -624,7 +664,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool lt(L const l, R const r)
+   {
+-    return l < r;
++    return detail::lt_data(l, r);
+   }
+ 
+   template <typename L, typename R>
+@@ -644,7 +684,7 @@
+       return visit_number_like(
+         [](auto const typed_l, auto const r) {
+           return visit_number_like(
+-            [](auto const typed_r, auto const typed_l) { return typed_l->data <= typed_r->data; },
++            [](auto const typed_r, auto const typed_l) { return detail::lte_data(typed_l->data, typed_r->data); },
+             r,
+             typed_l);
+         },
+@@ -654,20 +694,20 @@
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_l, auto const r) { return typed_l->data <= r->data; },
++        [](auto const typed_l, auto const r) { return detail::lte_data(typed_l->data, r->data); },
+         l,
+         r);
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+       return visit_number_like(
+-        [](auto const typed_r, auto const l) { return l->data <= typed_r->data; },
++        [](auto const typed_r, auto const l) { return detail::lte_data(l->data, typed_r->data); },
+         r,
+         l);
+     }
+     else
+     {
+-      return l->data <= r->data;
++      return detail::lte_data(l->data, r->data);
+     }
+   }
+ 
+@@ -685,17 +725,17 @@
+     }
+     else if constexpr(jtl::is_same<R, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_r, L const l) { return l <= typed_r->data; },
++      return visit_number_like([](auto const typed_r, L const l) { return detail::lte_data(l, typed_r->data); },
+                                r,
+                                l);
+     }
+     else if constexpr(detail::typed_object<R>)
+     {
+-      return l <= r->data;
++      return detail::lte_data(l, r->data);
+     }
+     else
+     {
+-      return l <= r;
++      return detail::lte_data(l, r);
+     }
+   }
+ 
+@@ -713,17 +753,17 @@
+     }
+     else if constexpr(jtl::is_same<L, object_ref>)
+     {
+-      return visit_number_like([](auto const typed_l, R const r) { return typed_l->data <= r; },
++      return visit_number_like([](auto const typed_l, R const r) { return detail::lte_data(typed_l->data, r); },
+                                l,
+                                r);
+     }
+     else if constexpr(detail::typed_object<L>)
+     {
+-      return l->data <= r;
++      return detail::lte_data(l->data, r);
+     }
+     else
+     {
+-      return l <= r;
++      return detail::lte_data(l, r);
+     }
+   }
+ 
+@@ -732,7 +772,7 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   bool lte(L const l, R const r)
+   {
+-    return l <= r;
++    return detail::lte_data(l, r);
+   }
+ 
+   template <typename L, typename R>
+@@ -753,7 +793,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return typed_l->data < typed_r->data ? typed_l.erase() : typed_r.erase();
++              return detail::lt_data(typed_l->data, typed_r->data) ? typed_l.erase() : typed_r.erase();
+             },
+             r,
+             typed_l);
+@@ -765,7 +805,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, auto const r) -> object_ref {
+-          return typed_l->data < r->data ? typed_l.erase() : r.erase();
++          return detail::lt_data(typed_l->data, r->data) ? typed_l.erase() : r.erase();
+         },
+         l,
+         r);
+@@ -774,7 +814,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, auto const l) {
+-          return l->data < typed_r->data ? l.erase() : typed_r.erase();
++          return detail::lt_data(l->data, typed_r->data) ? l.erase() : typed_r.erase();
+         },
+         r,
+         l);
+@@ -803,7 +843,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? make_box(l).erase() : typed_r.erase();
++          return detail::lt_data(l, typed_r->data) ? make_box(l).erase() : typed_r.erase();
+         },
+         r,
+         l);
+@@ -836,7 +876,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? typed_l.erase() : make_box(r).erase();
++          return detail::lt_data(typed_l->data, r) ? typed_l.erase() : make_box(r).erase();
+         },
+         l,
+         r);
+@@ -880,7 +920,7 @@
+         [](auto const typed_l, auto const r) -> object_ref {
+           return visit_number_like(
+             [](auto const typed_r, auto const typed_l) -> object_ref {
+-              return typed_l->data < typed_r->data ? typed_r.erase() : typed_l.erase();
++              return detail::lt_data(typed_l->data, typed_r->data) ? typed_r.erase() : typed_l.erase();
+             },
+             r,
+             typed_l);
+@@ -892,7 +932,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, auto const r) -> object_ref {
+-          return typed_l->data < r->data ? r.erase() : typed_l.erase();
++          return detail::lt_data(typed_l->data, r->data) ? r.erase() : typed_l.erase();
+         },
+         l,
+         r);
+@@ -901,7 +941,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, auto const l) {
+-          return l->data < typed_r->data ? typed_r.erase() : l.erase();
++          return detail::lt_data(l->data, typed_r->data) ? typed_r.erase() : l.erase();
+         },
+         r,
+         l);
+@@ -930,7 +970,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_r, L const l) -> object_ref {
+-          return l < typed_r->data ? typed_r.erase() : make_box(l).erase();
++          return detail::lt_data(l, typed_r->data) ? typed_r.erase() : make_box(l).erase();
+         },
+         r,
+         l);
+@@ -963,7 +1003,7 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) -> object_ref {
+-          return typed_l->data < r ? make_box(r).erase() : typed_l.erase();
++          return detail::lt_data(typed_l->data, r) ? make_box(r).erase() : typed_l.erase();
+         },
+         l,
+         r);
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/number.cpp
+@@ -342,7 +342,19 @@
+   i64 real::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A double against a BigInt compares as doubles (Numbers' DoubleOps). */
++        if constexpr(std::same_as<T, big_integer>)
++        {
++          auto const d{ typed_o->data.template convert_to<f64>() };
++          return (d < data) - (data < d);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format("Objects of type `{}` are not comparable to `real`.",
+                                                object_type_str(o.type)) };
+@@ -460,7 +472,19 @@
+   i64 small_real::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A double against a BigInt compares as doubles (Numbers' DoubleOps). */
++        if constexpr(std::same_as<T, big_integer>)
++        {
++          auto const d{ typed_o->data.template convert_to<f64>() };
++          return (d < data) - (data < d);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format(
+           "Objects of type `{}` are not comparable to `small_real`.",
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_integer.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_integer.cpp
+@@ -177,7 +177,19 @@
+   i64 big_integer::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A BigInt against a double compares as doubles (Numbers' DoubleOps). */
++        if constexpr(jtl::is_any_same<T, real, small_real>)
++        {
++          auto const d{ data.convert_to<f64>() };
++          return (typed_o->data < d) - (d < typed_o->data);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format(
+           "Objects of type `{}` are not comparable to `big_integer`.",

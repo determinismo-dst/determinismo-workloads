@@ -1,0 +1,121 @@
+Round 8, area B: programs that see S4 (and S2's Newton division), Lean replica (jank8-boost programs)
+x8 (P = 2^200)
+  (compare 1M (* 1606938044258990275541962092341162602522202993782792835301376M (/ 1M 1606938044258990275541962092341162602522202993782792835301376M)))
+  Clojure 0
+  jank stock 0
+  jank patched 1
+read: 122 digits at order 0 (cut)
+  (compare 1.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 1M)
+  Clojure 1
+  jank stock 0
+  jank patched 0
+read: 121 digits at order 0 (kept; control)
+  (compare 1.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 1M)
+  Clojure 1
+  jank stock 1
+  jank patched 1
+read: 122 digits at order 7 (kept; control)
+  (compare 10000000.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 10000000M)
+  Clojure 1
+  jank stock 1
+  jank patched 1
+read: 129 digits at order 7 (cut)
+  (compare 10000000.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001M 10000000M)
+  Clojure 1
+  jank stock 0
+  jank patched 0
+sum: 1 + 1E-121 (cut)
+  (compare (+ 1M 1E-121M) 1M)
+  Clojure 1
+  jank stock 0
+  jank patched 0
+sum: 1 + 1E-120 (kept; control)
+  (compare (+ 1M 1E-120M) 1M)
+  Clojure 1
+  jank stock 1
+  jank patched 1
+round 3 S4: 1E130 + 1
+  (compare (+ 1E130M 1M) 1E130M)
+  Clojure 1
+  jank stock 0
+  jank patched 0
+round 3 S4: 1 - 1E-130
+  (compare (- 1M 1E-130M) 1M)
+  Clojure -1
+  jank stock 0
+  jank patched 0
+difference: 1 - 1E-121 (rounded up)
+  (compare (- 1M 1E-121M) 1M)
+  Clojure -1
+  jank stock 0
+  jank patched 0
+difference: 1 - 0.(121 nines) is 1E-120
+  (compare (- 1M 0.9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M) 1E-121M)
+  Clojure 0
+  jank stock 1
+  jank patched 1
+difference: 1 - 0.(130 nines)
+  (compare (- 1M 0.9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999M) 1E-130M)
+  Clojure 0
+  jank stock 1
+  jank patched 1
+product: (1 + 1E-61)^2 (cut)
+  (compare (* 1.0000000000000000000000000000000000000000000000000000000000001M 1.0000000000000000000000000000000000000000000000000000000000001M) 1.0000000000000000000000000000000000000000000000000000000000002M)
+  Clojure 1
+  jank stock 0
+  jank patched 0
+product: (1 + 1E-60)^2 (kept; control)
+  (compare (* 1.000000000000000000000000000000000000000000000000000000000001M 1.000000000000000000000000000000000000000000000000000000000001M) 1.000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000001M)
+  Clojure 0
+  jank stock 0
+  jank patched 0
+stock Newton inverse of 2^17 is inexact
+  (compare (/ 1M 131072M) 0.00000762939453125M)
+  Clojure 0
+  jank stock -1
+  jank patched 0
+x8 with P = 2^17
+  (compare 1M (* 131072M (/ 1M 131072M)))
+  Clojure 0
+  jank stock 1
+  jank patched 0
+x8 with P = 2^177 (the smallest k where S2's quotient is cut)
+  (compare 1M (* 191561942608236107294793378393788647952342390272950272M (/ 1M 191561942608236107294793378393788647952342390272950272M)))
+  Clojure 0
+  jank stock 0
+  jank patched 1
+x8 with P = 2^176 (control)
+  (compare 1M (* 95780971304118053647396689196894323976171195136475136M (/ 1M 95780971304118053647396689196894323976171195136475136M)))
+  Clojure 0
+  jank stock 0
+  jank patched 0
+S2: (/ 6.0M 3.0M)
+  (str (/ 6.0M 3.0M))
+  Clojure "2"
+  jank stock "1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
+  jank patched "2.0"
+S2: (/ 6M 3M)
+  (str (/ 6M 3M))
+  Clojure "2"
+  jank stock "1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
+  jank patched "2.0"
+
+== the same programs on boost itself (.r8-scratch/boost/programs.cpp, x86-64): compare's value, stock and with S2's exact_divide
+x8 (P = 2^200): stock 0 patched 1
+read 122 digits order 0: stock 0 patched 0
+read 121 digits order 0: stock 1 patched 1
+read 122 digits order 7: stock 1 patched 1
+read 129 digits order 7: stock 0 patched 0
+sum 1 + 1E-121: stock 0 patched 0
+sum 1 + 1E-120: stock 1 patched 1
+1E130 + 1: stock 0 patched 0
+1 - 1E-130: stock 0 patched 0
+1 - 1E-121: stock 0 patched 0
+1 - 0.(121 nines): stock 1 patched 1
+1 - 0.(130 nines): stock 1 patched 1
+(1+1E-61)^2: stock 0 patched 0
+(1+1E-60)^2: stock 0 patched 0
+1/2^17: stock -1 patched 0
+x8 2^17: stock 1 patched 0
+x8 2^177: stock 0 patched 1
+x8 2^176: stock 0 patched 0

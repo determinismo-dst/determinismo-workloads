@@ -1,0 +1,333 @@
+ROUND 8, AREA H (CHAMP): LAW 1 FOR THE TRANSIENT STEPS WITHOUT THE INVARIANT; TRANSIENT AND PERSISTENT
+STEPS COMPARED NODE BY NODE; A PRESENT KEY REORDERS A COLLISION NODE
+jank main 94d32623 (upstream-r5/compiler+runtime, = 7135b7708's tree); immer as pinned (deps/immer).
+Every jank path below is under upstream-r5/compiler+runtime/. Nothing here was run on jank.
+Lean: Jank/R8/Champ/{LawMut,Agree,Seq,Programs}.lean (1,948 lines), Run/R8/Champ.lean (exe jank8-champ).
+Build: `lake build jank8-champ` succeeds (87 jobs). No sorry, no native_decide, no new axiom
+(results/r8-champ-axioms.txt: 56 declarations, each on a subset of propext, Classical.choice, Quot.sound).
+
+======================================================================
+1. DEVIATIONS
+======================================================================
+H8-1 (new). assoc/conj of a key already present reorders a hash map's or hash set's seq when that key
+shares its full 32-bit hash with a key stored before it in their collision node.
+    (defn- id [x] x)
+    ; 1 and 7676047846 both hash to 1392991556 in jank (hash.cpp integer(i64)) and in Clojure
+    ; (Murmur3.hashLong, the same function)
+    (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+      (= (keys m) (keys (assoc m (id 1) :b))))                         ; Clojure true, jank false
+    (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+      (= (keys m) (keys (assoc m (id 1) :a))))                         ; Clojure true, jank false
+    (let [s (hash-set (id 1) (id 7676047846))]
+      (= (seq s) (seq (conj s (id 1)))))                               ; Clojure true, jank false
+    (= (keys (persistent! (-> (transient (hash-map)) (assoc! (id 1) :a) (assoc! (id 7676047846) :a)
+                              (assoc! (id 1) :b))))
+       (keys (-> (hash-map) (assoc (id 1) :a) (assoc (id 7676047846) :a) (assoc (id 1) :b))))
+                                                                       ; Clojure true, jank false
+    (let [m (hash-map (id 1) :a (id 7676047846) :a)]
+      (= (keys m) (keys (persistent! (assoc! (transient m) (id 1) :b))))) ; Clojure true, jank false
+    Controls (jank true, Clojure true): (= (hash (id 1)) (hash (id 7676047846))); the same forms with
+    the key stored first (7676047846); and assoc! inside the transient that made the node.
+    Clojure 1.12.3: all 9 tests pass (.r8-scratch/champ/clj/run-1.12.3.txt).
+    Replica prediction (Programs.lean, decide +kernel; results/r8-champ-show.txt):
+      (keys m) = (7676047846 1); (keys (assoc m 1 :b)) = (keys (assoc m 1 :a)) = (1 7676047846);
+      (keys (assoc m 7676047846 :b)) = (7676047846 1); (seq s) = (7676047846 1), (seq (conj s 1)) =
+      (1 7676047846); transient chain (7676047846 1), persistent chain (1 7676047846); assoc! on a new
+      transient of m: (1 7676047846); the transient chain before its last assoc!: (7676047846 1).
+    Why:
+    - Two keys of one full 32-bit hash share a collision node (a jank hash has its upper 32 bits zero,
+      so levels 7-12 index 0: round 3's IMA notes). Its order: the newest first. hash-map and
+      hash-set of several values build through a transient (persistent_hash_map.cpp create_from_seq
+      55-71, transient.set; persistent_hash_set.cpp create_from_seq 45-53, transient.insert), and the
+      second key's add_mut calls make_merged_e(e, shift + B, v, hash, *val, hash2) (champ.hpp 706-716)
+      down to make_collision(v1, v2) (node.hpp 343-, 1017): (7676047846 1).
+    - assoc (persistent_hash_map.cpp assoc 110-114 -> immer set -> champ.hpp do_add 572-) and conj
+      (persistent_hash_set.cpp conj 149-154 -> insert -> do_add) find the present key at position 1
+      and call copy_collision_replace (champ.hpp 575-581; node.hpp 495-523), which writes the new
+      value FIRST and the others after it. jank calls set/insert whatever the key's presence.
+    - assoc! (transient_hash_map.cpp assoc_in_place 96-101 -> add_mut -> do_add_mut 645-) writes in
+      place (`*fst = std::move(v)`, champ.hpp 652-655) only when the transient owns the collision
+      node, i.e. made it; on a node it does not own it copies with copy_collision_replace (657-659).
+    - keys (core.jank 2316-2325) and seq walk champ_iterator (champ_iterator.hpp 97-98, 122-123:
+      a collision node's array in order).
+    - Clojure: HashCollisionNode.assoc replaces the value in place (PersistentHashMap.java 948-950,
+      `cloneAndSet(array, idx + 1, val)`; `return this` when the value is identical) and its transient
+      assoc writes in place (1045-1051, editAndSet); PersistentHashSet.cons returns the set itself
+      when it holds the key (PersistentHashSet.java 98-101). The order never changes.
+    Tests (.r8-scratch/champ/tests.jank, [fn] path, values through id):
+      vH1-control-two-longs-of-one-hash (control),
+      vH1-control-assoc-of-the-first-key-keeps-the-order (control),
+      vH1-assoc-of-a-present-key-reorders-the-map,
+      vH1b-assoc-of-a-present-key-and-its-own-value-reorders-the-map,
+      vH1c-control-conj-of-the-first-element-keeps-the-order (control),
+      vH1c-conj-of-a-member-reorders-the-set,
+      vH1d-control-assoc!-in-the-transient-that-made-the-node-keeps-the-order (control),
+      vH1d-transient-and-persistent-assoc-chains-disagree-on-order,
+      vH1e-assoc!-on-a-new-transient-reorders-the-map.
+      None needs native types or interop.
+    Reach: any program whose map or set holds two keys of one full hash (longs, strings, vectors:
+      every kind hashes to 32 bits) and then assoc/conj/update/merge/into of the second-stored one;
+      seq, keys, vals, first, printing, reduce and = on seqs see the order.
+    Status: new. Same code path as S59 (round 3: a present key replaced through the same do_add), a
+      different observable: here the key object can be the very one stored, and the order changes
+      though the contents do not. Not in REPORT-1..7 or any results/*report* (round 3 recorded the
+      move to the front, champ.hpp 577-581, as S59's path, and drew only the key replacement).
+    Shared cause: one design choice with S59 (jank calls immer's replacing add for a present key).
+      For sets, returning the set when it holds the element (Clojure's PersistentHashSet.cons) would
+      fix both S59's set case and H8-1's set case. For maps, immer's other replacing path, do_update
+      (champ.hpp 760-771), also goes through copy_collision_replace, so keeping the order needs more
+      than a jank-side call change. No fix assigned or written.
+    Confidence: high for the mechanism (immer read twice; the replica proves it for every node,
+      section 2(c)); medium-high for the programs: the hash premise rests on round 1's replica of
+      hash::integer, which is Murmur3.hashLong line by line (Clojure's (hash 1) is 1392991556; the
+      first control checks the premise on jank). Which of the two keys comes first depends on
+      create_from_seq inserting in argument order (champA7-3); the deviation test and its control
+      are complementary (whichever key is second, one of the pair fails), and vH1d does not depend
+      on it.
+
+Checked, not reported:
+- dissoc/disj and dissoc!/disj! never reorder or otherwise differ from each other (2(c),
+  ★ subMut_agree); copy_collision_remove keeps the order, as Clojure's HashCollisionNode.without
+  does.
+- A transient chain and its persistent twin never differ in contents, size or node shape under a
+  lawful equality, only in the order inside collision nodes (★ buildT_agree_empty, 2(d); round 7's
+  buildT_same_keys for the keys; 0 of 3,257,437 sequences, section 8). H8-1 is that order.
+- Law 1 under jank's real =: holds for every pair of keys meeting the three per-pair facts of 2(a)
+  (★ get_add_pair, get_addMut_pair, get_sub_pair, get_subMut_pair); the pairs that fail them are
+  round 7's classes (D12 hashes: V84/H7-1; D8's non-transitive =: H7-2), nothing new.
+
+======================================================================
+2. PROOFS (no sorry, no native_decide, no new axiom)
+======================================================================
+Over round 3's replica of immer's champ.hpp (Jank/R3/Immer/Champ.lean: doAddMut = do_add_mut 645-738,
+doSubMut = do_sub_mut 1346-1483), round 6's slot view and round 7's walk lemmas.
+
+(a) Law 1 for the transient steps without the invariant (LawMut.lean).
+- ★ addMut_walk: for EVERY well-formed node, every owner token, do_add_mut of v leaves find? of a
+  query's predicate over the walk its hash takes unchanged, given only: v is not accepted, a value
+  Equal to v is not accepted, an accepted value hashes as the query. Every branch: the in-place
+  child write (edit_setChild), the in-place value write after ensure_mutable_values (★ edit_ensureWrite,
+  both the owned and the copied values buffer), the in-place collision write (★ find?_set_false: the
+  collision node keeps its order), make_merged_e moved or copied (★ merged_walk), the moves and
+  copies of an insert, the copies below a node the transient does not own (round 7's add_walk), and
+  owned/owned_values (★ walk_owned, ★ walk_ownedValues).
+- ★ get_addMut_other_wf: law 1 for add_mut (assoc!/conj!) for every well-formed champ under a lawful
+  equality. Round 7's get_addMut_other assumed Inv; nothing beyond wfNode is needed.
+- ★ subMut_walk: do_sub_mut of k leaves the walk's find? unchanged for every well-formed node meeting
+  HP (no uniqueness, no size), any owner: the singleton passed up and inlined by a mutable (move) or
+  copied ancestor (★ inline_walk), the in-place child write, the collapses, the moves, the copies
+  below an unowned node (round 7's sub_walk).
+- ★ get_subMut_other_hp: law 1 for sub_mut (dissoc!/disj!) for every well-formed champ meeting HP.
+- law1_subMut_fails_without_HP (decide +kernel): HP cannot be dropped, on either path:
+  round 7's badChamp (nodes not owned by the transient, token 7 against 0: do_sub below,
+  copy_inner_replace_inline at the root) and badChampOwned (the same champ with every node and the
+  values buffer owned by token 7: the owned child returns the singleton 225 moved, the owned root
+  inlines it with move_inner_replace_inline). Either way, disj!/dissoc! of 289 changes get 225 from
+  nothing to 225 (badChamp_subMut_get_after, badChampOwned_get_after, badChampOwned_not_HP).
+- Can a jank program build such a champ through transients? No.
+  - ★ step_wf_HP, ★ buildT_wf_HP, ★ reach_wf_HP: every sequence of add, sub, add_mut, sub_mut (any
+    owner tokens) from champ::empty() keeps wfNode and HP, for EVERY hash function and EVERY equality.
+    transient and persistent! only change the owner token and move the champ (round 3's
+    Champ.transient, Transient.persistentL/R), so a jank program's conj/disj/assoc/dissoc and
+    transient/conj!/disj!/assoc!/dissoc!/persistent! chains are such sequences.
+  - So an off-path champ needs a stored object whose to_hash changed while stored. Round 7's argument
+    stands: values are immutable (collections cache their hash, lazy seqs realize once), and the
+    mutable objects (atoms, volatiles, transients, arrays, ...) use object::equal and object::to_hash
+    (identity, the address; object.cpp 47-50, 69-72), which Boehm's collector does not move.
+  - Aliasing cannot do it either: a transient mutates only nodes carrying its own owner token
+    (gc_transience_policy: ownee::can_mutate compares the token; deps/immer/immer/transience/
+    gc_transience_policy.hpp), the token is a GC object that every node it owns references (so it is
+    not reused while such a node lives), the owner is replaced on persistent() & (map_transient.hpp
+    296-300), and jank's transients refuse every use after persistent! (transient_hash_set.cpp
+    assert_active 110-114, the same in transient_hash_map.cpp).
+- ★ law1_reach: law 1 for every step of every sequence a jank program can run (lawful equality),
+  from wfNode and HP alone (no uniqueness, no size): one more add/sub/add_mut/sub_mut leaves get of a
+  key not Equal to the step's key unchanged.
+- ★ get_add_pair, ★ get_addMut_pair, ★ get_sub_pair, ★ get_subMut_pair: law 1 for ONE pair of keys under
+  ANY equality (jank's real one included), for every well-formed champ (and HP for the removals):
+  add/add_mut of v leaves get k' unchanged when (i) v is not Equal to k', (ii) no value Equal to v is
+  Equal to k', (iii) every value Equal to k' hashes as k'; sub/sub_mut of k when (ii') no value Equal
+  to k is Equal to k', and (iii). With reach_wf_HP this covers every champ jank builds.
+
+(b) Transients against persistent steps, node by node (Agree.lean).
+- Agree C r A B: the two nodes agree slot by slot at every inner level (slot: empty, the same value,
+  or agreeing children; node ids, owner tokens, value-buffer ids and buffer tails ignored), and at
+  the collision level their lists are related by C.
+- ★ subMut_agree, ★ subMut_root_agree: do_sub_mut (dissoc!/disj!) and do_sub (dissoc/disj) from the
+  same node agree EXACTLY (C = equality): the same result kind, the same value passed up, trees equal
+  slot by slot with equal collision lists; at the root the same size. For every well-formed node,
+  every hash, every equality, every owner token.
+- ★ addMut_agree, ★ addMut_root_agree: do_add_mut (assoc!/conj!) and do_add (assoc/conj) from the same
+  node return the same added flag (same size) and trees that agree slot by slot with every collision
+  list equal but at most one, related by InPlace: xs.set pos v (do_add_mut's in-place write in a node
+  the transient owns) against v :: eraseAt xs pos (do_add's copy_collision_replace), pos being the
+  first stored value Equal to v. For every well-formed node, every hash, every equality, every owner.
+- ★ inPlace_eq_iff: those two lists are equal exactly when pos = 0 (for every list, position and value,
+  when Equal accepts v itself and pos is the first accepted position). So a transient step and a
+  persistent step from the same champ differ node by node exactly when assoc!/conj! writes a value in
+  place at a position other than the first of a collision node it owns.
+- ★ agree_refl, agree_mono, ★ agree_edits, ★ agree_makeMerged (make_merged_e against make_merged agree for
+  any owners and allocation states), agree_owned_left, agree_ownedValues_left: the toolkit.
+
+(c) H8-1 on the replica (Programs.lean, decide +kernel over jank's long hash, round 1's
+  Jank.Hash.integer): same_hash, vH1_map_reordered, vH1_control_first_key, vH1b_same_value,
+  vH1b_set_reordered, vH1b_control, vH1_transient_vs_persistent (different orders, permuted
+  contents), vH1d_control, vH1e_new_transient; mapLawful: the equality is lawful, so H8-1 needs none
+  of jank's = defects.
+
+(d) A whole sequence of transient steps against its persistent twin (Seq.lean).
+- AgreeP = Agree with collision lists compared as permutations.
+- ★ add_congr, ★ sub_congr: under a lawful equality, do_add (do_sub) of the same value (key) on two
+  well-formed nodes that agree up to collision order, the first holding no two Equal values (round 6's
+  Uniq), gives the same added flag (the same result kind and passed-up value) and results that agree
+  up to collision order. At a collision node the key is found in both lists (★ perm_found: two
+  permuted lists with at most one accepted value find the same value and leave permuted rests); a
+  two-value node passes up the same other value (iteration, ★ agree_iter); the collapse conditions read
+  the same bitmaps (★ agree_maps: agreeing well-formed nodes have equal bitmaps).
+- ★ buildT_agree, ★ buildT_agree_empty: for EVERY sequence mixing persistent and transient steps
+  (assoc/conj, dissoc/disj, assoc!/conj!, dissoc!/disj!, any owner tokens) and the same sequence with
+  every transient step made persistent, from champ::empty() (or from two agreeing champs meeting Inv),
+  the results agree node by node up to the order inside collision nodes and have the same size
+  (lawful equality). With 2(b): the order inside collision nodes is the only difference, it arises
+  only from in-place collision writes, and it is observable (H8-1).
+- Tools: ★ agree_trans, ★ agree_edits2 (edits of two agreeing nodes), ★ inPlace_perm, ★ uniq_slot,
+  add_root_congr, sub_root_congr, persist_step, congr_step, eraseAt_two, kind_slot, slotRel_kind.
+
+Not proved:
+- The sequence theorem without a lawful equality. add_congr/sub_congr need at most one value Equal to
+  the key per collision node; with jank's D8 BigDecimals (non-transitive =) two stored values can both
+  be Equal to a third, the two orders find different ones, and contents can differ. Such a jank
+  program needs three BigDecimals of one full 32-bit hash pairwise within 2^-52; none was searched
+  for (it would be one more D8 program; D8.diff makes = exact and lawful on BigDecimals).
+- Law 1 for sub/sub_mut without HP is false (the counterexample); nothing else of round 7's list is
+  left for the transient steps.
+
+======================================================================
+3. WHAT WAS REPLICATED
+======================================================================
+Nothing new of immer: round 3's replica is used as it is (Jank/R3/Immer/Champ.lean: champ.hpp do_add
+572-638, do_add_mut 645-748, do_sub 1206-1290, do_sub_mut 1346-1495, get 537-; node.hpp
+make_collision 343-, copy_collision_insert 395-, move_collision_insert 419-, copy_collision_replace
+495-523, make_merged 993-1019, ensure_mutable_values, owned/owned_values(_safe); champ_iterator.hpp).
+- Jank/R8/Champ/LawMut.lean: walk-level law 1 for doAddMut/doSubMut; wfNode/HP over TOp sequences.
+- Jank/R8/Champ/Agree.lean: the slot-by-slot agreement relation and the two one-step comparisons.
+- Jank/R8/Champ/Seq.lean: the congruence of do_add/do_sub for agreement up to collision order and the
+  sequence theorem over round 7's TOp/buildT.
+- Jank/R8/Champ/Programs.lean: jank's hash maps and sets of longs: hash.cpp integer(i64) (round 1's
+  Jank.Hash.integer, Murmur3 of the 64 bits), integer equal (value equality), immer::map's pairs with
+  hash_key/equal_key (map.hpp), persistent_hash_map.cpp create_from_seq 55-71 and assoc 110-114,
+  persistent_hash_set.cpp create_from_seq 45-53 and conj 149-154, transient_hash_map.cpp
+  assoc_in_place 96-101, core.jank keys 2316-2325 (iteration order).
+- Run/R8/Champ.lean: `show` (H8-1's keys on the replica), `seqs N` (the sequence enumeration).
+
+======================================================================
+4. WHAT IS NOT EXACT
+======================================================================
+- Owner tokens are numbers compared with ==; immer's are GC-allocated pointers (gc_transience_policy),
+  equal exactly when the same token object. The replica's fresh tokens never repeat, as live
+  pointers do not (section 2(a)).
+- Programs.lean fixes the create_from_seq transient's token and the (transient ...) token as 1000 and
+  1001 and the static empty root's token as 0 (nullptr); only their being different matters.
+- Clojure's side of H8-1 is read from PersistentHashMap.java/PersistentHashSet.java and run on 1.12.3
+  (the 9 tests); not replicated in Lean.
+- The `seqs` enumeration uses the hash k / 2 over the keys 0..5 (three colliding pairs), not jank's
+  hash: it measures the champ code, whose behavior depends only on which hashes are equal.
+
+======================================================================
+5. STILL LEFT OUT, AND WHY
+======================================================================
+- The sequence theorem under jank's non-lawful = (section 2, "Not proved").
+- A fix for H8-1: none assigned. Sets: return the set when it holds the element. Maps: immer's
+  replacing paths (do_add, do_update) all move the entry to the front of a collision node.
+- Array maps ({} literals, <= 8 entries) are linear and keep their order on assoc
+  (native_array_map.cpp 139-162 writes the value only, round 3); H8-1 is about hash maps and sets.
+- Clojure's HAMT itself (Clojure's side is read, not replicated).
+
+======================================================================
+6. ASSUMPTIONS (champA8-n) AND EARLIER ONES REPLACED
+======================================================================
+- champA8-1. jank's owner tokens behave as fresh, never-repeating tokens while any node they own is
+  alive (a node owned by a token references the token, a GC object; Boehm does not reuse a reachable
+  object's address).
+- champA8-2. The hash premise of H8-1: jank's hash of the longs 1 and 7676047846 is 1392991556 for
+  both (round 1's replica of hash.cpp integer(i64); vH1-control-two-longs-of-one-hash checks it on
+  jank).
+- Round 7's champA7-1..4 and round 6's champA6-1, -2 stand (champA7-3, hash-map/hash-set insert in
+  argument order, decides which key is first in H8-1's map and set, not whether H8-1 happens).
+- Replaced: round 7's "law 1 for the transient steps needs Inv" (2(a): add_mut needs nothing, sub_mut
+  needs HP only); round 6/7's "transients agree with persistent operations by contents only" (2(b):
+  exact for sub, up to one in-place collision write for add; for whole sequences, node by node up to
+  collision order, 2(d)).
+
+======================================================================
+7. PROPERTIES CHECKED, WITH SOURCES
+======================================================================
+- get of another key is unaffected by assoc!/conj!/dissoc!/disj! (clojure.core docstrings of
+  assoc!, conj!, dissoc!, disj!; TransientHashMap/ATransientSet with Util.equiv).
+- assoc of a key already present does not change the map's seq order; conj of a member returns the
+  set itself (PersistentHashMap.java HashCollisionNode.assoc 944-951, transient 1045-1051;
+  BitmapIndexedNode.assoc 692-; PersistentHashSet.java cons 98-101). Clojure 1.12.3: 9 of 9 tests.
+- A chain of transient steps and the same chain of persistent steps give the same collection, seq
+  order included (Clojure's transients share the node code: TransientHashMap -> INode.assoc(edit, ...)).
+
+======================================================================
+8. SEARCH RUNS (complete = every input within the bounds)
+======================================================================
+- `jank8-champ seqs 6` (results/r8-champ-seqs.txt): every sequence of length <= 6 of the 12 steps
+  assoc k / dissoc k, k in 0..5, hash k / 2, equality ==, from champ::empty(), run once persistent and
+  once as transient steps under one owner token: COMPLETE for length <= 6, 3,257,437 sequences.
+  Contents differ: 0. Node shape differs with collision lists compared as multisets: 0 (as
+  buildT_agree_empty proves for every length). Collision order differs: 110,226 (6 at length 3: the first is assoc 5, assoc 4, assoc 5, H8-1's shape;
+  234 at <= 4, 5,682 at <= 5).
+- `jank8-champ show` (results/r8-champ-show.txt): H8-1's forms on the replica (decided as theorems too).
+- Clojure 1.12.3: .r8-scratch/champ/clj/run-1.12.3.txt, 9 tests, 9 pass.
+
+======================================================================
+9. THEOREMS (★ = for every input)
+======================================================================
+LawMut.lean: ★ addMut_walk, ★ get_addMut_pair, ★ get_add_pair, ★ get_addMut_other_wf, ★ subMut_walk,
+  ★ get_subMut_pair, ★ get_sub_pair, ★ get_subMut_other_hp, ★ step_wf_HP, ★ buildT_wf_HP, ★ reach_wf_HP,
+  ★ law1_reach, ★ edit_ensureWrite, ★ merged_walk, ★ inline_walk, ★ find?_set_false, ★ walk_owned,
+  ★ walk_ownedValues, collisions_owned, collisions_ownedValues, lawful_add_facts, lawful_sub_facts,
+  subWalk_owned, subWalk_ownedValues; single inputs (decide +kernel) badChampOwned_wf,
+  badChampOwned_get_before, badChampOwned_get_after, badChamp_subMut_get_after; badChampOwned_not_HP,
+  law1_subMut_fails_without_HP.
+Agree.lean: ★ addMut_agree, ★ addMut_root_agree, ★ subMut_agree, ★ subMut_root_agree, ★ inPlace_eq_iff,
+  ★ agree_edits, ★ agree_makeMerged, ★ agree_refl, agree_mono, agree_owned_left, agree_ownedValues_left,
+  slotRel_refl, slotRel_mono, subAgree_tree_owned/_ownedValues/_refl.
+Seq.lean: ★ add_congr, ★ sub_congr, ★ buildT_agree, ★ buildT_agree_empty, ★ agree_iter, ★ agree_maps,
+  ★ agree_trans, ★ agree_edits2, ★ perm_found, ★ uniq_slot, ★ inPlace_perm, add_root_congr, sub_root_congr,
+  persist_step, congr_step, slotRel_trans, slotRel_kind, kind_slot, testBit_big, perm_flatMap_congr,
+  one_of_uniq, eqTT_via, eqTK_via, eraseAt_two.
+Programs.lean (single inputs, decide +kernel): same_hash, vH1_map_reordered, vH1_control_first_key,
+  vH1_transient_vs_persistent, vH1b_set_reordered, vH1b_control, vH1b_same_value, vH1e_new_transient,
+  vH1d_control; mapLawful (a lawful equality).
+Axioms: results/r8-champ-axioms.txt (propext, Classical.choice, Quot.sound; the decide facts propext
+  only or the three).
+
+======================================================================
+10. LIBRARY GAPS (built here; sdk/lean untouched)
+======================================================================
+- A slot-by-slot agreement relation for packed-bitmap trees, parameterized by the leaf relation, with
+  edits, owners and make_merged as congruences (Agree.lean); usable for any two node.hpp results.
+- find? through List.set (find?_set_false), missing from the core library.
+
+======================================================================
+11. FIXES WRITTEN
+======================================================================
+None (none assigned). H8-1's fix would be in persistent_hash_set.cpp conj (return this when
+data.find(head) holds an Equal element, as PersistentHashSet.cons) and, for maps, a change below
+immer's replacing paths (champ.hpp do_add 575-581 and do_update 760-771 both call
+copy_collision_replace). A build must confirm H8-1's 6 deviation tests and 3 controls.
+
+======================================================================
+12. MODEL ERRORS OF EARLIER ROUNDS CORRECTED
+======================================================================
+- Round 3's S59/IM1 path note (results/r3-immer-report.txt: "copy_collision_replace, the new pair
+  moved to the front") drew only the key replacement; the move itself is observable (H8-1), with the
+  same key object and with the same value.
+- Round 6's and 7's "the node-by-node shape (collision order) differs and is not compared": compared
+  now; it differs only by the in-place collision write (addMut_agree), not at all for sub_mut
+  (subMut_agree), and across whole sequences only in the order inside collision nodes
+  (buildT_agree_empty, lawful equality).
+- Round 7's "law 1 for the transient steps needs Inv": replaced (section 6).

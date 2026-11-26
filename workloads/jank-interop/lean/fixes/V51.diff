@@ -1,0 +1,48 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core.hpp
+@@ -84,7 +84,8 @@
+   object_ref get_method(object_ref const multifn, object_ref const dispatch_val);
+   object_ref prefers(object_ref const multifn);
+ 
+-  uhash to_hash(object_ref const o);
++  /* Clojure's hash is a signed int (Util.hasheq); objects keep their unsigned uhash. */
++  i32 to_hash(object_ref const o);
+ 
+   object_ref macroexpand1(object_ref const o);
+   object_ref macroexpand(object_ref const o);
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -620,9 +620,10 @@
+     return try_object<obj::multi_function>(multifn)->prefer_table;
+   }
+ 
+-  uhash to_hash(object_ref const o)
++  /* `hash` is Clojure's int: the same 32 bits read as signed, so (hash 2) is -971005196. */
++  i32 to_hash(object_ref const o)
+   {
+-    return o.to_hash();
++    return static_cast<i32>(o.to_hash());
+   }
+ 
+   object_ref macroexpand1(object_ref const o)
+--- a/compiler+runtime/src/cpp/jank/c_api.cpp
++++ b/compiler+runtime/src/cpp/jank/c_api.cpp
+@@ -963,7 +963,7 @@
+   jank_uhash jank_to_hash(jank_object_ref const o)
+   {
+     object_ref const o_obj(reinterpret_cast<object *>(o));
+-    return to_hash(o_obj);
++    return static_cast<jank_uhash>(to_hash(o_obj));
+   }
+ 
+   char const *jank_to_string(jank_object_ref const o)
+@@ -996,7 +996,8 @@
+       return integer >= std::numeric_limits<i32>::min()
+           && integer <= std::numeric_limits<i32>::max()
+         ? integer
+-        : hash::integer(integer);
++        /* The signed hash, as `hash` gives it to case-hash at macroexpansion. */
++        : static_cast<i32>(hash::integer(integer));
+     }
+ 
+     if(is_big_integer(o))

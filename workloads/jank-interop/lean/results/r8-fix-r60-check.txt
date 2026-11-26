@@ -1,0 +1,47 @@
+R60 (area F, round 8): the case tables and the final-sigma rule, generated from and checked against Java 23
+=========================================================================================================
+
+JVM: OpenJDK 23+37 (the coordinator's Clojure 1.12.3 runs on it), default locale en_CA. Every JVM ran through
+~/dev/.lean-jobs/job. Sources: .r8-scratch/fix/r60/.
+
+Generation
+- Gen.java: String.toUpperCase/toLowerCase(Locale.ROOT) of every scalar value (1,112,064; surrogates excluded).
+  The default locale agrees with ROOT on all of them. Upper: 1,423 code points map to one other code point
+  (194 runs of a constant delta and stride 1 or 2) and 102 to two or three; lower: 1,432 (181 runs) and one
+  (U+0130 -> i + U+0307). Output tables.txt.
+- Sig.java: for every scalar value c, BreakIterator.getWordInstance(ROOT) boundaries in 32 small texts around c
+  (its word-break signature, matched to representatives A 1 . - , $ % space newline U+0301 U+200B ...), and how
+  toLowerCase(ROOT) lower-cases a capital sigma in "1cΣ", "AcΣ", "AΣc", "AΣcB", "AΣ1c". Output sig.txt.
+- mktables.py: tables.inc (the C++ arrays): the two run tables, the two multi tables, and 863 runs of the
+  sigma classes (cased letter, cased digit, cased mark U+0345, letter, digit, mark, format character,
+  mid-word, mid-word-and-number, mid-number, cased supplementary letter; everything else ends the word).
+- casecode.inc = the C++ text R60.diff inserts into util/string.cpp (checked verbatim: the diff applied to
+  94d32623 reproduces the work copy, which contains casecode.inc).
+
+What JDK 23 does for the final sigma (from the probes, Probe.java): Σ becomes ς when, within its WORD (Java's
+word BreakIterator), a cased character precedes it and none follows. So "A1Σ" -> "a1ς" and "A-Σ" -> "a-ς"
+(Unicode's Final_Sigma would give σ for both: '1' and '-' are not case-ignorable), "A:Σ" and "A·Σ" -> σ
+(':' and U+00B7 end Java's word although Unicode calls them case-ignorable), "AΣ1B" -> σ.
+
+Checks (verify.cpp compiled with casecode.inc, fed Java's own results through a pipe by Verify.java)
+- U1, L1: every scalar value alone, upper and lower: 1,112,064 + 1,112,064 checked, 0 mismatches.
+  (So jank's mapping equals Java's for every code point; glibc's towupper/towlower is no longer used, and
+  WA7-1's question no longer matters.)
+- L2: every scalar value c in 8 sigma contexts ("AcΣ", "AΣc", "AΣcB", "1cΣ", "cΣ", "ΣcA", "aΣ.c", "a-cΣ"):
+  8,896,512 texts, 0 mismatches.
+- RU, RL: 1,000,000 random texts (seed 20261126; 1-8 code points; each a uniform scalar value with
+  probability 1/3, else from a 66-code-point pool of sigmas, cased and uncased letters, digits, roman numerals,
+  marks, format characters, mid-word and mid-number punctuation, kana, kanji, danda, supplementary letters):
+  upper 0 mismatches; lower 81 mismatches (0.0081%). Stopped at 1,000,000 (one segment).
+  The 81, by cause (all JDK word-iterator details the class model does not follow):
+  - U+0345 (a cased mark) right after a supplementary character, e.g. "\u{28EF0}ͅΣ" -> Java ς, model σ
+    (Java's iterator keeps a supplementary character and the mark in Σ's word; the model ends the word at a
+    supplementary character that is not a cased letter);
+  - a cased supplementary letter that is not the first character of the text, e.g. "ا\u{16E40}ͅΣ";
+  - the Devanagari danda U+0964/U+0965 (Java's $word may end in a danda and continue with a number), e.g.
+    "\u{10400}।٠Σ" -> Java ς, model σ.
+  Earlier rounds of the model and their counts on the same 1,000,000 texts: 1,991 (no mark rule), 269 (marks
+  belong to the character before them), 146 (cased supplementary letters join mid-word punctuation; L2 then 1,078, each a mark right after a
+  mid-word character), 117 (a
+  mark right after a mid-word character ends the word: L2 then had 42 left, all format characters), 81 (format
+  characters are passed over everywhere; L2 0).

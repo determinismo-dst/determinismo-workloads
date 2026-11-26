@@ -25,7 +25,20 @@
  (def ^{:arglists '([x])
         :doc "Coerce to float"
         :inline (fn* [o]
-@@ -2702,7 +2709,8 @@
+@@ -2690,6 +2697,12 @@
+          nil
+          (let [~form temp#]
+            ~@body)))))
++
++;; dotimes casts its count with long (S40), so long is defined before it.
++(defn long
++  "Coerce to long"
++  [#_Number x]
++  (cpp/jank.runtime.to_int x))
+ 
+ (defmacro dotimes
+   "bindings => name n
+@@ -2702,7 +2715,8 @@
      (= 2 (count bindings)) "exactly 2 forms in binding vector")
    (let [i (first bindings)
          n (second bindings)]
@@ -35,7 +48,7 @@
         (loop [~i 0]
           (when (< ~i n#)
             ~@body
-@@ -4508,8 +4516,11 @@
+@@ -4508,8 +4522,11 @@
                      {} pairs)
              tests (keys pairs)
              thens (vals pairs)
@@ -48,3 +61,15 @@
                     :ints
  
                     (every? keyword? tests)
+@@ -5770,11 +5787,6 @@
+   [x]
+   (cpp/jank.runtime.number x))
+ 
+-(defn long
+-  "Coerce to long"
+-  [#_Number x]
+-  (cpp/jank.runtime.to_int x))
+-
+ (defn double
+   "Coerce to double"
+   [#_Number x]

@@ -1,0 +1,340 @@
+jank-lean.deviations-main-test_r108-defn-recursion-goes-through-the-var	exit 1	message=" expected: (= :redefined (r108-orig 3)) actual: (not (= :redefined :done))" 
+
+jank-lean.deviations-main-test_r28-a-named-fn-sees-its-own-name	exit 1	message="uncaught C++ exception: Invalid call to `small_integer` with `1` args provided." 
+
+jank-lean.deviations-main-test_r34-keyword-call-without-a-map	exit 1	message="uncaught C++ exception: Invalid call to `keyword` with `0` args provided." 
+
+jank-lean.deviations-main-test_r38-dash-and-underscore-locals-differ	exit 1	message=" expected: (= 1 (let [a-b 1 a_b 2] a-b)) actual: (not (= 1 2))" 
+
+jank-lean.deviations-main-test_r89-native-enum-zero-is-truthy	exit 1	message=" expected: (= :t (ev &quot;(do (cpp/raw \&quot;enum r89c { r89r, r89g };\&quot;) (if cpp/r89r :t :f))&quot;)) actual: (not (= :t :f))" 
+
+jank-lean.deviations-r2-test_b01-string-count-is-in-utf16-units	exit 1	message=" expected: (= 1 (count &quot;é&quot;)) actual: (not (= 1 2))" message=" expected: (not (contains? &quot;é&quot; 1)) actual: (not (not true))" 
+
+jank-lean.deviations-r2-test_b02-seq-of-a-string-is-utf16-units	exit 1	message=" expected: (= 3 (count (seq &quot;a😀&quot;))) actual: (not (= 3 2))" 
+
+jank-lean.deviations-r2-test_b03-seq-of-a-cut-string	exit 1	
+jank-lean.deviations-r2-test_b07-index-of-in-characters-and-negative-starts	exit 1	message=" expected: (= 1 (string/index-of &quot;éa&quot; &quot;a&quot;)) actual: (not (= 1 2))" 
+
+jank-lean.deviations-r2-test_b09-case-mapping-of-sharp-s-and-final-sigma	exit 1	message=" expected: (= &quot;SS&quot; (string/upper-case &quot;ß&quot;)) actual: (not (= &quot;SS&quot; &quot;ß&quot;))" message=" expected: (= &quot;aς&quot; (string/lower-case &quot;aΣ&quot;)) actual: (not (= &quot;aς&quot; &quot;aσ&quot;))" 
+
+jank-lean.deviations-r2-test_b16-str-of-a-collection-is-readable	exit 1	message=" expected: (= &quot;[\&quot;a\&quot; \\b]&quot; (str [&quot;a&quot; \b])) actual: (not (= &quot;[\&quot;a\&quot; \\b]&quot; &quot;[a b]&quot;))" 
+
+jank-lean.deviations-r2-test_b19-bigdecimal-prints-its-scale	exit 1	message=" expected: (= &quot;1&quot; (str 1.0M)) actual: (not (= &quot;1&quot; &quot;1.0&quot;))" message=" expected: (= &quot;1.50M&quot; (pr-str 1.5M)) actual: (not (= &quot;1.50M&quot; &quot;1.5M&quot;))" 
+
+jank-lean.deviations-r2-test_b21-print-length	exit 1	message="uncaught jank error: This `clojure.core/*print-length*` cannot be resolved as a var." 
+
+jank-lean.deviations-r2-test_b23-print-str-of-a-string-seq	exit 1	message=" expected: (= &quot;(a b)&quot; (print-str (seq &quot;ab&quot;))) actual: (not (= &quot;(a b)&quot; &quot;(\\a \\b)&quot;))" 
+
+jank-lean.deviations-r2-test_b24-regex-dot-matches-a-character	exit 1	
+jank-lean.deviations-r2-test_b25-dollar-before-a-final-newline	exit 1	message=" expected: (= &quot;a&quot; (re-find #&quot;a$&quot; &quot;a\n&quot;)) actual: (not (= &quot;a&quot; nil))" 
+
+jank-lean.deviations-r2-test_b27-re-seq-anchors-and-empty-matches	exit 1	message=" expected: (= [&quot;a&quot;] (vec (re-seq #&quot;^a&quot; &quot;aa&quot;))) actual: (not (= [&quot;a&quot;] [&quot;a&quot; &quot;a&quot;]))" message=" expected: (= [&quot;&quot; &quot;&quot;] (vec (take 5 (re-seq #&quot;a*&quot; &quot;b&quot;)))) actual: (not (= [&quot;&quot; &quot;&quot;] [&quot;&quot; &quot;&quot; &quot;&quot; &quot;&quot; &quot;&quot;]))" 
+
+jank-lean.deviations-r2-test_b30-case-insensitive-regex	exit 1	message="uncaught C++ exception: Invalid '(?...)' zero-width assertion in regular expression" 
+
+jank-lean.deviations-r3-test_s04-bigdecimals-keep-every-digit	exit 1	message=" expected: (not= 1.0M (- 1.0M 1e-130.0M)) actual: (not (not= 1.0M 1.0M))" 
+
+jank-lean.deviations-r3-test_s05-small-bigdecimals-print-plainly	exit 1	message=" expected: (= &quot;0.00001&quot; (str 1e-05.0M)) actual: (not (= &quot;0.00001&quot; &quot;1e-05.0&quot;))" message="uncaught jank error: A number literal cannot contain a `.` in this position." 
+
+jank-lean.deviations-r3-test_s07-rem-of-a-big-bigdecimal	exit 1	message=" expected: (= 1.0M (rem 1e+130.0M 3)) actual: (not (= 1.0M 99999997.0M))" 
+
+jank-lean.deviations-r3-test_s17-bigdecimal-exponent-overflow-throws	exit 1	message="uncaught jank error: Exponent overflow." 
+
+jank-lean.deviations-r3-test_s22-quantifier-after-a-non-ascii-character	exit 1	message=" expected: (= &quot;&quot; (re-matches (re-pattern &quot;é*&quot;) &quot;&quot;)) actual: (not (= &quot;&quot; nil))" message=" expected: (= &quot;éé&quot; (re-find (re-pattern &quot;é+&quot;) &quot;éé&quot;)) actual: (not (= &quot;éé&quot; &quot;é&quot;))" 
+
+jank-lean.deviations-r3-test_s23-u-escape-above-0xff	exit 1	message=" expected: (nil? (re-find (re-pattern &quot;\\u0141&quot;) &quot;A&quot;)) actual: (not (nil? &quot;A&quot;))" 
+
+jank-lean.deviations-r3-test_s24-range-to-a-non-ascii-character	exit 1	message="uncaught C++ exception: Invalid range in bracket expression." 
+
+jank-lean.deviations-r3-test_s25-possessive-quantifier	exit 1	message=" expected: (nil? (re-find (re-pattern &quot;a++a&quot;) &quot;aaa&quot;)) actual: (not (nil? &quot;aaa&quot;))" 
+
+jank-lean.deviations-r3-test_s26-repeat-of-a-repeat	exit 1	message=" expected: (= &quot;aa&quot; (re-find (re-pattern &quot;a{2}{3}&quot;) &quot;aaaaaa&quot;)) actual: (not (= &quot;aa&quot; &quot;aaaaaa&quot;))" 
+
+jank-lean.deviations-r3-test_s27-quantified-assertion	exit 1	message="uncaught C++ exception: Mismatched '(' and ')' in regular expression" 
+
+jank-lean.deviations-r3-test_s28-backreference-inside-its-group	exit 1	message="uncaught C++ exception: Back-reference referred to an opened sub-expression." 
+
+jank-lean.deviations-r3-test_s29-posix-bracket-is-not-a-class	exit 1	message=" expected: (nil? (re-find (re-pattern &quot;[[:alpha:]]&quot;) &quot;x&quot;)) actual: (not (nil? &quot;x&quot;))" 
+
+jank-lean.deviations-r3-test_s30-closing-bracket-first-in-a-class	exit 1	message=" expected: (= &quot;a&quot; (re-find (re-pattern &quot;[]a]&quot;) &quot;a&quot;)) actual: (not (= &quot;a&quot; nil))" 
+
+jank-lean.deviations-r3-test_s31-java-control-escape	exit 1	message=" expected: (= &quot;\n&quot; (re-find (re-pattern &quot;\\cJ&quot;) &quot;\n&quot;)) actual: (not (= &quot;\n&quot; nil))" 
+
+jank-lean.deviations-r3-test_s32-class-escape-before-a-dash	exit 1	message="uncaught C++ exception: Invalid start of '[x-x]' range in regular expression" 
+
+jank-lean.deviations-r3-test_s33-lookahead-sees-the-left-character	exit 1	message=" expected: (nil? (re-find (re-pattern &quot;a(?=\\b)&quot;) &quot;ab&quot;)) actual: (not (nil? &quot;a&quot;))" 
+
+jank-lean.deviations-r3-test_s35-a-large-counted-repeat	exit 1	message="uncaught C++ exception: Number of NFA states exceeds limit. Please use shorter regex string, or use smaller brace expression, or make _GLIBCXX_REGEX_STATE_LIMIT larger." 
+
+jank-lean.deviations-r3-test_s36-literal-local-in-a-call-never-made	exit 1	message="uncaught jank error: There is no call operator for `int`." 
+
+jank-lean.deviations-r3-test_s42-eleven-parameters	exit 1	message="uncaught jank error: This function has too many parameters. The max is 10. If you need more, use a variadic function." 
+
+jank-lean.deviations-r3-test_s49-cpp-explicit-template-arguments	exit 1	message=" expected: (= 3.0 (ev &quot;(do (cpp/raw \&quot;template &lt;typename T&gt; T s49_add(T a, T b) { return a + b; }\&quot;) (#cpp (s49_add double) 1 2))&quot;)) actual: (not (= 3.0 3))" 
+
+jank-lean.deviations-r3-test_s50-cpp-function-pointer-with-a-reference-parameter	exit 1	message="uncaught jank error: Unable to call function since argument 0 is not convertible from `int` to `const long &amp;`." 
+
+jank-lean.deviations-r3-test_s53-cpp-built-in-operator-on-a-converting-class	exit 1	message="uncaught jank error: The operator `+` is not supported for the type `s53_meters`." 
+
+jank-lean.deviations-r3-test_s59-an-equal-key-keeps-the-stored-key	exit 1	message=" expected: (list? (first (keys (assoc (hash-map (quote (1)) :a) [1] :b)))) actual: (not (list? [1]))" 
+
+jank-lean.deviations-r4-test_u04-cpp-explicit-template-arguments	exit 1	message=" expected: (double? r) actual: (not (double? 3))" message=" expected: (= 3.0 r) actual: (not (= 3.0 3))" 
+
+jank-lean.deviations-r4-test_u05-cpp-function-pointer-with-a-reference-parameter	exit 1	message="uncaught jank error: Unable to call function since argument 0 is not convertible from `int` to `const long &amp;`." 
+
+jank-lean.deviations-r4-test_u06-cpp-built-in-operator-on-a-converting-class	exit 1	message="uncaught jank error: The operator `+` is not supported for the type `u_b3_meters`." 
+
+jank-lean.deviations-r4-test_u12-with-meta-on-a-fn-not-yet-called	exit 1	message="uncaught jank error: #object [jank-lean.deviations-r4-test/ua5-f deferred_cpp_function 0x7f7ebf3f7700] [deferred_cpp_function] can't hold any metadata." 
+
+jank-lean.deviations-r4-test_u18-pop-thread-bindings-without-a-push-throws	exit 1	message=" expected: (thrown? (clojure.core/deref (future (pop-thread-bindings)))) actual: nil" 
+
+jank-lean.deviations-r4-test_u20-enum-operands-use-their-user-operator	exit 1	message=" expected: (= 0.5 (ev &quot;(cpp/* cpp/u_b6_a cpp/u_b6_b)&quot;)) actual: (not (= 0.5 0))" 
+
+jank-lean.deviations-r4-test_u21-scoped-enum-operands-use-their-user-operator	exit 1	message="uncaught jank error: The binary operator `|` is not supported for the types `u_b7_e` and `u_b7_e`." 
+
+jank-lean.deviations-r4-test_u22-a-derived-operator-hides-the-bases	exit 1	message="uncaught jank error: This call is ambiguous between 2 different overloads." 
+
+jank-lean.deviations-r4-test_u23-argument-dependent-lookup-ignores-using-directives	exit 1	message=" expected: (thrown? (ev &quot;(cpp/| cpp/u_b9_p cpp/u_b9_p)&quot;)) actual: nil" 
+
+jank-lean.deviations-r4-test_u24-a-user-operator-ambiguous-with-a-built-in-one	exit 1	message=" expected: (thrown? (ev &quot;(cpp/+ cpp/u_b10_g 1)&quot;)) actual: nil" 
+
+jank-lean.deviations-r4-test_u25-class-template-constructor-deduces-its-arguments	exit 1	message=" expected: (= 2.5 (ev &quot;(cpp/.-v (cpp/u_b11_wrap. 2.5))&quot;)) actual: (not (= 2.5 2))" message=" expected: (= true (ev &quot;(cpp/.-v (cpp/u_b11_wrap. true))&quot;)) actual: (not (= true 1))" 
+
+jank-lean.deviations-r4-test_u33-no-transient-of-a-sorted-map	exit 1	message=" expected: (thrown? (transient (sorted-map 1 2))) actual: nil" 
+
+jank-lean.deviations-r4-test_u35-lookahead-capture-from-an-earlier-start	exit 1	message=" expected: (= [&quot;b&quot; &quot;a&quot;] (rfind &quot;(?=(a))x|b&quot; &quot;ab&quot;)) actual: (not (= [&quot;b&quot; &quot;a&quot;] [&quot;b&quot; nil]))" message=" expected: (= &quot;a[a]&quot; (string/replace &quot;ab&quot; (rx &quot;(?=(a))x|b&quot;) &quot;[$1]&quot;)) actual: (not (= &quot;a[a]&quot; &quot;a[]&quot;))" 
+
+jank-lean.deviations-r4-test_u40b-defined-vars-carry-name-ns-and-file	exit 1	message=" expected: (= (quote ue1-f) (meta-of (var ue1-f) :name)) actual: (not (= ue1-f nil))" message=" expected: (some? (meta-of (var ue1-f) :ns)) actual: (not (some? nil))" message=" expected: (string? (meta-of (var ue1-f) :file)) actual: (not (string? nil))" 
+
+jank-lean.deviations-r4-test_u40c-nrepl-eval-line-reaches-line-meta	exit 1	message=" expected: (some (fn* [%1#] (= &quot;7&quot; (get %1# :value))) (filter map? (if (map? rs) [rs] rs))) actual: (not (some #object [unknown jit_function 0x7f70bc03abb0] ({:value &quot;nil&quot;, :ns &quot;user&quot;} {:status [:done" 
+
+jank-lean.deviations-r4-test_u40-read-lists-and-defined-vars-carry-line-and-column	exit 1	message=" expected: (integer? (line-of (quote (a b)))) actual: (not (integer? nil))" message=" expected: (integer? (column-of (quote (a b)))) actual: (not (integer? nil))" message=" expected: (integer? (line-of (var ue1-f))) actual: (not (integer? nil))" 
+
+jank-lean.deviations-r4-test_u49-loading-functions-exist	exit 1	message=" expected: (map? (ns-aliases (quote clojure.core))) actual: #error {  :cause &quot;TODO: port ns-aliases&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port ns-aliases&quot;, :data" 
+
+jank-lean.deviations-r4-test_u59-compile-at-run-time	exit 1	message="uncaught jank error: Unable to write module, given output target 'unspecified'." 
+
+jank-lean.deviations-r4-test_u65-format-uses-java-conversions	exit 1	message=" expected: (= &quot;5&quot; (format (identity &quot;%d&quot;) 5)) actual: (not (= &quot;5&quot; &quot;%d&quot;))" message=" expected: (= &quot;a-b&quot; (format &quot;%s-%s&quot; &quot;a&quot; &quot;b&quot;)) actual: (not (= &quot;a-b&quot; &quot;%s-%s&quot;))" message=" expected: (= &quot;{}&quot; (format (identity &quot;{}&quot;) 5)) actual: (not (= &quot;{}&quot; &quot;5&quot;))" 
+
+jank-lean.deviations-r4-test_u67-a-vector-is-not-a-map-entry	exit 1	message=" expected: (false? (map-entry? (identity [1 2]))) actual: (not (false? true))" 
+
+jank-lean.deviations-r4-test_u74-unchecked-arithmetic	exit 1	message=" expected: (= 3 (unchecked-add (identity 1) 2)) actual: #error {  :cause &quot;TODO: port unchecked-add&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port unchecked-add&quot;, :da" message=" expected: (= 0 (unchecked-dec (identity 1))) actual: #error {  :cause &quot;TODO: port unchecked-dec&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port unchecked-dec&quot;, :data" message=" expected: (= -1 (unchecked-negate (identity 1))) actual: #error {  :cause &quot;TODO: po
+
+jank-lean.deviations-r4-test_u79-slurp-of-a-missing-file-throws-a-catchable-error	exit 1	message="uncaught C++ exception: filesystem error: cannot get file size: No such file or directory [/jank-lean-no-such-dir/x.txt]" 
+
+jank-lean.deviations-r4-test_u80-reduce-kv-over-a-seq-of-entries	exit 1	message="uncaught C++ exception: Objects of type `persistent_array_map_sequence` do not support `reduce-kv`." 
+
+jank-lean.deviations-r4-test_u81-zipmap-keeps-the-first-equal-key	exit 1	message=" expected: (vector? (first (keys (zipmap (identity [[1] (quote (1))]) [:a :b])))) actual: (not (vector? (1)))" 
+
+jank-lean.deviations-r4-test_u84-json-bigdec-reads-the-decimal-text	exit 1	message=" expected: (zero? (compare 0.1M (json-read-str (identity &quot;0.1&quot;) :bigdec true))) actual: (not (zero? -1))" 
+
+jank-lean.deviations-r4-test_u85-json-writes-bignums-as-numbers	exit 1	message=" expected: (= &quot;123&quot; (json-write-str (identity 123N))) actual: (not (= &quot;123&quot; &quot;\&quot;123\&quot;&quot;))" message=" expected: (= &quot;1.5&quot; (json-write-str (identity 1.5M))) actual: (not (= &quot;1.5&quot; &quot;\&quot;1.5\&quot;&quot;))" 
+
+jank-lean.deviations-r4-test_u88-sh-passes-each-string-unchanged	exit 1	message=" expected: (= &quot;a\&quot; b\n&quot; (:out (sh &quot;echo&quot; &quot;a\&quot; b&quot;))) actual: (not (= &quot;a\&quot; b\n&quot; &quot;a\\ b\&quot;\n&quot;))" message=" expected: (= &quot;5\&quot; wide\n&quot; (:out (sh &quot;echo&quot; &quot;5\&quot; wide&quot;))) actual: (not (= &quot;5\&quot; wide\n&quot; &quot;5\\ wide\&quot;\n&quot;))" 
+
+jank-lean.deviations-r4-test_u90-sh-env-takes-names-and-values-of-any-kind	exit 1	message="uncaught C++ exception: An object of type `persistent_string` was expected here, but a `small_integer` was provided instead." 
+
+jank-lean.deviations-r4-test_u91-pprint-breaks-lines-at-the-right-margin	exit 1	message=" expected: (= &quot;[0\n 1\n 2\n 3\n 4\n 5\n 6\n 7\n 8\n 9\n 10\n 11\n 12\n 13\n 14\n 15\n 16\n 17\n 18\n 19\n 20\n 21\n 22\n 23\n 24\n 25\n 26\n 27\n 28\n 29]\n&quot; (with-out-str (pp (vec (range 30))))) actu" 
+
+jank-lean.deviations-r4-test_u92-pprint-and-stacktrace-define-their-documented-functions	exit 1	message=" expected: (some? (resolve (quote clojure.pprint/print-table))) actual: (not (some? nil))" message=" expected: (some? (resolve (quote clojure.pprint/cl-format))) actual: (not (some? nil))" message=" expected: (some? (resolve (quote clojure.stacktrace/root-cause))) actual: (not (some? nil))" 
+
+jank-lean.deviations-r5-test_v03-loading-a-file-that-is-not-a-library-is-an-error	exit 1	message="uncaught C++ exception: Unable to load the dynamic library `/tmp/jank-lean-va4-not-a-library.so`: /tmp/jank-lean-va4-not-a-library.so: file too short" 
+
+jank-lean.deviations-r5-test_v07-a-read-error-reaches-an-object-catch	exit 1	message=" expected: (= :object (vb-kind (fn* [] (read-string (identity &quot;(&quot;))))) actual: (not (= :object :error))" 
+
+jank-lean.deviations-r5-test_v07b-an-analysis-error-from-eval-reaches-an-object-catch	exit 1	message=" expected: (= :object (vb-kind (fn* [] (eval (symbol &quot;vb1b-no-such-name&quot;))))) actual: (not (= :object :error))" 
+
+jank-lean.deviations-r5-test_v07c-a-missing-namespace-reaches-an-object-catch	exit 1	message=" expected: (= :object (vb-kind (fn* [] (require (symbol &quot;jank-lean.vb1c-no-such-namespace&quot;))))) actual: (not (= :object :error))" 
+
+jank-lean.deviations-r5-test_v09-an-ex-info-thrown-while-loading-keeps-its-data	exit 1	message=" expected: (= {:vb3 1} (when (= :object k) (vb-data-with e :vb3))) actual: (not (= {:vb3 1} nil))" 
+
+jank-lean.deviations-r5-test_v09b-an-ex-info-thrown-by-a-macro-keeps-its-data	exit 1	message=" expected: (= {:vb3b 1} (when (= :object k) (vb-data-with e :vb3b))) actual: (not (= {:vb3b 1} nil))" 
+
+jank-lean.deviations-r5-test_v15-ex-info-takes-a-nil-message	exit 1	message="uncaught C++ exception: An object of type `persistent_string` was expected here, but a `nil` was provided instead." 
+
+jank-lean.deviations-r5-test_v18-ex-data-and-cause-of-a-compile-error-in-star-e	exit 1	message=" expected: (= &quot;true&quot; (vb-nrepl-value &quot;(some? (ex-data *e))&quot;)) actual: (not (= &quot;true&quot; &quot;false&quot;))" message=" expected: (= &quot;true&quot; (vb-nrepl-value &quot;(some? (ex-cause *e))&quot;)) actual: (not (= &quot;true&quot; &quot;false&quot;))" 
+
+jank-lean.deviations-r5-test_v25-cpp-assigning-a-temporary-moves-it	exit 1	message="uncaught jank error: No matching overload of the `=` function was found for this call." 
+
+jank-lean.deviations-r5-test_v26-cpp-a-forwarding-operator-template-sees-a-temporary-as-an-rvalue	exit 1	message=" expected: (= 2 ((ev &quot;(fn [] (cpp/+ cpp/vf2.gv (cpp/vf2.W.)))&quot;))) actual: (not (= 2 1))" 
+
+jank-lean.deviations-r5-test_v27-cpp-a-member-operator-takes-a-literal-by-rvalue-reference	exit 1	message="uncaught jank error: Unable to compile C++ source." 
+
+jank-lean.deviations-r5-test_v28-cpp-a-member-operator-template-forwards-a-literal-as-an-rvalue	exit 1	message=" expected: (= 2 ((ev &quot;(fn [] (cpp// cpp/vf4.g 1))&quot;))) actual: (not (= 2 1))" 
+
+jank-lean.deviations-r5-test_v29b-cpp-a-named-local-binds-a-non-const-reference	exit 1	message="uncaught jank error: No matching overload of the `vf5b_inc` function was found for this call." 
+
+jank-lean.deviations-r5-test_v29-cpp-a-named-local-is-an-lvalue-to-overload-resolution	exit 1	message=" expected: (= 1 ((ev &quot;(fn [] (let [x (cpp/int. 1)] (cpp/- cpp/vf5.gv x)))&quot;))) actual: (not (= 1 2))" 
+
+jank-lean.deviations-r5-test_v30-cpp-built-in-assignment-needs-an-lvalue	exit 1	message=" expected: (not= :returned (vb-kind (fn* [] ((ev &quot;(fn [] (cpp/= 1 2))&quot;))))) actual: (not (not= :returned :returned))" message=" expected: (not= :returned (vb-kind (fn* [] ((ev &quot;(fn [] (cpp/+= 1 2))&quot;))))) actual: (not (not= :returned :returned))" message=" expected: (not= :returned (vb-kind (fn* [] ((ev &quot;(fn [] (cpp/++ 1))&quot;))))) actual: (not (not= :returned :returned))" 
+
+jank-lean.deviations-r5-test_v31-cpp-argument-dependent-lookup-finds-a-using-declaration	exit 1	message="uncaught jank error: The operator `+` is not supported for the type `vf7_lib::P`." 
+
+jank-lean.deviations-r5-test_v32-cpp-a-using-declared-base-call-operator	exit 1	message="uncaught jank error: This call is ambiguous between 2 different overloads." 
+
+jank-lean.deviations-r5-test_v33-cpp-calling-an-object-through-its-conversion-to-a-function-pointer	exit 1	message="uncaught jank error: The operator `()` is not supported for the type `vf9_sf`." 
+
+jank-lean.deviations-r5-test_v34-cpp-aget-through-a-conversion-to-a-pointer	exit 1	message="uncaught jank error: The operator `aget` is not supported for the type `vf10_bf`." 
+
+jank-lean.deviations-r5-test_v35-word-boundary-and-a-combining-mark	exit 1	message=" expected: (nil? (rfind &quot;e\\b&quot; &quot;é&quot;)) actual: (not (nil? &quot;e&quot;))" message=" expected: (= [&quot;x&quot;] (vec (rseq* &quot;\\b\\w+\\b&quot; &quot;café x&quot;))) actual: (not (= [&quot;x&quot;] [&quot;cafe&quot; &quot;x&quot;]))" message=" expected: (= &quot;|naïve|&quot; (rreplace &quot;naïve&quot; &quot;\\b&quot; &quot;|&quot;)) actual: (not (= &quot;|naïve|&quot; &quot;|nai|̈|ve|&quot;))" 
+
+jank-lean.deviations-r5-test_v36-unicode-line-terminators	exit 1	message=" expected: (nil? (re-matches (re-pattern &quot;.*&quot;) &quot; &quot;)) actual: (not (nil? &quot; &quot;))" message=" expected: (= &quot;a&quot; (rfind &quot;a$&quot; &quot;a &quot;)) actual: (not (= &quot;a&quot; nil))" 
+
+jank-lean.deviations-r5-test_v37b-nrepl-interrupt-without-a-session	exit 1	message=" expected: (= #{&quot;error&quot; &quot;session-ephemeral&quot; &quot;done&quot;} (statuses r)) actual: (not (= #{&quot;error&quot; &quot;session-ephemeral&quot; &quot;done&quot;} #{&quot;error&quot; &quot;unknown-op&quot; &quot;done&quot;}))" 
+
+jank-lean.deviations-r5-test_v37-nrepl-interrupt-of-an-idle-session	exit 1	message=" expected: (= #{&quot;session-idle&quot; &quot;done&quot;} (statuses r)) actual: (not (= #{&quot;session-idle&quot; &quot;done&quot;} #{&quot;error&quot; &quot;unknown-op&quot; &quot;done&quot;}))" 
+
+jank-lean.deviations-r5-test_v46-print-of-an-inst-keeps-its-tag	exit 1	message=" expected: (= &quot;#inst \&quot;2020-01-01T00:00:00.000-00:00\&quot;&quot; (print-str (rd (identity &quot;#inst \&quot;2020-01-01\&quot;&quot;)))) actual: (not (= &quot;#inst \&quot;2020-01-01T00:00:00.000-00:00\&quot;&quot; &quot;2020-01-01T00:00:00.000-00:00&quot;))" 
+
+jank-lean.deviations-r5-test_v47-clojure-instant-exists	exit 1	message="uncaught jank error: The module `clojure.instant` could not be found." 
+
+jank-lean.deviations-r6-test_lg3-subs-indexes-characters	exit 1	message=" expected: (= &quot;è&quot; (subs (identity &quot;é-è&quot;) 2)) actual: (not (= &quot;è&quot; &quot;-è&quot;))" message=" expected: (= &quot;é-&quot; (subs (identity &quot;é-è&quot;) 0 2)) actual: (not (= &quot;é-&quot; &quot;é&quot;))" message=" expected: (= &quot;è&quot; (apply subs [&quot;é-è&quot; 2])) actual: (not (= &quot;è&quot; &quot;-è&quot;))" 
+
+jank-lean.deviations-r6-test_v51-hash-of-a-long-is-a-signed-int	exit 1	message=" expected: (= -971005196 (hash 2)) actual: (not (= -971005196 3323962100))" message=" expected: (= -971005196 (apply hash [2])) actual: (not (= -971005196 3323962100))" message=" expected: (= true (neg? (hash 3))) actual: (not (= true false))" 
+
+jank-lean.deviations-r6-test_v55-subtracting-long-min-through-a-fn	exit 1	message=" expected: (thrown? (n-sub -1 (n-long-min))) actual: nil" message=" expected: (= &quot;9223372036854775807N&quot; (pr-str (n-subp -1 (n-long-min)))) actual: (not (= &quot;9223372036854775807N&quot; &quot;9223372036854775807&quot;))" 
+
+jank-lean.deviations-r6-test_v56b-min-and-max-with-nan-literals	exit 1	message=" expected: (NaN? (min 1.0 ##NaN)) actual: (not (NaN? 1.0))" 
+
+jank-lean.deviations-r6-test_v56-min-and-max-with-nan-through-fns	exit 1	message=" expected: (NaN? (n-min ##NaN 1)) actual: (not (NaN? 1))" message=" expected: (NaN? (n-max 1 ##NaN)) actual: (not (NaN? 1))" message=" expected: (NaN? (apply max [1.0 ##NaN])) actual: (not (NaN? 1.0))" 
+
+jank-lean.deviations-r6-test_v57b-max-of-equal-numbers-keeps-the-second	exit 1	message=" expected: (= &quot;1.0&quot; (str (apply max [1 1.0]))) actual: (not (= &quot;1.0&quot; &quot;1&quot;))" message=" expected: (= &quot;1.0&quot; (str ((fn [a b] (max a b)) 1 1.0))) actual: (not (= &quot;1.0&quot; &quot;1&quot;))" 
+
+jank-lean.deviations-r6-test_v57-max-of-a-tie-is-the-second-operand	exit 1	message=" expected: (= &quot;1.0&quot; (pr-str (n-max 1 1.0))) actual: (not (= &quot;1.0&quot; &quot;1&quot;))" message=" expected: (= &quot;1N&quot; (pr-str (n-max 1 1N))) actual: (not (= &quot;1N&quot; &quot;1&quot;))" message=" expected: (= &quot;-0.0&quot; (pr-str (n-max 0.0 -0.0))) actual: (not (= &quot;-0.0&quot; &quot;0.0&quot;))" 
+
+jank-lean.deviations-r6-test_v58-min-and-max-of-literals-return-an-operand	exit 1	message=" expected: (= &quot;-0.0&quot; (pr-str (min 0.0 -0.0))) actual: (not (= &quot;-0.0&quot; &quot;0.0&quot;))" 
+
+jank-lean.deviations-r6-test_v60-long-of-an-out-of-range-double-throws	exit 1	message=" expected: (thrown? (n-long 1.0E20)) actual: nil" message=" expected: (thrown? (n-long ##Inf)) actual: nil" 
+
+jank-lean.deviations-r6-test_v61-numerator-prints-as-a-biginteger	exit 1	message=" expected: (= &quot;1&quot; (pr-str (n-numerator 1/2))) actual: (not (= &quot;1&quot; &quot;1N&quot;))" 
+
+jank-lean.deviations-r6-test_v62-float-rounds-to-single-precision	exit 1	message=" expected: (= false (== (float 0.1) 0.1)) actual: (not (= false true))" message=" expected: (= 0.30000000149011613 (+ (float 0.1) 0.2)) actual: (not (= 0.30000000149011613 0.30000000000000004))" message=" expected: (thrown? (float 1.0E40)) actual: nil" 
+
+jank-lean.deviations-r6-test_v63-float-array-arithmetic-is-double	exit 1	message=" expected: (= 1.1000000014901161 (+ (aget (float-array [0.1]) 0) 1)) actual: (not (= 1.1000000014901161 1.100000023841858))" 
+
+jank-lean.deviations-r6-test_v64-boolean-and-char-natives-are-not-numbers	exit 1	message=" expected: (thrown? (+ (aget (char-array &quot;a&quot;) 0) 1)) actual: nil" 
+
+jank-lean.deviations-r6-test_v65-nth-of-a-string-is-a-character	exit 1	message=" expected: (= :nf (nth (identity &quot;éa&quot;) 2 :nf)) actual: (not (= :nf \a))" 
+
+jank-lean.deviations-r6-test_v66-get-and-contains-index-characters	exit 1	message=" expected: (false? (contains? (identity &quot;é&quot;) 1)) actual: (not (false? true))" message=" expected: (false? (apply contains? [&quot;é&quot; 1])) actual: (not (false? true))" 
+
+jank-lean.deviations-r6-test_v67-upper-case-of-a-cut-string	exit 1	message=" expected: (= &quot;É&quot; (string/upper-case (subs (identity &quot;é&quot;) 0 1))) actual: (not (= &quot;É&quot; &quot;&quot;))" message="uncaught C++ exception: wstring_convert::from_bytes" 
+
+jank-lean.deviations-r6-test_v68-reverse-of-a-cut-string	exit 1	message="uncaught C++ exception: Invalid UTF-8 string." 
+
+jank-lean.deviations-r6-test_v71-hash-of-a-non-ascii-string	exit 1	message=" expected: (= -1107437598 (hash (identity &quot;é&quot;))) actual: (not (= -1107437598 958611385))" 
+
+jank-lean.deviations-r6-test_v75-split-on-an-empty-pattern-keeps-characters	exit 1	
+jank-lean.deviations-r6-test_v76-a-lone-surrogate-escape-is-kept	exit 1	message=" expected: (= 55357 (int (first (identity &quot;?&quot;)))) actual: (not (= 55357 63))" 
+
+jank-lean.deviations-r6-test_v77-int-of-the-first-of-an-emoji	exit 1	message=" expected: (= 55357 (int (first (identity &quot;😀&quot;)))) actual: (not (= 55357 128512))" message=" expected: (= 2 (count (vec (identity &quot;😀&quot;)))) actual: (not (= 2 1))" 
+
+jank-lean.deviations-r6-test_v78-char-of-a-surrogate	exit 1	message="uncaught C++ exception: Unfinished character: 55296" 
+
+jank-lean.deviations-r6-test_v79-char-past-its-range-throws	exit 1	message=" expected: (thrown? (char (identity 128512))) actual: nil" 
+
+jank-lean.deviations-r6-test_v82-char-name-and-escape-strings	exit 1	message="uncaught jank error: The symbol `clojure.core/char-name-string` could not be resolved." 
+
+jank-lean.deviations-r6-test_v83-keyword-and-symbol-hashes	exit 1	message=" expected: (= -1763192079 (hash (keyword (identity &quot;c&quot;)))) actual: (not (= -1763192079 2531775217))" message=" expected: (= -1763191981 (hash (keyword (identity &quot;b&quot;) &quot;c&quot;))) actual: (not (= -1763191981 2531775315))" message=" expected: (= -122660454 (hash (symbol (identity &quot;b&quot;) &quot;c&quot;))) actual: (not (= -122660454 4172306842))" 
+
+jank-lean.deviations-r6-test_v85-a-set-finds-its-own-nan	exit 1	message=" expected: (= [true 1 1 1 true] [(contains? (hash-set x) x) (count (hash-set x x)) (get (hash-map x 1) x) (count (disj (hash-set x 3) x)) (= (hash-set x) (hash-set x))]) actual: (not (= [true 1 1 1 tr" 
+
+jank-lean.deviations-r7-test_x10b-rationalize-of-a-bigdecimal	exit 1	message=" expected: (= 3/2 (rationalize 1.5M)) actual: #error {  :cause &quot;TODO: port rationalize&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port rationalize&quot;, :data {}}]  :trac" 
+
+jank-lean.deviations-r7-test_x10-unchecked-int-arithmetic-wraps-at-32-bits	exit 1	message=" expected: (= -2147483648 (unchecked-add-int 2147483647 1)) actual: #error {  :cause &quot;TODO: port unchecked-add-int&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port unc" 
+
+jank-lean.deviations-r7-test_x18b-upper-case-of-n-after-an-apostrophe	exit 1	message=" expected: (= &quot;ʼN&quot; (string/upper-case (identity &quot;ŉ&quot;))) actual: (not (= &quot;ʼN&quot; &quot;ŉ&quot;))" 
+
+jank-lean.deviations-r7-test_x18c-upper-case-of-j-with-caron	exit 1	message=" expected: (= &quot;J̌&quot; (string/upper-case (identity &quot;ǰ&quot;))) actual: (not (= &quot;J̌&quot; &quot;ǰ&quot;))" 
+
+jank-lean.deviations-r7-test_x18d-upper-case-of-a-ligature	exit 1	message=" expected: (= &quot;FI&quot; (string/upper-case (identity &quot;ﬁ&quot;))) actual: (not (= &quot;FI&quot; &quot;ﬁ&quot;))" 
+
+jank-lean.deviations-r7-test_x18e-upper-case-of-alpha-with-ypogegrammeni	exit 1	message=" expected: (= &quot;ΑΙ&quot; (string/upper-case (identity &quot;ᾳ&quot;))) actual: (not (= &quot;ΑΙ&quot; &quot;ᾼ&quot;))" 
+
+jank-lean.deviations-r7-test_x18f-lower-case-of-capital-i-with-dot	exit 1	message=" expected: (= &quot;i̇&quot; (string/lower-case (identity &quot;İ&quot;))) actual: (not (= &quot;i̇&quot; &quot;i&quot;))" 
+
+jank-lean.deviations-r7-test_x18g-lower-case-of-a-final-sigma	exit 1	message=" expected: (= &quot;σας&quot; (string/lower-case (identity &quot;ΣΑΣ&quot;))) actual: (not (= &quot;σας&quot; &quot;σασ&quot;))" 
+
+jank-lean.deviations-r7-test_x18h-capitalize-of-sharp-s	exit 1	message=" expected: (= &quot;SSa&quot; (string/capitalize (identity &quot;ßa&quot;))) actual: (not (= &quot;SSa&quot; &quot;ßa&quot;))" 
+
+jank-lean.deviations-r7-test_x18-upper-case-of-sharp-s	exit 1	message=" expected: (= &quot;SS&quot; (string/upper-case (identity &quot;ß&quot;))) actual: (not (= &quot;SS&quot; &quot;ß&quot;))" 
+
+jank-lean.deviations-r7-test_x19b-replace-with-a-fn-and-an-empty-pattern-keeps-characters	exit 1	
+jank-lean.deviations-r7-test_x19-replace-with-an-empty-pattern-keeps-characters	exit 1	
+jank-lean.deviations-r7-test_x20b-rem-by-zero-through-a-fn-throws-an-object	exit 1	message="uncaught C++ exception: Division by zero is not permitted." 
+
+jank-lean.deviations-r7-test_x20c-nth-of-a-string-past-its-end-throws-an-object	exit 1	message="uncaught C++ exception: The index `1` is out of bounds for this `persistent_string`." 
+
+jank-lean.deviations-r7-test_x20d-subs-past-the-end-throws-an-object	exit 1	message="uncaught jank error: end index 1 is less than start 2" 
+
+jank-lean.deviations-r7-test_x20-rem-by-zero-throws-an-object	exit 1	message="uncaught C++ exception: Division by zero is not permitted." 
+
+jank-lean.deviations-r7-test_x24c-a-native-char-plus-one-throws	exit 1	message=" expected: (thrown? (+ (aget (char-array &quot;a&quot;) 0) 1)) actual: nil" 
+
+jank-lean.deviations-r7-test_x25b-char-of-a-supplementary-code-point-throws	exit 1	message=" expected: (thrown? (char (identity 128512))) actual: nil" 
+
+jank-lean.deviations-r7-test_x27-a-ratio-with-a-signed-denominator-is-not-read	exit 1	message="uncaught jank error: A ratio denominator must be an integer." 
+
+jank-lean.deviations-r7-test_x6b-math-context-is-defined	exit 1	message="uncaught jank error: The symbol `*math-context*` could not be resolved." 
+
+jank-lean.deviations-r7-test_x6-with-precision-rounds-bigdecimal-division	exit 1	message="uncaught jank error: #error {  :cause &quot;TODO: port with-precision&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port with-precision&quot;, :data {}}]  :trace  [[&quot;jank::runtime" 
+
+jank-lean.deviations-r7-test_x7b-bigdecimal-sum-keeps-the-larger-scale	exit 1	message=" expected: (= &quot;3.00&quot; (str (+ 1.25M 1.75M))) actual: (not (= &quot;3.00&quot; &quot;3.0&quot;))" 
+
+jank-lean.deviations-r7-test_x7-bigdecimal-quotient-keeps-the-preferred-scale	exit 1	message=" expected: (= &quot;2&quot; (str (/ 6.0M 3.0M))) actual: (not (= &quot;2&quot; &quot;2.0&quot;))" 
+
+jank-lean.deviations-r7-test_x7c-bigdecimal-quotient-with-a-negative-scale	exit 1	message=" expected: (= &quot;2E+1&quot; (str (/ 60.0M 3.0M))) actual: (not (= &quot;2E+1&quot; &quot;20.0&quot;))" 
+
+jank-lean.deviations-r7-test_x7d-bigdecimal-quotient-by-a-power-of-two-keeps-the-scale	exit 1	message=" expected: (= &quot;0.250&quot; (str (/ 1.0M 4))) actual: (not (= &quot;0.250&quot; &quot;0.25&quot;))" 
+
+jank-lean.deviations-r7-test_x8-exact-bigdecimal-quotient-keeps-every-digit	exit 1	message=" expected: (= 0 (compare 1.0M (* 1606938044258990275541962092341162602522202993782792835301376.0M (/ 1.0M 1606938044258990275541962092341162602522202993782792835301376.0M)))) actual: (not (= 0 1))" 
+
+jank-lean.deviations-r7-test_x9b-control-quot-of-whole-bigdecimals-prints-no-point	exit 1	message=" expected: (= &quot;3&quot; (str (quot 7.0M 2))) actual: (not (= &quot;3&quot; &quot;3.0&quot;))" 
+
+jank-lean.deviations-reader-test_a11-a-symbol-tag-is-not-quoted	exit 1	message=" expected: (= (quote foo) (:tag (meta (read-string &quot;^foo x&quot;)))) actual: (not (= foo (quote foo)))" 
+
+jank-lean.deviations-reader-test_a13-duplicate-set-literal-keys-are-rejected	exit 1	message="uncaught jank error: Duplicate items in set literals are not allowed." 
+
+jank-lean.deviations-reader-test_a17-namespaced-map-literals	exit 1	message="uncaught jank error: Unsupported reader macro." 
+
+jank-lean.deviations-reader-test_a20-read-string-rejects-an-invalid-number	exit 1	message=" expected: (thrown? (read-string &quot;1-2&quot;)) actual: nil" 
+
+jank-lean.deviations-reader-test_a21-read-forms-carry-no-metadata	exit 1	message=" expected: (nil? (meta (read-string &quot;[1 2]&quot;))) actual: (not (nil? {:jank/source {:file &quot;nil&quot;, :start {:offset 0, :line 1, :col 1}, :end {:offset 5, :line 1, :col 6}}}))" 
+
+jank-lean.deviations-test_d07-bigdec-of-a-long-is-exact	exit 1	message=" expected: (= &quot;9007199254740993&quot; (str (bigdec 9007199254740993))) actual: (not (= &quot;9007199254740993&quot; &quot;9007199254740993.0&quot;))" 
+
+jank-lean.deviations-test_d15-transient-vector-after-persistent	exit 1	message="uncaught C++ exception: This `transient_vector` has already been made persistent." 
+
+jank-lean.deviations-test_d21-deref-with-timeout	exit 1	message=" expected: (= :timeout (deref (promise) 10 :timeout)) actual: (not (= :timeout nil))" 
+
+jank-lean.deviations-test_d23-set-of-a-thread-bound-var	exit 1	message="uncaught jank error: The symbol `set!` could not be resolved." 
+
+jank-lean.deviations-test_d25-locking	exit 1	message="uncaught jank error: The symbol `clojure.core/monitor-enter` could not be resolved." 
+
+jank-lean.generated-r7-c05	exit 1	message="uncaught C++ exception: Division by zero is not permitted." message="uncaught C++ exception: Division by zero is not permitted." message="uncaught C++ exception: Division by zero is not permitted." 
+
+jank-lean.generated-r7-c06	exit 1	message=" expected: (= &quot;-1&quot; (pr-str (g-max -1.0 -1))) actual: (not (= &quot;-1&quot; &quot;-1.0&quot;))" message=" expected: (= &quot;-1&quot; (pr-str ((fn [b] (max -1.0 b)) -1))) actual: (not (= &quot;-1&quot; &quot;-1.0&quot;))" message=" expected: (thrown? (max 1/3 1.0M)) actual: nil" 
+
+jank-lean.generated-r7-c07	exit 1	message=" expected: (thrown? (&lt; 2.5M 7/3)) actual: nil" message=" expected: (thrown? (let [a 2.5M b 7/3] (&lt; a b))) actual: nil" message=" expected: (thrown? (apply &lt; [2.5M 7/3])) actual: nil" 
+
+jank-lean.generated-r7-c08	exit 1	message=" expected: (= 0 (compare 9.007199254740992E15 9007199254740993N)) actual: (not (= 0 -1))" message=" expected: (= 0 (let [a 9.007199254740992E15 b 9007199254740993N] (compare a b))) actual: (not (= 0 -1))" message=" expected: (= 0 (g-compare 9.007199254740992E15 9007199254740993N)) actual: (not (= 0 -1))" 
+
+jank-lean.generated-r7-c09	exit 1	message=" expected: (thrown? (&lt; (count [0 0 0]) (aget (char-array &quot;a&quot;) 0))) actual: nil" message=" expected: (thrown? (let [a (count [0 0 0]) b (aget (char-array &quot;a&quot;) 0)] (&lt; a b))) actual: nil" message="uncaught C++ exception: not a number: \a" 
+
+jank-lean.generated-r7-c10	exit 1	message=" expected: (thrown? (&gt; (aget (char-array &quot;a&quot;) 0) (hash 3))) actual: nil" message=" expected: (thrown? (let [a (aget (char-array &quot;a&quot;) 0) b (hash 3)] (&gt; a b))) actual: nil" message="uncaught C++ exception: not a number: \a" 
+
+jank-lean.generated-r7-c11	exit 1	message="uncaught C++ exception: not a number: \a" message=" expected: (= &quot;-971005195&quot; (pr-str (+ (hash 2) 1))) actual: (not (= &quot;-971005195&quot; &quot;3323962101&quot;))" message=" expected: (= &quot;-971005195&quot; (pr-str (let [a (hash 2) b 1] (+ a b)))) actual: (not (= &quot;-971005195&quot; &quot;3323962101&quot;))" 
+
+jank-lean.generated-r7-c12	exit 1	message=" expected: (thrown? (* (aget (char-array &quot;a&quot;) 0) (hash 3))) actual: nil" message=" expected: (thrown? (let [a (aget (char-array &quot;a&quot;) 0) b (hash 3)] (* a b))) actual: nil" message="uncaught C++ exception: not a number: \a" 
+
+jank-lean.generated-r7-c13	exit 1	message="uncaught C++ exception: The index `-1` is out of bounds for this `persistent_string`." message="uncaught C++ exception: The index `-1` is out of bounds for this `persistent_string`." message="uncaught C++ exception: The index `3` is out of bounds for this `persistent_string`." 
+
+jank-lean.generated-r7-c14	exit 1	message="uncaught jank error: end index 8 is less than start 9" message="uncaught jank error: end index 8 is less than start 9" message="uncaught jank error: end index 8 is less than start 9" 
+
+jank-lean.generated-r7-c15	exit 1	message=" expected: (= 2 (string/index-of &quot;€€é&quot; &quot;é&quot; -1)) actual: (not (= 2 6))" message=" expected: (= 2 (let [s &quot;€€é&quot; x0 &quot;é&quot; x1 -1] (string/index-of s x0 x1))) actual: (not (= 2 6))" message=" expected: (= 2 ((fn [x0 x1 x2] (string/index-of x0 x1 x2)) &quot;€€é&quot; &quot;é&quot; -1)) actual: (not (= 2 6))" 
+
+jank-lean.generated-r7-c16	exit 1	message=" expected: (NaN? (g-min ##NaN 0)) actual: (not (NaN? 0))" message=" expected: (NaN? (g-min ##NaN 9007199254740992)) actual: (not (NaN? 9007199254740992))" message=" expected: (NaN? ((fn [a b] (min a b)) ##NaN 1)) actual: (not (NaN? 1))" 
+
+jank-lean.deviations-main-test_r119-first-of-an-infinite-mapped-range	exit 139	no report: Segmentation fault 
+jank-lean.deviations-r3-test_s34-a-long-input	exit 139	no report: Segmentation fault 
+jank-lean.deviations-r4-test_u26-cpp-delete-of-a-pointer-from-cxx-new	exit 139	no report: Segmentation fault 

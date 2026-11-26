@@ -1,0 +1,271 @@
+R8 FIXES (area F): V64c, V51, V7r, S17h, R60, U74
+==================================================
+
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). Paths are under
+upstream-r5/compiler+runtime/; line numbers are 94d32623's. jank was not built or run. upstream-r5 and
+.r8-scratch/merge/tree stay clean (`git status --short` empty for both). No Lean was written: every question
+was settled by reading, by Clojure 1.12.3 / JDK 23, or by standalone C++ of the diffs' own text.
+
+Checks run (all through ~/dev/.lean-jobs/job):
+- Each fixes/<id>.diff: `git -C upstream-r5 apply --check` (mkdiff.sh) and against the round-8 combined tree.
+  V51, V7r, S17h apply to it unchanged; V64c, U74, R60 need their variants .r8-scratch/fix/<id>-combined.diff,
+  which apply.
+- Syntax-only compiles (.r8-scratch/fix/syn1.sh: a copy of stock or of the combined tree, the diff applied,
+  .r8-scratch/merge/syn.sh, then with the prelude defines; copies removed): every changed .cpp alone on stock
+  and (variant) on the combined tree: all exit 0 (.r8-scratch/fix/syn-*.txt).
+- A TU instantiating math.hpp's add/sub/mul/div/lt/lte/min/max/pow and inc/dec/abs/is_zero/to_int/to_real/tan/
+  sqrt with a native char, int, long long, double, usize, unsigned, float, object_ref and typed refs
+  (.r8-scratch/fix/cc/tu-char.cpp): stock, stock+V64c, combined, combined+V64c-combined: all exit 0.
+- All six stacked on a copy of the combined tree (V51, V7r, S17h as written, the three variants;
+  .r8-scratch/fix/stack.sh, stack.txt): they stack; core.cpp, c_api.cpp, lex.cpp, math.cpp, util/string.cpp
+  and the TU compile; fwdref.py on the stacked core.jank: new 0.
+- fwdref.py on U74's core.jank: stock and combined, new 0.
+- U74's helpers (verbatim, .r8-scratch/fix/u74/helpers.inc) against Clojure 1.12.3: 11,480 doubles, 18
+  BigDecimals, 9 int rows: 0 differences.
+- R60's tables and code (verbatim, .r8-scratch/fix/r60/casecode.inc) against Java 23: every scalar value,
+  8,896,512 sigma contexts, 1,000,000 random texts: results/r8-fix-r60-check.txt.
+- Area F's tests (.r8-scratch/fix/tests.jank, 24 deftests) on Clojure 1.12.3: 24 pass (results/r8-fix-clj.txt).
+
+
+(1) Deviations
+--------------
+New (each a test in .r8-scratch/fix/tests.jank; all pass on Clojure 1.12.3):
+
+- vF3 `(float (aget (char-array "a") 0))`. Clojure: ClassCastException (Character is no Number). jank: 97.0.
+  Test vF3-float-of-a-char-element-throws ([literals]: `float` inlines to math.hpp to_real 1438-1464, whose
+  primitive_number branch takes the char). Status: new form of V64's cause. Confidence: high (read; Clojure
+  run). Shared cause: V64 (primitive_number takes char). Fixed by V64c (+ R33b for the object throw).
+- vF10b / vF10c (controls on stock, regressions of R61a, which the combined tree carries):
+  `(capitalize "AΣ")` Clojure "Aσ" ((.toLowerCase (subs s 1)) sees "Σ" alone: not final); with R61a and a
+  final-sigma to_lowercase the whole text is lower-cased first: "Aς". `(capitalize "𐐨a")`
+  Clojure unchanged ((subs s 0 1) is half of the surrogate pair); R61a upper-cases the first code point:
+  "𐐀a". Path: string.jank capitalize 156-164 (to_lowercase of the whole, then util capitalize).
+  Status: new (R61a's design). Confidence: high (read; Clojure run). Fixed by R60's capitalize (supersedes R61a).
+- vF8f `(unchecked-inc-int 2147483647)`: Clojure -2147483648; with U72 (in the combined tree:
+  unchecked_inc, a long) 2147483648. Status: new (U72's port). Fixed by U74 (supersedes U72).
+
+Single-cause tests for this round's fixes (not new deviations): vF1 (V64c's fn path alone), vF2 (control:
+`(int c)` stays 97), vF4 (V51 through let), vF5 (control: case on hashed tests), vF6 (V7r's object has nil
+ex-data, as Clojure's RuntimeException), vF7/vF7b (S17h, REPORT-3's 0x1e5M and the brief's 0x10M), vF8-vF8i
+(U74's int and long ops), vF9-vF9d (rationalize), vF10 (Java's word-based final sigma: "A1Σ" -> "a1ς").
+
+Known and not new: V17 ((read-string "") nil vs "EOF while reading", fixes V17a/V17b); V62 (`float` is a
+double: (rationalize (float 0.1)) is 1/10 in jank, 2500000037252903/25000000000000000 in Clojure).
+
+
+(2) Proofs: none (no Lean written; no axioms file).
+(3) Replicated: nothing in Lean. The JDK's case mapping and final-sigma behavior are replicated in C++ inside
+    R60 and checked against the JVM (results/r8-fix-r60-check.txt).
+(4) Not exact:
+- R60's final sigma: a model of Java's word iterator by per-code-point classes; it agrees with JDK 23 on every
+  scalar value alone, on 8,896,512 contexts, and on 999,919 of 1,000,000 random texts. The 81 others involve
+  U+0345 after a supplementary character, cased supplementary letters inside a word, or the danda.
+- U74's int operand: a double outside the int range throws "Value out of range for int" where Clojure's
+  inlined path says the same and its fn path "integer overflow" (ArithmeticException); a BigDecimal is read
+  through a double as RT.longCast does. Exception classes are not modeled (jank throws string objects).
+- V7r's message is jank's (e.g. "Unterminated list."), not Clojure's ("EOF while reading").
+(5) Left out, and why:
+- V7's analysis and load parts (v07b, v07c): eval's analysis errors and require's load errors are error_refs
+  that jank's own top-level reporting reads (test/bash/error-reporting/src/eval/output.txt prints an analyze
+  error raised by `(eval (read-string ...))`; load-lib and V8/V9 depend on load_module's error_ref). Making them
+  objects is the error design (REPORT-6), not a local change; V7r converts only clojure.core/read-string.
+- core.jank 5783-5841's casts (short, byte, unchecked-byte/-short/-char/-int/-long/-float/-double): not in the
+  brief's list; unchecked-float needs single precision (V62); each cast has its own per-type rules
+  (Number.intValue etc.). Still "TODO: port".
+- R60: the 81 word-iterator cases above; Windows (16-bit wchar_t) is not handled differently than before.
+(6) Assumptions:
+- FixA8-1: JDK 23's toUpperCase/toLowerCase(Locale.ROOT) and BreakIterator.getWordInstance(ROOT) are what
+  Clojure 1.12.3 uses on the coordinator's JVM (its default locale agrees with ROOT on every code point here;
+  a tr/az/lt default locale would differ).
+- FixA8-2: wchar_t is 32 bits (Linux, macOS), so codecvt_utf8<wchar_t> yields code points (as stock assumes).
+- FixA8-3: std::to_chars(double, scientific[, 1]) is shortest/correctly rounded (C++17), as R68 relies on.
+- Round 7's FixA7-1 stands (Java 23's Double.toString), now also for rationalize. WA7-1 (glibc's simple case
+  mappings) is replaced: with R60 jank never calls towupper/towlower, so the question is moot.
+(7) Properties checked, each with its source:
+- Numbers.add/... cast a Character to Number (ClassCastException); RT.intCast(char) and RT.longCast(Object)
+  take one (run: (int c) 97, (long c) 97, (double c) throws).
+- Util.hasheq returns int; `hash` an Integer (run: (hash 2) -971005196, (class (hash 2)) Integer).
+- LispReader's errors are exceptions (RuntimeException, NumberFormatException, IllegalArgumentException), ex-data
+  nil (run). floatPat has decimal digits only: 0x10M invalid (run).
+- Numbers.unchecked_int_*(int, int) with HostExpr.emitUnboxArg's checkcast Number + RT.intCast (run, incl. \a,
+  "1", nil, 1.5, 3/2, 1N, 1.5M, ##NaN, 3.0E9 operands); Numbers.unchecked_add/minus/multiply(Object...) via
+  ops(x).combine(ops(y)) (clojure-ref Numbers.java 1854-1876); Numbers.rationalize (Numbers.java 342-356) with
+  BigDecimal.valueOf (run on 11,480 doubles).
+- String.toUpperCase/toLowerCase and ConditionalSpecialCasing's final sigma: read from JDK 23's behavior
+  (Probe.java, Sig.java, Verify.java).
+(8) Search runs (exact bounds):
+- R60: every scalar value (1,112,064) upper and lower: complete. 8 contexts x every scalar value (8,896,512):
+  complete. Random texts: stopped at 1,000,000 (seed 20261126).
+- U74: 10,000 random double bit patterns (seed 20261126) + 1,266 powers of ten and 2.5 x powers of ten + 199
+  subnormals + 23 chosen, 18 BigDecimals, 9 int rows: complete over that list.
+(9) Theorems: none.
+(10) Library gaps: none.
+
+
+(11) Fixes written
+------------------
+
+-- V64c (fixes/V64c.diff; variant .r8-scratch/fix/V64c-combined.diff) -----------------------------------
+Files: include/cpp/jank/runtime/core/math.hpp, include/cpp/jank/runtime/visit.hpp.
+Change:
+- math.hpp primitive_number (28-29) excludes `char`, so every two-operand template sends a char to its
+  `!valid_boxed_math` branch (throws) and inc/dec/abs/is_zero/to_real/tan/sqrt likewise;
+- to_int (1411) keeps a char branch first (RT.intCast(char)): `(int (aget (char-array "a") 0))` stays 97;
+- mul's and pow's primitive-R overloads get R33a's two `else`s (without them mul(char, int) would not compile:
+  a throw branch and `l * r` deduce two return types);
+- visit.hpp visit_number_like (507): "not a number: <x>" is thrown as a string object, not a
+  std::runtime_error, so a boxed character (or bool) through a fn reaches `thrown?` (V7's class, now an
+  object). visit.hpp includes core/make_box.hpp (no cycle: make_box's headers don't include visit.hpp).
+Variant: the combined math.hpp already excludes bool (R33a) and has the `else`s; it excludes bool and char
+  (`jtl::is_any_same<T, bool, char>`) and adds the to_int branch; visit.hpp's hunk is the same.
+Tests that should pass:
+- with V64c alone: the fn paths g335 g363 g377 g401 g443 (char) and g348 g426 (bool: "not a number: false"),
+  vF1;
+- with V64c and R33a/R33b (the combined tree): also x24c, v64 (all three assertions), g333 g334 g361 g362 g375
+  g376 g399 g400 g441 g442, vF3; controls vF2, x15/x15b (P7-1's char checks stay first in abs and is_zero and
+  agree with the new rule: the same messages).
+Still failing alone: every inlined/let char test (the template's throw is R33b's std::runtime_error -> object).
+Decision on the object throw: yes. Every caller of the throwing visit_number_like is a Clojure math entry point
+  where Clojure throws ClassCastException: math.hpp's object branches (add sub mul div lt lte min max pow inc dec
+  abs is_zero), math.cpp (promoting_add/sub/mul, rem, quot, unchecked_inc, promoting_inc/dec, is_zero, is_pos,
+  is_neg, is_equiv, number, is_nan, is_infinite) and ratio.cpp compare. The other compare()s and is_number use
+  the overload with their own else (unchanged). Every catch site that can see these (util/scope_exit.cpp, core.cpp
+  future, delay.cpp, context.cpp load_module, the analyzer's macroexpansion try_catch, the jit suite runner)
+  catches object_ref beside std::exception; none relies on std::runtime_error (grep of every `catch(`).
+Read-checked: primitive_number is used only in math.hpp; L is deduced by value, so aget's char& gives char;
+  `widen`/`checked_add` (combined) are reached only from primitive branches; no jank source or suite file does
+  arithmetic on a native char (test/jank/cpp/try/pass-catch-cpp-primitives compares a char with `=`). `long` and
+  `double` are defns (boxed character: to_integer 97; to_real: object::to_real's error, unchanged).
+A build must check: the JIT instantiates the char throw branches (the TU compiles here); the suite.
+
+-- V51 (fixes/V51.diff; applies to the combined tree unchanged) ---------------------------------------------
+Files: include/cpp/jank/runtime/core.hpp, src/cpp/jank/runtime/core.cpp, src/cpp/jank/c_api.cpp.
+Change: runtime::to_hash (core.cpp 623-626, core.hpp 87) returns i32 (the u32 bits read as signed: Clojure's
+  int); `hash` (core.jank 2478-2486, inlined and the defn) gives it on every path: inlined a native int, let-bound
+  an int local, through the fn a boxed long. c_api.cpp: to_case_integer_or_hash casts hash::integer of a long
+  past the int range to i32, and gets runtime::to_hash's i32 for other values, so the run-time case key is the
+  signed hash case-hash computes at macroexpansion; jank_to_hash keeps its C API type (cast back to jank_uhash).
+Tests that should pass: v51 (3 assertions), v51b, g358 g359 g360 g414 g415 g416 g417 g427 g428 g429 g430, vF4;
+  v83 with V83a+V83b (as round 7 said); v52 too (the `if`'s branches are both int now).
+Read-checked:
+- case (stock and the combined S40/X1/U75 core.jank 4337-4560): case-hash `(if (i32? x) (int x) (hash x))`
+  hashes with `hash`, the switch with to_case_integer_or_hash; both signed now. The hash is an i32, so case-hash
+  is idempotent (X1's note). Shift/mask: `(x >> s) & m` on the sign-extended i64 equals Java's int shift for
+  s <= 30, m < 2^13 (bits above 31 copy the sign bit in both). fits-table?/maybe-min-hash may choose other
+  shift/masks than before, chosen from the same signed values on both sides.
+- Unchanged: object to_hash (uhash) and everything internal (CHAMP, sets, maps, hash::combine, ordered/unordered
+  hashes); mix-collection-hash/hash-ordered-coll/hash-unordered-coll are unported. nREPL inspect.jank's
+  hash->hex-string converts the boxed hash to `unsigned int` (convert<T>::from_object static_cast): same hex.
+- Suite: test/jank/form/case/* (pass-string, -keywords, -map, -set, -symbol, -vector, -big-integer, ...):
+  consistent both sides; case-star/* use explicit keys. No other caller of runtime::to_hash.
+A build must check: every `case` in core.jank and the suite (core.jank recompiles its case expansions).
+
+-- V7r (fixes/V7r.diff; applies to the combined tree unchanged) ---------------------------------------------
+File: src/cpp/jank/runtime/core.cpp read_string 1285-1296 (clojure.core/read-string's C++).
+Change: a lex/parse error (error_ref, from expect_ok in context::read_string 263-279) is rethrown as an
+  exception_info object: ex-message the error's message, ex-data nil (Clojure's RuntimeException has none), the
+  error attached (exception_info::error), so printing it still gives jank's full report. A std::exception from
+  the reader (boost's number parsing, the reader-option checks, V17's EOF) likewise.
+Tests that should pass: v07 (vb-kind :object); x27 (with R4: "1/-2" is a read error); s17 (with S17); a13 (with
+  D12a/D12b's duplicate check); vF6; vF7/vF7b (with S17h).
+Not covered, and why: v07b (eval's analysis error, context_dynamic.cpp eval 220-226) and v07c (require's load
+  error, context.cpp load_module 324-354): see (5).
+jank's own code that relies on error_ref from reading: none goes through clojure.core/read-string. The REPL
+  (terminal_repl_client.cpp), the nREPL (eval_string), eval_file and the C API's jank_read_string call
+  context::read_string or the parser directly (unchanged). Of the 551 suite files none calls read-string;
+  the fail- reader files (reader-macro/*/fail-*, syntax-quote/fail-*) are read by eval_file (unchanged; the
+  runner accepts error_ref, std::exception and objects for fail- files anyway). test/bash/error-reporting/src/
+  eval reads a valid string; its analyze error comes from eval (unchanged). clojure-test-suite's read-string
+  namespace is commented out.
+A build must check: v07, x27, s17, a13 (each needs its partner fix); that a top-level uncaught read-string
+  error still prints a report (exception_info::to_string uses the attached error).
+
+-- S17h (fixes/S17h.diff; applies to the combined tree unchanged) -------------------------------------------
+File: src/cpp/jank/read/lex.cpp, the `M` branch of processor::next() (986-1010).
+Change: an `M` after a hex literal (radix 16, set only by a 0x/0X prefix, 691-723) is lex_invalid_number
+  ("A hexadecimal number literal cannot end in `M`."): 0x10M, 0x1e5M, -0x10M, 0X10M are read errors (Clojure:
+  NumberFormatException "Invalid number: ..."), not 10M and 100000M. Placed before the found_N check, so it
+  doesn't touch R7's radix-8 lines (combined tree) or S17's exponent loop.
+Tests that should pass: vF7, vF7b, each a [fn] read-string at run time, with V7r (thrown? sees the object).
+  Without V7r the read error is an error_ref and the test errors ("uncaught jank error").
+Read-checked: 0x10N stays 16N (N branch); radix-r literals never reach this branch (R6's `!found_r`); 0x1.5M
+  was already an invalid-digit error; test/cpp/jank/read/lex.cpp and parse.cpp have no hex M literal.
+A build must check: the lexer unit tests.
+
+-- R60 (fixes/R60.diff; variant .r8-scratch/fix/R60-combined.diff) ----------------------------------------
+Files: src/cpp/jank/util/string.cpp, src/jank/clojure/string.jank.
+Change:
+- to_uppercase/to_lowercase (14-36) map each code point by tables generated from Java 23 (the full mappings:
+  102 upper-case entries of 2-3 code points, U+0130's lower case, every one-to-one mapping as runs), and
+  lower-case U+03A3 to ς when Java's word-based final-sigma rule holds (per-code-point classes from Java's
+  word iterator), else σ. The locale's towupper/towlower is no longer used. Decoding and encoding keep
+  wstring_convert, so invalid UTF-8 throws as before (V67 unchanged).
+- capitalize (54-70) is Clojure's: the first character upper-cased (ß -> SS), the rest lower-cased on its own
+  (string.jank capitalize no longer lower-cases the whole text first), a supplementary first character left
+  as it is (Clojure's (subs s 0 1) is half of it).
+Variant: the combined tree's capitalize is R61a's; R60 replaces it (R60 supersedes R61a, as R4 did R3).
+Tests that should pass: x18, x18b-x18h (x18h: R60's capitalize), b09 (both), b10 (R61a's test: (capitalize
+  "Éa")), vF10, vF10b, vF10c; control x18i. Round 7 refused a fix without Final_Sigma; this one carries the JDK's
+  rule as measured (results/r8-fix-r60-check.txt): exact for every code point alone and every 3-4 code point
+  context tried; 81 of 1,000,000 random texts differ (supplementary characters with U+0345, the danda).
+Read-checked: util::to_lowercase/to_uppercase/capitalize are called only from string.jank (number_to_ordinal's
+  capitalize call discards its result); no suite file or other jank source calls upper-case/lower-case/
+  capitalize. jank's test/bash/clojure-test-suite runs clojure.string-test.capitalize/lower-case/upper-case, but
+  its submodule sources are not in upstream-r5: a build must run them.
+A build must check: those three namespaces; the tests above; the binary size (about 1,000 table rows).
+
+-- U74 (fixes/U74.diff; variant .r8-scratch/fix/U74-combined.diff) ----------------------------------------
+Files: include/cpp/jank/runtime/core/math.hpp (declarations), src/cpp/jank/runtime/core/math.cpp (after
+  unchecked_inc), src/jank/clojure/core.jank (1835-1938).
+Change: the defns call new runtime functions:
+- unchecked-add-int, -subtract-int, -multiply-int, -negate-int, -inc-int, -dec-int, -divide-int, -remainder-int
+  -> unchecked_int_*: each operand cast as Clojure casts it (checkcast Number, then RT.intCast: a long outside
+  the int range throws "integer overflow"; a double (NaN 0), BigDecimal, ratio or BigInt truncated first; a
+  character, nil or other object throws), the result wrapped at 32 bits (Java's int + - * / %, MIN/-1 wrapping,
+  a zero divisor throwing "Divide by zero");
+- unchecked-add, -subtract, -multiply, -negate, -dec -> unchecked_add/sub/mul/negate/dec: two longs wrap at 64
+  bits; otherwise the existing add/sub/mul/dec (Clojure's other Ops); negate of a double is -x (-0.0);
+- rationalize -> rationalize: a double through Java's Double.toString digits (BigDecimal.valueOf: the shortest
+  decimal, or Java's two-digit rule: 4.9E-324 -> 49/10^325), a BigDecimal through its stored digits
+  (str(0, scientific)); the reduced fraction, a BigInt when whole (Numbers.divide); longs, BigInts, ratios and nil
+  returned as they are; NaN/Infinity throw (BigDecimal.valueOf's NumberFormatException).
+Variant: the combined math.cpp has other includes at the top; the combined core.jank's unchecked-inc-int is
+  U72's (unchecked_inc, a long): U74 supersedes U72 (U72.diff is that one hunk; areduce, its user, works with
+  either: indices stay below 2^31).
+Why u74 still failed with the patch: round 6's U74b-a..d port reversible?, indexed?, special-symbol? and
+  into-array (u74b's), not unchecked-add/-dec/-negate/-multiply, which u74 calls; they stayed "TODO: port".
+Tests that should pass: x10, x10b, u74 (all four), vF8-vF8i, vF9-vF9d.
+Read-checked: no new symbol in core.jank (fwdref new 0, stock and combined); the names don't clash with
+  anything in jank::runtime; is_integer/is_real/to_i64/to_f64/is_number are declared in math.hpp; the int
+  results are i32, boxed by the defns. No suite file or other jank source calls the ported functions.
+A build must check: the tests above; clojure-test-suite's rationalize namespace (commented out in
+  run_clojure_test_suite.cljc: "TODO: port rationalize") could be enabled.
+
+Merge notes (for fixes/combined): V51, V7r, S17h apply as they are. Use V64c-combined, U74-combined,
+R60-combined in the merged tree; drop U72 (superseded by U74) and R61a (superseded by R60). The six stack in
+that order with no conflict (.r8-scratch/fix/stack.sh). V51 and V7r edit different functions of core.cpp;
+V64c and U74 different parts of math.hpp.
+
+
+(12) Model errors of earlier rounds corrected
+---------------------------------------------
+- Round 7 (W7-a, (11)): "Final_Sigma needs Unicode properties libc doesn't provide". JDK 23 doesn't use
+  Unicode's Final_Sigma (Cased/Case_Ignorable): it uses its word BreakIterator: "A1Σ" -> "a1ς", "A:Σ" -> "a:σ",
+  where Unicode's rule gives σ and ς. A complete table therefore needs the JDK's word classes, generated here.
+- Round 7's X18 entry ("the full JDK 23 table: 102 upper-case entries, 1 lower-case entry, and Final_Sigma"):
+  the one-to-one mappings matter too once towupper is gone; they are 1,423 upper and 1,432 lower code points.
+- Round 6's U74 entry ("its evidence was another test's") and REPORT-6's U74b fixes: u74 needs the long
+  unchecked ops, which no round-6 diff ported.
+
+
+Files
+-----
+- fixes/V64c.diff, V51.diff, V7r.diff, S17h.diff, R60.diff, U74.diff
+- .r8-scratch/fix/V64c-combined.diff, U74-combined.diff, R60-combined.diff
+- .r8-scratch/fix/tests.jank (24 deftests); clj/jank_lean/fix_r8_test.clj (translation); clj/probe1.clj (+ .out)
+- .r8-scratch/fix/r60/: Probe.java, Gen.java, Sig.java, mktables.py, Verify.java, verify.cpp, r60diff.py,
+  tables.txt, sig.txt, tables.inc, casecode.inc(.head/.tail), ver-*.txt
+- .r8-scratch/fix/u74/: helpers.inc, check.cpp, gen.clj
+- .r8-scratch/fix/: syn1.sh, tu1.sh, combwork.sh, mkcomb.sh, stack.sh, syn-*.txt, tu-V64c.txt, stack.txt,
+  cc/tu-char.cpp, comb/<id>/ (the combined-tree work copies); .r8-scratch/work/<id>/ (stock work copies)
+- results/r8-fix-report.txt, r8-fix-clj.txt, r8-fix-r60-check.txt

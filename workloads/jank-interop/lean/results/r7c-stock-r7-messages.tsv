@@ -1,0 +1,118 @@
+x17b-loop-counter-past-int-max	exit 1	message=" expected: (= :done (loop [i 0] (cond (neg? i) i (&lt; i 2147483649) (recur (inc i)) :else :done))) actual: (not (= :done -2147483648))"
+
+x17-dotimes-counts-past-int-max	exit 1	message=" expected: (= :done (try (dotimes [i 2147483649] (when (neg? i) (throw (ex-info &quot;wrapped&quot; {:i i})))) :done (catch cpp/jank.runtime.object_ref e (:i (ex-data e))))) actual: (not (= :done -2147483648))"
+
+x10b-rationalize-of-a-bigdecimal	exit 1	message=" expected: (= 3/2 (rationalize 1.5M)) actual: #error {  :cause &quot;TODO: port rationalize&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port rationalize&quot;, :data {}}]  :trac"
+
+x10-unchecked-int-arithmetic-wraps-at-32-bits	exit 1	message=" expected: (= -2147483648 (unchecked-add-int 2147483647 1)) actual: #error {  :cause &quot;TODO: port unchecked-add-int&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port unc"
+
+x11-dividing-by-a-non-terminating-ratio-throws	exit 1	message=" expected: (thrown? (/ 1.0M 1/3)) actual: nil"
+
+x12-bigdecimal-divided-by-a-double-is-a-double	exit 1	message=" expected: (= 10.0 (/ 1.0M 0.1)) actual: (not (= 10.0 9.999999999999999444888487687421760603063276150361782076232622353718522343744992480012315564097820085747405410968586495099M))"
+
+x13b-control-bit-test-past-63-through-fn-values	exit 0	
+x13c-control-unsigned-shift-by-64	exit 0	
+x13-control-shift-count-past-63-is-masked	exit 0	
+x13d-control-negative-shift-count	exit 0	
+x14b-control-max-with-nan-first-through-a-fn	exit 0	
+x14-control-min-with-nan-first-literals	exit 0	
+x15b-abs-of-a-char-array-element-throws	exit 1	message=" expected: (thrown? (abs (aget (char-array &quot;a&quot;) 0))) actual: nil"
+
+x15-zero-of-a-char-array-element-throws	exit 1	message=" expected: (thrown? (zero? (aget (char-array 1) 0))) actual: nil"
+
+x16e-jank-math-sqrt-of-a-negative-is-nan	exit 1	message="uncaught jank error: The symbol `native/raw` could not be resolved."
+
+x16f-control-a-nan-operand-keeps-its-sign	exit 0	
+x18b-upper-case-of-n-after-an-apostrophe	exit 1	message=" expected: (= &quot;ʼN&quot; (string/upper-case (identity &quot;ŉ&quot;))) actual: (not (= &quot;ʼN&quot; &quot;ŉ&quot;))"
+
+x18c-upper-case-of-j-with-caron	exit 1	message=" expected: (= &quot;J̌&quot; (string/upper-case (identity &quot;ǰ&quot;))) actual: (not (= &quot;J̌&quot; &quot;ǰ&quot;))"
+
+x18d-upper-case-of-a-ligature	exit 1	message=" expected: (= &quot;FI&quot; (string/upper-case (identity &quot;ﬁ&quot;))) actual: (not (= &quot;FI&quot; &quot;ﬁ&quot;))"
+
+x18e-upper-case-of-alpha-with-ypogegrammeni	exit 1	message=" expected: (= &quot;ΑΙ&quot; (string/upper-case (identity &quot;ᾳ&quot;))) actual: (not (= &quot;ΑΙ&quot; &quot;ᾼ&quot;))"
+
+x18f-lower-case-of-capital-i-with-dot	exit 1	message=" expected: (= &quot;i̇&quot; (string/lower-case (identity &quot;İ&quot;))) actual: (not (= &quot;i̇&quot; &quot;i&quot;))"
+
+x18g-lower-case-of-a-final-sigma	exit 1	message=" expected: (= &quot;σας&quot; (string/lower-case (identity &quot;ΣΑΣ&quot;))) actual: (not (= &quot;σας&quot; &quot;σασ&quot;))"
+
+x18h-capitalize-of-sharp-s	exit 1	message=" expected: (= &quot;SSa&quot; (string/capitalize (identity &quot;ßa&quot;))) actual: (not (= &quot;SSa&quot; &quot;ßa&quot;))"
+
+x18i-control-upper-case-with-a-simple-mapping	exit 0	
+x18-upper-case-of-sharp-s	exit 1	message=" expected: (= &quot;SS&quot; (string/upper-case (identity &quot;ß&quot;))) actual: (not (= &quot;SS&quot; &quot;ß&quot;))"
+
+x19b-replace-with-a-fn-and-an-empty-pattern-keeps-characters	exit 1	
+x19-replace-with-an-empty-pattern-keeps-characters	exit 1	
+x1b-case-on-two-tests-of-one-hash-the-other	exit 1	message=" expected: (= :set ((fn [x] (case x {} :map #{} :set :none)) #{})) actual: (not (= :set :none))"
+
+x1-case-on-two-tests-of-one-hash	exit 1	message=" expected: (= :map ((fn [x] (case x {} :map #{} :set :none)) {})) actual: (not (= :map :none))"
+
+x1c-case-with-a-collision-checks-the-other-tests	exit 1	message=" expected: (= :none ((fn [x] (case x {} :map #{} :set 4294967296 :big :none)) 987256456)) actual: (not (= :none :big))"
+
+x1d-control-case-without-a-collision-checks-its-test	exit 0	
+x20b-rem-by-zero-through-a-fn-throws-an-object	exit 1	message="uncaught C++ exception: Division by zero is not permitted."
+
+x20c-nth-of-a-string-past-its-end-throws-an-object	exit 1	message="uncaught C++ exception: The index `1` is out of bounds for this `persistent_string`."
+
+x20d-subs-past-the-end-throws-an-object	exit 1	message="uncaught jank error: end index 1 is less than start 2"
+
+x20e-control-quot-by-zero-throws-an-object	exit 0	
+x20-rem-by-zero-throws-an-object	exit 1	message="uncaught C++ exception: Division by zero is not permitted."
+
+x21b-an-unrelated-element-hides-an-equal-map-seq	exit 1	message=" expected: (contains? (conj (hash-set e) p) ms) actual: (not (contains? #{13 [[:a 1]]} ([:a 1])))"
+
+x21-control-alone-a-map-seq-finds-its-equal-vector	exit 0	
+x21c-the-same-in-a-hash-map	exit 1	message=" expected: (= :a (get (hash-map e :a p :b) ms)) actual: (not (= :a nil))"
+
+x22b-epsilon-equal-bigdecs-merge-in-a-hash-set	exit 1	message=" expected: (= 2 (count (hash-set (id 1.0M) (id 1.0000000000000000023M)))) actual: (not (= 2 1))"
+
+x22c-a-hash-set-finds-an-epsilon-equal-bigdec	exit 1	message=" expected: (not (contains? (hash-set (id 1.0M)) (id 1.0000000000000000023M))) actual: (not (not true))"
+
+x22-control-bigdecs-whose-hashes-differ-at-once-stay-apart	exit 0	
+x23-bigdec-of-a-long-compares-exactly	exit 1	message=" expected: (zero? (compare 9007199254740993.0M (bigdec (identity 9007199254740993)))) actual: (not (zero? 1))"
+
+x24-a-native-bool-plus-one-throws	exit 1	message=" expected: (thrown? (+ (nil? nil) 1)) actual: nil"
+
+x24b-inc-of-a-native-bool-throws	exit 1	message=" expected: (thrown? (inc (empty? []))) actual: nil"
+
+x24c-a-native-char-plus-one-throws	exit 1	message=" expected: (thrown? (+ (aget (char-array &quot;a&quot;) 0) 1)) actual: nil"
+
+x25b-char-of-a-supplementary-code-point-throws	exit 1	message=" expected: (thrown? (char (identity 128512))) actual: nil"
+
+x25-char-of-a-negative-long-throws	exit 1	message=" expected: (thrown? (char (identity -4294967231))) actual: nil"
+
+x26b-qualified-symbol-hash-bits	exit 1	message=" expected: (= 4172306842 (bit-and (hash (symbol (identity &quot;b&quot;) &quot;c&quot;)) 4294967295)) actual: (not (= 4172306842 1685731265))"
+
+x26-keyword-hash-bits	exit 1	message=" expected: (= 2531775217 (bit-and (hash (keyword (identity &quot;c&quot;))) 4294967295)) actual: (not (= 2531775217 1458033393))"
+
+x27-a-ratio-with-a-signed-denominator-is-not-read	exit 1	message=" expected: (thrown? (read-string (identity &quot;1/-2&quot;))) actual: nil"
+
+x2b-bigdecimal-zero-over-zero-throws	exit 1	message=" expected: (thrown? ((fn [a b] (/ a b)) 0.0M 0.0M)) actual: nil"
+
+x2-bigdecimal-division-by-zero-throws	exit 1	message=" expected: (thrown? (/ 1.0M 0.0M)) actual: nil"
+
+x2c-bigdecimal-divided-by-a-zero-int-throws	exit 1	message=" expected: (thrown? (/ 1.5M 0)) actual: nil"
+
+x3-if-of-let-bound-literals-keeps-each-value	exit 1	message=" expected: (= 1 (if (pos? a) a b)) actual: (not (= 1 1.0))"
+
+x4-loop-local-takes-a-let-bound-double	exit 1	message=" expected: (= 1.5 (loop [x 0 n 0] (let [d 1.5] (if (= n 1) x (recur d 1))))) actual: (not (= 1.5 1))"
+
+x5b-hash-of-a-bigdecimal-through-a-fn-value	exit 1	message=" expected: (= 31 (apply hash [1.0M])) actual: (not (= 31 3307139568))"
+
+x5-hash-of-a-bigdecimal	exit 1	message=" expected: (= 466 (hash 1.5M)) actual: (not (= 466 154574889))"
+
+x6b-math-context-is-defined	exit 1	message="uncaught jank error: The symbol `*math-context*` could not be resolved."
+
+x6-with-precision-rounds-bigdecimal-division	exit 1	message="uncaught jank error: #error {  :cause &quot;TODO: port with-precision&quot;  :data {}  :via  [{:at [&quot;jank::runtime::ex_info&quot; &quot;jank&quot; 1], :message &quot;TODO: port with-precision&quot;, :data {}}]  :trace  [[&quot;jank::runtime"
+
+x7b-bigdecimal-sum-keeps-the-larger-scale	exit 1	message=" expected: (= &quot;3.00&quot; (str (+ 1.25M 1.75M))) actual: (not (= &quot;3.00&quot; &quot;3.0&quot;))"
+
+x7-bigdecimal-quotient-keeps-the-preferred-scale	exit 1	message=" expected: (= &quot;2&quot; (str (/ 6.0M 3.0M))) actual: (not (= &quot;2&quot; &quot;1.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999&quot;))"
+
+x7c-bigdecimal-quotient-with-a-negative-scale	exit 1	message=" expected: (= &quot;2E+1&quot; (str (/ 60.0M 3.0M))) actual: (not (= &quot;2E+1&quot; &quot;19.999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999&quot;))"
+
+x7d-bigdecimal-quotient-by-a-power-of-two-keeps-the-scale	exit 1	message=" expected: (= &quot;0.250&quot; (str (/ 1.0M 4))) actual: (not (= &quot;0.250&quot; &quot;0.25&quot;))"
+
+x8-exact-bigdecimal-quotient-keeps-every-digit	exit 0	
+x9b-control-quot-of-whole-bigdecimals-prints-no-point	exit 0	
+x9-quot-of-bigdecimals-is-a-bigdecimal	exit 1	message=" expected: (= &quot;3.0M&quot; (pr-str (quot 7.5M 2))) actual: (not (= &quot;3.0M&quot; &quot;3&quot;))"
+

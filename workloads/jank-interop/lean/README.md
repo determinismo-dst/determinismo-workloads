@@ -47,6 +47,17 @@ on the real jank.
   [tests/jank_lean/deviations_r7_test.jank](tests/jank_lean/deviations_r7_test.jank) (and its hangs file),
   [tests/jank_lean/generated_r7_test.jank](tests/jank_lean/generated_r7_test.jank); what to check on the next
   build of the combined patch: [fixes/combined/CHECK.md](fixes/combined/CHECK.md).
+- **Round 8** (main 94d32623): round 7's patch on the real jank reconciled with every prediction (the
+  build failure, `long` used before its definition, folded into S40 with a checker for the whole class;
+  each "should pass", each fail/error change, the 169 generated tests still failing, and x8's stock
+  model, now boost's cpp_dec_float<100> replicated limb by limb with S4's exact digit rule); BigDecimal
+  as Java's own (unscaled integer and scale) with `with-precision`; Java's case mapping in full; local
+  fixes for chars and bools as numbers, the signed hash, read errors as exceptions, unchecked int ops and
+  `rationalize`, `rem` of doubles, min/max, BigInt-double comparison; CHAMP's law 1 for the transient
+  steps and transients against persistent steps node by node (proved); the nREPL's T3 decided under
+  every schedule by an exact graph, diverging evals, interrupt and stdin inside World T, and the sdk's
+  walk proved. [REPORT-8.md](REPORT-8.md). Tests:
+  [tests/jank_lean/deviations_r8_test.jank](tests/jank_lean/deviations_r8_test.jank).
 
 ## What the real jank said
 
@@ -107,19 +118,10 @@ on the real jank.
   Clojure 1.12.3. With fixes/combined/all.diff applied, 182 of 358 replica tests passed (16 on stock), with
   three regressions that round 7 traces and fixes: deviations_main_test no longer loaded (S40), s02 failed
   (D8), and 5 of jank's 551 pass- files failed (R23, R24, R26, U75).
-- **Round 7**: on jank 7135b7708's tree (Linux x86-64, each test in its own process; the generated file in
-  chunks of 40), stock and with round 7's fixes/combined/all.diff.
-  - Stock: 70 of round 7's 71 tests behaved as predicted. The exception is x8, which passes because
-    D8's approximate `=` hides S4's cut. Among them, S2 is confirmed (`(/ 6.0M 3.0M)` prints 1.99…9,
-    120 nines), so round 3's refutation was wrong. The new NaN paths segfault on x86-64 (D9).
-  - The generated differential test: all 639 verdicts as predicted (340 pass, 270 fail, 29 throw),
-    and each of the 197 failures that prints a value shows the predicted jank value.
-  - The patched build first stopped compiling core.jank: S40's `dotimes` casts with `long`, defined
-    3,000 lines later. `long` was moved above it ([fixes/combined/S40-order.diff](fixes/combined/S40-order.diff)).
-  - With the patch, 737 of 1,068 replica and generated tests passed (370 on stock), 369 flipping to
-    passing. Two flipped to failing: x9b, a control predicted to fail with D4, and x8. jank's suite
-    passed 549 of 551 on both builds, the same two files failing, so round 6's three regressions are
-    gone.
+- **Round 7**: with round 7's combined patch (after moving `long` above `dotimes`), 737 of 1,068 replica
+  and generated tests passed (370 on stock); jank's suite 549 of 551 on stock and patched alike. All 639
+  generated verdicts on stock were as predicted; round 7's 71 new tests as predicted on stock except x8.
+  Round 8 reconciles every difference (REPORT-8 section 1).
 
 The confirmed findings, each with a minimal example and jank's and Clojure's results, are in
 jankifier's [specs/unreported.md](https://github.com/pfeodrippe/jankifier/blob/main/specs/unreported.md#found-by-a-lean-replica-of-jank).
@@ -140,6 +142,7 @@ lake exe jank5-errors        # round 5's: jank5-<area> (native, errors, codegen,
                              # interop, core, coord)
 lake exe jank6-coord         # round 6's: jank6-<area> (num, native, str, champ, nrepl, coord)
 lake exe jank7-coord         # round 7's: jank7-<area> (num, native, champ, gen, coord)
+lake exe jank8-coord         # round 8's: jank8-<area> (fix, dec, boost, champ, nrepl, coord)
 ```
 
 `./fetch-sources.sh` puts the sources the replica translates next to it, at the commits it was

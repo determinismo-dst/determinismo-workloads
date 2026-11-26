@@ -1,0 +1,68 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -25,8 +25,12 @@
+ 
+   namespace detail
+   {
++    /* `char` (a char array's element) is integral to C++ but not a number to Clojure:
++     * `(+ (aget (char-array "a") 0) 1)` throws (a Character is no Number). `to_int` still
++     * takes one, as RT.intCast(char) does. */
+     template <typename T>
+-    concept primitive_number = (std::is_integral_v<T> || std::is_floating_point_v<T>);
++    concept primitive_number
++      = ((std::is_integral_v<T> && !jtl::is_same<T, char>) || std::is_floating_point_v<T>);
+ 
+     template <typename T>
+     concept typed_object = (behavior::object_like<typename T::value_type>);
+@@ -492,7 +496,7 @@
+       };
+       return object_ref{};
+     }
+-    if constexpr(jtl::is_same<L, object_ref>)
++    else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return visit_number_like(
+         [](auto const typed_l, R const r) { return make_box(typed_l->data * r).erase(); },
+@@ -1152,7 +1156,7 @@
+       };
+       return object_ref{};
+     }
+-    if constexpr(jtl::is_same<L, object_ref>)
++    else if constexpr(jtl::is_same<L, object_ref>)
+     {
+       return make_box(std::pow(l.to_real(), static_cast<f64>(r))).erase();
+     }
+@@ -1410,7 +1414,12 @@
+   [[gnu::always_inline, gnu::flatten, gnu::hot]]
+   i64 to_int(L const l)
+   {
+-    if constexpr(detail::primitive_number<L>)
++    /* RT.intCast(char): a char's code, though it is no number to arithmetic. */
++    if constexpr(jtl::is_same<L, char>)
++    {
++      return static_cast<i64>(l);
++    }
++    else if constexpr(detail::primitive_number<L>)
+     {
+       if(std::isnan(l))
+       {
+--- a/compiler+runtime/include/cpp/jank/runtime/visit.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/visit.hpp
+@@ -38,6 +38,7 @@
+ #include <jank/runtime/obj/range.hpp>
+ #include <jank/runtime/obj/integer_range.hpp>
+ #include <jank/runtime/obj/repeat.hpp>
++#include <jank/runtime/core/make_box.hpp>
+ #include <jank/runtime/obj/ratio.hpp>
+ #include <jank/runtime/obj/jit_function.hpp>
+ #include <jank/runtime/obj/jit_variadic_function.hpp>
+@@ -504,7 +505,8 @@
+     return visit_number_like(
+       fn,
+       [=]() -> decltype(fn(obj::integer_ref{}, std::forward<Args>(args)...)) {
+-        throw std::runtime_error{ "not a number: " + erased.to_code_string() };
++        /* Thrown as an object, as Clojure's ClassCastException is one any catch sees. */
++        throw make_box<obj::persistent_string>("not a number: " + erased.to_code_string()).erase();
+       },
+       erased,
+       std::forward<Args>(args)...);

@@ -1,0 +1,277 @@
+Round 8, area D: BigDecimal scale (R72 / X7) and with-precision (X6)
+=====================================================================
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). Paths are under
+upstream-r5/compiler+runtime/. Clojure is 1.12.3 (JDK 23), run through the job slots. jank was not built
+or run; every jank value below is a hypothesis from boost (stock) or from the fix's own code run standalone.
+
+Representation chosen: Java's own. `native_big_decimal` (include/cpp/jank/type.hpp 35-37, today boost's
+cpp_dec_float<100>) becomes a class holding an unscaled `native_big_integer` (boost cpp_int, jank's BigInt
+type) and an `i32` scale, with Java's BigDecimal arithmetic. Why not a scale field beside cpp_dec_float:
+- the scale of a result is a function of exact digits (an exact quotient's least scale, a rounding's kept
+  digits, a remainder's scale); a 128-digit approximation cannot carry them (1E+130M + 1 has scale 0 and
+  131 digits), so S4/S7/X8 and the scale would keep fighting each other;
+- printing (BigDecimal.toString), hashing (hasheq), = and compare all want the exact (unscaled, scale);
+- with-precision (X6) rounds the exact result to p digits by a RoundingMode: impossible to do right after
+  a cut at 121-128 digits;
+- cpp_int is already jank's BigInt (same allocation behaviour: pointer_free object, limbs on the C++ heap).
+The class supplies boost's interface where jank used it (str, convert_to<f64|integral|cpp_int>, is_zero,
+compare, implicit construction from integers and doubles, explicit from text and from a BigInt) and
+operators with every operand type math.hpp's templates meet (BigDecimal, every integral type, every
+floating type, BigInt in jank::runtime, ratio_data in ratio.cpp), so math.hpp needs no change for R72.
+The operators read the current MathContext (R72: none, exact; X6: *math-context*).
+
+(1) Deviations
+--------------
+R72 / X7 (known: REPORT-2 R72, REPORT-7 X7), extended to every operator. One cause: cpp_dec_float has no
+scale (type.hpp 35-37) and string_builder.cpp 240-249 prints str() plus ".0". Clojure 1.12.3 / stock /
+combined tree ("patched") / with R72:
+  (str (* 1.5M 2.0M))        "3.00"     / "3.0" / "3.0" / "3.00"   vD1 [literals], vD1b [fn]
+  (str (- 2.50M 0.5M))       "2.00"     / "2.0" / "2.0" / "2.00"   vD2
+  (str 1E+2M)                "1E+2"     / "100.0" / "100.0" / "1E+2"   vD3
+  (str (/ 0M 5.00M))         "0E+2"     / "0.0" / "0.0" / "0E+2"   vD4
+  (str (rem 7.50M 2))        "1.50"     / "1.5" / "1.5" / "1.50"   vD5, vD5b [fn]
+  (pr-str (quot 100M 1.0M))  "1.0E+2M"  / "100" / "100.0M" / R72 alone "100", R72-combined "1.0E+2M"   vD6
+  (str (inc 1.50M))          "2.50"     / "2.5" / "2.5" / "2.50"   vD7
+  (str (abs -1.50M))         "1.50"     / "1.5" / "1.5" / "1.50"   vD8, vD8b [fn]
+  (str (bigdec 1e10))        "1.0E+10"  / "10000000000.0" / "10000000000.0" / alone "10000000000",
+                                          combined "1.0E+10"   vD9
+  (str 1E-7M)                "1E-7"     / "1e-07.0" / "1e-07.0" / "1E-7"   vD10 (S5's notation)
+  (str (+ 1M 1E-130M))       "1." 129 zeros "1" / "1.0" / "1.0" / exact   vD11 (S4)
+  (str (+ 1.50M 1/2))        "2.00"     / "2.0" / "2.0" / "2.00"   vD12
+  (pr-str (quot 1.5M 1/2))   "3M"       / "3" / "3" (D4's ratio branch: a long through doubles) /
+                                          alone "3", combined "3M"   vD13
+  (str (- 1.50M))            "-1.50"    / "-1.5" / "-1.5" / "-1.50"   vD14
+  Existing tests: x7, x7b, x7c, x7d, x9, x9b (deviations_r7), b19 (r2), d07 (main), s04, s05, s07 (r3), x8.
+  Paths: math.hpp add/sub/mul/div object templates (68-406) and their native/object forms, inc/dec
+  (1186-1340), abs (994-1040); math.cpp rem 224-304 (fmod 269-289), quot 321-345, to_big_decimal 794-838;
+  ratio.cpp 12-22 and 535-600; big_decimal.cpp 1-196; string_builder.cpp 240-249. Every literal or fn path
+  reaches the same object templates for a BigDecimal (NumA7-2). Status: known (R72/X7, S4, S5, S7). High.
+
+X6 (known: REPORT-7 X6). with-precision throws "TODO: port with-precision" while expanding (core.jank
+6487-6502); nothing defines *math-context*. Clojure 1.12.3 / stock and patched / with X6:
+  (with-precision 1 :rounding HALF_EVEN (/ 5M 2))   2       / the ex-info / 2        vD20
+  (with-precision 1 :rounding HALF_UP (/ 5M 2))     3       / ex-info / 3            vD20b
+  (with-precision 3 (+ 1.2345M 1M))                 2.23    / ex-info / 2.23         vD21
+  (with-precision 1 (- 1M 0.051M))                  1 (negate rounds first: Numbers.minus)  vD22
+  (with-precision 3 (abs 1.2345M))                  1.23 (abs(mc) rounds a positive value)  vD23
+  (with-precision 2 (bigdec 1/3))                   0.33 (the ratio conversion divides in the context) vD24
+  (some? (with-precision 5 *math-context*))         true                              vD25
+  (with-precision 3 :rounding FLOOR (/ -1M 3))      -0.334                            vD26
+  (with-precision 2 (inc 1.25M))                    2.3                               vD27
+  (with-precision 0 (/ 1M 4))                       0.25 (precision 0 is unlimited)   vD28
+  (with-precision 5 (/ 1M 1/3))                     3.0000                            vD29
+  Existing tests: x6, x6b. All through `ev` (the stock macro throws while expanding). Pairing: X6 needs
+  R72's representation (rounding needs exact digits); fixes/X6.diff contains R72. High.
+
+DEC8-1 (new): unary minus is (- 0 x) (core.jank 1393-1394; `-` inlines only its 2-arity), not
+Numbers.minus(x) = negate(x).
+  (str (- 1E+2M))   Clojure "-1E+2"   jank stock "-100.0", patched "-100.0", with R72 "-100"   vD15, vD15b [fn]
+  (str (- 0.0))     Clojure "-0.0"    jank "0.0" on every version (0 - 0.0 is +0.0)          vD16, vD16b [fn]
+  Path: core.jank 1393-1394 -> math.hpp sub(int 0, object): scale max(0, s) for a decimal; IEEE 0 - 0.0.
+  Shared cause with round 6's N1 overflow case ((- x) of Long/MIN_VALUE, results/r6-num-report.txt 33),
+  which named the definition; the scale and the -0.0 are not in any earlier report or test. Status: new
+  (two values, one design choice). Confidence: high for -0.0 (IEEE), high for the scale with R72 (0 + -x at
+  scale max(0, -2) = 0). No fix written (not assigned): `([x] (cpp/jank.runtime.mul -1 x))` would give
+  negate's value, scale and sign of zero for every number type (-1 * MIN overflows as LG2's sub does).
+
+Controls (predicted to pass on stock, patched and with R72): vD17 (str (+ 1.5M 1.5M)) "3.0", vD17b
+(= 1.50M 1.5M), vD17c (= (hash 1.50M) (hash 1.5M)), vD18 (str (max 0 1.5M)) "1.5" (see (12): the
+combined tree's min/max with a native number and a typed big_decimal_ref does not instantiate).
+
+(2) Proofs (Jank/R8/Dec/Theorems.lean; axioms in results/r8-dec-axioms.txt)
+---------------------------------------------------------------------------
+For every input:
+- roundQ_cases: round_quotient(n, d) is n/d or n/d + 1; roundQ_exact: exact division returns n/d in every
+  mode; roundQ_unnecessary: UNNECESSARY throws exactly when n % d != 0.
+- roundQ_half_choice and roundQ_half_ulp: in HALF_UP, HALF_DOWN, HALF_EVEN the result r satisfies
+  2|r*d - n| <= d (within half a unit); roundQ_tie: on 2(n % d) = d HALF_UP goes up, HALF_DOWN down,
+  HALF_EVEN to the even neighbour.
+- roundQ_down, roundQ_up, roundQ_ceiling, roundQ_floor: DOWN truncates the magnitude (r*d <= n < (r+1)d),
+  UP raises it (n <= r*d < n + d), CEILING/FLOOR move toward +inf / -inf by the sign.
+- lt_pow_digits, pow_digits_le, digits_le_of_lt: 10^(digits n - 1) <= n < 10^(digits n).
+- round_digits_le: decimal::round keeps at most p digits (the carry 10^p -> 10^(p-1) included).
+- round_half_ulp: decimal::round in a HALF mode is within half a unit of the last kept place (its value at
+  scale x.s - drop, times 10 after a carry, is r with 2|r*10^drop - |u|| <= 10^drop), sign kept.
+- exact_scale_least: exact division's digits at scale preferred + k (k = max(twos, fives) > 0) end in no
+  zero, so preferred + k is Java's max(preferred, least exact scale); with round 7's exact_sound and
+  exact_complete (Jank.R7.Coord.Decimal) the value and the "Non-terminating" throw are right.
+- add_scale (max), mul_scale (sum), neg_scale and abs_scale (kept), round_exact (precision 0 is exact).
+Not proved (searched instead, (8)): context_divide (p digits, exact quotient stripped toward the preferred
+scale), divideToIntegralValue in a context ("Division impossible"), toString/parse, doubleValue, valueOf.
+
+(3) What was replicated
+-----------------------
+- Jank/R8/Dec/Java.lean <- the fix's C++ (.r8-scratch/dec/cxx/impl.inc, spliced verbatim into
+  big_decimal.cpp): roundQ = round_quotient; digits = digit_count; round = decimal::round; exactDiv =
+  exact_quotient (round 7's steps/resultDigits); ctxDiv/findT/stripTo = context_divide/strip_to_scale;
+  divide; divToInt = decimal::divide_to_integral_value; remainder; cljOp = the operators (minus =
+  add(x, negate(y, mc), mc); inc/dec = add(+-1, mc)); BD.toString (round 3) = native_big_decimal::str;
+  cljHashDec (round 7) = decimal::hasheq. The spec side is Java's BigDecimal/MathContext as Clojure's
+  Numbers.BigDecimalOps (clojure-ref Numbers.java 964-1092, minus 162-165, divide 182-192, toBigDecimal
+  298-322) and core.clj with-precision 5139-5154.
+- .r8-scratch/dec/cxx/standalone.cpp: the same decl.inc/impl.inc compiled alone with boost from deps/.
+- .r8-scratch/dec/probe/stock.cpp: jank stock's values (cpp_dec_float<100>, et_off) for the tests.
+
+(4) What is not exact
+---------------------
+- Exceptions compare by message text in the checks ("Divide by zero", "Non-terminating ...", "Division
+  impossible", "Rounding necessary"); jank throws them as boxed strings (thrown? sees them), Clojure as
+  ArithmeticException.
+- Scales beyond the int range ("Overflow"/"Underflow", saturation of a zero's scale) are in the C++
+  (check_scale) but neither searched nor in the Lean model.
+- BigDecimal.valueOf(double) is built from std::to_chars' shortest digits (DecA8-1).
+- *math-context* is a map in jank, a java.math.MathContext object in Clojure (DecA8-4).
+
+(5) Still left out, and why
+---------------------------
+- DEC8-1's fix: not assigned to this area.
+- The json reader's :bigdec option (json_native.cpp 147) still builds the decimal from the parsed double
+  (u84's cause, a text question, not scale).
+- (- x Long/MIN_VALUE) with a decimal x (V55's class) and rem by zero's std::runtime_error (X20) are kept.
+- Performance: not measured (every op allocates cpp_int limbs; X6 adds a var deref per decimal op).
+
+(6) Assumptions (DecA8-n)
+-------------------------
+- DecA8-1: Java's Double.toString digits are std::to_chars' shortest digits, except where Java's
+  two-digit minimum picks another decimal (Double.MIN_VALUE "4.9E-324" vs "5E-324"); 1,999 random doubles
+  agree.
+- DecA8-2: strtod rounds the full decimal text correctly on jank's platforms (doubleValue; S11 assumed it
+  too); 2,000 random decimals agree on macOS.
+- DecA8-3: Java's add/multiply/negate/abs with a MathContext are "exact, then round to p digits", and
+  divide(mc) returns the p-digit rounding, or an exact quotient at the scale nearest the preferred one
+  (the BigDecimal class javadoc); 225,700 cases agree with JDK 23.
+- DecA8-4: *math-context* holds {:precision p :rounding :MODE}; only Java interop could tell.
+- DecA8-5: one runtime context per process (current_math_context caches the var and two keywords in
+  function statics, as context.cpp 318 caches *read-eval*).
+- DecA8-6: Apple clang 17 / Homebrew clang 22 headers stand in for jank's LLVM in syntax checks (CoordA7-1).
+Replaced: NumA7-3 (S2's quotient read back through rd_string, <= 128 digits) and CoordA7-3 (str(0,
+scientific) prints every digit): no cpp_dec_float is left.
+
+(7) Properties checked, with sources
+------------------------------------
+- Every BigDecimal result has Java's scale: add/subtract max(s1, s2), multiply s1 + s2, divide max(s1 - s2,
+  least exact scale), divideToIntegralValue max(s1 - s2, -tz(t)), remainder, negate/abs/inc/dec (javadoc;
+  Numbers.java BigDecimalOps 1006-1091).
+- str is BigDecimal.toString, pr-str adds M (RT.print; core_print.clj print-method BigDecimal).
+- = is compareTo (Numbers.equal), hash is stripTrailingZeros().hashCode() (Numbers.hasheqFrom 1132-1145).
+- A double operand makes the operation a double one (BigDecimalOps.opsWith(DoubleOps) 976).
+- A ratio operand is Numbers.toBigDecimal (divide, so it throws or rounds like a division).
+- with-precision binds *math-context* (core.clj 5139-5154); BigDecimalOps rounds add, multiply, divide,
+  quotient, remainder (the quotient only), negate, inc, dec, abs; minus negates first (162-165).
+
+(8) Search runs (exact bounds)
+------------------------------
+- .r8-scratch/dec/check/cases.txt (gen.py, fixed seed): 229,699 cases. Sections: A complete exact
+  + - * / quot rem over u in [-12,12] x scale [-2,2] (125 values, 15,625 pairs each: 93,750); B complete
+  unary (neg abs inc dec str hash) on those 125 values (750); C complete small contexts (38 x 25 operand
+  pairs from u in [-12,12] x scale [-1,1], precision 1..2, all 8 modes, + - * / quot rem: 91,200); D 30,000
+  random context cases (precision 1..9, random mode, 10 ops); E 10,000 random exact cases (25-digit x,
+  12-digit y, + - * / quot rem cmp hash str); F 1,999 valueOf(double) and 2,000 doubleValue.
+- JVM (jvm.clj on Clojure 1.12.3) vs the C++ copy: 0 of 229,699 differ (results/r8-dec-cxx-check.txt).
+- JVM vs the Lean replica (jank8-dec check): 0 of 225,700 differ; the 3,999 double cases are the C++
+  copy's only (results/r8-dec-check.txt). A mutated answer is reported (checked once).
+- Clojure probe: 48 forms (.r8-scratch/dec/probe/probe.clj), the tests' values.
+- The tests (.r8-scratch/dec/tests.jank, 36 deftests, 36 assertions) translated to Clojure
+  (.r8-scratch/dec/clj/): 36 of 36 pass on Clojure 1.12.3 (.r8-scratch/dec/clj/run-1.12.3.txt). None is
+  jank-only.
+
+(9) Theorems (★ new for every input)
+------------------------------------
+★ roundQ_cases, ★ roundQ_exact, ★ roundQ_unnecessary, ★ roundQ_half_choice, ★ roundQ_half_ulp,
+★ roundQ_tie, ★ roundQ_down, ★ roundQ_up, ★ roundQ_ceiling, ★ roundQ_floor, ★ lt_pow_digits,
+★ pow_digits_le, ★ digits_le_of_lt, ★ round_digits_le, ★ round_half_ulp, ★ exact_scale_least,
+★ add_scale, ★ mul_scale, ★ neg_scale, ★ abs_scale, round_exact; lemmas digits_eq, digits_pos,
+natAbs_signed, natAbs_ite, ite_neg_iff. Axioms (23 printed): propext, Classical.choice, Quot.sound at
+most; no sorry, no native_decide, no new axiom. `lake build jank8-dec`: 69 jobs, success.
+
+(10) Library gaps
+-----------------
+- Lean core has no Nat.log10: `digits` is a recursive replacement with its bounds proved.
+- No by_contra/set/ring without Mathlib: proofs use Nat.le_of_not_lt, generalize and explicit rewriting.
+- Kernel reduction of String functions is too slow for decide on whole answers (examples are checked by
+  the run instead).
+
+(11) Fixes written
+------------------
+R72 (fixes/R72.diff, 1,597 lines; applies alone to 94d32623; upstream-r5 stays clean)
+- Files: include/cpp/jank/type.hpp (the class, its operators), src/cpp/jank/runtime/obj/big_decimal.cpp
+  (Java's arithmetic, current_math_context returning "exact", the BigInt operators exact, equal = compareTo,
+  to_hash = hasheq, compare with doubles as doubles, to_integer = RT.longCast, to_real = doubleValue),
+  src/cpp/jank/runtime/obj/ratio.cpp (toBigDecimal of a ratio by division, == by compareTo, minus negates
+  the ratio exactly), src/cpp/jank/runtime/core/math.cpp (rem: BigDecimal.remainder, the decimal branch
+  before the ratio one), src/cpp/jtl/string_builder.cpp (BigDecimal.toString, no ".0").
+- Tests that should pass with R72 alone: x7, x7b, x7c, x7d, x9b (r7); b19 (r2); s02, s03, s04, s05, s06,
+  s07, s08, s10, s11, s12, s14 (r3); d08 (main); x2, x2b, x2c, x5, x5b, x8, x11, x12, x22b, x22c (r7); the
+  40 generated S3 tests (g193-g196, g217-g220, g241-g248, g261-g264, g269-g272, g289-g296, g309-g312,
+  g317-g320); vD1-vD5b, vD7-vD8b, vD10-vD12, vD14, vD17-vD18.
+- Paired (pass with R72 on the combined tree, not alone): d07 and x23 (D7), x9, vD6, vD13 (D4), s09, vD9
+  (U2). Still failing: vD15, vD15b, vD16, vD16b (DEC8-1); u84 (json text).
+- Read-checked: every file that names native_big_decimal or big_decimal (type.hpp, big_decimal.hpp/.cpp,
+  ratio.hpp/.cpp, math.hpp/.cpp, make_box.hpp, visit.hpp, string_builder.hpp/.cpp, read/lex, read/parse,
+  codegen/cpp_processor.cpp 311-315 (a literal is re-emitted as make_box<big_decimal>("<toString>"), which
+  parses back to the same unscaled value and scale: S13's "1e-05.0" is gone), c_api.cpp 407-411,
+  json_native.cpp 69 (writes toString) and 147 (unchanged: from the double), core.jank bigdec/decimal?);
+  overload resolution: integers and doubles construct implicitly (as boost's did: std::common_type in
+  min/max), a BigInt explicitly (an implicit one made `cpp_int < double` ambiguous against S6's (decimal,
+  double) operators in number.cpp, big_integer.cpp and math.hpp 930/1046: found by the syntax check and
+  fixed); the template operators beat the non-template ones only on exact matches, and S6's overloads keep
+  the same double semantics. jank's suite: form/case/pass-big-decimal.jank (both sides hash with hasheq,
+  = by compareTo: :success); test/cpp/jank/runtime/obj/big_decimal.cpp ("1.0" = "1.00", categories stay
+  apart); test/cpp/jank/read/parse.cpp's "12.34", "-12.34", "1.234e5", "1.234e-5" (Java's grammar, equal).
+- Compile checks: syn.sh of big_decimal.cpp, ratio.cpp, math.cpp, string_builder.cpp, number.cpp,
+  big_integer.cpp, json_native.cpp, cpp_processor.cpp, read/parse.cpp, read/lex.cpp, core/equal.cpp,
+  core/seq.cpp, core/to_string.cpp on stock + R72: exit 0 each; c_api.cpp and runtime/core.cpp show only the
+  errors they show on stock (GC thread macros, JANK_VERSION, delay_ref without jank's prelude). math.hpp's
+  templates instantiated for 26 operand pairs x 9 binary templates plus 7 unary ones, and the class's own
+  operators (.r8-scratch/dec/cc/tu.cpp, tu-stock.cpp): exit 0 on R72; stock passes tu-stock.cpp too.
+  (min/max of a typed ratio_ref or big_integer_ref with a big_decimal_ref has no common type on stock
+  either; excluded.)
+- Build must check: link and JIT use of the new out-of-line functions (exported like the existing BigInt
+  operators), the PCH, std::to_chars(double, scientific) in libstdc++ (GCC 11+), the leak of cpp_int limbs
+  (as big_integer's), and speed.
+- Combined tree: does not apply (big_decimal.cpp, math.cpp). Variant: .r8-scratch/dec/R72-combined.diff
+  (1,756 lines; applies to .r8-scratch/merge/tree, checked on a scratch copy) over type.hpp,
+  big_decimal.cpp, ratio.cpp, math.cpp, string_builder.cpp; files in .r8-scratch/dec/comb-r72/. Syntax
+  checks as above: exit 0 each. The TU shows the unchanged combined tree's own 22 errors (see (12)) and
+  nothing else. Earlier fixes on the same lines:
+    S2: subsumed (exact_divide stays, as math.hpp's detail::quotient calls it, and is now the class's
+        division; its text reading is gone).  D8: kept as written, exact by representation.
+    N7-1: subsumed (decimal::hasheq).  S6: kept (its (decimal, double) overloads call the new to_double).
+    S11: subsumed (to_double).  S12: kept.  R99a: kept.  N7-2: subsumed (S2 had superseded it).
+    D4: extended (the decimal branch is divideToIntegralValue; a ratio with a decimal is BigDecimalOps,
+        not doubles).  S8: kept (the decimal branch is BigDecimal.remainder).  U2: extended
+        (shortest_decimal is decimal::value_of: Double.toString's layout and scale).  D7, S14, S20, S21:
+        kept unchanged.  S3c (the coordinator's new ratio.cpp fix, not in the tree): subsumed by R72's
+        to_native_big_decimal (exact or "Non-terminating"; in a context it rounds, as Clojure's does); the
+        two edit the same ratio.cpp lines, so stack R72, not S3c.
+X6 (fixes/X6.diff, 1,720 lines; contains R72; applies alone to 94d32623)
+- Files beyond R72: big_decimal.cpp current_math_context (reads *math-context*: nil, or {:precision
+  :rounding}), runtime/context.cpp (interns clojure.core/*math-context*, nil, dynamic, beside *read-eval*),
+  core.jank with-precision (binds the map; HALF_UP default; the 8 modes; "Digits < 0"), math.hpp abs (a
+  BigDecimal takes abs(mc), which rounds a positive value too).
+- The part on top of R72 alone: .r8-scratch/dec/X6-on-R72.diff (145 lines; R72.diff then it gives
+  X6.diff's files, checked).
+- Tests that should pass: x6, x6b, vD20-vD29, plus R72's.
+- Read-checked: binding of a C++-interned dynamic var (as *assert*); every BigDecimal operator goes through
+  the class's operators, so add/minus/multiply/divide/inc/dec, the ratio conversion and bigdec of a ratio
+  read the context; quot/rem pass it explicitly (math.cpp); comparisons never round.
+- Forward references: fwdref.py stock vs patched core.jank: new 0 (and on the combined core.jank).
+- Compile checks: big_decimal.cpp, context.cpp, math.cpp, ratio.cpp exit 0 (stock + X6, combined + X6);
+  context.cpp also exit 0 on stock. tu.cpp exit 0.
+- Combined tree: .r8-scratch/dec/X6-combined.diff (138 lines) applies after R72-combined.diff (checked on a
+  scratch copy of the tree; the result equals .r8-scratch/dec/comb-x6/). The combined abs keeps P7-1's
+  double branch. quot under a context works only on the combined tree (D4's BigDecimal quotient).
+
+(12) Model errors of earlier rounds corrected, and notes
+--------------------------------------------------------
+- REPORT-7 1.2 "What remains" (scale, the 121-128-digit cut) and x8's regression with S2 (0.999...993010):
+  both gone with an exact representation.
+- x9b: REPORT-7 said it fails once D4 is applied; with R72 the quotient 3M prints "3" again.
+- results/r7-num-report.txt (11) "with-precision ... not local": one function (current_math_context) read
+  by the operators covers every rounding operation but abs, whose positive branch boxes the value as it is
+  (math.hpp 1016-1017, 1036), hence X6's math.hpp change.
+- Note for the coordinator: the round-8 combined math.hpp's min/max with a native number and a typed
+  big_decimal_ref call detail::primitive_min/max(l, r->data), and widen() takes primitives only: 22 errors
+  in .r8-scratch/dec/cc/tu-stock.cpp on the unchanged combined tree (min/max x {int, long, long long,
+  usize, double, float} x both orders with big_decimal_ref), independent of R72. Whether jank's codegen
+  types a BigDecimal literal as big_decimal_ref is not known here: vD18 (max 0 1.5M) would show it.

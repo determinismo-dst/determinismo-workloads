@@ -1,0 +1,103 @@
+Round 8, area Q (nREPL): the graph counters against the sdk's own exhaustive walk on World T.
+Commands: jank8-nrepl exact Wk 0 … (Exact.lean interCount: the sdk's interleave, thread.next at every step, counted on the state graph);
+          jank8-nrepl exact Wk B … (countLayers: interleavePB at ≤0..≤B); jank8-nrepl walk Wk N (Search.lean exhaust over round 3's runT);
+          jank8-nrepl walkpb Wk b N (exhaust over round 3's runTWith (some b)).
+Worlds (Run/R8/Nrepl.lean smallWorlds, whole reads, EINTR off, round 3's code): W1 one client [clone]; W2 one client [clone, describe];
+W3 two clients [clone], [clone].
+
+Results (each pair equal):
+- W1, interleave: counter 264,832; exhaust complete 264,832 (15.2 s).
+- W2, interleavePB: counter ≤0 4, ≤1 84, ≤2 874, ≤3 5,974; exhaust complete 4, 84, 874, 5,974.
+- W3, interleavePB: counter ≤0 4, ≤1 336, ≤2 11,938, ≤3 276,982; exhaust complete 4, 336, 11,938, 276,982.
+- Not walkable (too many): W2 interleave 95,817,728 timelines (exhaust stopped at 3,000,000 in 264 s); W3 interleave
+  242,647,060,831,597,490,123,810,816 timelines, the same with the logs ordered by client (1,755 states) or not (4,227 states).
+
+#### Raw outputs
+== W1: W1: small world for the walk check
+  every schedule, exact (compact codec), logs as they are, fast path on (pointer identity)
+  graph: 37 states, 89 step runs, 89 edges, COMPLETE (every reachable state) (1 ms)
+  tables: jw 2, fds 2, temps 1, socks 4, misc 4, replies 2, logs 3, threads 14; fast-path components 624; most threads 3
+  final states: 1; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 15 steps (0 ms)
+  the sdk's interleave (thread.next at every step, no preemption bound): 264,832 timelines, 57 (state, blocked) pairs (0 ms)
+== W1: W1: small world for the walk check
+  every schedule, exact (compact codec), logs ordered by client (canonMem), fast path on (pointer identity)
+  graph: 37 states, 89 step runs, 89 edges, COMPLETE (every reachable state) (0 ms)
+  tables: jw 2, fds 2, temps 1, socks 4, misc 4, replies 2, logs 3, threads 14; fast-path components 539; most threads 3
+  final states: 1; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 15 steps (0 ms)
+  the sdk's interleave (thread.next at every step, no preemption bound): 264,832 timelines, 57 (state, blocked) pairs (0 ms)
+== W1: W1: small world for the walk check: the sdk's exhaust over runT (interleave), every timeline, up to 3,000,000
+  complete: 264,832 timelines, no violation (15239 ms)
+== W2: W2: small world for the walk check
+  every schedule, exact (compact codec), logs as they are, fast path on (pointer identity)
+  graph: 55 states, 138 step runs, 138 edges, COMPLETE (every reachable state) (1 ms)
+  tables: jw 2, fds 2, temps 1, socks 6, misc 4, replies 3, logs 4, threads 20; fast-path components 973; most threads 3
+  final states: 1; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 22 steps (0 ms)
+  the sdk's interleave (thread.next at every step, no preemption bound): 95,817,728 timelines, 89 (state, blocked) pairs (0 ms)
+== W2: W2: small world for the walk check
+  every schedule, exact (compact codec), logs ordered by client (canonMem), fast path on (pointer identity)
+  graph: 55 states, 138 step runs, 138 edges, COMPLETE (every reachable state) (0 ms)
+  tables: jw 2, fds 2, temps 1, socks 6, misc 4, replies 3, logs 4, threads 20; fast-path components 843; most threads 3
+  final states: 1; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 22 steps (0 ms)
+  the sdk's interleave (thread.next at every step, no preemption bound): 95,817,728 timelines, 89 (state, blocked) pairs (1 ms)
+== W2: W2: small world for the walk check: the sdk's exhaust over runT (interleave), every timeline, up to 3,000,000
+  STOPPED at 3,000,000 timelines (263910 ms)
+== W3: W3: small world for the walk check
+  every schedule, exact (compact codec), logs as they are, fast path on (pointer identity)
+  graph: 4,227 states, 17,299 step runs, 17,299 edges, COMPLETE (every reachable state) (30 ms)
+  tables: jw 2, fds 5, temps 1, socks 24, misc 14, replies 9, logs 15, threads 32; fast-path components 157,112; most threads 5
+  final states: 32; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 29 steps (2 ms)
+  the sdk's interleave (thread.next at every step, no preemption bound): 242,647,060,831,597,490,123,810,816 timelines, 8,638 (state, blocked) pairs (5 ms)
+== W3: W3: small world for the walk check
+  every schedule, exact (compact codec), logs ordered by client (canonMem), fast path on (pointer identity)
+  graph: 1,755 states, 7,509 step runs, 7,509 edges, COMPLETE (every reachable state) (20 ms)
+  tables: jw 2, fds 5, temps 1, socks 24, misc 14, replies 7, logs 9, threads 32; fast-path components 60,813; most threads 5
+  final states: 4; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 29 steps (0 ms)
+  the sdk's interleave (thread.next at every step, no preemption bound): 242,647,060,831,597,490,123,810,816 timelines, 3,890 (state, blocked) pairs (3 ms)
+== W3: W3: small world for the walk check: the sdk's exhaust over runT (interleave), every timeline, up to 3,000,000
+Terminated: 15
+== W2: W2: small world for the walk check
+  every schedule, exact (compact codec), logs as they are, fast path on (pointer identity)
+  graph: 55 states, 138 step runs, 138 edges, COMPLETE (every reachable state) (1 ms)
+  tables: jw 2, fds 2, temps 1, socks 6, misc 4, replies 3, logs 4, threads 20; fast-path components 973; most threads 3
+  final states: 1; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 22 steps (0 ms)
+  scheduler states (state, cur, blocked) any budget reaches: 124, 226 entries, complete (0 ms)
+  ≤0: 4 timelines (complete); eintr draws all 0: 1; with a violation: 0 (0 ms)
+  ≤1: 84 timelines (complete); eintr draws all 0: 20; with a violation: 0 (0 ms)
+  ≤2: 874 timelines (complete); eintr draws all 0: 201; with a violation: 0 (0 ms)
+  ≤3: 5,974 timelines (complete); eintr draws all 0: 1,354; with a violation: 0 (0 ms)
+  longest timeline under any budget: 39 step attempts (round 3's bound: 6000: never reached)
+== W2: W2: small world for the walk check: the sdk's exhaust over runTWith ≤0 (interleavePB), up to 2,000,000
+  ≤0: complete: 4 timelines, no violation (17 ms)
+== W2: W2: small world for the walk check: the sdk's exhaust over runTWith ≤1 (interleavePB), up to 2,000,000
+  ≤1: complete: 84 timelines, no violation (24 ms)
+== W2: W2: small world for the walk check: the sdk's exhaust over runTWith ≤2 (interleavePB), up to 2,000,000
+  ≤2: complete: 874 timelines, no violation (95 ms)
+== W2: W2: small world for the walk check: the sdk's exhaust over runTWith ≤3 (interleavePB), up to 2,000,000
+  ≤3: complete: 5,974 timelines, no violation (556 ms)
+== W3: W3: small world for the walk check
+  every schedule, exact (compact codec), logs as they are, fast path on (pointer identity)
+  graph: 4,227 states, 17,299 step runs, 17,299 edges, COMPLETE (every reachable state) (30 ms)
+  tables: jw 2, fds 5, temps 1, socks 24, misc 14, replies 9, logs 15, threads 32; fast-path components 157,112; most threads 5
+  final states: 32; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+  acyclic (progress steps): true; longest progress path: 29 steps (2 ms)
+  scheduler states (state, cur, blocked) any budget reaches: 7,161, 19,848 entries, complete (6 ms)
+  ≤0: 4 timelines (complete); eintr draws all 0: 1; with a violation: 0 (0 ms)
+  ≤1: 336 timelines (complete); eintr draws all 0: 63; with a violation: 0 (1 ms)
+  ≤2: 11,938 timelines (complete); eintr draws all 0: 1,795; with a violation: 0 (1 ms)
+  ≤3: 276,982 timelines (complete); eintr draws all 0: 33,727; with a violation: 0 (2 ms)
+  longest timeline under any budget: 67 step attempts (round 3's bound: 6000: never reached)
+== W3: W3: small world for the walk check: the sdk's exhaust over runTWith ≤0 (interleavePB), up to 2,000,000
+  ≤0: complete: 4 timelines, no violation (17 ms)
+== W3: W3: small world for the walk check: the sdk's exhaust over runTWith ≤1 (interleavePB), up to 2,000,000
+  ≤1: complete: 336 timelines, no violation (41 ms)
+== W3: W3: small world for the walk check: the sdk's exhaust over runTWith ≤2 (interleavePB), up to 2,000,000
+  ≤2: complete: 11,938 timelines, no violation (903 ms)
+== W3: W3: small world for the walk check: the sdk's exhaust over runTWith ≤3 (interleavePB), up to 2,000,000
+  ≤3: complete: 276,982 timelines, no violation (20779 ms)

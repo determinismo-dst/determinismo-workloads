@@ -1,0 +1,1720 @@
+--- a/compiler+runtime/include/cpp/jank/type.hpp
++++ b/compiler+runtime/include/cpp/jank/type.hpp
+@@ -7,6 +7,9 @@
+ #include <unordered_map>
+ #include <deque>
+ #include <list>
++#include <iosfwd>
++#include <string>
++#include <type_traits>
+ 
+ #include <jank/gc.hpp>
+ 
+@@ -32,11 +35,433 @@
+   using native_persistent_string_view = std::string_view;
+   using native_big_integer
+     = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<>>;
+-  using native_big_decimal
+-    = boost::multiprecision::number<boost::multiprecision::cpp_dec_float<100>,
+-                                    boost::multiprecision::et_off>;
++  /* Java's BigDecimal: the exact value unscaled * 10^-scale, with its scale (Clojure's BigDecimal;
++   * Numbers.BigDecimalOps). Every operation is exact unless a math context with a precision is in
++   * effect (Clojure's *math-context*, bound by with-precision), and then it rounds as Java's
++   * BigDecimal does with that MathContext. The operators read the current context; the named
++   * functions take it. */
++  enum class rounding_mode : u8
++  {
++    up,
++    down,
++    ceiling,
++    floor,
++    half_up,
++    half_down,
++    half_even,
++    unnecessary
++  };
+ 
++  /* java.math.MathContext: precision 0 is unlimited (exact). */
++  struct math_context
++  {
++    u32 precision{};
++    rounding_mode mode{ rounding_mode::half_up };
++  };
++
++  struct native_big_decimal
++  {
++    native_big_decimal() = default;
++    native_big_decimal(native_big_integer const &unscaled, i64 scale);
++
++    /* new BigDecimal(BigInteger) and BigDecimal.valueOf(long): scale 0. Explicit: an implicit
++     * one would make a BigInt next to a double match the (BigDecimal, double) operators. */
++    explicit native_big_decimal(native_big_integer const &v);
++
++    template <typename T>
++    requires std::is_integral_v<T>
++    native_big_decimal(T const v)
++      : unscaled{ v }
++    {
++    }
++
++    /* new BigDecimal(double): the double's exact binary value, at the least scale >= 0. */
++    template <typename T>
++    requires std::is_floating_point_v<T>
++    native_big_decimal(T const v)
++      : native_big_decimal{ from_double(static_cast<f64>(v)) }
++    {
++    }
++
++    /* new BigDecimal(String). */
++    explicit native_big_decimal(char const *s);
++    explicit native_big_decimal(std::string const &s);
++
++    static native_big_decimal from_double(f64 d);
++
++    bool is_zero() const;
++    int sign() const;
++    /* BigDecimal.precision(): the number of digits of the unscaled value (1 for zero). */
++    i64 precision() const;
++    /* BigDecimal.compareTo. */
++    int compare(native_big_decimal const &o) const;
++    /* BigDecimal.toString(). */
++    std::string str() const;
++    /* BigDecimal.doubleValue() (correctly rounded). */
++    f64 to_double() const;
++    /* BigDecimal.toBigInteger(): the integer part. */
++    native_big_integer to_big_integer() const;
++
++    template <typename T>
++    T convert_to() const
++    {
++      if constexpr(std::is_floating_point_v<T>)
++      {
++        return static_cast<T>(to_double());
++      }
++      else if constexpr(std::is_integral_v<T>)
++      {
++        /* BigDecimal.longValue(): the integer part's low 64 bits. */
++        native_big_integer const i{ to_big_integer() };
++        native_big_integer const low{ i & native_big_integer{ 0xFFFFFFFFFFFFFFFFull } };
++        return static_cast<T>(static_cast<i64>(low.template convert_to<u64>()));
++      }
++      else
++      {
++        return to_big_integer();
++      }
++    }
++
++    native_big_integer unscaled{};
++    i32 scale{};
++  };
++
++  [[noreturn]]
++  void throw_arithmetic_error(char const *message);
++
++  /* The context the operators use: *math-context* (nil is precision 0, exact). */
++  math_context current_math_context();
++
++  namespace decimal
++  {
++    native_big_decimal round(native_big_decimal const &x, math_context const &mc);
++    native_big_decimal add(native_big_decimal const &l,
++                           native_big_decimal const &r,
++                           math_context const &mc);
++    native_big_decimal multiply(native_big_decimal const &l,
++                                native_big_decimal const &r,
++                                math_context const &mc);
++    /* Numbers.divide's zero check, then BigDecimal.divide(r[, mc]). */
++    native_big_decimal divide(native_big_decimal const &l,
++                              native_big_decimal const &r,
++                              math_context const &mc);
++    /* BigDecimal.divideToIntegralValue(r[, mc]). */
++    native_big_decimal divide_to_integral_value(native_big_decimal const &l,
++                                                native_big_decimal const &r,
++                                                math_context const &mc);
++    /* BigDecimal.remainder(r[, mc]). */
++    native_big_decimal remainder(native_big_decimal const &l,
++                                 native_big_decimal const &r,
++                                 math_context const &mc);
++    native_big_decimal negate(native_big_decimal const &x, math_context const &mc);
++    native_big_decimal abs(native_big_decimal const &x, math_context const &mc);
++    /* BigDecimal.valueOf(double): the decimal of Double.toString. */
++    native_big_decimal value_of(f64 d);
++    /* Clojure's hash of a BigDecimal (Numbers.hasheqFrom). */
++    u32 hasheq(native_big_decimal const &x);
++  }
++
++  /* Numbers' BigDecimalOps in the current context: add, multiply, divide; minus is
++   * add(l, negate(r)) (Numbers.minus), negating a BigDecimal in the context first. */
++  native_big_decimal operator-(native_big_decimal const &x);
++  native_big_decimal operator+(native_big_decimal const &l, native_big_decimal const &r);
++  native_big_decimal operator-(native_big_decimal const &l, native_big_decimal const &r);
++  native_big_decimal operator*(native_big_decimal const &l, native_big_decimal const &r);
++  native_big_decimal operator/(native_big_decimal const &l, native_big_decimal const &r);
++  native_big_decimal abs(native_big_decimal const &x);
++  bool operator==(native_big_decimal const &l, native_big_decimal const &r);
++  bool operator!=(native_big_decimal const &l, native_big_decimal const &r);
++  bool operator<(native_big_decimal const &l, native_big_decimal const &r);
++  bool operator<=(native_big_decimal const &l, native_big_decimal const &r);
++  bool operator>(native_big_decimal const &l, native_big_decimal const &r);
++  bool operator>=(native_big_decimal const &l, native_big_decimal const &r);
++  std::ostream &operator<<(std::ostream &os, native_big_decimal const &d);
++
++  /* A long (or any integer) operand: BigDecimal.valueOf (Numbers.toBigDecimal). Its negation in
++   * minus is exact (LongOps.negate). */
+   template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator+(native_big_decimal const &l, T const r)
++  {
++    return l + native_big_decimal{ r };
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator+(T const l, native_big_decimal const &r)
++  {
++    return native_big_decimal{ l } + r;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator-(native_big_decimal const &l, T const r)
++  {
++    return l + native_big_decimal{ -native_big_integer{ r } };
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator-(T const l, native_big_decimal const &r)
++  {
++    return native_big_decimal{ l } - r;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator*(native_big_decimal const &l, T const r)
++  {
++    return l * native_big_decimal{ r };
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator*(T const l, native_big_decimal const &r)
++  {
++    return native_big_decimal{ l } * r;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator/(native_big_decimal const &l, T const r)
++  {
++    return l / native_big_decimal{ r };
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  native_big_decimal operator/(T const l, native_big_decimal const &r)
++  {
++    return native_big_decimal{ l } / r;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator==(native_big_decimal const &l, T const r)
++  {
++    return l.compare(native_big_decimal{ r }) == 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator==(T const l, native_big_decimal const &r)
++  {
++    return r.compare(native_big_decimal{ l }) == 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator!=(native_big_decimal const &l, T const r)
++  {
++    return l.compare(native_big_decimal{ r }) != 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator!=(T const l, native_big_decimal const &r)
++  {
++    return r.compare(native_big_decimal{ l }) != 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator<(native_big_decimal const &l, T const r)
++  {
++    return l.compare(native_big_decimal{ r }) < 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator<(T const l, native_big_decimal const &r)
++  {
++    return r.compare(native_big_decimal{ l }) > 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator<=(native_big_decimal const &l, T const r)
++  {
++    return l.compare(native_big_decimal{ r }) <= 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator<=(T const l, native_big_decimal const &r)
++  {
++    return r.compare(native_big_decimal{ l }) >= 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator>(native_big_decimal const &l, T const r)
++  {
++    return l.compare(native_big_decimal{ r }) > 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator>(T const l, native_big_decimal const &r)
++  {
++    return r.compare(native_big_decimal{ l }) < 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator>=(native_big_decimal const &l, T const r)
++  {
++    return l.compare(native_big_decimal{ r }) >= 0;
++  }
++
++  template <typename T>
++  requires std::is_integral_v<T>
++  bool operator>=(T const l, native_big_decimal const &r)
++  {
++    return r.compare(native_big_decimal{ l }) <= 0;
++  }
++
++  /* A double (or float) operand: double arithmetic and comparison (Numbers' ops combine to
++   * DoubleOps; BigDecimal.doubleValue). */
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator+(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() + static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator+(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) + r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator-(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() - static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator-(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) - r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator*(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() * static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator*(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) * r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator/(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() / static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  f64 operator/(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) / r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator==(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() == static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator==(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) == r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator!=(native_big_decimal const &l, T const r)
++  {
++    return !(l == r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator!=(T const l, native_big_decimal const &r)
++  {
++    return !(l == r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator<(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() < static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator<(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) < r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator<=(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() <= static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator<=(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) <= r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator>(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() > static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator>(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) > r.to_double();
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator>=(native_big_decimal const &l, T const r)
++  {
++    return l.to_double() >= static_cast<f64>(r);
++  }
++
++  template <typename T>
++  requires std::is_floating_point_v<T>
++  bool operator>=(T const l, native_big_decimal const &r)
++  {
++    return static_cast<f64>(l) >= r.to_double();
++  }
++
++  template <typename T>
+   using native_vector = folly::fbvector<T, native_allocator<T>>;
+   template <typename T>
+   using native_deque = std::deque<T, native_allocator<T>>;
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -1013,8 +1013,16 @@
+     {
+       return visit_number_like(
+         [](auto const typed_l) -> object_ref {
+-          return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
+-                                     : make_box(typed_l->data).erase();
++          /* BigDecimalOps.abs: abs(mc), which rounds a positive value too. */
++          if constexpr(jtl::is_same<typename decltype(typed_l)::value_type, obj::big_decimal>)
++          {
++            return make_box(jank::abs(typed_l->data)).erase();
++          }
++          else
++          {
++            return typed_l->data < 0ll ? make_box(-1ll * typed_l->data).erase()
++                                       : make_box(typed_l->data).erase();
++          }
+         },
+         l);
+     }
+@@ -1030,6 +1038,11 @@
+                           == object_type::small_real)
+       {
+         return std::abs(l->to_real());
++      }
++      else if constexpr(jtl::decay_t<decltype(l)>::value_type::obj_type
++                        == object_type::big_decimal)
++      {
++        return make_box(jank::abs(l->data)).erase();
+       }
+       else
+       {
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/big_decimal.cpp
+@@ -1,53 +1,938 @@
++#include <algorithm>
++#include <array>
++#include <charconv>
++#include <cmath>
++#include <cstdlib>
++#include <limits>
++#include <ostream>
++#include <string>
++#include <string_view>
++#include <vector>
++
+ #include <jank/runtime/obj/big_decimal.hpp>
++#include <jank/runtime/obj/keyword.hpp>
++#include <jank/runtime/context.hpp>
++#include <jank/runtime/var.hpp>
+ #include <jank/runtime/visit.hpp>
++#include <jank/runtime/core/make_box.hpp>
+ #include <jank/util/fmt.hpp>
++
++/* native_big_decimal (type.hpp): Java's BigDecimal, an unscaled integer and a scale, with Java's
++ * arithmetic (exact, or rounded to the current math context's precision). */
++namespace jank
++{
++  /* Clojure's ArithmeticException (and NumberFormatException): a boxed string, which `thrown?`
++   * sees. */
++  void throw_arithmetic_error(char const * const message)
++  {
++    throw runtime::make_box(message).erase();
++  }
++
++  /* Clojure's *math-context* (RT.MATH_CONTEXT): nil, every operation exact, or what
++   * with-precision binds, {:precision p :rounding :HALF_UP} (Clojure: a java.math.MathContext). */
++  math_context current_math_context()
++  {
++    static runtime::var_ref const var{ runtime::__rt_ctx->find_var("clojure.core",
++                                                                   "*math-context*") };
++    auto const mc{ var->deref() };
++    if(mc.is_nil())
++    {
++      return {};
++    }
++    static runtime::object_ref const precision_key{
++      runtime::__rt_ctx->intern_keyword("precision").expect_ok()
++    };
++    static runtime::object_ref const rounding_key{
++      runtime::__rt_ctx->intern_keyword("rounding").expect_ok()
++    };
++    auto const precision{ mc.get(precision_key).to_integer() };
++    if(precision < 0 || precision > std::numeric_limits<i32>::max())
++    {
++      throw_arithmetic_error("Digits < 0");
++    }
++    math_context ret{ static_cast<u32>(precision), rounding_mode::half_up };
++    auto const rounding{ mc.get(rounding_key) };
++    if(rounding.get_type() == runtime::object_type::keyword)
++    {
++      auto const &name{ runtime::expect_object<runtime::obj::keyword>(rounding)->get_name() };
++      std::array<std::pair<char const *, rounding_mode>, 8> const modes{
++        { { "UP", rounding_mode::up },
++          { "DOWN", rounding_mode::down },
++          { "CEILING", rounding_mode::ceiling },
++          { "FLOOR", rounding_mode::floor },
++          { "HALF_UP", rounding_mode::half_up },
++          { "HALF_DOWN", rounding_mode::half_down },
++          { "HALF_EVEN", rounding_mode::half_even },
++          { "UNNECESSARY", rounding_mode::unnecessary } }
++      };
++      for(auto const &[mode_name, mode] : modes)
++      {
++        if(name == mode_name)
++        {
++          ret.mode = mode;
++        }
++      }
++    }
++    return ret;
++  }
++
++  namespace
++  {
++    using big = native_big_integer;
++
++    big big_abs(big const &v)
++    {
++      return v < 0 ? big{ -v } : v;
++    }
++
++    big pow10(u64 const n)
++    {
++      static std::vector<big> const small{ [] {
++        std::vector<big> ret;
++        big p{ 1 };
++        for(int i{}; i < 64; ++i)
++        {
++          ret.push_back(p);
++          p *= 10;
++        }
++        return ret;
++      }() };
++      if(n < small.size())
++      {
++        return small[n];
++      }
++      return boost::multiprecision::pow(big{ 10 }, static_cast<unsigned>(n));
++    }
++
++    big pow10_value(i64 const n)
++    {
++      return pow10(static_cast<u64>(n));
++    }
++
++    /* The number of decimal digits of |v| (1 for zero). */
++    i64 digit_count(big const &v)
++    {
++      if(v == 0)
++      {
++        return 1;
++      }
++      auto const s{ big_abs(v).str() };
++      return static_cast<i64>(s.size());
++    }
++
++    /* BigDecimal.checkScale: a nonzero value's scale must fit an int ("Underflow" above,
++     * "Overflow" below); a zero's is clamped. */
++    i32 check_scale(i64 const scale, bool const zero)
++    {
++      if(scale > std::numeric_limits<i32>::max())
++      {
++        if(!zero)
++        {
++          throw_arithmetic_error("Underflow");
++        }
++        return std::numeric_limits<i32>::max();
++      }
++      if(scale < std::numeric_limits<i32>::min())
++      {
++        if(!zero)
++        {
++          throw_arithmetic_error("Overflow");
++        }
++        return std::numeric_limits<i32>::min();
++      }
++      return static_cast<i32>(scale);
++    }
++
++    native_big_decimal make(big const &u, i64 const scale)
++    {
++      native_big_decimal ret;
++      ret.unscaled = u;
++      ret.scale = check_scale(scale, u == 0);
++      return ret;
++    }
++
++    /* n / d (n >= 0, d > 0) rounded to an integer by the mode, for a value of the given sign. */
++    big round_quotient(big const &n, big const &d, rounding_mode const mode, bool const negative)
++    {
++      big q, r;
++      boost::multiprecision::divide_qr(n, d, q, r);
++      if(r == 0)
++      {
++        return q;
++      }
++      bool up{};
++      switch(mode)
++      {
++        case rounding_mode::up:
++          up = true;
++          break;
++        case rounding_mode::down:
++          up = false;
++          break;
++        case rounding_mode::ceiling:
++          up = !negative;
++          break;
++        case rounding_mode::floor:
++          up = negative;
++          break;
++        case rounding_mode::half_up:
++        case rounding_mode::half_down:
++        case rounding_mode::half_even:
++          {
++            big const twice{ r * 2 };
++            up = twice > d
++              || (twice == d
++                  && (mode == rounding_mode::half_up
++                      || (mode == rounding_mode::half_even && (q & 1) != 0)));
++          }
++          break;
++        case rounding_mode::unnecessary:
++          throw_arithmetic_error("Rounding necessary");
++      }
++      return up ? big{ q + 1 } : q;
++    }
++
++    /* The least i such that 10^i doesn't divide v (v != 0). */
++    i64 trailing_zeros(big v)
++    {
++      i64 n{};
++      big q, r;
++      while(true)
++      {
++        boost::multiprecision::divide_qr(v, big{ 10 }, q, r);
++        if(r != 0)
++        {
++          return n;
++        }
++        v = q;
++        ++n;
++      }
++    }
++
++    /* stripZerosToMatchScale: remove trailing zeros while the scale is above the preferred. */
++    native_big_decimal strip_to_scale(big u, i64 scale, i64 const preferred)
++    {
++      big q, r;
++      while(scale > preferred && u != 0)
++      {
++        boost::multiprecision::divide_qr(u, big{ 10 }, q, r);
++        if(r != 0)
++        {
++          break;
++        }
++        u = q;
++        --scale;
++      }
++      return make(u, scale);
++    }
++
++    i64 saturate(i64 const s)
++    {
++      return std::clamp<i64>(s, std::numeric_limits<i32>::min(), std::numeric_limits<i32>::max());
++    }
++
++    native_big_decimal magnitude_of(native_big_decimal const &x)
++    {
++      native_big_decimal ret{ x };
++      ret.unscaled = big_abs(ret.unscaled);
++      return ret;
++    }
++
++    int compare_magnitude(native_big_decimal const &l, native_big_decimal const &r)
++    {
++      return magnitude_of(l).compare(magnitude_of(r));
++    }
++
++    native_big_decimal exact_add(native_big_decimal const &l, native_big_decimal const &r)
++    {
++      i64 const scale{ std::max<i64>(l.scale, r.scale) };
++      return make(l.unscaled * pow10_value(scale - l.scale) + r.unscaled * pow10_value(scale - r.scale),
++                  scale);
++    }
++
++    native_big_decimal exact_multiply(native_big_decimal const &l, native_big_decimal const &r)
++    {
++      return make(l.unscaled * r.unscaled, static_cast<i64>(l.scale) + r.scale);
++    }
++
++    native_big_decimal exact_negate(native_big_decimal const &x)
++    {
++      native_big_decimal ret{ x };
++      ret.unscaled = -ret.unscaled;
++      return ret;
++    }
++
++    /* BigDecimal.divide(divisor): exact, or "Non-terminating decimal expansion". */
++    native_big_decimal exact_quotient(native_big_decimal const &l, native_big_decimal const &r)
++    {
++      i64 const preferred{ static_cast<i64>(l.scale) - r.scale };
++      if(l.is_zero())
++      {
++        return make(big{}, saturate(preferred));
++      }
++      /* l / r = (a / b) * 10^-preferred; a / b reduced to n / d terminates exactly when d has no
++       * prime factor but 2 and 5, and then n / d = q * 10^-k with k = max(twos, fives). Such a q
++       * has no trailing zero when k > 0, so the scale preferred + k is Java's: the preferred scale
++       * raised to the exact quotient's least scale. */
++      big const a{ big_abs(l.unscaled) };
++      big const b{ big_abs(r.unscaled) };
++      big const g{ boost::multiprecision::gcd(a, b) };
++      big n{ a / g };
++      big d{ b / g };
++      i64 twos{};
++      i64 fives{};
++      while((d & 1) == 0)
++      {
++        d >>= 1;
++        ++twos;
++      }
++      big q, rem;
++      while(true)
++      {
++        boost::multiprecision::divide_qr(d, big{ 5 }, q, rem);
++        if(rem != 0)
++        {
++          break;
++        }
++        d = q;
++        ++fives;
++      }
++      if(d != 1)
++      {
++        throw_arithmetic_error(
++          "Non-terminating decimal expansion; no exact representable decimal result.");
++      }
++      i64 const k{ std::max(twos, fives) };
++      n *= boost::multiprecision::pow(big{ 2 }, static_cast<unsigned>(k - twos))
++        * boost::multiprecision::pow(big{ 5 }, static_cast<unsigned>(k - fives));
++      if(l.sign() != r.sign())
++      {
++        n = -n;
++      }
++      return make(n, preferred + k);
++    }
++
++    /* BigDecimal.divide(divisor, mc) with a precision. */
++    native_big_decimal context_divide(native_big_decimal const &l,
++                                      native_big_decimal const &r,
++                                      math_context const &mc)
++    {
++      i64 const preferred{ static_cast<i64>(l.scale) - r.scale };
++      if(l.is_zero())
++      {
++        return make(big{}, saturate(preferred));
++      }
++      bool const negative{ l.sign() != r.sign() };
++      big const a{ big_abs(l.unscaled) };
++      big const b{ big_abs(r.unscaled) };
++      i64 const p{ mc.precision };
++      big const low{ pow10(static_cast<u64>(p - 1)) };
++      big const high{ pow10(static_cast<u64>(p)) };
++      /* |l / r| * 10^(preferred + t) = a * 10^t / b: find t giving p digits before the point. */
++      i64 t{ p - digit_count(a) + digit_count(b) };
++      big n, d, q;
++      while(true)
++      {
++        n = t >= 0 ? big{ a * pow10_value(t) } : a;
++        d = t >= 0 ? b : big{ b * pow10_value(-t) };
++        q = n / d;
++        if(q >= high)
++        {
++          --t;
++        }
++        else if(q < low)
++        {
++          ++t;
++        }
++        else
++        {
++          break;
++        }
++      }
++      bool const exact{ q * d == n };
++      big u{ round_quotient(n, d, mc.mode, negative) };
++      i64 scale{ preferred + t };
++      if(u == high)
++      {
++        u = low;
++        --scale;
++      }
++      if(negative)
++      {
++        u = -u;
++      }
++      if(exact)
++      {
++        /* The exact quotient in at most p digits: the scale closest to the preferred one. */
++        return strip_to_scale(u, scale, preferred);
++      }
++      return make(u, scale);
++    }
++
++    native_big_decimal set_scale_down_to_zero(native_big_decimal const &x)
++    {
++      /* setScale(0, RoundingMode.DOWN) of a scale > 0. */
++      return make(big{ x.unscaled / pow10_value(x.scale) }, 0);
++    }
++  }
++
++  native_big_decimal::native_big_decimal(native_big_integer const &u, i64 const s)
++    : unscaled{ u }
++    , scale{ check_scale(s, u == 0) }
++  {
++  }
++
++  native_big_decimal::native_big_decimal(native_big_integer const &v)
++    : unscaled{ v }
++  {
++  }
++
++  native_big_decimal::native_big_decimal(std::string const &s)
++    : native_big_decimal{ s.c_str() }
++  {
++  }
++
++  /* new BigDecimal(String): [+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?; the
++   * value is the digits as an integer, at scale (fraction digits - exponent). */
++  native_big_decimal::native_big_decimal(char const * const s)
++  {
++    std::string_view const text{ s };
++    auto const invalid = [&]() {
++      std::string const message{ "Invalid BigDecimal: \"" + std::string{ text } + "\"" };
++      throw_arithmetic_error(message.c_str());
++    };
++    usize i{};
++    bool negative{};
++    if(i < text.size() && (text[i] == '+' || text[i] == '-'))
++    {
++      negative = text[i] == '-';
++      ++i;
++    }
++    std::string digits;
++    i64 fraction{};
++    bool point{};
++    for(; i < text.size(); ++i)
++    {
++      char const c{ text[i] };
++      if(c >= '0' && c <= '9')
++      {
++        digits.push_back(c);
++        fraction += point ? 1 : 0;
++      }
++      else if(c == '.' && !point)
++      {
++        point = true;
++      }
++      else
++      {
++        break;
++      }
++    }
++    if(digits.empty())
++    {
++      invalid();
++    }
++    i64 exponent{};
++    if(i < text.size() && (text[i] == 'e' || text[i] == 'E'))
++    {
++      ++i;
++      bool exponent_negative{};
++      if(i < text.size() && (text[i] == '+' || text[i] == '-'))
++      {
++        exponent_negative = text[i] == '-';
++        ++i;
++      }
++      usize exponent_digits{};
++      for(; i < text.size() && text[i] >= '0' && text[i] <= '9'; ++i, ++exponent_digits)
++      {
++        exponent = exponent * 10 + (text[i] - '0');
++        if(exponent > std::numeric_limits<i32>::max() + 1ll)
++        {
++          invalid();
++        }
++      }
++      if(exponent_digits == 0)
++      {
++        invalid();
++      }
++      exponent = exponent_negative ? -exponent : exponent;
++    }
++    if(i != text.size())
++    {
++      invalid();
++    }
++    auto const first{ digits.find_first_not_of('0') };
++    unscaled = first == std::string::npos ? big{} : big{ digits.substr(first) };
++    if(negative)
++    {
++      unscaled = -unscaled;
++    }
++    i64 const new_scale{ fraction - exponent };
++    if(new_scale > std::numeric_limits<i32>::max() || new_scale < std::numeric_limits<i32>::min())
++    {
++      invalid();
++    }
++    scale = static_cast<i32>(new_scale);
++  }
++
++  native_big_decimal native_big_decimal::from_double(f64 const d)
++  {
++    if(!std::isfinite(d))
++    {
++      throw_arithmetic_error("Infinite or NaN");
++    }
++    if(d == 0.0)
++    {
++      return {};
++    }
++    int exponent{};
++    f64 const fraction{ std::frexp(std::fabs(d), &exponent) };
++    u64 mantissa{ static_cast<u64>(std::ldexp(fraction, 53)) };
++    i64 e{ exponent - 53 };
++    while((mantissa & 1) == 0 && e < 0)
++    {
++      mantissa >>= 1;
++      ++e;
++    }
++    native_big_decimal ret;
++    if(e >= 0)
++    {
++      ret.unscaled = big{ mantissa } << static_cast<unsigned>(e);
++    }
++    else
++    {
++      ret.unscaled = big{ mantissa } * boost::multiprecision::pow(big{ 5 }, static_cast<unsigned>(-e));
++      ret.scale = static_cast<i32>(-e);
++    }
++    if(d < 0)
++    {
++      ret.unscaled = -ret.unscaled;
++    }
++    return ret;
++  }
++
++  bool native_big_decimal::is_zero() const
++  {
++    return unscaled == 0;
++  }
++
++  int native_big_decimal::sign() const
++  {
++    return unscaled.sign();
++  }
++
++  i64 native_big_decimal::precision() const
++  {
++    return digit_count(unscaled);
++  }
++
++  int native_big_decimal::compare(native_big_decimal const &o) const
++  {
++    int const ls{ sign() };
++    int const rs{ o.sign() };
++    if(ls != rs)
++    {
++      return ls < rs ? -1 : 1;
++    }
++    if(ls == 0)
++    {
++      return 0;
++    }
++    /* Different adjusted exponents decide without aligning. */
++    i64 const ladj{ precision() - 1 - scale };
++    i64 const radj{ o.precision() - 1 - o.scale };
++    if(ladj != radj)
++    {
++      return (ladj < radj ? -1 : 1) * ls;
++    }
++    i64 const s{ std::max<i64>(scale, o.scale) };
++    big const l{ unscaled * pow10_value(s - scale) };
++    big const r{ o.unscaled * pow10_value(s - o.scale) };
++    return l < r ? -1 : (r < l ? 1 : 0);
++  }
++
++  /* BigDecimal.toString: plain when scale >= 0 and the adjusted exponent >= -6, else scientific
++   * with one digit before the point and E+n / E-n. */
++  std::string native_big_decimal::str() const
++  {
++    std::string const coefficient{ big_abs(unscaled).str() };
++    std::string ret{ unscaled < 0 ? "-" : "" };
++    i64 const length{ static_cast<i64>(coefficient.size()) };
++    i64 const adjusted{ -static_cast<i64>(scale) + (length - 1) };
++    if(scale == 0)
++    {
++      return ret + coefficient;
++    }
++    if(scale > 0 && adjusted >= -6)
++    {
++      i64 const point{ length - scale };
++      if(point > 0)
++      {
++        ret += coefficient.substr(0, static_cast<usize>(point));
++        ret += '.';
++        ret += coefficient.substr(static_cast<usize>(point));
++      }
++      else
++      {
++        ret += "0.";
++        ret.append(static_cast<usize>(-point), '0');
++        ret += coefficient;
++      }
++      return ret;
++    }
++    ret += coefficient[0];
++    if(length > 1)
++    {
++      ret += '.';
++      ret += coefficient.substr(1);
++    }
++    ret += 'E';
++    if(adjusted > 0)
++    {
++      ret += '+';
++    }
++    ret += std::to_string(adjusted);
++    return ret;
++  }
++
++  f64 native_big_decimal::to_double() const
++  {
++    if(is_zero())
++    {
++      return 0.0;
++    }
++    /* strtod rounds the exact decimal text once, as doubleValue does. */
++    auto const text{ unscaled.str() + "e" + std::to_string(-static_cast<i64>(scale)) };
++    return std::strtod(text.c_str(), nullptr);
++  }
++
++  native_big_integer native_big_decimal::to_big_integer() const
++  {
++    if(scale <= 0)
++    {
++      return unscaled * pow10_value(-static_cast<i64>(scale));
++    }
++    return unscaled / pow10_value(scale);
++  }
++
++  namespace decimal
++  {
++    native_big_decimal round(native_big_decimal const &x, math_context const &mc)
++    {
++      if(mc.precision == 0)
++      {
++        return x;
++      }
++      i64 const p{ mc.precision };
++      i64 const digits{ x.precision() };
++      if(digits <= p)
++      {
++        return x;
++      }
++      i64 const drop{ digits - p };
++      big u{ round_quotient(big_abs(x.unscaled),
++                            pow10_value(drop),
++                            mc.mode,
++                            x.sign() < 0) };
++      i64 scale{ static_cast<i64>(x.scale) - drop };
++      if(u == pow10(static_cast<u64>(p)))
++      {
++        u = pow10(static_cast<u64>(p - 1));
++        --scale;
++      }
++      return make(x.sign() < 0 ? big{ -u } : u, scale);
++    }
++
++    native_big_decimal add(native_big_decimal const &l,
++                           native_big_decimal const &r,
++                           math_context const &mc)
++    {
++      return round(exact_add(l, r), mc);
++    }
++
++    native_big_decimal multiply(native_big_decimal const &l,
++                                native_big_decimal const &r,
++                                math_context const &mc)
++    {
++      return round(exact_multiply(l, r), mc);
++    }
++
++    native_big_decimal divide(native_big_decimal const &l,
++                              native_big_decimal const &r,
++                              math_context const &mc)
++    {
++      if(r.is_zero())
++      {
++        throw_arithmetic_error("Divide by zero");
++      }
++      return mc.precision == 0 ? exact_quotient(l, r) : context_divide(l, r, mc);
++    }
++
++    native_big_decimal divide_to_integral_value(native_big_decimal const &l,
++                                                native_big_decimal const &r,
++                                                math_context const &mc)
++    {
++      if(r.is_zero())
++      {
++        throw_arithmetic_error("Divide by zero");
++      }
++      i64 const preferred{ static_cast<i64>(l.scale) - r.scale };
++      if(compare_magnitude(l, r) < 0)
++      {
++        return make(big{}, saturate(preferred));
++      }
++      if(mc.precision == 0)
++      {
++        /* The integer part t of the exact quotient, at max(preferred, -trailingZeros(t)). */
++        i64 const shift{ static_cast<i64>(r.scale) - l.scale };
++        big const n{ shift >= 0 ? big{ l.unscaled * pow10_value(shift) } : l.unscaled };
++        big const d{ shift >= 0 ? r.unscaled : big{ r.unscaled * pow10_value(-shift) } };
++        big const t{ n / d };
++        i64 const scale{ std::max(preferred, -trailing_zeros(t)) };
++        return make(scale >= 0 ? big{ t * pow10_value(scale) } : big{ t / pow10_value(-scale) },
++                    scale);
++      }
++      native_big_decimal result{ context_divide(l, r, { mc.precision, rounding_mode::down }) };
++      if(result.scale < 0)
++      {
++        auto const product{ exact_multiply(result, r) };
++        if(compare_magnitude(exact_add(l, exact_negate(product)), r) >= 0)
++        {
++          throw_arithmetic_error("Division impossible");
++        }
++      }
++      else if(result.scale > 0)
++      {
++        result = set_scale_down_to_zero(result);
++      }
++      i64 const precision_diff{ static_cast<i64>(mc.precision) - result.precision() };
++      if(preferred > result.scale && precision_diff > 0)
++      {
++        i64 const add{ std::min(precision_diff, preferred - result.scale) };
++        return make(result.unscaled * pow10_value(add), static_cast<i64>(result.scale) + add);
++      }
++      return strip_to_scale(result.unscaled, result.scale, preferred);
++    }
++
++    native_big_decimal remainder(native_big_decimal const &l,
++                                 native_big_decimal const &r,
++                                 math_context const &mc)
++    {
++      auto const q{ divide_to_integral_value(l, r, mc) };
++      return exact_add(l, exact_negate(exact_multiply(q, r)));
++    }
++
++    native_big_decimal negate(native_big_decimal const &x, math_context const &mc)
++    {
++      return round(exact_negate(x), mc);
++    }
++
++    native_big_decimal abs(native_big_decimal const &x, math_context const &mc)
++    {
++      return round(x.sign() < 0 ? exact_negate(x) : x, mc);
++    }
++
++    native_big_decimal value_of(f64 const d)
++    {
++      if(!std::isfinite(d))
++      {
++        throw_arithmetic_error("Infinite or NaN");
++      }
++      if(d == 0.0)
++      {
++        /* Double.toString: "0.0". */
++        return make(big{}, 1);
++      }
++      /* The shortest digits D1...Dn and exponent E of Double.toString, then its layout: plain
++       * "I.F" for 1e-3 <= |d| < 1e7 (scale max(n - 1 - E, 1)), else "D.FFFE<E>" with at least
++       * one fraction digit (scale max(n - 1, 1) - E). */
++      std::array<char, 64> buf{};
++      auto const res{
++        std::to_chars(buf.data(), buf.data() + buf.size(), std::fabs(d), std::chars_format::scientific)
++      };
++      std::string_view const text{ buf.data(), static_cast<usize>(res.ptr - buf.data()) };
++      auto const e_pos{ text.find('e') };
++      std::string digits;
++      for(usize i{}; i < e_pos; ++i)
++      {
++        if(text[i] != '.')
++        {
++          digits.push_back(text[i]);
++        }
++      }
++      i64 const exponent{ std::stoll(std::string{ text.substr(e_pos + 1) }) };
++      i64 const n{ static_cast<i64>(digits.size()) };
++      f64 const magnitude{ std::fabs(d) };
++      i64 scale{};
++      if(magnitude >= 1e-3 && magnitude < 1e7)
++      {
++        scale = std::max<i64>(n - 1 - exponent, 1);
++      }
++      else
++      {
++        scale = std::max<i64>(n - 1, 1) - exponent;
++      }
++      /* The digits at that scale: D * 10^(scale - (n - 1 - E)), which is >= 0. */
++      big u{ big{ digits } * pow10_value(scale - (n - 1 - exponent)) };
++      return make(d < 0 ? big{ -u } : u, scale);
++    }
++
++    u32 hasheq(native_big_decimal const &x)
++    {
++      if(x.is_zero())
++      {
++        return 0;
++      }
++      /* stripTrailingZeros().hashCode() = 31 * BigInteger.hashCode(unscaled) + scale. */
++      big u{ x.unscaled };
++      i64 scale{ x.scale };
++      big q, r;
++      while(true)
++      {
++        boost::multiprecision::divide_qr(u, big{ 10 }, q, r);
++        if(r != 0)
++        {
++          break;
++        }
++        u = q;
++        --scale;
++      }
++      /* BigInteger.hashCode: the magnitude's 32-bit words, most significant first, h = 31h + w,
++       * then times the signum, in int (u32) arithmetic. */
++      big magnitude{ big_abs(u) };
++      std::vector<u32> words;
++      while(magnitude != 0)
++      {
++        words.push_back(static_cast<u32>(
++          big{ magnitude & big{ 0xFFFFFFFFu } }.template convert_to<unsigned long long>()));
++        magnitude >>= 32;
++      }
++      u32 h{};
++      for(auto it{ words.rbegin() }; it != words.rend(); ++it)
++      {
++        h = 31u * h + *it;
++      }
++      if(u < 0)
++      {
++        h = 0u - h;
++      }
++      return 31u * h + static_cast<u32>(static_cast<i32>(scale));
++    }
++  }
++
++  native_big_decimal operator-(native_big_decimal const &x)
++  {
++    return decimal::negate(x, current_math_context());
++  }
++
++  native_big_decimal operator+(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return decimal::add(l, r, current_math_context());
++  }
++
++  native_big_decimal operator-(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    auto const mc{ current_math_context() };
++    return decimal::add(l, decimal::negate(r, mc), mc);
++  }
++
++  native_big_decimal operator*(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return decimal::multiply(l, r, current_math_context());
++  }
++
++  native_big_decimal operator/(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return decimal::divide(l, r, current_math_context());
++  }
+ 
++  native_big_decimal abs(native_big_decimal const &x)
++  {
++    return decimal::abs(x, current_math_context());
++  }
++
++  bool operator==(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return l.compare(r) == 0;
++  }
++
++  bool operator!=(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return l.compare(r) != 0;
++  }
++
++  bool operator<(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return l.compare(r) < 0;
++  }
++
++  bool operator<=(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return l.compare(r) <= 0;
++  }
++
++  bool operator>(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return l.compare(r) > 0;
++  }
++
++  bool operator>=(native_big_decimal const &l, native_big_decimal const &r)
++  {
++    return l.compare(r) >= 0;
++  }
++
++  std::ostream &operator<<(std::ostream &os, native_big_decimal const &d)
++  {
++    return os << d.str();
++  }
++}
++
+ namespace jank::runtime
+ {
+   native_big_decimal operator+(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l + native_big_decimal(r.str());
++    return l + native_big_decimal{ r };
+   }
+ 
+   native_big_decimal operator-(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l - native_big_decimal(r.str());
++    /* Numbers.minus: add(l, BigIntOps.negate(r)), the negation exact. */
++    return l + native_big_decimal{ native_big_integer{ -r } };
+   }
+ 
+   native_big_decimal operator*(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l * native_big_decimal(r.str());
++    return l * native_big_decimal{ r };
+   }
+ 
+   native_big_decimal operator/(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l / native_big_decimal(r.str());
++    return l / native_big_decimal{ r };
+   }
+ 
+   native_big_decimal operator+(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) + r;
++    return native_big_decimal{ l } + r;
+   }
+ 
+   native_big_decimal operator-(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) - r;
++    return native_big_decimal{ l } - r;
+   }
+ 
+   native_big_decimal operator*(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) * r;
++    return native_big_decimal{ l } * r;
+   }
+ 
+   native_big_decimal operator/(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) / r;
++    return native_big_decimal{ l } / r;
+   }
+ 
+   bool operator==(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    native_big_decimal const r_as_decimal(r.str());
+-    return abs(l - r_as_decimal) < std::numeric_limits<native_big_decimal>::epsilon();
++    return l.compare(native_big_decimal{ r }) == 0;
+   }
+ 
+   bool operator!=(native_big_decimal const &l, native_big_integer const &r)
+@@ -67,42 +952,42 @@
+ 
+   bool operator>(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return native_big_decimal(r.str()) < l;
++    return native_big_decimal{ r } < l;
+   }
+ 
+   bool operator>(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return r < native_big_decimal(l.str());
++    return r < native_big_decimal{ l };
+   }
+ 
+   bool operator<(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l < native_big_decimal(r.str());
++    return l < native_big_decimal{ r };
+   }
+ 
+   bool operator<(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) < r;
++    return native_big_decimal{ l } < r;
+   }
+ 
+   bool operator>=(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return native_big_decimal(r.str()) <= l;
++    return native_big_decimal{ r } <= l;
+   }
+ 
+   bool operator>=(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return r <= native_big_decimal(l.str());
++    return r <= native_big_decimal{ l };
+   }
+ 
+   bool operator<=(native_big_decimal const &l, native_big_integer const &r)
+   {
+-    return l <= native_big_decimal(r.str());
++    return l <= native_big_decimal{ r };
+   }
+ 
+   bool operator<=(native_big_integer const &l, native_big_decimal const &r)
+   {
+-    return native_big_decimal(l.str()) <= r;
++    return native_big_decimal{ l } <= r;
+   }
+ }
+ 
+@@ -133,7 +1018,7 @@
+ 
+   big_decimal::big_decimal(native_big_integer const &val)
+     : object{ obj_type, obj_behaviors }
+-    , data{ val.real() }
++    , data{ val }
+   {
+   }
+ 
+@@ -150,8 +1035,9 @@
+       return false;
+     }
+ 
++    /* Numbers.equal of two BigDecimals: compareTo, so 1.0M = 1M. */
+     auto const typed_o(expect_object<big_decimal>(runtime::detail::untagged(&o)));
+-    return abs(data - typed_o->data) < std::numeric_limits<f64>::epsilon();
++    return data.compare(typed_o->data) == 0;
+   }
+ 
+   jtl::immutable_string big_decimal::to_string() const
+@@ -176,13 +1062,25 @@
+ 
+   uhash big_decimal::to_hash() const
+   {
+-    return std::hash<native_big_decimal>{}(data);
++    return decimal::hasheq(data);
+   }
+ 
+   i64 big_decimal::compare(object const &o) const
+   {
+     return visit_number_like(
+-      [this](auto const typed_o) -> i64 { return (typed_o->data < data) - (data < typed_o->data); },
++      [this](auto const typed_o) -> i64 {
++        using T = typename decltype(typed_o)::value_type;
++        /* A double compares as doubles (DoubleOps); everything else exactly. */
++        if constexpr(jtl::is_any_same<T, real, small_real>)
++        {
++          auto const d{ to_real() };
++          return (typed_o->data < d) - (d < typed_o->data);
++        }
++        else
++        {
++          return (typed_o->data < data) - (data < typed_o->data);
++        }
++      },
+       [&]() -> i64 {
+         throw std::runtime_error{ util::format("not comparable: {}", object_type_str(o.type)) };
+       },
+@@ -191,12 +1089,24 @@
+ 
+   i64 big_decimal::to_integer() const
+   {
+-    return data.convert_to<i64>();
++    /* RT.longCast: through doubleValue, "Value out of range for long" outside the long range,
++     * else Java's (long) truncation. */
++    auto const d{ to_real() };
++    if(d < -9223372036854775808.0 || d > 9223372036854775807.0)
++    {
++      throw make_box(util::format("Value out of range for long: {}", d)).erase();
++    }
++    if(d >= 9223372036854775807.0)
++    {
++      return std::numeric_limits<i64>::max();
++    }
++    return static_cast<i64>(d);
+   }
+ 
+   f64 big_decimal::to_real() const
+   {
+-    return data.convert_to<f64>();
++    /* BigDecimal.doubleValue: correctly rounded, subnormals included. */
++    return data.to_double();
+   }
+ 
+   object_ref big_decimal::create(jtl::immutable_string const &val)
+--- a/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/obj/ratio.cpp
+@@ -9,10 +9,11 @@
+ 
+ namespace jank::runtime::obj
+ {
++  /* Numbers.toBigDecimal of a Ratio: divide(new BigDecimal(numerator), denominator), exact or
++   * "Non-terminating decimal expansion" (rounded in a math context). */
+   static native_big_decimal to_native_big_decimal(ratio_data const &r)
+   {
+-    return native_big_decimal(r.numerator.str().c_str())
+-      / native_big_decimal(r.denominator.str().c_str());
++    return native_big_decimal{ r.numerator } / native_big_decimal{ r.denominator };
+   }
+ 
+   static native_big_decimal to_native_big_decimal(ratio const &r)
+@@ -524,7 +525,8 @@
+ 
+   native_big_decimal operator-(native_big_decimal const &l, ratio_data const &r)
+   {
+-    return l - to_native_big_decimal(r);
++    /* Numbers.minus: add(l, RatioOps.negate(r)), the negation exact. */
++    return l + to_native_big_decimal(ratio_data{ native_big_integer{ -r.numerator }, r.denominator });
+   }
+ 
+   native_big_decimal operator*(ratio_data const &l, native_big_decimal const &r)
+@@ -549,11 +551,8 @@
+ 
+   bool operator==(native_big_decimal const &l, ratio_data const &r)
+   {
+-    native_big_decimal const r_bd(to_native_big_decimal(r));
+-    native_big_decimal const eps(std::numeric_limits<native_big_decimal>::epsilon());
+-    native_big_decimal const diff(abs(l - r_bd));
+-    native_big_decimal const tolerance(eps * std::max(abs(l), abs(r_bd)));
+-    return diff <= tolerance;
++    /* BigDecimalOps.equiv: the ratio as a BigDecimal (Numbers.toBigDecimal), then compareTo. */
++    return l.compare(to_native_big_decimal(r)) == 0;
+   }
+ 
+   bool operator==(ratio_data const &l, native_big_decimal const &r)
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -246,6 +246,30 @@
+             if constexpr(is_float)
+             {
+               return make_box(rem(to_real(typed_l_data), to_real(typed_r->data))).erase();
++            }
++            else if constexpr(is_big_decimal)
++            {
++              /* BigDecimalOps.remainder (it wins over RatioOps): BigDecimal.remainder, exact
++               * (x - divideToIntegralValue(x, y) * y), a ratio operand made a BigDecimal first. */
++              auto const to_decimal = [](auto const &v) -> native_big_decimal {
++                if constexpr(std::is_same_v<std::decay_t<decltype(v)>, obj::ratio_data>)
++                {
++                  return native_big_decimal{ v.numerator } / native_big_decimal{ v.denominator };
++                }
++                else
++                {
++                  return native_big_decimal{ v };
++                }
++              };
++              auto const r_dec{ to_decimal(typed_r->data) };
++              if(r_dec.is_zero())
++              {
++                throw std::runtime_error{ "Division by zero is not permitted." };
++              }
++              auto const l_dec{ to_decimal(typed_l_data) };
++              return make_box<obj::big_decimal>(
++                       decimal::remainder(l_dec, r_dec, current_math_context()))
++                .erase();
+             }
+             else if constexpr(is_ratio)
+             {
+@@ -267,21 +291,7 @@
+                   obj::ratio_data{ native_big_integer(typed_l_data), native_big_integer(1) });
+ 
+                 return rem(l, typed_r->data);
+-              }
+-            }
+-            else if constexpr(is_big_decimal)
+-            {
+-              if(typed_r->data == 0)
+-              {
+-                throw std::runtime_error{ "Division by zero is not permitted." };
+               }
+-
+-              auto const result{ boost::multiprecision::fmod(
+-                abs(native_big_decimal{ typed_l_data }),
+-                abs(native_big_decimal{ typed_r->data })) };
+-
+-              /* boost::multiprecision::fmod doesn't account for negatives, so we need to do it manually */
+-              return make_box<obj::big_decimal>(typed_l_data < 0 ? -result : result).erase();
+             }
+             else if constexpr(is_big_integer)
+             {
+--- a/compiler+runtime/src/cpp/jtl/string_builder.cpp
++++ b/compiler+runtime/src/cpp/jtl/string_builder.cpp
+@@ -237,15 +237,11 @@
+     return (*this)(d.str());
+   }
+ 
++  /* BigDecimal.toString: the scale decides the digits after the point (1M is "1", 1.50M is
++   * "1.50", 1E+130M is "1E+130"). */
+   string_builder &string_builder::operator()(jank::native_big_decimal const &d) &
+   {
+-    auto const s(d.str());
+-    (*this)(s);
+-    if(s.find('.') == std::string::npos)
+-    {
+-      (*this)(".0");
+-    }
+-    return *this;
++    return (*this)(d.str());
+   }
+ 
+   string_builder &string_builder::operator()(jank::runtime::obj::ratio_data const &r) &
+--- a/compiler+runtime/src/cpp/jank/runtime/context.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/context.cpp
+@@ -78,6 +78,12 @@
+     __rt_ctx->intern_var("clojure.core", "*read-eval*")
+       .expect_ok()
+       ->bind_root(jank_true)
++      ->set_dynamic(true);
++
++    /* Numbers' BigDecimalOps read it; with-precision binds it. */
++    __rt_ctx->intern_var("clojure.core", "*math-context*")
++      .expect_ok()
++      ->bind_root(jank_nil)
+       ->set_dynamic(true);
+ 
+     auto const command_line_args_sym(make_box<obj::symbol>("*command-line-args*"));
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -6493,13 +6493,20 @@
+   The rounding mode is one of CEILING, FLOOR, HALF_UP, HALF_DOWN,
+   HALF_EVEN, UP, DOWN and UNNECESSARY; it defaults to HALF_UP."
+   [precision & exprs]
+-    ;; (let [[body rm] (if (= (first exprs) :rounding)
+-    ;;                   [(next (next exprs))
+-    ;;                    `((. java.math.RoundingMode ~(second exprs)))]
+-    ;;                   [exprs nil])]
+-    ;;   `(binding [*math-context* (java.math.MathContext. ~precision ~@rm)]
+-    ;;      ~@body))
+-  (throw (ex-info "TODO: port with-precision"  {})))
++  ;; *math-context* holds {:precision p :rounding :MODE} (Clojure: a java.math.MathContext); the
++  ;; BigDecimal operations read it (big_decimal.cpp current_math_context).
++  (let [[body rm] (if (= (first exprs) :rounding)
++                    [(next (next exprs)) (second exprs)]
++                    [exprs 'HALF_UP])]
++    (if (contains? '#{CEILING FLOOR HALF_UP HALF_DOWN HALF_EVEN UP DOWN UNNECESSARY} rm)
++      `(binding [*math-context* {:precision (let [p# ~precision]
++                                              (if (neg? p#)
++                                                (throw (ex-info "Digits < 0" {}))
++                                                p#))
++                                 :rounding ~(keyword (name rm))}]
++         ~@body)
++      (throw (ex-info (str "No matching field found: " rm " for class java.math.RoundingMode")
++                      {})))))
+ 
+ (defn- mk-bound-fn
+   [#_clojure.lang.Sorted sc test key]

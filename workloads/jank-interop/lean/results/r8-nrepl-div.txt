@@ -1,0 +1,86 @@
+Round 8, area Q (nREPL): World T8 (Jank/R8/Nrepl/Diverge.lean): diverging evals, interrupt and stdin inside World T.
+Commands: jank8-nrepl div K MAXSTATES SECONDS (every schedule, exact graph, the spin a progress self-loop);
+          jank8-nrepl divb K B MAXSTATES MAXCOMBOS SECONDS (<=B preemptions, the spin a blocked step: quiescent states are deadlock leaves).
+Census line: per client, each request id's replies in order ([status... value= out= err= op=], '|' a newline), fd 1 at the end, and each eval's printed bytes against its :out.
+Scenarios: D1 one connection (clone; raw eval e '(loop [] (recur))'; raw interrupt i of e; describe c0-3). D2 connection 0: clone, raw eval e diverging, describe c0-2;
+connection 1: clone, eval c1-1 '(println "x")', raw interrupt i of e, describe c1-3 (jank's capture). D2L: D2 under round 3's capture lock. D3: clone; eval defn read-line
+(core.jank 5966-5972); eval (read-line); raw stdin s; describe. D4: connection 0 diverges; connection 1: clone, raw stdin s, eval c1-2 '(def z 1) z'.
+
+#### Every schedule (div)
+== D1 one connection: a diverging eval, then interrupt (its id) and describe pipelined after it
+  cfg: fixCapture false; every schedule, exact (compact codec), World T8's step (t8Step)
+  graph: 229 states, 577 step runs, COMPLETE (4 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops (a spinning eval): 12; blocked steps that moved: 0
+  quiescent or final states: 3; distinct outcomes: 1
+    3 × QUIESCENT client 0: c0-0:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 
+== D2 connection 0 runs a diverging eval; connection 1 prints, interrupts it, describes (jank's capture)
+  cfg: fixCapture false; every schedule, exact (compact codec), World T8's step (t8Step)
+  graph: 3,000,135 states, 12,440,122 step runs, STOPPED (137082 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops (a spinning eval): 480189; blocked steps that moved: 0
+== D2L D2 under round 3's capture lock (the set-aside of R125)
+  cfg: fixCapture true; every schedule, exact (compact codec), World T8's step (t8Step)
+  graph: 93,757 states, 434,668 step runs, COMPLETE (2958 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops (a spinning eval): 4041; blocked steps that moved: 0
+  quiescent or final states: 30; distinct outcomes: 2
+    16 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 
+    14 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "x\n" got "x\n"
+== D3 stdin: an eval reading a line (read-line as core.jank 5966-5972 defines it), then the stdin op
+  cfg: fixCapture false; every schedule, exact (compact codec), World T8's step (t8Step)
+  graph: 321 states, 827 step runs, COMPLETE (4 ms)
+  final states: 1 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops (a spinning eval): 0; blocked steps that moved: 0
+  quiescent or final states: 1; distinct outcomes: 1
+    1 × FINAL client 0: c0-0:[["done"]] c0-1:[][][ value=#'user/read-line][["done"]] c0-2:[][][ err=#error][["done" "eval-error"]] s:[["error" "unknown-op" "done"] op=stdin] c0-4:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c0-1 printed "" got "", c0-2 printed "" got ""
+== D4 two connections: connection 0 diverges, connection 1 sends stdin and an eval (jank's capture)
+  cfg: fixCapture false; every schedule, exact (compact codec), World T8's step (t8Step)
+  graph: 3,000,758 states, 12,112,919 step runs, STOPPED (135692 ms)
+  final states: 0 (0 with a violation of round 3's judge); step violations: 0; states where every thread only blocks: 0; progress self-loops (a spinning eval): 320387; blocked steps that moved: 0
+
+#### Bounded census (divb)
+== D2 connection 0 runs a diverging eval; connection 1 prints, interrupts it, describes (jank's capture)
+  cfg: fixCapture false; ≤2 preemptions, states expanded on demand, the spinning eval's step reported as blocked (t8StepB)
+  COMPLETE: 16,395 states, 49,437 step runs, 22,224 scheduler states; timelines 738,872, ending where nothing but the spinning eval can move: 738,872; final states 0 (0 with a violation of round 3's judge); step violations 0 (1272 ms)
+  quiescent or final states: 89; distinct outcomes: 5
+    12 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got "x\n"
+    4 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got "x"
+    28 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got ""
+    32 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: c1-1 printed "x\n" got "x\n"
+    13 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "x\n" got "x\n"
+== D2 connection 0 runs a diverging eval; connection 1 prints, interrupts it, describes (jank's capture)
+  cfg: fixCapture false; ≤3 preemptions, states expanded on demand, the spinning eval's step reported as blocked (t8StepB)
+  COMPLETE: 77,200 states, 234,924 step runs, 141,350 scheduler states; timelines 74,669,424, ending where nothing but the spinning eval can move: 74,669,424; final states 0 (0 with a violation of round 3's judge); step violations 0 (8777 ms)
+  quiescent or final states: 334; distinct outcomes: 6
+    55 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got "x\n"
+    20 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got "x"
+    115 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got ""
+    91 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: c1-1 printed "x\n" got "x\n"
+    7 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"); evals: c1-1 printed "x\n" got "x\n"
+    46 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "x\n" got "x\n"
+== D2 connection 0 runs a diverging eval; connection 1 prints, interrupts it, describes (jank's capture)
+  cfg: fixCapture false; ≤4 preemptions, states expanded on demand, the spinning eval's step reported as blocked (t8StepB)
+  COMPLETE: 293,659 states, 931,416 step runs, 634,262 scheduler states; timelines 5,646,143,696, ending where nothing but the spinning eval can move: 5,646,143,696; final states 0 (0 with a violation of round 3's judge); step violations 0 (83183 ms)
+  quiescent or final states: 1010; distinct outcomes: 6
+    237 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got "x\n"
+    63 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got "x"
+    390 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-1 printed "x\n" got ""
+    181 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: c1-1 printed "x\n" got "x\n"
+    35 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"); evals: c1-1 printed "x\n" got "x\n"
+    104 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "x\n" got "x\n"
+== D4 two connections: connection 0 diverges, connection 1 sends stdin and an eval (jank's capture)
+  cfg: fixCapture false; ≤3 preemptions, states expanded on demand, the spinning eval's step reported as blocked (t8StepB)
+  COMPLETE: 98,991 states, 293,073 step runs, 167,639 scheduler states; timelines 32,261,496, ending where nothing but the spinning eval can move: 32,261,496; final states 0 (0 with a violation of round 3's judge); step violations 0 (11272 ms)
+  quiescent or final states: 304; distinct outcomes: 4
+    7 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] s:[["error" "unknown-op" "done"] op=stdin] c1-2:[][][ value=1][["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-1"); evals: c1-2 printed "" got ""
+    46 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] s:[["error" "unknown-op" "done"] op=stdin] c1-2:[][][ value=1][["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-2 printed "" got ""
+    150 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] s:[["error" "unknown-op" "done"] op=stdin] c1-2:[][][ value=1][["done"]] / fd 1: some (Jank.NreplServer.Desc.terminal); evals: c1-2 printed "" got ""
+    101 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] s:[["error" "unknown-op" "done"] op=stdin] c1-2:[][][ value=1][["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: c1-2 printed "" got ""
+== D2L D2 under round 3's capture lock (the set-aside of R125)
+  cfg: fixCapture true; ≤3 preemptions, states expanded on demand, the spinning eval's step reported as blocked (t8StepB)
+  COMPLETE: 11,857 states, 40,801 step runs, 34,763 scheduler states; timelines 12,802,092, ending where nothing but the spinning eval can move: 12,802,092; final states 0 (0 with a violation of round 3's judge); step violations 0 (459 ms)
+  quiescent or final states: 13; distinct outcomes: 2
+    9 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 
+    4 × QUIESCENT client 0: c0-0:[["done"]] / client 1: c1-0:[["done"]] c1-1:[ out=x|][][ value=nil][["done"]] i:[["error" "unknown-op" "done"] op=interrupt] c1-3:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-2"); evals: c1-1 printed "x\n" got "x\n"
+== D1 one connection: a diverging eval, then interrupt (its id) and describe pipelined after it
+  cfg: fixCapture false; ≤3 preemptions, states expanded on demand, the spinning eval's step reported as blocked (t8StepB)
+  COMPLETE: 213 states, 433 step runs, 774 scheduler states; timelines 9,657, ending where nothing but the spinning eval can move: 9,657; final states 0 (0 with a violation of round 3's judge); step violations 0 (4 ms)
+  quiescent or final states: 3; distinct outcomes: 1
+    3 × QUIESCENT client 0: c0-0:[["done"]] / fd 1: some (Jank.NreplServer.Desc.temp "/tmp/jank-nrepl-0"); evals: 

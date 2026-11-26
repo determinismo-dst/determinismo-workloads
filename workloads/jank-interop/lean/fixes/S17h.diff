@@ -1,0 +1,17 @@
+--- a/compiler+runtime/src/cpp/jank/read/lex.cpp
++++ b/compiler+runtime/src/cpp/jank/read/lex.cpp
+@@ -997,6 +997,14 @@
+                 {
+                   found_slash_after_number = false;
+                   return error::lex_invalid_number("A number literal contains an unexpected `M`.",
++                                                   { token_start, pos },
++                                                   error::note{ "Found `M` here.", pos });
++                }
++                /* Clojure reads a BigDecimal with floatPat's decimal digits only: 0x10M and 0x1e5M
++                 * are invalid numbers, not 10M and 100000M. */
++                if(radix == 16)
++                {
++                  return error::lex_invalid_number("A hexadecimal number literal cannot end in `M`.",
+                                                    { token_start, pos },
+                                                    error::note{ "Found `M` here.", pos });
+                 }

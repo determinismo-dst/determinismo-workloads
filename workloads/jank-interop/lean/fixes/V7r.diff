@@ -1,0 +1,28 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core.cpp
+@@ -1292,7 +1292,24 @@
+     }
+ 
+     auto const typed_o{ expect_object<obj::persistent_string>(form_string) };
+-    return __rt_ctx->read_string(typed_o->data, opts);
++    /* A lex or parse error is an error_ref and the reader's own checks throw std::exceptions;
++     * neither reaches an object catch. Clojure's reader throws exceptions any catch sees
++     * (RuntimeException, NumberFormatException, ...), whose ex-message is the error's message
++     * and whose ex-data is nil. The error stays attached, so printing it reports it in full. */
++    try
++    {
++      return __rt_ctx->read_string(typed_o->data, opts);
++    }
++    catch(error_ref const e)
++    {
++      auto const ex{ make_box<obj::exception_info>(e->message, jank_nil) };
++      ex->error = e;
++      throw ex.erase();
++    }
++    catch(std::exception const &e)
++    {
++      throw make_box<obj::exception_info>(jtl::immutable_string{ e.what() }, jank_nil).erase();
++    }
+   }
+ 
+   object_ref read_file(object_ref const file_path, object_ref const opts)

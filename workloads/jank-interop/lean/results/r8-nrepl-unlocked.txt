@@ -1,0 +1,44 @@
+Round 8, area Q (nREPL): T3u and T9u on jank's real (unlocked) capture, R125's two properties set aside (round 6's tJudgeNoOut).
+Commands: jank8-nrepl exact T9u 12 22000000 1720 (every schedule, exact, breadth first); jank8-nrepl bounded NAME B… MAXSTATES MAXCOMBOS SECONDS
+(Exact.lean countBounded: scheduler states reached with at most B preemptions, states expanded on demand); logs ordered by client.
+Memory: each bounded job watched by .r8-scratch/nrepl/watchtree.sh (kills a process past 5,600 MB): the uncapped first run of
+T9u ≤5 was killed at 5,911 MB and T3u ≤4 stopped by hand at 5.77 GB; the capped reruns below stop by themselves.
+
+#### T9u every schedule, exact
+== T9u: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  every schedule, exact (compact codec), logs ordered by client (canonMem), fast path on (pointer identity)
+  graph: 22,000,971 states, 90,748,112 step runs, 90,748,112 edges, STOPPED at 20,009,984 expanded (bound 22,000,000 states or 1720 s) (539265 ms)
+  tables: jw 98, fds 19415, temps 21, socks 94, misc 37, replies 39, logs 32, threads 22493; fast-path components 746,185,439; most threads 5
+  final states: 0; with a violation: 0; step violations: 0; deadlocked states: 0; blocked steps that moved: 0; progress self-loops: 0
+    … 19,200,000 expanded, 21,133,931 found (517954 ms)
+
+#### T3 (cross-check), T9u ≤0..≤4 (first run; ≤5 killed by the memory watchdog)
+== T3: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked
+  interleavePB timelines at each budget, states expanded on demand (compact codec), logs ordered by client
+  ≤5: 29,577,136,869,748,736 timelines (complete); eintr draws all 0: 8,465,234,353,447; with a violation: 0; 519,526 states reached, 2,011,005 step runs, 2,447,318 scheduler states; final states 111 (0 with a violation), step violations 0 (21090 ms)
+== T9u: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  interleavePB timelines at each budget, states expanded on demand (compact codec), logs ordered by client
+  ≤0: 64 timelines (complete); eintr draws all 0: 1; with a violation: 0; 434 states reached, 928 step runs, 224 scheduler states; final states 1 (0 with a violation), step violations 0 (8 ms)
+  ≤1: 51,264 timelines (complete); eintr draws all 0: 600; with a violation: 0; 14,050 states reached, 37,922 step runs, 10,813 scheduler states; final states 14 (0 with a violation), step violations 0 (256 ms)
+  ≤2: 18,727,456 timelines (complete); eintr draws all 0: 168,651; with a violation: 0; 168,246 states reached, 470,699 step runs, 165,224 scheduler states; final states 136 (0 with a violation), step violations 0 (3476 ms)
+  ≤3: 4,411,340,832 timelines (complete); eintr draws all 0: 31,137,737; with a violation: 0; 1,541,200 states reached, 4,481,589 step runs, 1,750,038 scheduler states; final states 836 (0 with a violation), step violations 0 (33796 ms)
+  ≤4: 766,250,832,880 timelines (complete); eintr draws all 0: 4,284,337,118; with a violation: 0; 9,451,543 states reached, 28,544,757 step runs, 13,113,260 scheduler states; final states 3822 (0 with a violation), step violations 0 (221353 ms)
+
+#### T9u ≤5, capped
+== T9u: T9 two connections, disjoint names, two evals each (define, print, read back); capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  interleavePB timelines at each budget, states expanded on demand (compact codec), logs ordered by client
+  ≤5: STOPPED (bound 12,500,000 states, 18,000,000 scheduler states or the time): 9,159,635 states, 18,001,781 scheduler states (230861 ms)
+
+#### T3u ≤0..≤3 (first run; ≤4 stopped by hand at 5.77 GB)
+== T3u: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  interleavePB timelines at each budget, states expanded on demand (compact codec), logs ordered by client
+  ≤0: 1,024 timelines (complete); eintr draws all 0: 1; with a violation: 0; 699 states reached, 1,487 step runs, 358 scheduler states; final states 1 (0 with a violation), step violations 0 (13 ms)
+  ≤1: 1,303,552 timelines (complete); eintr draws all 0: 978; with a violation: 0; 28,364 states reached, 74,509 step runs, 20,582 scheduler states; final states 20 (0 with a violation), step violations 0 (662 ms)
+  ≤2: 804,281,856 timelines (complete); eintr draws all 0: 468,972; with a violation: 0; 432,181 states reached, 1,188,246 step runs, 393,855 scheduler states; final states 235 (0 with a violation), step violations 0 (11731 ms)
+  ≤3: 322,790,415,360 timelines (complete); eintr draws all 0: 147,809,772; with a violation: 0; 4,989,499 states reached, 14,145,341 step runs, 5,124,240 scheduler states; final states 2129 (0 with a violation), step violations 0 (145317 ms)
+Terminated: 15
+
+#### T3u ≤4, capped
+== T3u: T3 two connections, disjoint names, evals that define, print, fail, read back; capture locked — UNLOCKED (jank's capture), R125's properties set aside
+  interleavePB timelines at each budget, states expanded on demand (compact codec), logs ordered by client
+  ≤4: STOPPED (bound 12,500,000 states, 18,000,000 scheduler states or the time): 12,505,525 states, 17,170,456 scheduler states (393741 ms)

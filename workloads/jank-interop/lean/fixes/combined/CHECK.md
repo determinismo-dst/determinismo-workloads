@@ -1,144 +1,116 @@
 # What to check on the next build of fixes/combined/all.diff
 
-**The build.** Apply `fixes/combined/all.diff` (round 7: 83 files, from the 201 diffs in `fixes/`) to 7135b7708, which has the same compiler+runtime as 94d32623. Build it with ninja as last time.
+**The build.** Apply `fixes/combined/all.diff` (round 8: 86 files, from the 214 diffs in `fixes/`) to 7135b7708, which has the same compiler+runtime as 94d32623. Build it with ninja as last time. Round 7's `S40-order.diff` is folded into `fixes/S40.diff` and into `all.diff`: don't apply it on top.
 
 Run in this order:
-- every `tests/jank_lean/deviations_*_test.jank`, the hangs files left out as before, plus the new `deviations_r7_test.jank`;
-- `tests/jank_lean/generated_r7_test.jank`;
-- jank's 551 `test/jank/**/pass-*.jank` files.
+- every `tests/jank_lean/deviations_*_test.jank`, the hangs files left out as before, plus the new `deviations_r8_test.jank`;
+- `tests/jank_lean/generated_r7_test.jank`, stock and patched as last time;
+- jank's 551 `test/jank/**/pass-*.jank` files;
+- if you can: jank's C++ unit tests (`test/cpp/jank/runtime/obj/big_decimal.cpp`, `ratio.cpp`, `read/lex.cpp`, `read/parse.cpp`) and `test/bash/clojure-test-suite`. R72, S17h and R60 touch what they test.
 
-Each `tests/jank_lean` test runs in its own process. Each new test's comment names its path and jank's predicted value.
+Each `tests/jank_lean` test runs in its own process. Each new test's comment names its path, jank's predicted stock value, and the fix that should make it pass.
 
-The verdicts below are relative to `results/r6c-patched.tsv` (round 6's patch) unless they say "stock".
+Verdicts below are relative to `results/r7c-patched.tsv` (round 7's patch) unless they say "stock".
 
-## 1. The three round-6 regressions should be gone
+## 1. The build itself
 
-### 1.1 deviations_main_test.jank loads again (S40)
+- **`long` before `dotimes` (S40).** `fixes/S40.diff` now moves `(defn long ...)` above `dotimes`, as your `S40-order.diff` did; the combined core.jank is byte for byte round 7's plus that move. `.r8-scratch/coord/fwdref.py` (every symbol a top-level form uses, directly or through a macro's syntax-quoted output, must be defined before it) finds your failure on round 7's core.jank and nothing new on round 8's core.jank, string.jank, data.jank or walk.jank, nor on any diff alone.
+- **The BigDecimal type changed (R72).** `native_big_decimal` (type.hpp) is now a class: an unscaled `cpp_int` and an `i32` scale, Java's BigDecimal arithmetic. Everything that includes type.hpp rebuilds. Watch first: big_decimal.cpp, ratio.cpp, math.cpp, string_builder.cpp, codegen of BigDecimal literals (cpp_processor.cpp 311-315 emits `make_box<big_decimal>("<text>")`), the PCH, and `std::to_chars(double, scientific)` in libstdc++.
+- **X6 interns `clojure.core/*math-context*`** in context.cpp (a dynamic var, nil by default).
+- **Compiles here:** 59 of the 61 changed .cpp files with `-fsyntax-only` (as round 7; not compiled: `main.cpp`, isocline.h missing, and `test/cpp/jank/read/parse.cpp`, which fails at 94d32623 too). No new warning under jank's flags in the 12 .cpp files round 8 changes. math.hpp's templates instantiate for every operand pair tried (`.r8-scratch/coord/fix/tu-cmp.cpp`, `.r8-scratch/fix/cc/tu-char.cpp`, `.r8-scratch/dec/cc/tu.cpp`, `tu-stock.cpp`).
+- **LG1 corrected.** Round 6's LG1 made `min`/`max` of a native number and a typed BigInt, ratio or BigDecimal ref fail to instantiate (22 errors in `tu-stock.cpp` on round 7's combined tree). Those now take the object branch. If jank types a BigDecimal literal as `big_decimal_ref`, `(max 0 1.5M)` (y40, a control) failed to JIT on round 7's patch.
 
-- Cause: S40's checked `int` threw inside `case`'s int mode.
-- Fix: `case` now takes Clojure's modes, int mode only when every test fits an int (`fixes/S40.diff`).
-- Should pass again: `r45-var-read-after-redefinition` and `r123-find-returns-the-stored-key`.
-- Should newly pass: `r44-case-on-a-long-past-int32`. S40 now fixes R44.
-- The tests round 6's patch could not run, with the diff that should make each pass:
-  - `r23` (R23)
-  - `r24` (R24)
-  - `r25` (LG2a + R24)
-  - `r26` (R23 + R26: R26 alone gives only the second assertion)
-  - `r27` (R27), `r29` (R29), `r30` (R30)
-  - `r33` (R33a + R33b)
-  - `r37` (R37), `r39` (R39)
-  - `r40` (R40, new)
-  - `r41` (R41), `r42` (R42)
-  - `r47` (R47, new)
-  - `r104` (R104), `r105` (R105), `r110` (R110), `r112` (R112), `r114` (R114)
-  - `r117` (R117), `r118` (R118), `r120` (R120), `r121` (R121)
-  - `r122` (R122a)
-- Predicted to still fail: `r28`, `r34` (its error is a C++ exception), `r38`, `r89`, `r108`, `r116`, `r119`.
+## 2. Round 7's tests that should newly pass
 
-### 1.2 BigDecimal division (D8, which needs the new S2)
+- **R72 (BigDecimal scale; exact digits):**
+  - x7, x7b, x7c, x7d (r7), b19 (r2), s04, s05, s07 (r3), x8 (r7);
+  - x9b, the control D4 broke;
+  - d07 (with D7).
+- **X6 (with-precision):** x6, x6b.
+- **V7r (read errors reach an object catch):**
+  - v07 (r5);
+  - x27 (with R4), s17 (with S17), a13 (with D12a/D12b).
+  - v07b and v07c still fail: analysis and load errors are not covered.
+- **V64c (a char is no number):** x24c (r7) and v64 (r6, all three assertions, with R33a/R33b).
+- **V51 (hash is a signed int):** v51 (r6); v83 (r6, with V83a/V83b).
+- **V56 (min/max: NaN, ties, -0.0):** v56, v56b, v57, v57b; v58 (with LG1).
+- **X20 (rem by zero, nth and subs out of range throw objects):** x20, x20b, x20c, x20d.
+- **R60 (Java's case mapping in full):** x18–x18h (x18i stays a passing control), b09 (r2).
+- **U74 (unchecked-*-int, unchecked long ops, rationalize):** x10, x10b (r7), u74 (r4).
 
-- `deviations_r3_test.jank`:
-  - `s02-bigdecimal-division-is-exact` should pass. It printed 1.999…M on stock too: boost divides by a Newton inverse. Stock's `=` within 2^-52 hid it.
-  - `s03-non-terminating-quotient-throws` should pass.
-- `deviations_r4_test.jank`: `u01-bigdecimal-division-is-exact` should pass.
-- Worth a direct look:
-  - `(/ 6.0M 3.0M)` should print `2.0M`. jank has no scale (R72), so not `2M`.
-  - `(/ 3 6.0M)` should print `0.5M`.
-  - `(/ 1M 3)`, `(/ 1M 0)` and `(bigdec 1/3)` should throw objects.
+**Still failing, known:**
+- r28, r34, r38, r89, r108, r119;
+- s49 and the other C++ interop tests;
+- v07b, v07c, u49, u59;
+- x19, x19b (regex on bytes), x25b;
+- the UTF-8 string family (b01–b03, lg3, v65, v66, ...);
+- u84 (json reads a decimal through a double).
 
-### 1.3 jank's suite: the five files
+## 3. The generated file (generated_r7_test.jank) with the round-8 patch
 
-| File | Cause in round 6 | Fixed by |
-|---|---|---|
-| test/jank/cpp/case/pass-common-native-type.jank | R26 | corrected R26 |
-| test/jank/cpp/case/pass-implicitly-compatible-native-type.jank | R26 | corrected R26 |
-| test/jank/cpp/case/pass-implicitly-compatible-primitive-type.jank | R23 (and R26) | corrected R23, R26 |
-| test/jank/form/case/pass-big-integer.jank | U75 (`case-hash` passed 1N to bit ops) | corrected U75 |
-| test/jank/cpp/loop/pass-native-binding-trait-convertible.jank | R24 | corrected R24 |
+Of the 169 tests still failing with round 7's patch, 118 should pass:
+- S3, 40 (R72, which subsumes S3c in the combined patch): g193–g196, g217–g220, g241–g248, g261–g264, g269–g272, g289–g296, g309–g312, g317–g320.
+- V7, 22 (X20): g177–g180, g480–g482, g486–g488, g525–g527, g531–g533, g540–g542, g546–g548.
+- V64, 17 (V64c): g333–g335, g348, g361–g363, g375–g377, g399–g401, g426, g441–g443.
+- V56 and V57, 16 (V56): g197–g200, g215, g216, g223, g224, g600–g603, g608–g611.
+- R99, 12 (R99i): g237–g240, g265–g268, g285–g288.
+- V51, 11 (V51): g358–g360, g414–g417, g427–g430.
 
-- The corrected R23, R24 and R26 box in a subset of the cases where round 6's versions did. Round 6's loaded core.jank and passed the rest of the suite.
-- One exception: R24 now also boxes a native loop local that `recur` gives an object. Round 6's version boxed every native loop local, so this is still within what it did.
-- Expected: 549 or more of 551, the same set as stock or better.
-- Look first, if anything moves: `test/jank/cpp/{if,case,loop}/` and `test/jank/form/{case,loop,if}/`.
-  - `cpp/loop/pass-native-binding-object-value.jank`: the local is now boxed, as round 6's R24 also did.
-  - `cpp/if/pass-compatible-primitive-type.jank` and `cpp/case/pass-convertible-native-type.jank`.
+The other 51 should still fail:
+- strings are bytes (one design choice): V66 18, R52 9, LG3 6, R58 6, V74+R58 6 (value 6, the byte index), V65 3;
+- V62 3 (`float` is a double).
 
-## 2. Each corrected or new diff: what should pass, what to watch
+The 470 passing with round 7's patch (340 on stock plus 130) should still pass. Please list any generated test that moves.
 
-- **S40** (corrected: `int`'s range check, `case` modes, dotimes takes `(long n)`).
-  - Should pass: `s40-int-of-a-long-past-int32-throws` (r3) and `r44`.
+## 4. Each new or corrected diff: what should pass, what to watch
+
+- **R72** (`fixes/R72.diff`; the combined patch uses `.r8-scratch/dec/R72-combined.diff`).
+  - Should pass: section 2's list, and y23–y36 and y39–y40 of deviations_r8_test.
+  - y28, y31 and y35 need D4 or U2 too, both in the combined patch.
+  - Should still fail: y37, y37b, y38, y38b (DEC8-1: `(- x)` is `(- 0 x)`).
+  - Every area-B test (y15–y21) should pass: digits are no longer cut.
   - Watch:
-    - `int` is no longer inlined: `(int x)` is an object everywhere.
-    - `(dotimes [i 3000000000] ...)` must not throw.
-- **U75** (corrected). `u75-bit-operations-reject-bigints` (r4) should pass; so should pass-big-integer.jank.
-- **R23** (corrected).
-  - Should pass: `r23`, `u07` (r4), `v52` (r6), `x3`.
-  - The control `u07b` must still pass.
-  - `cpp/case/pass-implicitly-compatible-primitive-type.jank` must give 77.0.
-- **R24** (corrected: a loop is analyzed again with a mismatched local boxed).
-  - Should pass: `r24`, `r25` (with LG2a), `x4`.
-  - In `deviations_r7_hangs_test.jank`: `x17`/`x17b` (dotimes and a loop counter past 2^31) should finish, with S40's dotimes for `x17`. Run them with a time limit: on stock they never end.
-  - Watch compile time: a loop whose locals mismatch is analyzed two or more times.
-- **R26** (corrected). Should pass: `r26` (with R23), plus the two `cpp/case` suite files above.
-- **S2** (new: exact BigDecimal division, "Non-terminating …" and "Divide by zero" thrown as objects).
-  - Should pass: `s02`, `s03`, `u01`.
-  - Should pass: `x2`, `x2b`, `x2c` (division by zero).
-  - Should pass: `x11` (`(/ 1M 1/3)` throws).
-  - Should pass: `x12` (with S6: `(/ 1M 0.1)` is 10.0).
-  - Still failing: `x7`–`x7d` (scale), `x8` (more than 128 digits).
-- **D8**. `d08` (r1) and `s10` (r3) should pass, and so should `x22b`/`x22c` (epsilon-equal BigDecimals in a hash set). The control `x22` must still pass.
-- **X1** (new, core.jank `merge-hash-collisions`).
-  - Should pass: `x1`, `x1b`, `x1c`.
-  - The control `x1d` passes on stock and with the patch.
-- **N7-1** (new, BigDecimal hash). `x5`, `x5b` should pass. Watch `test/jank/form/case/pass-big-decimal.jank`.
-- **P7-1** (new, merged into math.hpp). `x15`, `x15b` should pass, and `(int (aget (char-array "a") 0))` must stay 97.
-- **R4** (new; supersedes R3, also rejects `1/-2`).
-  - Should pass: `a04` (reader) and `x27`.
-  - `a03` must still pass.
-- **R6, R7, R15** (new, lexer).
-  - Should pass: `a06`, `a07` (with S16), `a15`.
-  - Watch jank's lexer unit tests (test/cpp/jank/read/lex.cpp).
-- **R40, R47** (new). `r40`, `r47` should pass. Watch form/fn/named-recur/*.
-- **R65** (new: a member added to context.hpp, so rebuild everything that includes it). `v80` should pass.
-- **R66** (new). `x25` should pass. `x25b` and v79's second assertion still fail (characters are code points).
-- **R67** (new, core.jank `symbol`). `v81` should pass.
-- **R68** (new: doubles print as Java's Double.toString). `b15` should pass. Watch any output that prints a double.
-- **R102** (new). `c07` should pass, with jank's replacement warning on stdout.
-- **U64** (new). `u64` should pass.
-- **V70** (new). `v70` should pass.
-- **V83a, V83b** (new).
-  - Should pass: `x26` (V83a), `x26b` (V83a + V83b).
-  - `v83` still needs V51.
-- **D7, R33a, R33b** (unchanged; their tests split into single-cause tests).
-  - Should pass: `x23` (D7, compared with `compare`), `x24`/`x24b` (bool, R33a + R33b).
-  - `x24c` (char + 1) has no fix. d07 and v64 keep failing on their other assertions.
-- **D12d**. `x21b`/`x21c` should pass. The control `x21` passes on stock and with the patch.
-- **D9**. `x16`–`x16d` (default NaN; SIGSEGV on stock) should pass.
-  - `x16e` is jank only and needs V24 + D9.
-  - The control `x16f` passes either way.
+    - `form/case/pass-big-decimal.jank`;
+    - every output that prints a BigDecimal (now Java's `toString`: `1.50M` prints "1.50", `1E+2M` "1E+2", no ".0" appended);
+    - speed: every decimal operation allocates.
+  - R72 subsumes S2's text reading, N7-1, S11, N7-2 and S3c in the combined patch.
+- **X6** (contains R72). Should pass: x6, x6b, y41–y50.
+- **Y1** (new: `rem` of doubles is Clojure's n − (long)(n/d)·d, not `fmod`).
+  - Should pass: y1, y1b, y1c, y1d. The control y1e passes on stock too.
+  - Stock values: 1.0, 1.0, "-0.0", and a value instead of an exception.
+- **S3c** (new, alone: a ratio meeting a BigDecimal converts exactly or throws).
+  - Should pass alone: y2, y2b, and the 40 generated S3 tests.
+  - In the combined patch R72 does the same; y2c is a control.
+- **R99i** (new: a BigInt against a double compares as doubles). Should pass: y3, y3b; y3c needs V56 too (and R68 to print the double).
+- **V56** (new). Should pass: y3c, y4, y4b and section 2's v56–v58.
+- **X20** (new). Section 2's x20–x20d and 22 generated tests.
+  - Watch: anything in jank that catches `std::runtime_error` around `rem`, `nth` or `subs`. None was found by reading.
+- **V64c** (area F).
+  - Should pass: y5, y7, x24c, v64, and the 17 generated tests. y6 is a control: `(int (aget (char-array "a") 0))` stays 97.
+  - Watch: any jank code doing arithmetic or `<` on a char (Clojure throws there too).
+  - visit.hpp's "not a number" is now an object.
+- **V51** (area F).
+  - Should pass: y8, v51, v83 (with V83a/b), and 11 generated tests. y9 is a control: `case` on hashed tests.
+  - Watch: `case` (c_api.cpp's run-time key is now the signed hash, matching `case-hash`); `form/case/*.jank`.
+- **V7r** (area F). Should pass: y10, v07, x27, s17, a13.
+- **S17h** (area F). y11, y11b (with V7r).
+- **R60** (area F; supersedes R61a).
+  - Should pass: y14, x18–x18h, b09; y14b and y14c (they pass on stock; R61a, in round 7's patch, breaks them).
+  - Watch: `clojure.string` upper-case, lower-case and capitalize in jank's clojure-test-suite.
+- **U74** (area F; supersedes U72).
+  - Should pass: y12–y12i, y13–y13d, x10, x10b, u74.
+  - y12f failed with U72: `(unchecked-inc-int 2147483647)` gave a long.
+- **LG1** (corrected; section 1). y40 is a control.
 
-## 3. The new tests, on stock and on the patch
+## 5. New deviations without a fix (predicted to fail with the patch too)
 
-**tests/jank_lean/deviations_r7_test.jank**: 69 tests (x1–x27). **deviations_r7_hangs_test.jank**: 2 tests (x17, x17b).
-- All 70 that Clojure can run pass on Clojure 1.12.3. x16e is jank only.
-- Tests with "control" in the name are predicted to pass on stock. Every other test is predicted to fail on stock with the value in its comment.
-- Predicted to keep failing with the patch (no fix written):
-  - `x6` (with-precision)
-  - `x7`–`x7d` (scale), `x8`
-  - `x9b`, a control that fails with D4 (R72)
-  - `x10`/`x10b` (unported)
-  - `x18`–`x18h` (SpecialCasing)
-  - `x19`/`x19b` (regex)
-  - `x20`–`x20d` (C++ exceptions that `thrown?` misses)
-  - `x24c`, `x25b`
+- **H8-1:** assoc/conj of a present key reorders a collision node (y22, y22b, y22c, y22d, y22e). Its four controls pass.
+- **DEC8-1:** unary minus is `(- 0 x)` (y37, y37b, y38, y38b).
+- **Q1:** the nREPL stdin op is unknown-op, and describe doesn't list it (y51, y51b; jank only, called in-process like round 5's v37).
+- **Q2:** an eval that prints nothing reaches the nREPL client as 4 messages, two holding only id and session (nREPL sends 2) (y52; jank only).
 
-**tests/jank_lean/generated_r7_test.jank**: 639 generated forms, one assertion each.
-- Each test's comment and `results/r7-gen-predictions.tsv` give the replica's predicted stock verdict: 340 pass, 270 fail, 29 throws.
-- Please run it on stock, not only on the patch.
-- Every disagreement between the real verdict and the predicted one is a replica error. Please list them.
-
-## 4. Not compiled here (a build is the first check)
+## 6. Not compiled here (a build is the first check)
 
 - `main.cpp` (U45): isocline.h is not in deps/.
-- `test/cpp/jank/read/parse.cpp` (R10's edit): it does not compile here at 94d32623 either.
-- The 58 other changed .cpp files compile with `-fsyntax-only`, using Homebrew's clang 22 headers as a stand-in for LLVM 23 (fixes/combined/README.txt). These include analyze/processor.cpp and cpp_util.cpp, now for the first time.
+- `test/cpp/jank/read/parse.cpp` (R10's edit): it doesn't compile here at 94d32623 either.
+- The other 59 compile with `-fsyntax-only`, using Homebrew's clang 22 headers in place of LLVM 23 (README.txt).

@@ -1,0 +1,43 @@
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -181,24 +181,24 @@
+     {
+       throw std::runtime_error{ "Division by zero is not permitted." };
+     }
+-    else if(std::isnan(l))
++
++    /* Numbers.remainder(double, double): n - trunc(n / d) * d in doubles, not C's exact fmod.
++     * (rem 1e18 3.0) is 0.0 in Clojure (fmod: 1.0), (rem -4.0 2.0) is 0.0 (fmod: -0.0), and
++     * (rem 1.0 ##Inf) is ##NaN. A NaN or infinite quotient has no integer part: Clojure's
++     * new BigDecimal(q) throws NumberFormatException "Infinite or NaN". Inside the long range the
++     * integer part is Java's (long) q, which drops a negative zero ((rem -0.0 1.0) is -0.0); past
++     * it, the exact integer q itself. The product is its own statement, so it is rounded before
++     * the subtraction, as Java does. */
++    auto const q{ l / r };
++    if(!std::isfinite(q))
+     {
+-      throw std::runtime_error{ "`##NaN` is not permitted as `num` parameter to `rem`." };
+-    }
+-    else if(std::isinf(l))
+-    {
+-      throw std::runtime_error{ "`##Inf` is not permitted as `num` parameter to `rem`." };
++      throw make_box("Infinite or NaN").erase();
+     }
+-    else if(std::isnan(r))
+-    {
+-      throw std::runtime_error{ "`##NaN` is not permitted as `div` parameter to `rem`." };
+-    }
+-    else if(std::isinf(r))
+-    {
+-      return NAN;
+-    }
+-
+-    return std::fmod(l, r);
++    auto const integral{ (q < 9223372036854775808.0 && q >= -9223372036854775808.0)
++                           ? static_cast<f64>(static_cast<i64>(q))
++                           : std::trunc(q) };
++    auto const whole{ integral * r };
++    return l - whole;
+   }
+ 
+   static object_ref rem(obj::ratio_data const &l, obj::ratio_data const &r)

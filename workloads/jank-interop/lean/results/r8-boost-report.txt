@@ -1,0 +1,244 @@
+Round 8, area B: boost's cpp_dec_float<100> (jank's BigDecimal): the x8 model correction and S4's exact rule
+=====================================================================================================
+jank main 94d32623 (upstream-r5/; compiler+runtime byte-identical to 7135b7708). jank paths are under
+upstream-r5/compiler+runtime/, boost's under deps/boost-multiprecision/include/boost/multiprecision/ (jank's pin).
+jank's type: number<cpp_dec_float<100>, et_off> (include/cpp/jank/type.hpp 35), standalone boost
+(BOOST_MP_STANDALONE). Clojure is 1.12.3, run through the job slots. Everything is a hypothesis from the Lean
+replica, checked against boost itself; jank was not built or run.
+
+Files: Jank/R8/Boost/{Model,Spec,X8,Check}.lean, Run/R8/Boost.lean (exe jank8-boost), results/r8-boost-check.txt,
+results/r8-boost-programs.txt, results/r8-boost-axioms.txt, results/r8-boost-clj.txt,
+.r8-scratch/boost/{check.cpp, programs.cpp, tests.jank, clj/jank_lean/r8_boost_test.clj, run1.sh, axioms.lean}.
+
+Summary of the model correction
+- Stock x8, (compare 1M (* P (/ 1M P))) with P = 2^200, is 0 (passes) because boost's Newton inverse of P is ABOVE
+  1/P (6.22…2125175E-61 against the exact 6.22…21247160434…E-61), so P·q = 1 + ε with ε < 10^-120, and a product of
+  order 0 keeps 121 digits, truncated: exactly 1 (★ x8_stock, stock_inverse_above).
+- With S2 the exact quotient (140 digits) is read back by rd_string, which keeps 124 of them (order -61, -61 mod 8 = 3,
+  3 + 121), truncated, so it is below 1/P and P·q = 1 - 699·10^-128 (printed 0.99…99301, 128 digits; ★ x8_patched).
+- Round 3's limb replica (Jank/R3/Boost/DecFloat.lean) computes all of this exactly: it equals boost on every one of
+  74,763 operations here. Round 7's stock prediction for x8 was never run through it: round 7 computed only the
+  quotient (results/r7-num-forms.txt, which was right) and predicted the product by reasoning from round 3's S2 text
+  ("the inverse is a truncated decimal below 1/v, so every quotient is slightly low"; "Newton with truncating
+  products from a low estimate stays below"). That text is false: Newton's x(2 - t) uses the truncated product t, so
+  2 - t is too large and the iterate can end above 1/v. So the model that predicted x8 failing on stock is ROUND 7's
+  (area N's vN5 and the coordinator's x8 comment), built on round 3's prose, not on round 3's replica.
+
+(1) Deviations
+--------------
+All are cut or rounded digits of cpp_dec_float<100>; Clojure's BigDecimal is exact. Every prediction is the
+replica's and was re-run on boost itself (results/r8-boost-programs.txt: the Lean and C++ columns agree on all 18
+programs). Tests: .r8-scratch/boost/tests.jank (17 deftests, one assertion each); 17 of 17 pass on Clojure 1.12.3
+(results/r8-boost-clj.txt). "patched" = the combined patch (D8's exact =, S2's exact division); no test observes =.
+
+Shared cause S4 (cpp_dec_float<100> holds 16 limbs of 10^8: (o mod 8) + 121 significant digits; one design choice,
+type.hpp 35). Paths: literals read/parse.cpp 1961 big_decimal::create → big_decimal.cpp 128-132 → rd_string
+(cpp_dec_float.hpp 2083-2395); arithmetic core/math.hpp add 71-112, sub 185-226, mul 411-452 (object branches,
+`typed_l->data OP typed_r->data`) → no_et_ops.hpp → operator+= 759-937 / operator-= 940-948 / operator*= 951-1012;
+compare big_decimal.cpp 182-190 (boost <). Every path ([literals], [let], [fn]) reaches the same boost call for
+BigDecimal objects.
+
+- vB1-a-literal-past-121-digits-at-order-0-is-cut
+  (compare 1.<120 zeros>1M 1M): Clojure 1; jank stock 0, patched 0. S4 (round 3's "a literal with 133 digits",
+  now exact: 122 digits at order 0). New instance of S4. Confidence high.
+- vB1b-control-a-literal-of-121-digits-at-order-0-is-kept: (compare 1.<119 zeros>1M 1M): 1 on all. Control.
+- vB1c-control-a-literal-of-122-digits-at-order-7-is-kept: (compare 10000000.<113 zeros>1M 10000000M): 1 on all.
+  Control: the precision depends on the order (8 digits in the leading limb, 128 kept).
+- vB1d-a-literal-past-128-digits-at-order-7-is-cut: (compare 10000000.<120 zeros>1M 10000000M): Clojure 1;
+  jank 0, 0. S4. High.
+- vB2-a-sum-past-121-digits-is-cut: (compare (+ 1M 1E-121M) 1M): Clojure 1; jank 0, 0 [literals]. S4 (operator+=
+  793-802: 1E-121 has exponent -128, more than 120 below 1). High.
+- vB2b-a-sum-past-121-digits-is-cut-through-a-fn: ((fn [a b] (compare (+ a b) a)) 1M 1E-121M): Clojure 1; jank 0, 0
+  [fn]. S4. High.
+- vB2c-control-a-sum-of-121-digits-is-kept: (compare (+ 1M 1E-120M) 1M): 1 on all. Control.
+- vB3-a-sum-with-1e130-keeps-the-one: (compare (+ 1E130M 1M) 1E130M): Clojure 1; jank 0, 0. S4, round 3's program
+  (with 1M instead of the long 1, which boost converts exactly to the same value). High.
+- vB4-a-difference-past-121-digits-is-not-rounded-down: (compare (- 1M 1E-130M) 1M): Clojure -1; jank 0, 0.
+  S4, round 3's program (s04's form, observed with compare, so it does not depend on D8). High.
+- vB4b-a-difference-is-rounded-on-the-larger-operands-grid: (compare (- 1M 0.<121 nines>M) 1E-121M): Clojure 0;
+  jank 1, 1: the subtrahend keeps all its 121 nines (order -1 keeps 128), but operator+= shifts it down one limb
+  against 1 (852-861), dropping the last limb, so the difference is 1E-120, ten times Clojure's. New detail of S4:
+  a difference is rounded AWAY from zero on the larger operand's grid, and can keep far fewer than 121 digits
+  ((- 1M 0.<130 nines>M) is 1E-120 against 1E-130: results/r8-boost-programs.txt). High.
+- vB5-a-product-past-121-digits-is-cut: (compare (* 1.<60 zeros>1M 1.<60 zeros>1M) 1.<60 zeros>2M): Clojure 1;
+  jank 0, 0 (the 1E-122 term is the 123rd digit). S4 (school product 2643-2688, 16 limbs kept 609-643). High.
+- vB5b-control-a-product-of-121-digits-is-kept: (1 + 1E-60)^2 against its exact 121-digit literal: 0 on all. Control.
+- vB7-an-exact-quotient-past-the-kept-digits-is-cut: (compare 1M (* 2^177M (/ 1M 2^177M))): Clojure 0; jank stock 0
+  (passes), patched 1. X8 / S4 after S2: exact_divide (fixes/S2.diff; combined tree big_decimal.cpp 229-273) builds
+  the exact quotient as text, and rd_string keeps 123 of its 124 digits (order -54, -54 mod 8 = 2). 2^177 is the
+  smallest k in 1..400 for which x8's program fails with the patch; it fails for every k ≥ 177 (jank8-boost x8scan).
+  Status: X8 (round 7), new minimal instance. High.
+- vB7b-control-an-exact-quotient-within-the-kept-digits: the same with 2^176 (124 digits at order -53, all kept):
+  0 on all. Control.
+- x8 itself (deviations_r7_test x8) is not duplicated: stock 0 (passes), patched 1 (fails), as the real jank showed.
+
+Separate cause S2 (stock division multiplies by calculate_inv's Newton inverse, cpp_dec_float.hpp 1016-1047,
+1222-1270; math.hpp div 299-340 → no_et_ops.hpp 139-146). New instance: the divisor has no prime factor but 2.
+- vB6-the-newton-inverse-of-a-power-of-two-is-inexact: (compare (/ 1M 131072M) 0.00000762939453125M): Clojure 0;
+  jank stock -1 (7.6293945312499…9E-6), patched 0 (passes). Status: S2 (round 3), new class: round 3 put S2's reach at
+  "a divisor with a prime factor other than 2 or 5"; a complete scan of 2^a·5^b (a ≤ 120, b ≤ 80, numerators 1, 3, 7)
+  finds 18,709 of 29,403 stock quotients inexact (534 below, 18,175 above the exact one). High.
+- vB6b-…-through-a-fn: ((fn [a b c] (compare (/ a b) c)) 1M 131072M 0.00000762939453125M): the same [fn]. High.
+- vB6c-a-quotient-by-a-power-of-two-times-the-divisor-is-the-dividend: (compare 1M (* 131072M (/ 1M 131072M))):
+  Clojure 0; jank stock 1, patched 0 (passes). x8's program with the smallest k for which it fails on STOCK (k = 17,
+  18, 19, 25, 26, 292 of 1..400). Status: S2. High.
+
+vB7 needs both causes: S2's fix exposes S4. Not a deviation, an observation (BoostA8-1): the last digits of a Newton
+quotient depend on the platform's floating point (FMA contraction).
+
+(2) Proofs (for every input unless marked)
+------------------------------------------
+Jank/R8/Boost/Spec.lean, about the value-level functions of what the limb code computes (mantissa A = the 16 limbs as
+one integer, 10^120 ≤ A < 10^128; value A·10^(exp - 120), exp a multiple of 8):
+- ★ keepM_digits: a value read from a decimal string keeps exactly 121 + r digits, r = o mod 8 (o = the order of its
+  leading digit): the kept mantissa lies in [10^(120+r), 10^(121+r)).
+- ★ keepM_trunc: when the string has more digits (L > 121 + r), the kept mantissa is its first 121 + r digits,
+  c / 10^(L - 121 - r), truncated toward zero (c lies in that last unit).
+- ★ keepM_exact: with at most 121 + r digits the read is exact.
+- ★ mulSpec_norm, ★ mulSpec_trunc: a product of two full-precision values is normalized again and is the exact
+  product of the stored operands truncated toward zero at its last kept limb: (o mod 8) + 121 digits of the product.
+- ★ addSpec_floor, ★ addSpec_norm: a sum of equal signs is the exact sum truncated toward zero at the result's last
+  limb (the shifted-out limbs of the smaller operand and the carry limb are dropped); (o mod 8) + 121 digits.
+- ★ subSpec_ceil: a sum of opposite signs is the exact difference rounded AWAY from zero (up in magnitude) at the
+  unit of the larger operand's last limb, 10^(e_big - 120); ★ subSpec_exact: exact when both exponents are equal.
+- trunc_bounds (lemma).
+Jank/R8/Boost/X8.lean (single inputs, decide +kernel, no axioms): p_read, s2_quotient (124 of 140 digits kept),
+stock_inverse_above (boost's inverse of 2^200 is above 1/P), s2_quotient_below, x8_stock (product exactly 1),
+x8_patched (product 1 - 699·10^-128), six_over_three_stock ((/ 6.0M 3.0M) = 2 - 10^-120: 1.999…9, 120 nines).
+Axioms (results/r8-boost-axioms.txt): propext, Quot.sound, Classical.choice (subSpec_ceil via omega); X8's none.
+No sorry, no native_decide, no new axiom.
+Not proved:
+- that round 3's limb replica (rdString, add, mul, sub) computes these functions: checked by search, 50,624 checks,
+  0 differences (section 8);
+- anything about calculate_inv's error (when the Newton quotient is exact, above or below): searched only;
+- S2's text path (to_exact_decimal + rd_string) as keepM of the exact quotient: searched (5,209 pairs, 0 differ); its
+  arithmetic core is round 7's exact_sound / exact_complete.
+
+(3) What was replicated
+-----------------------
+- Limb level: round 3's Jank/R3/Boost/DecFloat.lean (cpp_dec_float.hpp line by line: representation, rd_string
+  2083-2395, operator+= 759-937, operator-= 940-948, operator*= 951-1012 with eval_multiply_n_by_n_to_2n 2643-2688 and
+  the school dispatch 609-643 (prec_elem and the stale limbs it leaves), operator/= 1016-1047, calculate_inv
+  1222-1270 with extract_parts 1520-1567 and cpp_dec_float(double, exponent) 2399-2456, str 1913-2081,
+  format_float_string number_base.hpp 1314-1466, fmod default_ops 1260-1321), imported unchanged: it needed no fix.
+- Jank/R8/Boost/Model.lean:
+  - sci (str(0, scientific)) and jankText (big_decimal.cpp to_string → jtl/string_builder.cpp 240-249);
+  - cmp (big_decimal.cpp compare 182-190: (b < a) - (a < b));
+  - exactDivide: S2's exact_divide and to_exact_decimal (fixes/S2.diff; .r8-scratch/merge/tree big_decimal.cpp
+    179-273), its quotient read back with rd_string;
+  - jankRem (math.cpp rem 269-289);
+  - the integer divisor path: an lvalue BigDecimal divided by an integer converts the integer exactly
+    (no_et_ops.hpp 149-156 → default_ops.hpp 569-574), as jank's `typed_l->data / r` does;
+  - Item.eval: check.cpp's operations.
+- Jank/R8/Boost/Spec.lean: the value-level rules (section 2). Jank/R8/Boost/X8.lean: the brief's numbers.
+- Jank/R8/Boost/Check.lean: generators, the comparison with boost, the replica-against-Spec checks, the programs
+  (stock, patched, Clojure via round 3's Java.BD).
+- .r8-scratch/boost/check.cpp: boost itself, with S2's exact_divide copied from the combined tree (boxed throws as
+  std::runtime_error); programs.cpp: the 18 programs on boost.
+
+(4) What is not exact
+---------------------
+- The double estimate inside calculate_inv uses Lean's Float (IEEE binary64, no fused multiply-add). It equals boost
+  built for x86-64 on every line; boost built for arm64 with clang's default -ffp-contract=on differs (BoostA8-1).
+- Overflow and underflow (exponents near ±2^26) are in the replica but outside the searched range (exponents up to
+  a few hundred).
+- Exceptions are compared by their text (check.cpp prints std::exception::what()).
+
+(5) Still left out, and why
+---------------------------
+- A bound on the Newton inverse's error (sign and size): no theorem; the scans show both signs.
+- BigInt/BigDecimal operators (big_decimal.cpp 22-45, through text), ratio conversions (big_decimal.cpp 140-144,
+  ratio.cpp 535-548), double operands (S6): not S4's question; round 3 and 7 cover them.
+- A fix: none assigned. S4 cannot be fixed inside cpp_dec_float<N>: a larger N moves the threshold, nothing more. A
+  representation as Java's (an unscaled cpp_int and an int scale; area D's scale work) makes + - * and exact division
+  exact and removes every S4 test here; the literal must then be parsed into the cpp_int directly, not through
+  rd_string, and S2's exact_divide should return that representation instead of text read by rd_string (which
+  re-cuts it: vB7).
+
+(6) Assumptions
+---------------
+- BoostA8-1 (new): jank's BigDecimal code runs without FMA contraction: Linux x86-64 with no -march
+  (CMakeLists.txt 141-147), generic x86-64 has no FMA. Evidence of the alternative: boost built for arm64 with clang's
+  default contraction differs from the replica (and from x86-64) on 14 of 8,509 Newton divisions (9 of 5,209 `div`,
+  5 of 3,300 `pq`), in the last digits; with -ffp-contract=off it agrees on all. The only a + b·c expression on that
+  path is extract_parts' `mantissa += data[i] * scale` (cpp_dec_float.hpp 1558), which feeds the double
+  estimate. Example: (* 2^160 (/ 3M 2^160)) is 3.00…001 on x86-64 and exactly 3 on arm64. A jank built on macOS
+  arm64 can print other digits for such quotients; no test here depends on one (x8 and vB1-vB7 agree on both).
+- BoostA8-2 (new, read): jank divides lvalue decimals (math.hpp div `typed_l->data / r`, big_decimal.cpp 44,
+  ratio.cpp 542), so an integer divisor is converted exactly (default_ops 569-574). An rvalue on the left takes
+  no_et_ops 482-489 → eval_divide(cpp_dec_float&, long long) (cpp_dec_float.hpp 3244-3254) → div_unsigned_long_long,
+  a short division: (/ 6.0M 3) would be 2.0 there. check.cpp's first `divl` used an rvalue and differed from the
+  replica on 341 of 1,000 lines; with an lvalue, 0. No jank path divides an rvalue decimal by an integer.
+- Earlier ones: round 3's MPA set stands; NumA7-2 (a native integer meeting a decimal gives its boxed form's value)
+  is consistent with BoostA8-2; NumA7-3 ("the S2 fix stores an exact quotient through its text, rd_string keeps
+  ≤ 128 digits by truncation") is replaced by the exact rule: (o mod 8) + 121 digits, truncated.
+
+(7) Properties checked, with sources
+------------------------------------
+- Clojure: BigDecimal literals are exact (LispReader matchNumber → new BigDecimal(String)); + - * are exact
+  (BigDecimalOps add/subtract/multiply, Numbers.java 964-1092); / is exact or throws (BigDecimalOps.divide, no
+  MathContext); compare is compareTo. Every program's Clojure value was computed with round 3's Java.BD and the 17
+  tests were run on Clojure 1.12.3.
+- jank's side: the replica against boost itself (the C++ that jank compiles), and against Spec's rules.
+
+(8) Search runs (exact bounds)
+------------------------------
+- Replica against boost (results/r8-boost-check.txt), 74,763 lines, complete over the generated set; 0 lines differ
+  from boost x86-64:
+  - rd 34,788: every length 1..200 digits × 5 patterns (two random digit strings, seeds mix(1000+L), mix(2000+L);
+    all nines; 1 then zeros; 1, zeros, 1) × (integer, 24 exponents from -200 to 130, up to 3 point positions, 4
+    leading-zero forms, one negative) + 2^k, 3^k, 7^k (k 0..450) and 5^k·10^-k (k 1..450);
+  - add, sub, mul, div, xdiv (S2), cmp: 5,209 each = 47×47 chosen operands + 3,000 random (1..200 digits, exponent
+    -150..150, either sign; every second pair near the first's magnitude), seeds mix(hash op) + i;
+  - pq (stock (* P (/ a P))) and px (patched): 3,300 each, P = 2^1..2^400, 3^1..3^200, 5^1..5^250, 6^1..6^100,
+    7^1..7^150, a = 1, 3, 7;
+  - divl, xdivl: 1,000 each (random dividend; divisors 1..12, 16, 1024, -3, 2^63-1 and random in ±10^6);
+  - rem: 121 (11×11 operands).
+  - boost arm64 (FMA) differs from x86-64 on 14 lines (div 9, pq 5); arm64 -ffp-contract=off on 0.
+- Replica against Spec (jank8-boost spec): read = keepM 34,788/34,788; sum 5,209/5,209; difference 5,209/5,209;
+  product 5,209/5,209; S2's quotient = keepM of the exact quotient of the stored operands 5,209/5,209.
+- x8's program over P = 2^k, k = 1..400 (complete): stock fails for k = 17, 18, 19, 25, 26, 292; patched fails for
+  every k ≥ 177 (224 values), never below.
+- Stock division by 2^a·5^b, a ≤ 120, b ≤ 80, numerators 1, 3, 7 (complete, 29,403 quotients): 18,709 inexact
+  (534 below, 18,175 above); S2's quotient exact on all (none past the kept digits).
+- Programs (results/r8-boost-programs.txt): 18 on the replica and on boost, identical.
+
+(9) Theorems (★ new for-every-input)
+-------------------------------------
+★ keepM_digits, ★ keepM_trunc, ★ keepM_exact, ★ mulSpec_norm, ★ mulSpec_trunc, ★ addSpec_floor, ★ addSpec_norm,
+★ subSpec_ceil, ★ subSpec_exact; trunc_bounds (lemma); single inputs: p_read, s2_quotient, stock_inverse_above,
+s2_quotient_below, x8_stock, x8_patched, six_over_three_stock.
+
+(10) Library gaps
+-----------------
+- Round 3's replica is written with while loops (Id.run), which proofs cannot unfold; the rules are therefore stated
+  on value-level functions and tied to the replica by search. A structural limb replica with a proved value
+  function would close that gap.
+- No Mathlib: big powers of ten are handled with Nat.pow_add rewrites (pow_split) and the kernel's GMP arithmetic
+  (decide +kernel) for single inputs.
+
+(11) Fixes written
+------------------
+None (none assigned). Described in section 5: S4 needs a representation with an unscaled big integer and a scale.
+
+(12) Model errors of earlier rounds corrected
+---------------------------------------------
+- Round 7's stock prediction for x8 ("today a Newton inverse, S2": fails). It passes: boost's inverse of 2^200 is
+  above 1/P and the product truncates to exactly 1. Round 7 computed the quotient with round 3's replica (right) but
+  predicted the product by reasoning, from round 3's S2 text.
+- Round 3's S2 text: "the inverse is a truncated decimal below 1/v, so every quotient is slightly low" and "Newton
+  with truncating products from a low estimate stays below". False: the inverse can be above (stock_inverse_above;
+  18,175 of 29,403 quotients by 2^a·5^b are above).
+- Round 3's S2 reach, "any divisor with a prime factor other than 2 or 5" (and so exact quotients by 2s and 5s):
+  false; 18,709 of 29,403 quotients by 2^a·5^b are inexact (vB6: 2^17). Round 7's x7d comment ("the Newton inverse
+  of 4 is exact") is right for 4 only.
+- Round 3's S4 ("128 significant digits") and MP3, round 7's vN5 ("cut to at most 128 digits") and NumA7-3: the count
+  is (o mod 8) + 121, from 121 to 128 by the order; sums and products truncate toward zero; differences round AWAY
+  from zero on the larger operand's grid (vB4b).
+- The coordinator's "S2's exact quotient is cut to 125 significant digits" and the patched product "0.999…993010":
+  124 digits and 1 - 699·10^-128 (jank prints 0.99…99301). The extra 0 is format_float_string's scientific padding
+  (number_base.hpp 1330: digits = max(len, 16); 1380-1392: one more character for scientific).
+- Earlier rounds' BigDecimal tests whose stock prediction this replica changes: only x8 (fail → pass, as observed).
+  Unchanged: s04 ((- 1M 1E-130M) is 1.0: fails stock and patched), s05 ("1e-05.0": fails), s07 ((rem 1E130M 3) is
+  99999997.0: fails), x7 (stock "1.999…9", 120 nines; patched "2.0"), x7b ("3.0"), x7c (stock "19.999…9"; patched
+  "20.0"), x7d ("0.25"); x8 patched still fails (compare 1).

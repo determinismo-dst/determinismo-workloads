@@ -1,0 +1,471 @@
+--- a/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
++++ b/compiler+runtime/include/cpp/jank/runtime/core/math.hpp
+@@ -1178,6 +1178,23 @@
+   object_ref rem(object_ref const l, object_ref const r);
+   object_ref quot(object_ref const l, object_ref const r);
+   object_ref unchecked_inc(object_ref const l);
++  /* Numbers.unchecked_*: longs wrap at 64 bits, other numbers as + - * do. */
++  object_ref unchecked_add(object_ref const l, object_ref const r);
++  object_ref unchecked_sub(object_ref const l, object_ref const r);
++  object_ref unchecked_mul(object_ref const l, object_ref const r);
++  object_ref unchecked_negate(object_ref const l);
++  object_ref unchecked_dec(object_ref const l);
++  /* Numbers.unchecked_int_*: the operands cast as RT.intCast does, the result wrapped at 32 bits. */
++  i32 unchecked_int_add(object_ref const l, object_ref const r);
++  i32 unchecked_int_sub(object_ref const l, object_ref const r);
++  i32 unchecked_int_mul(object_ref const l, object_ref const r);
++  i32 unchecked_int_div(object_ref const l, object_ref const r);
++  i32 unchecked_int_rem(object_ref const l, object_ref const r);
++  i32 unchecked_int_negate(object_ref const l);
++  i32 unchecked_int_inc(object_ref const l);
++  i32 unchecked_int_dec(object_ref const l);
++  /* Numbers.rationalize: a double or a BigDecimal as its exact ratio (a BigInt when whole). */
++  object_ref rationalize(object_ref const o);
+   object_ref promoting_inc(object_ref const l);
+   object_ref promoting_dec(object_ref const l);
+ 
+--- a/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
++++ b/compiler+runtime/src/cpp/jank/runtime/core/math.cpp
+@@ -1,4 +1,11 @@
+ #include <random>
++#include <array>
++#include <charconv>
++#include <cmath>
++#include <string>
++#include <string_view>
++#include <utility>
++#include <algorithm>
+ 
+ #include <jank/runtime/core/math.hpp>
+ #include <jank/runtime/visit.hpp>
+@@ -351,7 +358,313 @@
+       [](auto const typed_l) -> object_ref { return make_box(typed_l->data + 1ll); },
+       l);
+   }
++
++  namespace
++  {
++    /* The decimal Java's Double.toString writes for d, which BigDecimal.valueOf reads: the
++     * shortest that reads back (std::to_chars), or, when that has one digit, the closest of at
++     * most two digits that reads back (JDK 19+: 4.9E-324). d = digits * 10^exponent. */
++    std::pair<std::string, i64> java_double_decimal(f64 const d)
++    {
++      std::array<char, 64> buf{};
++      auto const split([](std::string_view const s) {
++        auto const e{ s.find('e') };
++        std::string digits;
++        for(usize i{}; i < e; ++i)
++        {
++          if(s[i] >= '0' && s[i] <= '9')
++          {
++            digits += s[i];
++          }
++        }
++        auto const exponent{ std::stoll(std::string{ s.substr(e + 1) }) };
++        return std::pair<std::string, i64>{ digits,
++                                            exponent - static_cast<i64>(digits.size()) + 1 };
++      });
++      auto const shortest{ std::to_chars(buf.data(),
++                                         buf.data() + buf.size(),
++                                         d,
++                                         std::chars_format::scientific) };
++      auto parts{ split(std::string_view{ buf.data(), shortest.ptr }) };
++      if(parts.first.size() == 1)
++      {
++        auto const two{ std::to_chars(buf.data(),
++                                      buf.data() + buf.size(),
++                                      d,
++                                      std::chars_format::scientific,
++                                      1) };
++        std::string const text{ buf.data(), two.ptr };
++        if(std::strtod(text.c_str(), nullptr) == d)
++        {
++          parts = split(text);
++        }
++      }
++      if(d < 0)
++      {
++        parts.first.insert(0, "-");
++      }
++      return parts;
++    }
++
++    /* The digits and the exponent of a decimal in scientific notation ("-1.50e+02"), as
++     * cpp_dec_float's str(0, scientific) prints every stored digit: text = digits * 10^exponent. */
++    std::pair<std::string, i64> scientific_decimal(std::string_view const text)
++    {
++      auto const e{ text.find_first_of("eE") };
++      std::string digits{ !text.empty() && text[0] == '-' ? "-" : "" };
++      for(usize i{}; i < std::min(e, text.size()); ++i)
++      {
++        if(text[i] >= '0' && text[i] <= '9')
++        {
++          digits += text[i];
++        }
++      }
++      auto const fraction_start{ text.find('.') };
++      i64 fraction_digits{};
++      if(fraction_start != std::string_view::npos && fraction_start < e)
++      {
++        fraction_digits = static_cast<i64>(std::min(e, text.size()) - fraction_start - 1);
++      }
++      i64 const exponent{ e == std::string_view::npos ? 0 : std::stoll(std::string{ text.substr(e + 1) }) };
++      return { digits, exponent - fraction_digits };
++    }
++
++    /* digits * 10^exponent as a reduced fraction (Numbers.rationalize: a BigInt when whole). */
++    std::pair<native_big_integer, native_big_integer> decimal_fraction(std::string const &digits,
++                                                                       i64 const exponent)
++    {
++      native_big_integer n{ digits };
++      native_big_integer d{ 1 };
++      native_big_integer const ten{ 10 };
++      if(exponent >= 0)
++      {
++        n *= boost::multiprecision::pow(ten, static_cast<unsigned>(exponent));
++      }
++      else
++      {
++        d = boost::multiprecision::pow(ten, static_cast<unsigned>(-exponent));
++      }
++      auto const g{ boost::multiprecision::gcd(n, d) };
++      return { n / g, d / g };
++    }
+ 
++    /* Java's int arithmetic: two's complement, wrapping at 32 bits. */
++    i32 wrap32(u32 const v)
++    {
++      return static_cast<i32>(v);
++    }
++
++    i64 wrap64(u64 const v)
++    {
++      return static_cast<i64>(v);
++    }
++
++    /* RT.intCast(Object) after the compiler's checkcast to Number (HostExpr.emitUnboxArg): how
++     * Clojure's unchecked int operations take their operands. A long outside the int range
++     * throws (Math.toIntExact); a double (NaN is 0) or a BigDecimal is truncated first, a ratio
++     * divided (RT.longCast); a character, nil or any other object is no Number. */
++    i32 int_operand(object_ref const o)
++    {
++      native_big_integer n{};
++      if(is_integer(o))
++      {
++        n = to_i64(o);
++      }
++      else if(is_real(o) || o.get_type() == object_type::big_decimal)
++      {
++        auto const d{ is_real(o) ? to_f64(o)
++                                 : expect_object<obj::big_decimal>(o)->data.convert_to<f64>() };
++        auto const t{ std::isnan(d) ? 0.0 : std::trunc(d) };
++        if(t < -2147483648.0 || t > 2147483647.0)
++        {
++          throw make_box(util::format("Value out of range for int: {}", d)).erase();
++        }
++        n = static_cast<i64>(t);
++      }
++      else if(o.get_type() == object_type::big_integer)
++      {
++        n = expect_object<obj::big_integer>(o)->data;
++      }
++      else if(o.get_type() == object_type::ratio)
++      {
++        auto const &r{ expect_object<obj::ratio>(o)->data };
++        n = r.numerator / r.denominator;
++      }
++      else
++      {
++        throw make_box(
++          util::format("A {} cannot be cast to a number.", object_type_str(o.get_type())))
++          .erase();
++      }
++      if(n < std::numeric_limits<i32>::min() || n > std::numeric_limits<i32>::max())
++      {
++        throw make_box("integer overflow").erase();
++      }
++      return n.convert_to<i32>();
++    }
++
++    object_ref fraction_box(std::pair<native_big_integer, native_big_integer> const &f)
++    {
++      if(f.second == 1)
++      {
++        return make_box<obj::big_integer>(f.first).erase();
++      }
++      return make_box<obj::ratio>(obj::ratio_data{ f.first, f.second }).erase();
++    }
++  }
++
++  object_ref unchecked_add(object_ref const l, object_ref const r)
++  {
++    if(is_integer(l) && is_integer(r))
++    {
++      return make_box(wrap64(static_cast<u64>(to_i64(l)) + static_cast<u64>(to_i64(r)))).erase();
++    }
++    return add(l, r);
++  }
++
++  object_ref unchecked_sub(object_ref const l, object_ref const r)
++  {
++    if(is_integer(l) && is_integer(r))
++    {
++      return make_box(wrap64(static_cast<u64>(to_i64(l)) - static_cast<u64>(to_i64(r)))).erase();
++    }
++    return sub(l, r);
++  }
++
++  object_ref unchecked_mul(object_ref const l, object_ref const r)
++  {
++    if(is_integer(l) && is_integer(r))
++    {
++      return make_box(wrap64(static_cast<u64>(to_i64(l)) * static_cast<u64>(to_i64(r)))).erase();
++    }
++    return mul(l, r);
++  }
++
++  object_ref unchecked_negate(object_ref const l)
++  {
++    if(is_integer(l))
++    {
++      return make_box(wrap64(0ull - static_cast<u64>(to_i64(l)))).erase();
++    }
++    /* DoubleOps.negate: -0.0 for 0.0, which 0 - x would not give. */
++    if(is_real(l))
++    {
++      return make_box(-to_f64(l)).erase();
++    }
++    return sub(make_box(0).erase(), l);
++  }
++
++  object_ref unchecked_dec(object_ref const l)
++  {
++    if(is_integer(l))
++    {
++      return make_box(wrap64(static_cast<u64>(to_i64(l)) - 1ull)).erase();
++    }
++    return dec(l);
++  }
++
++  i32 unchecked_int_add(object_ref const l, object_ref const r)
++  {
++    auto const a{ int_operand(l) };
++    auto const b{ int_operand(r) };
++    return wrap32(static_cast<u32>(a) + static_cast<u32>(b));
++  }
++
++  i32 unchecked_int_sub(object_ref const l, object_ref const r)
++  {
++    auto const a{ int_operand(l) };
++    auto const b{ int_operand(r) };
++    return wrap32(static_cast<u32>(a) - static_cast<u32>(b));
++  }
++
++  i32 unchecked_int_mul(object_ref const l, object_ref const r)
++  {
++    auto const a{ int_operand(l) };
++    auto const b{ int_operand(r) };
++    return wrap32(static_cast<u32>(a) * static_cast<u32>(b));
++  }
++
++  /* Java's int / and %: truncated, Integer.MIN_VALUE / -1 wraps, a zero divisor throws. */
++  i32 unchecked_int_div(object_ref const l, object_ref const r)
++  {
++    auto const a{ int_operand(l) };
++    auto const b{ int_operand(r) };
++    if(b == 0)
++    {
++      throw make_box("Divide by zero").erase();
++    }
++    if(b == -1)
++    {
++      return wrap32(0u - static_cast<u32>(a));
++    }
++    return a / b;
++  }
++
++  i32 unchecked_int_rem(object_ref const l, object_ref const r)
++  {
++    auto const a{ int_operand(l) };
++    auto const b{ int_operand(r) };
++    if(b == 0)
++    {
++      throw make_box("Divide by zero").erase();
++    }
++    if(b == -1)
++    {
++      return 0;
++    }
++    return a % b;
++  }
++
++  i32 unchecked_int_negate(object_ref const l)
++  {
++    return wrap32(0u - static_cast<u32>(int_operand(l)));
++  }
++
++  i32 unchecked_int_inc(object_ref const l)
++  {
++    return wrap32(static_cast<u32>(int_operand(l)) + 1u);
++  }
++
++  i32 unchecked_int_dec(object_ref const l)
++  {
++    return wrap32(static_cast<u32>(int_operand(l)) - 1u);
++  }
++
++  object_ref rationalize(object_ref const o)
++  {
++    if(is_real(o))
++    {
++      auto const d{ to_f64(o) };
++      if(!std::isfinite(d))
++      {
++        /* BigDecimal.valueOf(NaN or Infinity): NumberFormatException. */
++        throw make_box(util::format("Character {} is neither a decimal digit number, decimal "
++                                    "point, nor \"e\" notation exponential mark.",
++                                    std::isnan(d) ? 'N' : 'I'))
++          .erase();
++      }
++      auto const parts{ java_double_decimal(d) };
++      return fraction_box(decimal_fraction(parts.first, parts.second));
++    }
++    if(o.get_type() == object_type::big_decimal)
++    {
++      auto const &data{ expect_object<obj::big_decimal>(o)->data };
++      if(!boost::multiprecision::isfinite(data))
++      {
++        throw make_box("Infinite or NaN").erase();
++      }
++      auto const parts{ scientific_decimal(data.str(0, std::ios_base::scientific)) };
++      return fraction_box(decimal_fraction(parts.first, parts.second));
++    }
++    /* A long, a BigInt, a ratio, and nil, are returned as they are. */
++    if(o.get_type() == object_type::nil || is_number(o))
++    {
++      return o;
++    }
++    throw make_box(util::format("A {} cannot be cast to a number.", object_type_str(o.get_type())))
++      .erase();
++  }
++
+   object_ref promoting_inc(object_ref const l)
+   {
+     return visit_number_like(
+--- a/compiler+runtime/src/jank/clojure/core.jank
++++ b/compiler+runtime/src/jank/clojure/core.jank
+@@ -1836,8 +1836,7 @@
+   "Returns a number one greater than x, an int.
+   Note - uses a primitive operator subject to overflow."
+   [x]
+-  ;; (. clojure.lang.Numbers (unchecked_int_inc x))
+-  (throw (ex-info "TODO: port unchecked-inc-int" {})))
++  (cpp/jank.runtime.unchecked_int_inc x))
+ 
+ (defn unchecked-inc
+   "Returns a number one greater than x, a long.
+@@ -1851,91 +1850,78 @@
+   "Returns a number one less than x, an int.
+   Note - uses a primitive operator subject to overflow."
+   [x]
+-  ;; (. clojure.lang.Numbers (unchecked_int_dec x))
+-  (throw (ex-info "TODO: port unchecked-dec-int" {})))
++  (cpp/jank.runtime.unchecked_int_dec x))
+ 
+ (defn unchecked-dec
+   "Returns a number one less than x, a long.
+   Note - uses a primitive operator subject to overflow."
+   [x]
+-  ;; (. clojure.lang.Numbers (unchecked_dec x))
+-  (throw (ex-info "TODO: port unchecked-dec" {})))
++  (cpp/jank.runtime.unchecked_dec x))
+ 
+ (defn unchecked-negate-int
+   "Returns the negation of x, an int.
+   Note - uses a primitive operator subject to overflow."
+   [x]
+-  ;; (. clojure.lang.Numbers (unchecked_int_negate x))
+-  (throw (ex-info "TODO: port unchecked-negate-int" {})))
++  (cpp/jank.runtime.unchecked_int_negate x))
+ 
+ (defn unchecked-negate
+   "Returns the negation of x, a long.
+   Note - uses a primitive operator subject to overflow."
+   [x]
+-  ;; (. clojure.lang.Numbers (unchecked_minus x))
+-  (throw (ex-info "TODO: port unchecked-negate" {})))
++  (cpp/jank.runtime.unchecked_negate x))
+ 
+ (defn unchecked-add-int
+   "Returns the sum of x and y, both int.
+   Note - uses a primitive operator subject to overflow."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_int_add x y))
+-  (throw (ex-info "TODO: port unchecked-add-int" {})))
++  (cpp/jank.runtime.unchecked_int_add x y))
+ 
+ (defn unchecked-add
+   "Returns the sum of x and y, both long.
+   Note - uses a primitive operator subject to overflow."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_add x y))
+-  (throw (ex-info "TODO: port unchecked-add" {})))
++  (cpp/jank.runtime.unchecked_add x y))
+ 
+ (defn unchecked-subtract-int
+   "Returns the difference of x and y, both int.
+   Note - uses a primitive operator subject to overflow."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_int_subtract x y))
+-  (throw (ex-info "TODO: port unchecked-subtract-int" {})))
++  (cpp/jank.runtime.unchecked_int_sub x y))
+ 
+ (defn unchecked-subtract
+   "Returns the difference of x and y, both long.
+   Note - uses a primitive operator subject to overflow."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_minus x y))
+-  (throw (ex-info "TODO: port unchecked-subtract" {})))
++  (cpp/jank.runtime.unchecked_sub x y))
+ 
+ (defn unchecked-multiply-int
+   "Returns the product of x and y, both int.
+   Note - uses a primitive operator subject to overflow."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_int_multiply x y))
+-  (throw (ex-info "TODO: port unchecked-multiply-int" {})))
++  (cpp/jank.runtime.unchecked_int_mul x y))
+ 
+ (defn unchecked-multiply
+   "Returns the product of x and y, both long.
+   Note - uses a primitive operator subject to overflow."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_multiply x y))
+-  (throw (ex-info "TODO: port unchecked-multiply" {})))
++  (cpp/jank.runtime.unchecked_mul x y))
+ 
+ (defn unchecked-divide-int
+   "Returns the division of x by y, both int.
+   Note - uses a primitive operator subject to truncation."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_int_divide x y))
+-  (throw (ex-info "TODO: port unchecked-divide-int"  {})))
++  (cpp/jank.runtime.unchecked_int_div x y))
+ 
+ (defn unchecked-remainder-int
+   "Returns the remainder of division of x by y, both int.
+   Note - uses a primitive operator subject to truncation."
+   [x y]
+-  ;; (. clojure.lang.Numbers (unchecked_int_remainder x y))
+-  (throw (ex-info "TODO: port unchecked-remainder-int"  {})))
++  (cpp/jank.runtime.unchecked_int_rem x y))
+ 
+ (defn rationalize
+   "returns the rational value of num"
+   [num]
+-  ;; (. clojure.lang.Numbers (rationalize num))
+-  (throw (ex-info "TODO: port rationalize"  {})))
++  (cpp/jank.runtime.rationalize num))
+ 
+ (defn int?
+   "Return true if x is a fixed precision integer"

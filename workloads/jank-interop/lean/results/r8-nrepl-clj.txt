@@ -1,0 +1,29 @@
+Round 8, area Q (nREPL): the Clojure side of Q1 (the stdin op) and of World T8.
+
+1. Running nREPL 1.8.0 here: not possible. The project holds nREPL 1.8.0's Clojure sources (.r5-scratch/nrepl/nrepl-1.8.0, copied by round 5)
+   but not its Java classes; nrepl.server does not load on Clojure 1.12.3 (command: java -cp clojure-1.12.3.jar:spec.alpha:core.specs.alpha:.r5-scratch/nrepl/nrepl-1.8.0:
+   .r8-scratch/nrepl/clj clojure.main .r8-scratch/nrepl/clj/measure.clj, through the job slots):
+     Picked up JAVA_TOOL_OPTIONS: -Djava.awt.headless=true -Dapple.awt.UIElement=true
+     Execution error (ClassNotFoundException) at java.net.URLClassLoader/findClass (URLClassLoader.java:445).
+     nrepl.DaemonThreadFactory
+     
+     Full report at:
+     /var/folders/7r/pcj98w556f324q4ts3k9k7wc0000gn/T/clojure-348399315642702511.edn
+   The classes nREPL's sources import and the project lacks: nrepl.DaemonThreadFactory (util/threading.clj 12), nrepl.SessionThread and
+   nrepl.in.QueuePollingReader (middleware/session.clj 17-18), nrepl.out.CallbackBufferedOutputStream, QuotaBoundWriter, QuotaExceeded,
+   TeeOutputStream (middleware/print.clj 14, util/out.clj 7). Nothing may be fetched, and the only jar that may be run is Clojure's, so the
+   Clojure translation .r8-scratch/nrepl/clj/jank_lean/nrepl_r8_test.clj (the same two deftests over an in-JVM nREPL server) cannot run here.
+   The tests themselves are jank only (they call jank's handler namespace), as round 5's v37/v37b.
+
+2. nREPL 1.8.0's replies, read from its source:
+   - stdin op (middleware/session.clj add-stdin 386-397): (.addInput qpr stdin) on the session's QueuePollingReader, then
+     (t/respond-to msg :status :done); misc.clj response-for 53-78 turns a non-collection status into #{status} and copies id and session.
+     With a cloned session: {:id "s" :session <s> :status #{"done"}}. Without a session the session middleware answers first (round 5:
+     session-ephemeral for interrupt).
+   - describe (middleware.clj wrap-describe 52-62) lists the :handles of every middleware descriptor; server.clj default-middleware 114-125
+     includes #'nrepl.middleware.session/add-stdin, whose descriptor (session.clj 399-406) handles "stdin": :ops contains :stdin.
+   - an eval reading *in* with nothing queued (session.clj session-in 44-53): the QueuePollingReader sends {:status #{"need-input"}} on the
+     request's transport and waits; a later stdin op feeds it.
+   - interrupt and a diverging eval: round 5's JVM measurement (results/r5-nrepl-interrupt-jvm.txt): the interrupt is answered #{done} and the
+     eval #{interrupted done}, from the same or another connection; describe is answered while an eval runs (server.clj handles each message
+     on its own thread).

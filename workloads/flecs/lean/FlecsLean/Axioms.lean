@@ -6,6 +6,7 @@ import FlecsLean.TheoremsR5
 import FlecsLean.TheoremsR6
 import FlecsLean.TheoremsR7
 import FlecsLean.TheoremsR8
+import FlecsLean.TheoremsR9
 
 /-! The axioms each theorem depends on (printed at build time). -/
 #print axioms Flecs.genInc_lo32
@@ -81,3 +82,12 @@ import FlecsLean.TheoremsR8
 #print axioms Flecs.R8.spawn_depth_keeps
 #print axioms Flecs.R8.spawn_depth_cases
 #print axioms Flecs.R8.release_worker_iter_changed_crashes
+#print axioms Flecs.R9.self_select_keeps_source_and_flag
+#print axioms Flecs.R9.restore_keeps_source_and_flag
+#print axioms Flecs.R9.orup_cases
+#print axioms Flecs.R9.sparse_iter_cases
+#print axioms Flecs.R9.sparse_remove_moves_last
+#print axioms Flecs.R9.sortgroup_cases
+#print axioms Flecs.R9.same_parent_on_add
+#print axioms Flecs.R9.evhier9_cases
+#print axioms Flecs.R9.spawn_depth_repeat

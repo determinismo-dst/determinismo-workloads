@@ -17,6 +17,18 @@ curl -fsSL https://github.com/SanderMertens/flecs/archive/refs/tags/v4.2.0.tar.g
 
 ## Crashes: flecs's own internal or parameter asserts on documented use
 
+- [ ] **F59: an uncached Or chain with an up or self|up term gives a result another term's source, id or up flag**: `flecs_query_select_or` restores a field's ids, trs and columns after its duplicate check, but not its source or up flag (query/engine/eval.c 1454-1456, 1492-1495), so `ecs_field` reads entity 0 (a debug abort, a release crash), another entity's value, or a NULL table. Four forms: `Position(up) || Velocity` (a crash; and the wrong source with the parent's value read), `Position(self|up) || Velocity` (a debug abort in `ecs_query_next`, a release crash), `Position || Velocity(up)` (`ecs_field_id` names Position for an entity without it, then a crash). Story, code path and the docs it breaks: REPORT-9.md, F59.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix (sketch, REPORT-9.md): `select_or` saves and restores the source and up flag with ids, trs and columns, and resets them when the chain moves to its next term.
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_or_up_then_self_fields.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# debug: FAIL: signal 6 (ecs_field(Velocity) on a self result), in flecs_field_shared
+# -DNDEBUG: FAIL: form b: 3 result(s) name the wrong source or read another entity's Velocity; then signal 11
+cc ... tests/flecs_lean/query_or_self_up_then_self_columns.c ...   # debug: signal 6 in flecs_iter_assert_columns (ecs_query_next); -DNDEBUG: signal 11
+cc ... tests/flecs_lean/query_or_self_then_up_fields.c ...         # debug: signal 6 (ecs_field on D2); -DNDEBUG: D2's ecs_field_id is Position
+```
+
 - [ ] **F34: A cached query whose Or chain starts with a table term and ends with a Sparse term, with a term after the chain, returns wrong entities, and compiling it writes 42 bytes before the op array**. Story, code path and the docs it breaks: REPORT-5.md, F34.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
   Proposed fix: F29's patch ([fixes/F29.diff](fixes/F29.diff); verified: its test passes with it on v4.2.0 and fails without; flecs's core, query, addons, collections and cpp suites as on v4.2.0).
@@ -261,6 +273,27 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/panic_target_order.c flecs/
 ```
 
 ## Wrong values, wrong entities, wrong ids
+
+- [ ] **F60: removing a DontFragment tag from the entities of a query on it, while iterating, skips entities**: the trivial sparse search (an uncached query of DontFragment terms only) walks the sparse set's dense array forward, and each removal swaps the last id into a slot it has passed (query/engine/eval_sparse.c 561-575; datastructures/sparse.c 177-191). flecs's own `DontFragment_add_to_self_while_iterate` changes DontFragment ids while iterating, and the VM's select (`Df, !Unused`) walks backward and returns all of them. Story, code path: REPORT-9.md, F60.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix (sketch): walk the trivial sparse search backward, as the VM's select does.
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/sparse_remove_while_iterating.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# control (Df, !Unused: the VM's select): 2100 returned, 0 left with Df
+# part A (Df: the trivial sparse search): 1076 returned, 1024 left with Df (expected 2100, 0)
+# FAIL: the trivial sparse search skipped 1024 entities
+```
+
+- [ ] **F61: `ecs_iter_set_group` on a query with group_by and order_by returns the group table by table, not sorted**: it iterates the group's tables (query/api.c 787-791), not the sorted slices a full iteration uses (cache_iter.c 30-33, order_by.c 212-222). Story, code path: REPORT-9.md, F61.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix (sketch): record each group's range in `table_slices` and have `ecs_iter_set_group` iterate it.
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/query_order_by_set_group_unsorted.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# control (full iteration): 0 1 2 3 4
+# prediction (ecs_iter_set_group TgtA): 1 3 2 4 (expected 1 2 3 4)
+```
 
 - [ ] **F38: An instance of a prefab variant does not own a DontFragment component that the variant's base auto-overrides**. Story, code path and the docs it breaks: REPORT-5.md, F38.
   Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
@@ -683,8 +716,22 @@ cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/parent_reparent_no_on_remov
 # FAIL: e and its child g lost Tag(up) from p1 without an OnRemove
 ```
 
+- [ ] **F62: setting the Parent component to the parent the entity already has, or `ecs_modified` on it, delivers OnAdd (ChildOf, parent) again**, and forwards the parent's components to the entity and its children as OnAdd again. The replace hook returns for an unchanged parent (non_fragmenting_childof.c 138-144), but `flecs_copy_id` still emits OnSet, which `flecs_emit` re-emits as the pair's OnAdd (observable.c 1160-1183). F57's other side. Story, code path: REPORT-9.md, F62.
+  Tracker: not found in SanderMertens/flecs's issues or PRs (searched 2026-11-26).
+  Proposed fix: F57's (the hook emits the pair's events only when the parent changes, and `flecs_emit` stops translating the Parent component's OnSet).
+
+```sh
+cc -std=gnu99 -O1 -g -I flecs/distr tests/flecs_lean/parent_set_same_parent_on_add.c flecs/distr/flecs.c -lm -lpthread -o t && ./t
+# OnAdd Tag(up): entity e, source p; OnAdd Tag(up): entity g, source p; OnAdd (ChildOf, *): entity e, parent p
+# FAIL: OnAdd for a parent and a component the entity already had
+# prediction: ecs_modified(e, EcsParent): 2 OnAdd Tag(up), 1 OnAdd (ChildOf, *); FAIL: ecs_modified delivered OnAdd
+```
+
 ## Predicted but not reproduced
 
+- F60's second form (round 9): the VM's sparse select returning an entity twice after another
+  entity's DontFragment tag is removed mid-iteration; on v4.2.0 (macOS, debug) each of part B's
+  four entities came once (`sparse_remove_while_iterating.c` part B).
 - F55 as round 7 wrote it (a write past the planted block): the next table in the slot resets its dirty
   state (table_graph.c 424), so nothing is written past it; the corrected F55 is above.
 - F2 as first predicted (`batch_remove_dead_target_panic.c`): flecs behaved as documented; a model

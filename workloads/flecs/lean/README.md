@@ -102,6 +102,16 @@ explained (the predicted assert), and F56-F58, each confirmed on flecs v4.2.0 (2
 a deleted table's order_by slice used by later iterators (F56), no OnRemove when a Parent-storage
 child is re-parented (F57), spawn tables kept for good for instances at depth 6 or more (F58).
 
+## Round 9
+
+[REPORT-9.md](REPORT-9.md): F59-F62, confirmed on flecs v4.2.0 (2026-11-26, macOS, debug and
+`-DNDEBUG`): an uncached Or chain with an up or self|up term gives a result another term's source,
+id or up flag, so `ecs_field` aborts, crashes or reads another entity (F59, four forms); removing a
+DontFragment tag mid-iteration makes the trivial sparse search skip entities (F60: 1,024 of 2,100;
+its second form, the VM's select returning one twice, not reproduced); `ecs_iter_set_group` with
+order_by returns the group unsorted (F61); setting the parent an entity already has, or
+`ecs_modified` on it, delivers OnAdd again (F62). With fix sketches for F48-F62.
+
 ## On the real flecs
 
 Round 1's 20 C tests on flecs v4.2.0 (the latest release), through determinismo-ci, flecs compiled

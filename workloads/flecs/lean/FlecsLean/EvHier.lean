@@ -165,7 +165,15 @@ def step (stor : Stor) (hs : Array HS) (st : St) (op : Op) : St × List (Ev × N
     let evs := (Ev.onRemove, x, x) :: (prop stor st x depth x).map (fun (y, s) => (Ev.onRemove, y, s))
     (st.modify x (fun e => { e with own := none }), evs)
   | .link x p =>
-    if x ≥ st.size || p ≥ x || (ent st x).par == some p then (st, []) else
+    if x ≥ st.size || p ≥ x then (st, []) else
+    -- Round 9: setting the Parent component to the parent the entity already
+    -- has: the on_replace hook does nothing (non_fragmenting_childof.c
+    -- 138-144), but flecs_copy_id still emits OnSet (entity.c 838-839),
+    -- which observable.c 1160-1183 re-emits as the OnAdd of (ChildOf, p),
+    -- with its forward.  With ChildOf storage the add is a no-op.
+    if (ent st x).par == some p then
+      (if hs.getD x .childOf == .parent then (st, (Ev.pairAdd, x, p) :: forward stor st .onAdd x p) else (st, []))
+    else
     let old := (ent st x).par
     let st' := st.modify x (fun e => { e with par := some p })
     let add := (Ev.pairAdd, x, p) :: forward stor st' .onAdd x p
@@ -221,6 +229,15 @@ def checkStep (stor : Stor) (hs : Array HS) (pre : St) (op : Op) : St × List (S
   let o := showOp hs op
   let mut seen : List (Ev × Nat × Nat) := []
   for (k, x, s) in got do
+    -- Round 9, P-EV7: an OnAdd only when the entity gains the id
+    -- (ObserversManual.md "OnAdd Events": "An event only fires when the
+    -- component is actually added to the entity, so not on each add
+    -- operation")
+    if k == .pairAdd && (ent pre x).par == some s then
+      out := out ++ [("P-EV7 OnAdd only when added", s!"pair: after {o}, the (ChildOf, *) OnAdd observer was invoked for e{x} and e{s}, but e{x}'s parent was already e{s} ({(hs.getD x .childOf).show} storage): the on_replace hook skips an unchanged parent (non_fragmenting_childof.c 138-144), yet flecs_copy_id emits OnSet (entity.c 838-839), which observable.c 1160-1183 re-emits as OnAdd (ChildOf, parent)")]
+    let sameParent := match op with | .link x' p' => (ent pre x').par == some p' | _ => false
+    if sameParent && k == .onAdd && src pre depth x == some s && src post depth x == some s then
+      out := out ++ [("P-EV7 OnAdd only when added", s!"component: after {o}, the OnAdd observer was invoked for e{x} with source e{s}, but e{x} already had C from e{s} ({sshow stor}): the re-emitted OnAdd of an unchanged (ChildOf, parent) forwards the parent's components again (observable.c 1160-1183, 799-888)")]
     if k == .pairAdd || k == .pairRemove then
       seen := seen ++ [(k, x, s)]; continue
     if seen.contains (k, x, s) then
@@ -298,6 +315,10 @@ def cases : List (String × Prog) := [
   ("F48 (b) with Parent storage: e2 (Parent child of e0) owns C (DontFragment), e3 child of e2; C set on e0",
     { stor := .dontFragment, hs := #[.childOf, .childOf, .parent, .parent], ops := [.set 2 1, .link 2 0, .link 3 2, .set 0 1] }),
   ("control: the same with a table component",
-    { stor := .table, hs := #[.childOf, .childOf, .parent, .parent], ops := [.set 2 1, .link 2 0, .link 3 2, .set 0 1] }) ]
+    { stor := .table, hs := #[.childOf, .childOf, .parent, .parent], ops := [.set 2 1, .link 2 0, .link 3 2, .set 0 1] }),
+  ("parent_set_same_parent_on_add (round 9): e0 has C; e2 = Parent child of e0, e3 = Parent child of e2; Parent of e2 set to e0 again",
+    { stor := .table, hs := #[.childOf, .childOf, .parent, .parent], ops := [.set 0 1, .link 2 0, .link 3 2, .link 2 0] }),
+  ("control (round 9): the same with ChildOf storage",
+    { stor := .table, hs := #[.childOf, .childOf, .childOf, .childOf], ops := [.set 0 1, .link 2 0, .link 3 2, .link 2 0] }) ]
 
 end Flecs.EvHier

@@ -2,8 +2,10 @@ C tests for the predictions in ../../REPORT.md (round 1, F1-F14),
 ../../REPORT-2.md (round 2, F2 corrected and F15-F23), ../../REPORT-3.md
 (round 3, F24-F28), ../../REPORT-4.md (round 4, F29-F33, and the
 corrected F16, F17 and F26 tests), ../../REPORT-5.md (round 5,
-F34-F40), ../../REPORT-6.md (round 6, F41-F47) and ../../REPORT-7.md
-(round 7, F48-F55), against flecs v4.2.0.
+F34-F40), ../../REPORT-6.md (round 6, F41-F47), ../../REPORT-7.md
+(round 7, F48-F55), REPORT-8 (round 8, F55 corrected-F58) and round 9
+(F59-F62; the round 9 report is in the agent's final message), against
+flecs v4.2.0.
 
 Each file is one program.  main() returns 0 when flecs behaves as its
 documentation says; a non-zero return or an abort confirms the prediction.
@@ -192,3 +194,39 @@ Round 8 (all use ecs_mini(); none was run in round 8):
   F52 (round 7)   the abort at flecs.c 7976 is the predicted assert:
                   flecs.c 7938 opens flecs_notify_on_set_w_cr, 7974-7976
                   are component_actions.c 677-679. The tests are unchanged.
+
+Round 9 (all use ecs_mini(); none was run in round 9):
+  F59             query_or_up_then_self_fields.c (uncached Position(up) ||
+                  Velocity: form b, a result that names the wrong source and
+                  reads another entity's Velocity; then form a, an
+                  ecs_field read of entity 0's record: debug abort "entity
+                  0 does not exist", release crash),
+                  query_or_self_up_then_self_columns.c (Position(self|up) ||
+                  Velocity: debug abort in ecs_query_next, "it->columns[0]=-1
+                  does not match expected 0"; release: columns -1 and a
+                  crash in ecs_field),
+                  query_or_self_then_up_fields.c (Position || Velocity(up):
+                  D2's result names Position; ecs_field crashes).
+                  Build each in the default debug build and again with
+                  -DNDEBUG:
+
+    cc -std=c99 -DNDEBUG -I ../../upstream/distr \
+        query_or_up_then_self_fields.c ../../upstream/distr/flecs.c \
+        -o t && ./t; echo $?
+
+                  A crash or an abort confirms (the handler prints FAIL and
+                  exits 1); a signal in a control prints INCONCLUSIVE and
+                  exits 2.
+  F60             sparse_remove_while_iterating.c (removing a DontFragment
+                  tag while iterating: part A, the trivial sparse search
+                  over 2100 entities returns 1076, the VM's select "Df,
+                  !Unused" is the control; part B, the VM's select returns
+                  one entity twice). Default debug build.
+  F61             query_order_by_set_group_unsorted.c (ecs_iter_set_group on
+                  a query with group_by and order_by returns 1 3 2 4; the
+                  full iteration is the control). Default debug build.
+  F62             parent_set_same_parent_on_add.c (ecs_set of EcsParent to
+                  the parent the entity already has, and ecs_modified on it,
+                  deliver OnAdd (ChildOf, p) and the forwarded OnAdd of p's
+                  Tag again; ChildOf storage is the control). Default debug
+                  build.

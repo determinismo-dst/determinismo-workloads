@@ -98,6 +98,8 @@ def cases : List (String × Prog) := [
   ("control: an instance at depth 1", { depths := [1] }),
   ("control: depth 0 (flecs's own test)", { depths := [0] }),
   ("depth 5, the deepest cached", { depths := [5] }),
-  ("depth 6, the first uncached", { depths := [6] }) ]
+  ("depth 6, the first uncached", { depths := [6] }),
+  ("round 9: three instances at depth 8 (the keep count grows by one each)", { depths := [8, 8, 8] }),
+  ("round 9: three instances at depth 3 (cached: one keep)", { depths := [3, 3, 3] }) ]
 
 end Flecs.SpawnDepth

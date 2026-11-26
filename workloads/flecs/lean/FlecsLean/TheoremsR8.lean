@@ -55,16 +55,23 @@ theorem parent_reparent_no_remove (stor : EvHier.Stor) (hs : Array EvHier.HS) (s
     (x p : Nat) (hp : hs.getD x .childOf = .parent) :
     ∀ e ∈ (EvHier.step stor hs st (.link x p)).2,
       e.1 ≠ EvHier.Ev.onRemove ∧ e.1 ≠ EvHier.Ev.pairRemove := by
+  -- Re-proved in round 9: `step` now has the same-parent branch (F62).
   intro e he
   obtain ⟨k, y, s⟩ := e
   have hb : (hs.getD x .childOf == .childOf) = false := by rw [hp]; decide
-  simp only [EvHier.step, hb] at he
-  split at he
-  · simp at he
-  · simp only [Bool.false_eq_true, ↓reduceIte, List.mem_cons] at he
-    rcases he with h1 | h2
+  have hb2 : (hs.getD x .childOf == .parent) = true := by rw [hp]; decide
+  have fin : ∀ st', (k, y, s) ∈ (EvHier.Ev.pairAdd, x, p) :: EvHier.forward stor st' .onAdd x p →
+      k ≠ EvHier.Ev.onRemove ∧ k ≠ EvHier.Ev.pairRemove := by
+    intro st' h
+    rcases List.mem_cons.mp h with h1 | h2
     · cases h1; exact ⟨by simp, by simp⟩
     · have := forward_kind _ _ _ _ _ _ _ _ h2; subst this; exact ⟨by simp, by simp⟩
+  simp only [EvHier.step, hb, hb2] at he
+  split at he
+  · simp at he
+  · split at he
+    · simp only [↓reduceIte] at he; exact fin _ he
+    · simp only [Bool.false_eq_true, ↓reduceIte] at he; exact fin _ he
 
 /-- F57 and the Parent forms of F48 and F50: the C tests' programs. -/
 theorem evhier_cases :

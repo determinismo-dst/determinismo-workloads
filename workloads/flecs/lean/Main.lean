@@ -22,6 +22,9 @@ import FlecsLean.IterKinds
 import FlecsLean.SlicesR8
 import FlecsLean.EvHier
 import FlecsLean.SpawnDepth
+import FlecsLean.OrUp
+import FlecsLean.SparseIter
+import FlecsLean.SortGroup
 
 open Flecs
 
@@ -594,6 +597,65 @@ def ehMain (args : List String) : IO UInt32 := do
   | _ => IO.println "usage: eh explore SEED N NENTS LEN | exhaust LIMIT NENTS LEN | lib MODE SEED N NENTS LEN PROP | cases"; return 1
   return 0
 
+def ouMain (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : OrUp.Prog) => gshrink OrUp.shrink OrUp.check sig p
+  match args with
+  | ["explore", seed, n, nents, nalts] =>
+    let g : TapeM OrUp.Prog := OrUp.genProg nents.toNat! nalts.toNat!
+    greport s!"ou explore seed={seed} n={n} nents={nents} nalts={nalts}" (gexplore g OrUp.check seed.toNat! n.toNat!) (some sh)
+  | ["exhaust", limit, nents, nalts] =>
+    let g : TapeM OrUp.Prog := OrUp.genProg nents.toNat! nalts.toNat!
+    let (st, done) := gexhaust g OrUp.check limit.toNat!
+    greport s!"ou exhaust nents={nents} nalts={nalts} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, nents, nalts, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions OrUp.Prog := OrUp.genProg nents.toNat! nalts.toNat!
+    glib mode g OrUp.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in OrUp.cases do
+      IO.println s!"== ou case {nm}: {repr p}"
+      for r in OrUp.run p do
+        IO.println s!"  result: term {r.alt + 1}, table {r.tab}, expected source {OrUp.showSrc r.exp}; columns {r.f.col}, source {OrUp.showSrc r.f.src}, up flag {r.f.up}"
+      let r := OrUp.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: ou explore SEED N NENTS NALTS | exhaust LIMIT NENTS NALTS | lib MODE SEED N NENTS NALTS PROP | cases"; return 1
+  return 0
+
+def si9Main (args : List String) : IO UInt32 := do
+  let sh := fun (sig : String) (p : SparseIter.Prog) => gshrink SparseIter.shrink SparseIter.check sig p
+  match args with
+  | ["exhaust", limit, nents, nops] =>
+    let g : TapeM SparseIter.Prog := SparseIter.genProg nents.toNat! nops.toNat!
+    let (st, done) := gexhaust g SparseIter.check limit.toNat!
+    greport s!"si9 exhaust nents={nents} nops={nops} limit={limit} complete={done}" st (some sh)
+  | ["lib", mode, seed, n, nents, nops, prop] =>
+    let g : EStateM Determinismo.Stop Determinismo.Decisions SparseIter.Prog := SparseIter.genProg nents.toNat! nops.toNat!
+    glib mode g SparseIter.check prop n.toNat! seed.toNat! sh
+  | ["cases"] =>
+    for (nm, p) in SparseIter.cases do
+      IO.println s!"== si9 case {nm}: {repr p}"
+      IO.println s!"  {repr (SparseIter.run p)}"
+      let r := SparseIter.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: si9 exhaust LIMIT NENTS NOPS | lib MODE SEED N NENTS NOPS PROP | cases"; return 1
+  return 0
+
+def sgMain (args : List String) : IO UInt32 := do
+  match args with
+  | ["exhaust", limit, ntabs, nvals] =>
+    let g : TapeM SortGroup.Prog := SortGroup.genProg ntabs.toNat! nvals.toNat!
+    let (st, done) := gexhaust g SortGroup.check limit.toNat!
+    greport s!"sg exhaust ntabs={ntabs} nvals={nvals} limit={limit} complete={done}" st none
+  | ["cases"] =>
+    for (nm, p) in SortGroup.cases do
+      IO.println s!"== sg case {nm}: results {SortGroup.results p}"
+      let r := SortGroup.check p
+      if r.isEmpty then IO.println "  no property broken"
+      for (pr, d) in r do IO.println s!"  PROPERTY {pr}: {d}"
+  | _ => IO.println "usage: sg exhaust LIMIT NTABS NVALS | cases"; return 1
+  return 0
+
 def sdMain (args : List String) : IO UInt32 := do
   match args with
   | ["exhaust", limit, n] =>
@@ -805,6 +867,9 @@ def main (args : List String) : IO UInt32 := do
   | "s8" :: rest => return (← s8Main rest)
   | "eh" :: rest => return (← ehMain rest)
   | "sd" :: rest => return (← sdMain rest)
+  | "ou" :: rest => return (← ouMain rest)
+  | "si9" :: rest => return (← si9Main rest)
+  | "sg" :: rest => return (← sgMain rest)
   | _ =>
     IO.println "usage: flecs-search explore SEED N ENTS LEN | exhaust LIMIT ENTS LEN | ei-explore SEED N LEN | ei-exhaust LIMIT LEN"
     return 1

@@ -89,7 +89,7 @@ race in a release build under ThreadSanitizer, its debug build aborting on an un
 
 [REPORT-7.md](REPORT-7.md): OnAdd and OnRemove for inherited components, the tree spawner's
 Inherit components, the iterator a system's callback receives, the uncached query VM. F48-F54
-confirmed on flecs v4.2.0 (2026-11-26): OnAdd/OnRemove/OnSet misaddressed or missing for inherited
+confirmed on flecs v4.2.0 (2026-11-26, macOS, and Linux in the `flecs-lean` workflow): OnAdd/OnRemove/OnSet misaddressed or missing for inherited
 components (F48-F51), instantiation aborting for a Parent child's Inherit component with a hook or
 Sparse storage (F52), `ecs_iter_changed`/`ecs_iter_skip` aborting in multi-threaded systems and run
 callbacks (F53, F54). F55 (a dirty state left in a freed table's slot) not reproduced.

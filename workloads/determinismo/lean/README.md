@@ -125,6 +125,10 @@ session step over about 41 KiB making its tape unreadable (CE52), returns past a
 (CE53), an aimed corrupt_reads naming a byte its read never had changed (CE54), and a test runner
 exiting 255 stopping xargs before the shard's later tests (CE55). CE49, CE52 and CE55 fail as Zig
 tests on copies of a7fe05d's junit.zig, tape.zig and ci.zig; each has its regression test in tests/.
+CE42's and CE43's e2e checks fail without their fixes and pass with them (2026-11-27):
+`half-limit-again` at 1ddfbe7 (its test, not its fix) starts 4 drivers past half the timeline
+limit; `disk` at e569303 fails "a corrupt_reads fault's read tracer is gone once it heals" in 2 of
+3 timelines; both pass on next e02e2d5 (the full e2e batch).
 
 ## Round 7
 
